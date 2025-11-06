@@ -1,0 +1,247 @@
+/* Dashboard Styles */
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #121212;
+}
+
+.card {
+    border: 1px solid #333;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.card-header {
+    background-color: #1e1e1e;
+    border-bottom: 1px solid #333;
+    font-weight: 600;
+}
+
+/* Alert Feed */
+.alert-feed {
+    max-height: 600px;
+    overflow-y: auto;
+    background-color: #1e1e1e;
+}
+
+.alert-item {
+    padding: 12px 15px;
+    border-bottom: 1px solid #333;
+    transition: background-color 0.2s;
+    cursor: pointer;
+}
+
+.alert-item:hover {
+    background-color: #2a2a2a;
+}
+
+.alert-item:last-child {
+    border-bottom: none;
+}
+
+.alert-item.CRITICAL {
+    border-left: 4px solid #dc3545;
+}
+
+.alert-item.HIGH {
+    border-left: 4px solid #fd7e14;
+}
+
+.alert-item.MEDIUM {
+    border-left: 4px solid #ffc107;
+}
+
+.alert-item.LOW {
+    border-left: 4px solid #17a2b8;
+}
+
+.alert-item.INFO {
+    border-left: 4px solid #6c757d;
+}
+
+.alert-severity {
+    font-weight: bold;
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.alert-severity.CRITICAL {
+    background-color: #dc3545;
+    color: white;
+}
+
+.alert-severity.HIGH {
+    background-color: #fd7e14;
+    color: white;
+}
+
+.alert-severity.MEDIUM {
+    background-color: #ffc107;
+    color: black;
+}
+
+.alert-severity.LOW {
+    background-color: #17a2b8;
+    color: white;
+}
+
+.alert-severity.INFO {
+    background-color: #6c757d;
+    color: white;
+}
+
+.alert-timestamp {
+    font-size: 0.8rem;
+    color: #888;
+}
+
+.alert-description {
+    margin-top: 5px;
+    font-size: 0.9rem;
+}
+
+.alert-meta {
+    font-size: 0.85rem;
+    color: #aaa;
+    margin-top: 4px;
+}
+
+/* Scrollbar styling */
+.alert-feed::-webkit-scrollbar {
+    width: 8px;
+}
+
+.alert-feed::-webkit-scrollbar-track {
+    background: #1e1e1e;
+}
+
+.alert-feed::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 4px;
+}
+
+.alert-feed::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Top Talkers Table */
+.table-dark {
+    color: #ddd;
+}
+
+.table-dark thead th {
+    border-bottom: 2px solid #444;
+}
+
+.table-dark tbody tr {
+    border-bottom: 1px solid #333;
+}
+
+.table-dark tbody tr:hover {
+    background-color: #2a2a2a;
+}
+
+/* Direction Badges */
+.badge-direction {
+    font-size: 0.7rem;
+}
+
+.badge-direction.outbound {
+    background-color: #dc3545;
+}
+
+.badge-direction.inbound {
+    background-color: #28a745;
+}
+
+/* Threat Types List */
+.list-group-item {
+    background-color: #1e1e1e;
+    border: 1px solid #333;
+    color: #ddd;
+}
+
+.list-group-item:hover {
+    background-color: #2a2a2a;
+}
+
+.threat-type-badge {
+    float: right;
+    font-weight: bold;
+}
+
+/* Connection Status */
+#connection-status {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+#connection-status.disconnected {
+    background-color: #dc3545 !important;
+}
+
+/* Gauge Charts */
+canvas {
+    max-height: 150px;
+}
+
+/* Loading Animation */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-spinner {
+    border: 4px solid #333;
+    border-top: 4px solid #007bff;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 20px auto;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .alert-feed {
+        max-height: 400px;
+    }
+
+    h3 {
+        font-size: 1.5rem;
+    }
+}
+
+/* New Alert Animation */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.alert-item.new {
+    animation: slideIn 0.3s ease-out;
+    background-color: #2a3f2a;
+}
+
+/* Card glow effect for critical alerts */
+.card.critical-glow {
+    box-shadow: 0 0 20px rgba(220, 53, 69, 0.5);
+    animation: glow 1s ease-in-out infinite;
+}
+
+@keyframes glow {
+    0%, 100% { box-shadow: 0 0 20px rgba(220, 53, 69, 0.5); }
+    50% { box-shadow: 0 0 30px rgba(220, 53, 69, 0.8); }
+}

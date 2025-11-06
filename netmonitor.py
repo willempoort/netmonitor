@@ -24,6 +24,9 @@ from alerts import AlertManager
 from threat_feeds import ThreatFeedManager
 from behavior_detector import BehaviorDetector
 from abuseipdb_client import AbuseIPDBClient
+from database import DatabaseManager
+from metrics_collector import MetricsCollector
+from web_dashboard import DashboardServer
 
 
 class NetworkMonitor:
@@ -36,6 +39,24 @@ class NetworkMonitor:
 
         # Setup logging
         self.setup_logging()
+
+        # Initialiseer database
+        self.db = None
+        if self.config.get('dashboard', {}).get('enabled', True):
+            try:
+                db_path = self.config.get('dashboard', {}).get('database_path', '/var/lib/netmonitor/netmonitor.db')
+                self.db = DatabaseManager(db_path=db_path)
+                self.logger.info("Database Manager enabled")
+            except Exception as e:
+                self.logger.error(f"Fout bij initialiseren database: {e}")
+
+        # Initialiseer metrics collector
+        self.metrics = None
+        try:
+            self.metrics = MetricsCollector(self.config, database_manager=self.db)
+            self.logger.info("Metrics Collector enabled")
+        except Exception as e:
+            self.logger.error(f"Fout bij initialiseren metrics collector: {e}")
 
         # Initialiseer threat feed manager
         self.threat_feeds = None
@@ -79,6 +100,17 @@ class NetworkMonitor:
             abuseipdb_client=self.abuseipdb
         )
         self.alert_manager = AlertManager(self.config)
+
+        # Initialiseer web dashboard
+        self.dashboard = None
+        if self.config.get('dashboard', {}).get('enabled', True):
+            try:
+                host = self.config.get('dashboard', {}).get('host', '0.0.0.0')
+                port = self.config.get('dashboard', {}).get('port', 8080)
+                self.dashboard = DashboardServer(config_file=config_file, host=host, port=port)
+                self.logger.info("Web Dashboard enabled")
+            except Exception as e:
+                self.logger.error(f"Fout bij initialiseren dashboard: {e}")
 
         # Setup signal handlers voor graceful shutdown
         signal.signal(signal.SIGINT, self.signal_handler)
@@ -154,13 +186,36 @@ class NetworkMonitor:
             if not packet.haslayer(IP):
                 return
 
+            # Track packet in metrics
+            if self.metrics:
+                self.metrics.track_packet(packet)
+
             # Analyseer packet met detector
             threats = self.detector.analyze_packet(packet)
 
             # Als threats gevonden, stuur alerts
             if threats:
                 for threat in threats:
+                    # Send to alert manager (console/file)
                     self.alert_manager.send_alert(threat, packet)
+
+                    # Save to database
+                    if self.db:
+                        try:
+                            self.db.add_alert(threat)
+                        except Exception as db_error:
+                            self.logger.error(f"Error saving alert to database: {db_error}")
+
+                    # Broadcast to dashboard
+                    if self.dashboard:
+                        try:
+                            self.dashboard.broadcast_alert(threat)
+                        except Exception as dash_error:
+                            self.logger.error(f"Error broadcasting alert: {dash_error}")
+
+                    # Track alert in metrics
+                    if self.metrics:
+                        self.metrics.track_alert()
 
         except Exception as e:
             self.logger.error(f"Error processing packet: {e}", exc_info=True)
@@ -172,6 +227,13 @@ class NetworkMonitor:
         self.logger.info(f"Starting network monitor op interface: {interface}")
         self.logger.info("Druk op Ctrl+C om te stoppen")
 
+        # Start dashboard server
+        if self.dashboard:
+            self.dashboard.start()
+            dashboard_host = self.config.get('dashboard', {}).get('host', '0.0.0.0')
+            dashboard_port = self.config.get('dashboard', {}).get('port', 8080)
+            self.logger.info(f"Dashboard beschikbaar op: http://{dashboard_host}:{dashboard_port}")
+
         # Check of we root privileges hebben
         if conf.L3socket == conf.L3socket6:
             self.logger.warning(
@@ -179,6 +241,21 @@ class NetworkMonitor:
             )
 
         self.running = True
+
+        # Start metrics broadcaster (update dashboard elk 5 seconden)
+        import threading
+        def broadcast_metrics():
+            while self.running:
+                if self.metrics and self.dashboard:
+                    try:
+                        metrics_data = self.metrics.get_dashboard_metrics()
+                        self.dashboard.broadcast_metrics(metrics_data)
+                    except Exception as e:
+                        self.logger.error(f"Error broadcasting metrics: {e}")
+                threading.Event().wait(5)  # 5 seconden
+
+        metrics_thread = threading.Thread(target=broadcast_metrics, daemon=True)
+        metrics_thread.start()
 
         try:
             # Start packet sniffing
