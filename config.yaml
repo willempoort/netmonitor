@@ -1,0 +1,59 @@
+# Network Monitor Configuration
+
+# Network interface to monitor (example: eth0, ens33, etc.)
+# Use 'any' to monitor all interfaces
+interface: eth0
+
+# Detection thresholds
+thresholds:
+  # Port scan detection - aantal unieke poorten per source IP per tijdvenster
+  port_scan:
+    enabled: true
+    unique_ports: 20  # Aantal unieke poorten binnen time_window
+    time_window: 60   # Tijdvenster in seconden
+
+  # High connection rate detection
+  connection_flood:
+    enabled: true
+    connections_per_second: 100
+    time_window: 10
+
+  # Unusual packet size detection
+  packet_size:
+    enabled: true
+    min_suspicious_size: 1400  # Pakketten groter dan deze size zijn verdacht
+
+  # DNS tunneling detection
+  dns_tunnel:
+    enabled: true
+    query_length_threshold: 50  # DNS queries langer dan dit zijn verdacht
+    queries_per_minute: 30
+
+# Blacklisted IPs (known malicious IPs)
+blacklist:
+  - 192.0.2.0/24  # Example RFC5737 test network
+  # Voeg hier bekende malicious IPs toe
+
+# Whitelist (trusted IPs that should not trigger alerts)
+whitelist:
+  - 127.0.0.1
+  - 192.168.1.0/24  # Pas aan naar je eigen netwerk
+
+# Logging
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR
+  file: /var/log/netmonitor/alerts.log
+  console: true
+  syslog: false
+
+# Alert options
+alerts:
+  # Maximum aantal alerts per minuut om flooding te voorkomen
+  max_per_minute: 100
+
+  # Alert naar file
+  file_enabled: true
+
+  # Alert naar syslog
+  syslog_enabled: false
+  syslog_facility: local0
