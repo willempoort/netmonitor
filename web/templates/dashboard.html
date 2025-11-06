@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Monitor - Security Dashboard</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- Socket.IO -->
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+</head>
+<body class="bg-dark text-light">
+
+    <!-- Navbar -->
+    <nav class="navbar navbar-dark bg-black border-bottom border-secondary">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">
+                <i class="bi bi-shield-check text-success"></i>
+                Network Monitor - Security Dashboard
+            </span>
+            <div class="d-flex align-items-center">
+                <span class="badge bg-success me-3" id="connection-status">
+                    <i class="bi bi-wifi"></i> Connected
+                </span>
+                <span class="text-muted" id="current-time"></span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-3">
+
+        <!-- System Stats Row -->
+        <div class="row mb-4">
+            <!-- Packets/sec Gauge -->
+            <div class="col-md-3">
+                <div class="card bg-secondary text-white h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title"><i class="bi bi-activity"></i> Packets/sec</h6>
+                        <canvas id="packetsGauge" height="150"></canvas>
+                        <h3 class="mt-2" id="packets-value">0</h3>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alerts/min Gauge -->
+            <div class="col-md-3">
+                <div class="card bg-secondary text-white h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title"><i class="bi bi-exclamation-triangle"></i> Alerts/min</h6>
+                        <canvas id="alertsGauge" height="150"></canvas>
+                        <h3 class="mt-2" id="alerts-value">0</h3>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CPU Usage -->
+            <div class="col-md-3">
+                <div class="card bg-secondary text-white h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title"><i class="bi bi-cpu"></i> CPU Usage</h6>
+                        <canvas id="cpuGauge" height="150"></canvas>
+                        <h3 class="mt-2" id="cpu-value">0%</h3>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Memory Usage -->
+            <div class="col-md-3">
+                <div class="card bg-secondary text-white h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title"><i class="bi bi-memory"></i> Memory Usage</h6>
+                        <canvas id="memoryGauge" height="150"></canvas>
+                        <h3 class="mt-2" id="memory-value">0%</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Traffic Stats Row -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card bg-secondary h-100">
+                    <div class="card-header">
+                        <h5><i class="bi bi-graph-up"></i> Traffic Volume (24h)</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="trafficChart" height="200"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card bg-secondary h-100">
+                    <div class="card-header">
+                        <h5><i class="bi bi-pie-chart"></i> Alert Distribution</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="alertPieChart" height="200"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Row -->
+        <div class="row">
+            <!-- Recent Alerts -->
+            <div class="col-md-8">
+                <div class="card bg-secondary">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5><i class="bi bi-bell"></i> Recent Alerts</h5>
+                        <span class="badge bg-danger" id="alert-count">0</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="alert-feed" id="alert-feed">
+                            <div class="text-center text-muted p-4">
+                                Loading alerts...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="col-md-4">
+                <!-- Top Talkers -->
+                <div class="card bg-secondary mb-3">
+                    <div class="card-header">
+                        <h5><i class="bi bi-people"></i> Top Talkers</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-dark table-sm table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>IP/Hostname</th>
+                                        <th>Traffic</th>
+                                        <th>Dir</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="top-talkers-table">
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted">Loading...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Threat Types -->
+                <div class="card bg-secondary">
+                    <div class="card-header">
+                        <h5><i class="bi bi-bug"></i> Threat Types</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="list-group list-group-flush" id="threat-types-list">
+                            <div class="list-group-item bg-dark text-muted text-center">
+                                Loading...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Custom JS -->
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+
+</body>
+</html>

@@ -1,0 +1,279 @@
+"""
+Metrics Collector
+Collects and aggregates traffic statistics for dashboard
+"""
+
+import time
+import logging
+import psutil
+import socket
+from collections import defaultdict
+from datetime import datetime
+from typing import Dict, List
+import ipaddress
+
+
+class MetricsCollector:
+    """Collects traffic and system metrics"""
+
+    def __init__(self, config, database_manager=None):
+        """Initialize metrics collector"""
+        self.config = config
+        self.db = database_manager
+        self.logger = logging.getLogger('NetMonitor.Metrics')
+
+        # Traffic counters
+        self.total_packets = 0
+        self.total_bytes = 0
+        self.inbound_packets = 0
+        self.inbound_bytes = 0
+        self.outbound_packets = 0
+        self.outbound_bytes = 0
+
+        # Per-IP statistics
+        self.ip_stats = defaultdict(lambda: {
+            'packets': 0,
+            'bytes': 0,
+            'direction': 'unknown'
+        })
+
+        # Alerts counter
+        self.alert_count = 0
+        self.last_alert_reset = time.time()
+
+        # Packet rate tracking
+        self.packet_timestamps = []
+        self.last_metrics_save = time.time()
+        self.metrics_save_interval = 60  # 1 minute
+
+        # Internal networks (from config)
+        self.internal_networks = self._parse_internal_networks()
+
+        self.logger.info("Metrics Collector geïnitialiseerd")
+
+    def _parse_internal_networks(self):
+        """Parse internal network ranges"""
+        networks = []
+        internal_ranges = self.config.get('internal_networks', [
+            '10.0.0.0/8',
+            '172.16.0.0/12',
+            '192.168.0.0/16'
+        ])
+
+        for net_str in internal_ranges:
+            try:
+                networks.append(ipaddress.ip_network(net_str, strict=False))
+            except ValueError as e:
+                self.logger.warning(f"Ongeldig internal network: {net_str}: {e}")
+
+        return networks
+
+    def is_internal_ip(self, ip_str: str) -> bool:
+        """Check of IP in internal network zit"""
+        try:
+            ip = ipaddress.ip_address(ip_str)
+            return any(ip in network for network in self.internal_networks)
+        except ValueError:
+            return False
+
+    def track_packet(self, packet):
+        """Track een packet voor statistieken"""
+        try:
+            from scapy.layers.inet import IP
+
+            if not packet.haslayer(IP):
+                return
+
+            ip_layer = packet[IP]
+            src_ip = ip_layer.src
+            dst_ip = ip_layer.dst
+            packet_size = len(packet)
+
+            # Update totals
+            self.total_packets += 1
+            self.total_bytes += packet_size
+
+            # Determine direction
+            src_internal = self.is_internal_ip(src_ip)
+            dst_internal = self.is_internal_ip(dst_ip)
+
+            if src_internal and not dst_internal:
+                # Outbound
+                self.outbound_packets += 1
+                self.outbound_bytes += packet_size
+                self.ip_stats[src_ip]['packets'] += 1
+                self.ip_stats[src_ip]['bytes'] += packet_size
+                self.ip_stats[src_ip]['direction'] = 'outbound'
+
+            elif not src_internal and dst_internal:
+                # Inbound
+                self.inbound_packets += 1
+                self.inbound_bytes += packet_size
+                self.ip_stats[dst_ip]['packets'] += 1
+                self.ip_stats[dst_ip]['bytes'] += packet_size
+                self.ip_stats[dst_ip]['direction'] = 'inbound'
+
+            # Track packet rate
+            current_time = time.time()
+            self.packet_timestamps.append(current_time)
+
+            # Keep only last 60 seconds of timestamps
+            cutoff = current_time - 60
+            self.packet_timestamps = [ts for ts in self.packet_timestamps if ts > cutoff]
+
+            # Save metrics periodically
+            if current_time - self.last_metrics_save >= self.metrics_save_interval:
+                self.save_metrics()
+                self.last_metrics_save = current_time
+
+        except Exception as e:
+            self.logger.error(f"Error tracking packet: {e}")
+
+    def track_alert(self):
+        """Track een alert"""
+        self.alert_count += 1
+
+    def get_current_stats(self) -> Dict:
+        """Get current statistics"""
+        current_time = time.time()
+
+        # Calculate packets per second
+        if self.packet_timestamps:
+            cutoff = current_time - 1  # Last second
+            recent_packets = sum(1 for ts in self.packet_timestamps if ts > cutoff)
+            packets_per_second = recent_packets
+        else:
+            packets_per_second = 0
+
+        # Calculate alerts per minute
+        time_since_reset = current_time - self.last_alert_reset
+        if time_since_reset >= 60:
+            alerts_per_minute = self.alert_count
+            self.alert_count = 0
+            self.last_alert_reset = current_time
+        else:
+            alerts_per_minute = int(self.alert_count / (time_since_reset / 60))
+
+        return {
+            'total_packets': self.total_packets,
+            'total_bytes': self.total_bytes,
+            'inbound_packets': self.inbound_packets,
+            'inbound_bytes': self.inbound_bytes,
+            'outbound_packets': self.outbound_packets,
+            'outbound_bytes': self.outbound_bytes,
+            'packets_per_second': packets_per_second,
+            'alerts_per_minute': alerts_per_minute,
+            'timestamp': datetime.now().isoformat()
+        }
+
+    def get_top_talkers(self, limit: int = 10) -> List[Dict]:
+        """Get top IPs by traffic volume"""
+        sorted_ips = sorted(
+            self.ip_stats.items(),
+            key=lambda x: x[1]['bytes'],
+            reverse=True
+        )[:limit]
+
+        result = []
+        for ip, stats in sorted_ips:
+            # Try to resolve hostname
+            try:
+                hostname = socket.gethostbyaddr(ip)[0]
+            except:
+                hostname = ip
+
+            result.append({
+                'ip': ip,
+                'hostname': hostname,
+                'packets': stats['packets'],
+                'bytes': stats['bytes'],
+                'mb': round(stats['bytes'] / (1024 * 1024), 2),
+                'direction': stats['direction']
+            })
+
+        return result
+
+    def get_system_stats(self) -> Dict:
+        """Get system resource statistics"""
+        try:
+            cpu_percent = psutil.cpu_percent(interval=0.1)
+            memory = psutil.virtual_memory()
+            memory_percent = memory.percent
+
+            return {
+                'cpu_percent': cpu_percent,
+                'memory_percent': memory_percent,
+                'memory_used_gb': round(memory.used / (1024**3), 2),
+                'memory_total_gb': round(memory.total / (1024**3), 2)
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting system stats: {e}")
+            return {
+                'cpu_percent': 0,
+                'memory_percent': 0,
+                'memory_used_gb': 0,
+                'memory_total_gb': 0
+            }
+
+    def save_metrics(self):
+        """Save metrics to database"""
+        if not self.db:
+            return
+
+        try:
+            # Save traffic metrics
+            metrics = {
+                'total_packets': self.total_packets,
+                'total_bytes': self.total_bytes,
+                'inbound_packets': self.inbound_packets,
+                'inbound_bytes': self.inbound_bytes,
+                'outbound_packets': self.outbound_packets,
+                'outbound_bytes': self.outbound_bytes
+            }
+            self.db.add_traffic_metrics(metrics)
+
+            # Save top talkers
+            top_talkers = self.get_top_talkers(limit=20)
+            self.db.update_top_talkers(top_talkers)
+
+            # Save system stats
+            current_stats = self.get_current_stats()
+            system_stats = self.get_system_stats()
+
+            combined_stats = {
+                **system_stats,
+                'packets_per_second': current_stats['packets_per_second'],
+                'alerts_per_minute': current_stats['alerts_per_minute'],
+                'threat_feed_iocs': 0  # Will be filled by threat feed manager
+            }
+            self.db.add_system_stats(combined_stats)
+
+            self.logger.debug("Metrics opgeslagen naar database")
+
+        except Exception as e:
+            self.logger.error(f"Error saving metrics: {e}")
+
+    def reset_counters(self):
+        """Reset alle counters (voor testing)"""
+        self.total_packets = 0
+        self.total_bytes = 0
+        self.inbound_packets = 0
+        self.inbound_bytes = 0
+        self.outbound_packets = 0
+        self.outbound_bytes = 0
+        self.ip_stats.clear()
+        self.packet_timestamps.clear()
+        self.alert_count = 0
+
+    def get_dashboard_metrics(self) -> Dict:
+        """Get alle metrics voor dashboard"""
+        current_stats = self.get_current_stats()
+        system_stats = self.get_system_stats()
+        top_talkers = self.get_top_talkers(limit=10)
+
+        return {
+            'traffic': current_stats,
+            'system': system_stats,
+            'top_talkers': top_talkers,
+            'timestamp': datetime.now().isoformat()
+        }

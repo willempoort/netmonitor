@@ -120,3 +120,15 @@ abuseipdb:
   # Query alleen verdachte IPs (beperkt API calls)
   # Als false, wordt elke external IP gechecked (niet aanbevolen)
   query_suspicious_only: true
+
+# Web Dashboard (NIEUW!)
+dashboard:
+  # Enable/disable web dashboard
+  enabled: true
+
+  # Host en port
+  host: 0.0.0.0  # 0.0.0.0 = toegankelijk vanaf andere machines
+  port: 8080
+
+  # Database path voor alerts en metrics
+  database_path: /var/lib/netmonitor/netmonitor.db
