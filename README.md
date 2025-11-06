@@ -1,8 +1,27 @@
-# Network Monitor - Verdacht Netwerkverkeer Detectie
+# Network Monitor - Security Operations Center (SOC)
 
-Een krachtig netwerk monitoring programma voor Linux dat verdacht netwerkverkeer kan detecteren. **Speciaal ontworpen voor monitoring van intern verkeer** om gecompromitteerde machines te detecteren. Geschikt voor gebruik op een monitoring/span port van een switch.
+Een krachtig netwerk monitoring platform voor Linux met **real-time web dashboard** dat verdacht netwerkverkeer kan detecteren. **Speciaal ontworpen voor monitoring van intern verkeer** om gecompromitteerde machines te detecteren. Geschikt voor gebruik op een monitoring/span port van een switch.
 
-## Features
+![SOC Dashboard Preview](docs/dashboard-preview.png)
+*Real-time Security Operations Center dashboard voor netwerkmonitoring*
+
+## 🎯 Key Features
+
+### 🖥️ Real-Time Web Dashboard (Nieuw!)
+
+**Professional SOC Dashboard op http://localhost:8080**
+
+- **Live Alert Feed**: Real-time security alerts met kleuren en geluid
+- **Traffic Visualisaties**: Grafieken en gauges voor verkeer monitoring
+- **System Metrics**: CPU, Memory, Packets/sec, Alerts/min gauges
+- **Top Talkers**: IPs met meeste verkeer (inclusief hostnames)
+- **WebSocket Updates**: Sub-seconde real-time updates
+- **Dark Theme**: Professional security monitoring interface
+- **Responsive Design**: Werkt op desktop, tablet en mobile
+
+[Zie DASHBOARD.md voor complete dashboard documentatie →](DASHBOARD.md)
+
+## Detection Features
 
 ### 🎯 Threat Intelligence (Nieuw!)
 
@@ -67,8 +86,10 @@ sudo pip install -r requirements.txt
 ```bash
 sudo mkdir -p /var/log/netmonitor
 sudo mkdir -p /var/cache/netmonitor/feeds
+sudo mkdir -p /var/lib/netmonitor
 sudo chmod 755 /var/log/netmonitor
 sudo chmod 755 /var/cache/netmonitor
+sudo chmod 755 /var/lib/netmonitor
 ```
 
 ### 4. Download threat feeds (eerste keer)
@@ -198,9 +219,9 @@ blacklist:
   - 198.51.100.50       # Specifiek IP
 ```
 
-## Gebruik
+## 🚀 Gebruik
 
-### Basis Gebruik
+### Start Network Monitor + Web Dashboard
 
 Run als root (vereist voor packet capture):
 
@@ -208,22 +229,60 @@ Run als root (vereist voor packet capture):
 sudo python3 netmonitor.py
 ```
 
-### Met Specifieke Interface
+**Output:**
+```
+Network Monitor geïnitialiseerd
+Database Manager enabled
+Metrics Collector enabled
+Threat Feed Manager enabled
+Behavior Detector enabled
+Web Dashboard enabled
+Dashboard beschikbaar op: http://0.0.0.0:8080
+Starting network monitor op interface: eth0
+```
+
+### Open Web Dashboard
+
+**Lokale toegang:**
+```
+http://localhost:8080
+```
+
+**Remote toegang (vanaf andere machine):**
+```
+http://192.168.1.X:8080  # Vervang X met server IP
+```
+
+### Dashboard Features
+
+✅ **Live Alert Feed** - Real-time security alerts
+✅ **Traffic Graphs** - 24-uur inbound/outbound charts
+✅ **System Gauges** - Packets/sec, Alerts/min, CPU, Memory
+✅ **Top Talkers** - IPs met meeste verkeer
+✅ **Threat Types** - Meest voorkomende threats
+✅ **Audio Alerts** - Beep bij CRITICAL/HIGH alerts
+
+[→ Complete Dashboard Documentatie (DASHBOARD.md)](DASHBOARD.md)
+
+### Command Line Opties
 
 ```bash
+# Met specifieke interface
 sudo python3 netmonitor.py -i eth0
-```
 
-### Met Custom Config File
+# Met custom config file
+sudo python3 netmonitor.py -c /path/to/config.yaml
 
-```bash
-sudo python3 netmonitor.py -c /path/to/custom/config.yaml
-```
-
-### Verbose Mode (Debug)
-
-```bash
+# Verbose mode (debug)
 sudo python3 netmonitor.py -v
+```
+
+### Standalone Dashboard (Zonder Monitoring)
+
+Voor testing of development:
+
+```bash
+sudo python3 web_dashboard.py
 ```
 
 ### Stoppen
@@ -282,13 +341,30 @@ Alerts worden real-time getoond in de console met kleuren:
 
 ### Log Files
 
-Twee log files worden aangemaakt:
+Drie log files worden aangemaakt:
 
 1. **Algemene logs**: `/var/log/netmonitor/alerts.log`
    - Alle system events en errors
 
 2. **Security alerts**: `/var/log/netmonitor/security_alerts.log`
    - Alleen security threats
+
+3. **Feed updates**: `/var/log/netmonitor/feed_updates.log`
+   - Threat feed download status
+
+### Database
+
+Alerts en metrics worden opgeslagen in SQLite database:
+
+**Location**: `/var/lib/netmonitor/netmonitor.db`
+
+**Tables**:
+- `alerts` - Alle security alerts met metadata
+- `traffic_metrics` - Traffic statistieken per minuut
+- `top_talkers` - Top IPs per 5 minuten
+- `system_stats` - System resource metrics
+
+Toegang via web dashboard of direct via API.
 
 ## Monitoring Port Setup
 
@@ -321,9 +397,11 @@ De tool zet de interface automatisch in promiscuous mode, maar je kunt dit ook m
 sudo ip link set eth0 promisc on
 ```
 
-## Troubleshooting
+## 🔧 Troubleshooting
 
-### "Permission Denied" Error
+### Network Monitor Issues
+
+#### "Permission Denied" Error
 
 De tool vereist root privileges voor packet capture:
 
@@ -331,7 +409,7 @@ De tool vereist root privileges voor packet capture:
 sudo python3 netmonitor.py
 ```
 
-### Interface Niet Gevonden
+#### Interface Niet Gevonden
 
 Controleer beschikbare interfaces:
 
@@ -343,7 +421,7 @@ ifconfig
 
 Pas `interface` in `config.yaml` aan naar een bestaande interface.
 
-### Geen Packets Ontvangen
+#### Geen Packets Ontvangen
 
 1. Check of interface UP is:
    ```bash
@@ -357,18 +435,132 @@ Pas `interface` in `config.yaml` aan naar een bestaande interface.
 
 3. Bij monitoring port: check switch configuratie
 
-### Te Veel False Positives
+#### Te Veel False Positives
 
 Pas detection thresholds aan in `config.yaml`:
 - Verhoog `unique_ports` voor port scan detectie
 - Verhoog `connections_per_second` voor flood detectie
 - Voeg interne netwerken toe aan whitelist
 
-## Performance Consideraties
+### Web Dashboard Issues
 
-- De tool gebruikt `store=0` bij packet capture om memory gebruik laag te houden
-- Voor high-traffic netwerken (>1Gbps): overweeg specifieke BPF filters
-- Monitor CPU en memory gebruik met `top` of `htop`
+#### Dashboard Niet Toegankelijk
+
+```bash
+# Check of Flask server draait
+ps aux | grep web_dashboard
+
+# Check of port open is
+netstat -tulpn | grep 8080
+
+# Check firewall
+sudo ufw status
+```
+
+**Oplossing:** Open port in firewall:
+```bash
+sudo ufw allow 8080/tcp
+```
+
+#### WebSocket Verbinding Mislukt
+
+Check browser console (F12):
+```
+WebSocket connection failed
+```
+
+**Oplossing:**
+- Check firewall toestaat WebSocket traffic
+- Check `host` setting in config.yaml (gebruik 0.0.0.0 voor remote access)
+
+#### Geen Alerts op Dashboard
+
+```bash
+# Check database
+sqlite3 /var/lib/netmonitor/netmonitor.db "SELECT COUNT(*) FROM alerts;"
+
+# Check logs
+tail -f /var/log/netmonitor/alerts.log
+
+# Restart monitor
+sudo pkill -f netmonitor.py
+sudo python3 netmonitor.py
+```
+
+#### Charts Laden Niet
+
+1. Open browser console (F12) en check voor JavaScript errors
+2. Check of Chart.js CDN beschikbaar is
+3. Check internet connectie (voor CDN resources)
+4. Try hard refresh: Ctrl+Shift+R
+
+#### Database Errors
+
+```bash
+# Check permissions
+ls -la /var/lib/netmonitor/
+
+# Fix permissions
+sudo chmod 755 /var/lib/netmonitor
+sudo chmod 644 /var/lib/netmonitor/netmonitor.db
+
+# Rebuild database (DANGER: verwijdert alle data)
+sudo rm /var/lib/netmonitor/netmonitor.db
+sudo python3 netmonitor.py
+```
+
+### Threat Feed Issues
+
+Zie [THREAT_FEEDS.md](THREAT_FEEDS.md) voor gedetailleerde troubleshooting.
+
+## ⚡ Performance Consideraties
+
+### Resource Gebruik
+
+**Network Monitor:**
+- CPU: 5-15% tijdens actieve monitoring (afhankelijk van verkeer)
+- Memory: 200-500 MB (inclusief dashboard en database)
+- Disk: ~10-50 MB/dag voor database (afhankelijk van alert volume)
+
+**Web Dashboard:**
+- CPU: 2-5% extra (Flask + WebSocket)
+- Memory: ~100-200 MB extra
+- Network: ~1-5 KB/sec (WebSocket overhead)
+
+### Optimalisaties
+
+- De tool gebruikt `store=0` bij packet capture om memory laag te houden
+- Database gebruikt bounded deques voor memory-efficient tracking
+- Metrics worden geaggregeerd voor minder database writes
+- Charts updaten zonder volledige re-render
+- Thread-safe database connections
+
+### High Traffic Netwerken (>1Gbps)
+
+Voor zeer drukke netwerken:
+
+1. **BPF Filters**: Filter verkeer in scapy
+```python
+sniff(filter="tcp and not port 22")  # Skip SSH verkeer
+```
+
+2. **Sampling**: Monitor slechts percentage van verkeer
+3. **Dedicated Hardware**: Gebruik dedicated monitoring machine
+4. **Database**: Overweeg PostgreSQL voor grotere volumes
+
+### Monitoring
+
+Monitor de monitor zelf:
+```bash
+# Check resource usage
+top -p $(pgrep -f netmonitor.py)
+
+# Check database size
+du -h /var/lib/netmonitor/netmonitor.db
+
+# Check logs
+tail -f /var/log/netmonitor/alerts.log
+```
 
 ## Systemd Service (Optioneel)
 
@@ -415,14 +607,159 @@ sudo journalctl -u netmonitor -f  # Live logs
 - **Whitelist configuratie**: Voeg vertrouwde systemen toe om false positives te reduceren
 - **Monitor de monitor**: Check periodiek of de tool nog draait en correct functioneert
 
-## Architectuur
+## 🏗️ Architectuur
 
 ```
-netmonitor.py       - Main entry point, packet capture loop
-├── config_loader.py - YAML configuratie laden
-├── detector.py      - Threat detection algoritmes
-└── alerts.py        - Alert management en logging
+netmonitor.py              - Main entry point, packet capture loop
+├── config_loader.py       - YAML configuratie laden
+├── detector.py            - Signature-based threat detection
+├── behavior_detector.py   - Behavior-based threat detection
+├── threat_feeds.py        - Threat intelligence feed manager
+├── abuseipdb_client.py    - AbuseIPDB API client
+├── alerts.py              - Alert management en logging
+├── database.py            - SQLite database manager
+├── metrics_collector.py   - Traffic & system metrics
+├── web_dashboard.py       - Flask web server + WebSocket
+└── web/                   - Dashboard frontend
+    ├── templates/
+    │   └── dashboard.html - Bootstrap 5 UI
+    └── static/
+        ├── css/dashboard.css
+        └── js/dashboard.js    - Chart.js + WebSocket client
 ```
+
+### Data Flow
+
+```
+1. Packet Captured (scapy)
+   ↓
+2. Metrics Collector (track traffic)
+   ↓
+3. Threat Detector (analyze)
+   ├─→ Signature detection
+   ├─→ Behavior detection
+   └─→ Threat feed check
+   ↓
+4. Alert Found?
+   ├─→ Console/File (AlertManager)
+   ├─→ Database (SQLite)
+   └─→ WebSocket Broadcast (Dashboard)
+   ↓
+5. Dashboard Updates (real-time)
+```
+
+## 🌐 Web Dashboard
+
+### Quick Access
+
+Start monitor en open:
+```
+http://localhost:8080
+```
+
+### Dashboard Sections
+
+**System Metrics** (Top Row)
+- 🟢 **Packets/sec**: Real-time packet rate
+- 🟡 **Alerts/min**: Security alert frequency
+- 🔵 **CPU Usage**: Processor utilization
+- 🟠 **Memory**: RAM usage
+
+**Traffic Analysis** (Middle Row)
+- 📈 **Traffic Volume**: 24-hour line chart (inbound vs outbound)
+- 🥧 **Alert Distribution**: Pie chart by severity
+
+**Live Feeds** (Bottom Row)
+- 🔔 **Recent Alerts**: Last 50 alerts with severity colors
+- 👥 **Top Talkers**: Top 10 IPs by traffic (with hostnames)
+- 🐛 **Threat Types**: Most common threat types
+
+### API Endpoints
+
+```bash
+# Get all dashboard data
+curl http://localhost:8080/api/dashboard
+
+# Get recent alerts
+curl http://localhost:8080/api/alerts?limit=50&hours=24
+
+# Get alert statistics
+curl http://localhost:8080/api/alerts/stats
+
+# Get traffic history
+curl http://localhost:8080/api/traffic/history?hours=24
+
+# Get top talkers
+curl http://localhost:8080/api/top-talkers?limit=10
+```
+
+### Dashboard Configuration
+
+In `config.yaml`:
+
+```yaml
+dashboard:
+  enabled: true
+  host: 0.0.0.0  # Toegankelijk vanaf alle interfaces
+  port: 8080     # Dashboard port
+  database_path: /var/lib/netmonitor/netmonitor.db
+```
+
+**Disable dashboard:**
+```yaml
+dashboard:
+  enabled: false
+```
+
+**Custom port:**
+```yaml
+dashboard:
+  port: 3000  # Of andere beschikbare port
+```
+
+### Remote Access
+
+Om dashboard toegankelijk te maken vanaf andere machines:
+
+1. **Firewall regel toevoegen:**
+```bash
+sudo ufw allow 8080/tcp
+```
+
+2. **Access URL:**
+```
+http://<server-ip>:8080
+```
+
+### Security (Production)
+
+Voor productie gebruik, zie [DASHBOARD.md](DASHBOARD.md) voor:
+- HTTPS/SSL setup met nginx
+- Authentication (Basic Auth, OAuth)
+- IP whitelisting
+- Rate limiting
+
+## 📊 Visualisaties
+
+Het dashboard biedt verschillende visualisatie types:
+
+### Gauge Charts (4x)
+- **Type**: Doughnut gauges (180° arc)
+- **Update**: Real-time, elk 5 seconden
+- **Kleuren**: Color-coded per metric type
+
+### Line Charts
+- **Traffic Volume**: Dubbele lijn (inbound/outbound)
+- **Historie**: 24 uur met uurlijkse data points
+- **Smooth**: Tension curves voor vloeiende lijnen
+
+### Pie Charts
+- **Alert Distribution**: Severity breakdown
+- **Dynamic**: Updates bij nieuwe alerts
+
+### Tables
+- **Top Talkers**: Sorteerbaar, met hostname resolution
+- **Threat Types**: Top 10 met badge counts
 
 ## Licentie
 
