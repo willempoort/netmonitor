@@ -1,0 +1,12 @@
+[Unit]
+Description=Network Monitor - Hourly Threat Feed Update
+Requires=netmonitor-feed-update.service
+
+[Timer]
+# Update elk uur
+OnBootSec=5min
+OnUnitActiveSec=1h
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

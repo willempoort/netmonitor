@@ -16,9 +16,14 @@ from scapy.layers.dns import DNS, DNSQR
 class ThreatDetector:
     """Detecteert verschillende soorten verdacht netwerkverkeer"""
 
-    def __init__(self, config):
+    def __init__(self, config, threat_feed_manager=None, behavior_detector=None, abuseipdb_client=None):
         self.config = config
         self.logger = logging.getLogger('NetMonitor.Detector')
+
+        # External components
+        self.threat_feeds = threat_feed_manager
+        self.behavior_detector = behavior_detector
+        self.abuseipdb = abuseipdb_client
 
         # Tracking data structures
         self.port_scan_tracker = defaultdict(lambda: {
@@ -75,7 +80,7 @@ class ThreatDetector:
         if self._is_in_list(src_ip, self.whitelist):
             return threats
 
-        # Check blacklist
+        # Check blacklist (static config)
         if self._is_in_list(src_ip, self.blacklist):
             threats.append({
                 'type': 'BLACKLISTED_IP',
@@ -84,6 +89,34 @@ class ThreatDetector:
                 'destination_ip': dst_ip,
                 'description': f'Packet van blacklisted IP: {src_ip}'
             })
+
+        # Check threat feeds (C&C servers, malware IPs)
+        if self.threat_feeds:
+            # Check source IP tegen feeds
+            is_malicious, metadata = self.threat_feeds.is_malicious_ip(src_ip)
+            if is_malicious:
+                threats.append({
+                    'type': 'THREAT_FEED_MATCH',
+                    'severity': 'HIGH',
+                    'source_ip': src_ip,
+                    'destination_ip': dst_ip,
+                    'description': f'IP gevonden in threat feed: {metadata.get("feed", "unknown")} - {metadata.get("type", "malicious")}',
+                    'feed': metadata.get('feed'),
+                    'malware': metadata.get('malware', 'Unknown')
+                })
+
+            # Check destination IP (voor outbound connections naar C&C)
+            is_malicious_dst, metadata_dst = self.threat_feeds.is_malicious_ip(dst_ip)
+            if is_malicious_dst:
+                threats.append({
+                    'type': 'C2_COMMUNICATION',
+                    'severity': 'CRITICAL',
+                    'source_ip': src_ip,
+                    'destination_ip': dst_ip,
+                    'description': f'Internal machine verbindt met C&C server: {metadata_dst.get("malware", "Unknown")}',
+                    'feed': metadata_dst.get('feed'),
+                    'malware': metadata_dst.get('malware', 'Unknown')
+                })
 
         # Port scan detection
         if self.config['thresholds']['port_scan']['enabled']:
@@ -108,6 +141,11 @@ class ThreatDetector:
             threat = self._detect_dns_tunnel(packet)
             if threat:
                 threats.append(threat)
+
+        # Behavior-based detection (beaconing, lateral movement, etc.)
+        if self.behavior_detector:
+            behavior_threats = self.behavior_detector.analyze_packet(packet)
+            threats.extend(behavior_threats)
 
         return threats
 

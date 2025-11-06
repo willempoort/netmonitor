@@ -1,0 +1,15 @@
+[Unit]
+Description=Network Monitor - Threat Feed Update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/netmonitor
+ExecStart=/usr/bin/python3 /opt/netmonitor/update_feeds.py
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

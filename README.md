@@ -1,17 +1,30 @@
 # Network Monitor - Verdacht Netwerkverkeer Detectie
 
-Een krachtig netwerk monitoring programma voor Linux dat verdacht netwerkverkeer kan detecteren. Speciaal geschikt voor gebruik op een monitoring/span port van een switch.
+Een krachtig netwerk monitoring programma voor Linux dat verdacht netwerkverkeer kan detecteren. **Speciaal ontworpen voor monitoring van intern verkeer** om gecompromitteerde machines te detecteren. Geschikt voor gebruik op een monitoring/span port van een switch.
 
 ## Features
 
-### Detectie Mogelijkheden
+### 🎯 Threat Intelligence (Nieuw!)
+
+- **C&C Server Detectie**: Automatische detectie van communicatie met bekende Command & Control servers (Emotet, TrickBot, etc.)
+- **Malware Download Detectie**: Detecteert downloads van bekende malware distributie sites
+- **Auto-updating Threat Feeds**: Automatisch uurlijkse updates van abuse.ch feeds (FeodoTracker, URLhaus, ThreatFox)
+- **AbuseIPDB Integratie**: Optionele real-time IP reputation lookups (1000/dag gratis)
+
+### 🔍 Behavior-Based Detectie (Nieuw!)
+
+- **Beaconing Detection**: Detecteert regelmatige callbacks naar externe servers (botnet behavior)
+- **Outbound Traffic Volume**: Monitort data exfiltration (abnormaal hoge upload volumes)
+- **Lateral Movement**: Detecteert interne machines die andere internal IPs scannen (SMB, RDP, SSH)
+- **Internal Network Awareness**: Onderscheidt internal vs external verkeer
+
+### 📊 Signature-Based Detectie
 
 - **Port Scanning Detectie**: Detecteert wanneer een host systematisch meerdere poorten scant
 - **Connection Flooding**: Detecteert abnormaal hoge aantallen connecties in korte tijd
 - **DNS Tunneling**: Detecteert verdachte DNS queries (lange queries, hoge query rates)
 - **Ongewone Packet Sizes**: Detecteert abnormaal grote packets (mogelijk data exfiltration)
-- **IP Blacklist**: Alert bij verkeer van bekende malicious IPs
-- **IP Whitelist**: Voorkomt false positives van vertrouwde systemen
+- **IP Blacklist/Whitelist**: Configureerbare IP lijsten
 
 ### Algemene Features
 
@@ -49,11 +62,34 @@ Of met sudo voor system-wide installatie:
 sudo pip install -r requirements.txt
 ```
 
-### 3. Maak log directory aan
+### 3. Maak directories aan
 
 ```bash
 sudo mkdir -p /var/log/netmonitor
+sudo mkdir -p /var/cache/netmonitor/feeds
 sudo chmod 755 /var/log/netmonitor
+sudo chmod 755 /var/cache/netmonitor
+```
+
+### 4. Download threat feeds (eerste keer)
+
+```bash
+sudo python3 update_feeds.py
+```
+
+### 5. Setup auto-updates (optioneel maar aanbevolen)
+
+```bash
+# Installeer systemd timer voor automatische feed updates
+sudo cp netmonitor-feed-update.service /etc/systemd/system/
+sudo cp netmonitor-feed-update.timer /etc/systemd/system/
+
+sudo systemctl daemon-reload
+sudo systemctl enable netmonitor-feed-update.timer
+sudo systemctl start netmonitor-feed-update.timer
+
+# Verificeer
+sudo systemctl status netmonitor-feed-update.timer
 ```
 
 ## Configuratie
@@ -71,21 +107,77 @@ Om alle interfaces te monitoren, gebruik:
 interface: any
 ```
 
+### Internal Networks (BELANGRIJK!)
+
+Definieer je interne netwerk ranges voor behavior detection:
+
+```yaml
+internal_networks:
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 192.168.0.0/16  # Pas aan naar je netwerk
+```
+
+### Threat Intelligence Feeds
+
+De tool gebruikt gratis threat feeds van abuse.ch. Geen API key nodig!
+
+```yaml
+threat_feeds:
+  enabled: true
+  feeds:
+    - feodotracker    # Botnet C&C servers (AANBEVOLEN)
+    - urlhaus         # Malware distribution
+    - threatfox       # Recent IOCs
+    - sslblacklist    # SSL threats
+  update_interval: 3600  # 1 uur
+```
+
+### AbuseIPDB API (Optioneel)
+
+Voor real-time IP reputation lookups:
+
+1. Maak gratis account: https://www.abuseipdb.com/register
+2. Haal API key op: https://www.abuseipdb.com/account/api
+3. Configureer:
+
+```yaml
+abuseipdb:
+  enabled: true
+  api_key: "YOUR_API_KEY_HERE"
+  rate_limit: 1000  # Gratis tier
+  threshold: 50     # Alert bij score >= 50
+```
+
+Zie [THREAT_FEEDS.md](THREAT_FEEDS.md) voor gedetailleerde documentatie.
+
 ### Detection Thresholds Aanpassen
 
 Je kunt de gevoeligheid van elke detector aanpassen:
 
 ```yaml
 thresholds:
+  # Signature-based
   port_scan:
     enabled: true
-    unique_ports: 20    # Aantal poorten voor alert
-    time_window: 60     # Binnen X seconden
+    unique_ports: 20
+    time_window: 60
 
-  connection_flood:
+  # Behavior-based (NIEUW!)
+  beaconing:
     enabled: true
-    connections_per_second: 100
-    time_window: 10
+    min_connections: 5
+    max_jitter_percent: 20
+
+  lateral_movement:
+    enabled: true
+    unique_targets: 5
+    time_window: 300
+
+  outbound_volume:
+    enabled: true
+    threshold_mb: 100
+    time_window: 300
 ```
 
 ### Whitelist/Blacklist
@@ -157,13 +249,35 @@ options:
 ### Console Output
 
 Alerts worden real-time getoond in de console met kleuren:
-- **ROOD**: HIGH severity (bijv. port scans, blacklisted IPs)
-- **GEEL**: MEDIUM severity (bijv. connection flooding, DNS tunneling)
-- **CYAAN**: LOW severity (bijv. grote packets)
+- **ROOD**: HIGH/CRITICAL severity
+- **GEEL**: MEDIUM severity
+- **CYAAN**: LOW severity
 
-Voorbeeld:
+### Voorbeeld Alerts
+
+**C&C Communicatie (KRITISCH!):**
 ```
-[2025-11-06 15:30:45] [HIGH] [PORT_SCAN] Mogelijk port scan gedetecteerd: 25 unieke poorten binnen 60s | Source: 192.168.1.100 | Destination: 10.0.0.50
+[2025-11-06 15:30:45] [CRITICAL] [C2_COMMUNICATION] Internal machine verbindt met C&C server: Emotet | Source: 192.168.1.100 | Destination: 203.0.113.50 | Malware: Emotet
+```
+
+**Beaconing Gedetecteerd:**
+```
+[2025-11-06 15:31:20] [HIGH] [BEACONING_DETECTED] Beaconing gedetecteerd: 8 connecties met avg interval 60.2s | Source: 192.168.1.50 | Destination: 198.51.100.100:443
+```
+
+**Lateral Movement:**
+```
+[2025-11-06 15:32:10] [HIGH] [LATERAL_MOVEMENT] Mogelijk lateral movement: 7 interne IPs gescand binnen 300s | Source: 192.168.1.75 | Protocols: SMB: 5, RDP: 2
+```
+
+**Data Exfiltration:**
+```
+[2025-11-06 15:33:00] [MEDIUM] [HIGH_OUTBOUND_VOLUME] Hoog outbound volume: 150.25 MB in 300s | Source: 192.168.1.100
+```
+
+**Port Scan:**
+```
+[2025-11-06 15:34:00] [HIGH] [PORT_SCAN] Mogelijk port scan gedetecteerd: 25 unieke poorten binnen 60s | Source: 192.168.1.100 | Destination: 10.0.0.50
 ```
 
 ### Log Files

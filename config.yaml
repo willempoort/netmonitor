@@ -4,6 +4,13 @@
 # Use 'any' to monitor all interfaces
 interface: eth0
 
+# Internal network ranges (voor internal traffic monitoring)
+# Pas deze aan naar je eigen netwerk configuratie
+internal_networks:
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 192.168.0.0/16
+
 # Detection thresholds
 thresholds:
   # Port scan detection - aantal unieke poorten per source IP per tijdvenster
@@ -28,6 +35,24 @@ thresholds:
     enabled: true
     query_length_threshold: 50  # DNS queries langer dan dit zijn verdacht
     queries_per_minute: 30
+
+  # Beaconing detection - detecteert regelmatige callbacks naar C&C servers
+  beaconing:
+    enabled: true
+    min_connections: 5        # Minimaal aantal connecties om te analyseren
+    max_jitter_percent: 20    # Max variatie in interval timing (%)
+
+  # Outbound traffic volume monitoring - detecteert data exfiltration
+  outbound_volume:
+    enabled: true
+    threshold_mb: 100         # Alert bij meer dan X MB outbound in time_window
+    time_window: 300          # Tijdvenster in seconden (5 min)
+
+  # Lateral movement detection - interne machine scant andere interne machines
+  lateral_movement:
+    enabled: true
+    unique_targets: 5         # Aantal unieke internal IPs
+    time_window: 300          # Tijdvenster in seconden
 
 # Blacklisted IPs (known malicious IPs)
 blacklist:
@@ -57,3 +82,41 @@ alerts:
   # Alert naar syslog
   syslog_enabled: false
   syslog_facility: local0
+
+# Threat Intelligence Feeds
+threat_feeds:
+  # Enable/disable threat feed integration
+  enabled: true
+
+  # Feeds om te gebruiken (alle van abuse.ch zijn gratis)
+  feeds:
+    - feodotracker    # Botnet C&C servers
+    - urlhaus         # Malware distribution URLs
+    - threatfox       # Recent IOCs
+    - sslblacklist    # SSL/TLS malicious IPs
+
+  # Auto-update interval (in seconden, 3600 = 1 uur)
+  update_interval: 3600
+
+  # Cache directory voor feeds
+  cache_dir: /var/cache/netmonitor/feeds
+
+# AbuseIPDB API (optioneel, voor real-time IP reputation lookups)
+abuseipdb:
+  # Enable/disable AbuseIPDB lookups
+  enabled: false
+
+  # API key (gratis account op https://www.abuseipdb.com)
+  # Laat leeg om te disablen
+  api_key: ""
+
+  # Rate limit (gratis tier = 1000/dag)
+  rate_limit: 1000
+
+  # Abuse score threshold (0-100, hoger = meer malicious)
+  # Alert alleen als score >= threshold
+  threshold: 50
+
+  # Query alleen verdachte IPs (beperkt API calls)
+  # Als false, wordt elke external IP gechecked (niet aanbevolen)
+  query_suspicious_only: true

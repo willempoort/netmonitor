@@ -21,6 +21,9 @@ except ImportError:
 from detector import ThreatDetector
 from config_loader import load_config
 from alerts import AlertManager
+from threat_feeds import ThreatFeedManager
+from behavior_detector import BehaviorDetector
+from abuseipdb_client import AbuseIPDBClient
 
 
 class NetworkMonitor:
@@ -34,8 +37,47 @@ class NetworkMonitor:
         # Setup logging
         self.setup_logging()
 
+        # Initialiseer threat feed manager
+        self.threat_feeds = None
+        if self.config.get('threat_feeds', {}).get('enabled', False):
+            try:
+                cache_dir = self.config['threat_feeds'].get('cache_dir', '/var/cache/netmonitor/feeds')
+                self.threat_feeds = ThreatFeedManager(cache_dir=cache_dir)
+                self.logger.info("Threat Feed Manager enabled")
+
+                # Initial feed load
+                self._load_threat_feeds()
+            except Exception as e:
+                self.logger.error(f"Fout bij initialiseren threat feeds: {e}")
+                self.threat_feeds = None
+
+        # Initialiseer behavior detector
+        self.behavior_detector = None
+        try:
+            self.behavior_detector = BehaviorDetector(self.config)
+            self.logger.info("Behavior Detector enabled")
+        except Exception as e:
+            self.logger.error(f"Fout bij initialiseren behavior detector: {e}")
+
+        # Initialiseer AbuseIPDB client
+        self.abuseipdb = None
+        if self.config.get('abuseipdb', {}).get('enabled', False):
+            api_key = self.config['abuseipdb'].get('api_key', '')
+            if api_key:
+                try:
+                    rate_limit = self.config['abuseipdb'].get('rate_limit', 1000)
+                    self.abuseipdb = AbuseIPDBClient(api_key, rate_limit=rate_limit)
+                    self.logger.info("AbuseIPDB client enabled")
+                except Exception as e:
+                    self.logger.error(f"Fout bij initialiseren AbuseIPDB client: {e}")
+
         # Initialiseer detector en alert manager
-        self.detector = ThreatDetector(self.config)
+        self.detector = ThreatDetector(
+            self.config,
+            threat_feed_manager=self.threat_feeds,
+            behavior_detector=self.behavior_detector,
+            abuseipdb_client=self.abuseipdb
+        )
         self.alert_manager = AlertManager(self.config)
 
         # Setup signal handlers voor graceful shutdown
@@ -74,6 +116,30 @@ class NetworkMonitor:
             )
             file_handler.setFormatter(file_format)
             self.logger.addHandler(file_handler)
+
+    def _load_threat_feeds(self):
+        """Laad threat feeds (download en parse)"""
+        if not self.threat_feeds:
+            return
+
+        self.logger.info("Loading threat feeds...")
+
+        # Check of cached feeds bestaan
+        feeds_to_use = self.config['threat_feeds'].get('feeds', ['feodotracker', 'urlhaus', 'threatfox'])
+
+        # Probeer feeds te laden van cache
+        results = self.threat_feeds.load_feeds(feeds_to_use)
+
+        # Als geen feeds geladen, download ze
+        if sum(results.values()) == 0:
+            self.logger.info("No cached feeds found, downloading...")
+            self.threat_feeds.update_all_feeds(force=True)
+        else:
+            self.logger.info(f"Loaded {sum(results.values())} IOCs from cached feeds")
+
+            # Check of feeds oud zijn (> 24 uur)
+            # Download in background als nodig
+            # Voor nu: simpel laden
 
     def signal_handler(self, signum, frame):
         """Handle shutdown signals"""
