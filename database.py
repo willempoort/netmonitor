@@ -96,6 +96,7 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS top_talkers (
                     timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     ip_address INET NOT NULL,
+                    hostname TEXT,
                     packet_count BIGINT DEFAULT 0,
                     byte_count BIGINT DEFAULT 0,
                     direction TEXT
@@ -116,6 +117,20 @@ class DatabaseManager:
 
             conn.commit()
             self.logger.info("Database schema created")
+
+            # Migration: Add hostname column if it doesn't exist (for existing databases)
+            cursor.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'top_talkers' AND column_name = 'hostname'
+                    ) THEN
+                        ALTER TABLE top_talkers ADD COLUMN hostname TEXT;
+                    END IF;
+                END $$;
+            """)
+            conn.commit()
 
         except Exception as e:
             conn.rollback()
@@ -442,13 +457,19 @@ class DatabaseManager:
 
             # Use executemany for batch insert
             values = [
-                (talker['ip'], talker.get('packets', 0), talker.get('bytes', 0), talker.get('direction', 'unknown'))
+                (
+                    talker['ip'],
+                    talker.get('hostname'),  # Include hostname
+                    talker.get('packets', 0),
+                    talker.get('bytes', 0),
+                    talker.get('direction', 'unknown')
+                )
                 for talker in talkers
             ]
 
             cursor.executemany('''
-                INSERT INTO top_talkers (ip_address, packet_count, byte_count, direction)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO top_talkers (ip_address, hostname, packet_count, byte_count, direction)
+                VALUES (%s, %s, %s, %s, %s)
             ''', values)
 
             conn.commit()
@@ -470,6 +491,7 @@ class DatabaseManager:
             cursor.execute('''
                 SELECT
                     ip_address::text as ip,
+                    MAX(hostname) as hostname,
                     SUM(packet_count) as packets,
                     SUM(byte_count) as bytes,
                     direction

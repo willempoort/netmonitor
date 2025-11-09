@@ -779,6 +779,8 @@ function updateTopTalkers(talkers) {
         row.innerHTML = `
             <td>
                 <small>${ipAddress}</small>
+                ${talker.hostname && talker.hostname !== ipAddress ?
+                  `<br><small class="text-muted">${talker.hostname}</small>` : ''}
             </td>
             <td>${mb} MB</td>
             <td>${directionBadge}</td>
