@@ -1,8 +1,26 @@
 /* Dashboard Styles */
 
+/* Fix Chrome scaling issues */
+* {
+    box-sizing: border-box;
+}
+
+html {
+    font-size: 16px; /* Base font size for proper scaling */
+    -webkit-text-size-adjust: 100%; /* Prevent browser text size adjustment */
+    -moz-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background-color: #121212;
+    font-size: 1rem; /* Use rem for better scaling */
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
 }
 
 .card {
