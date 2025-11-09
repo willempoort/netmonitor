@@ -33,6 +33,12 @@ body {
     background-color: #1e1e1e;
     border-bottom: 1px solid #333;
     font-weight: 600;
+    color: #e0e0e0; /* Ensure text is visible */
+}
+
+.card-header h5 {
+    color: #e0e0e0; /* Ensure h5 headers are visible */
+    margin: 0;
 }
 
 /* Alert Feed */
@@ -306,4 +312,37 @@ canvas {
 .badge.bg-warning {
     font-size: 0.75rem;
     font-weight: bold;
+}
+
+/* Threat Types Styling */
+.threat-type-item {
+    transition: all 0.2s ease;
+    color: #e0e0e0 !important;
+}
+
+.threat-type-item:hover {
+    background-color: #2a2a2a !important;
+    transform: translateX(3px);
+}
+
+.threat-type-item i {
+    font-size: 1.1rem;
+}
+
+/* Bootstrap tooltip styling */
+.tooltip-inner {
+    background-color: #1e1e1e;
+    border: 1px solid #444;
+    max-width: 300px;
+    text-align: left;
+    padding: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+.tooltip .arrow::before {
+    border-left-color: #444 !important;
+}
+
+.bs-tooltip-left .arrow::before {
+    border-left-color: #444 !important;
 }

@@ -6,18 +6,99 @@ let trafficChart;
 let alertPieChart;
 let packetsGauge, alertsGauge, cpuGauge, memoryGauge;
 
+// Threat Type Information Database
+const THREAT_INFO = {
+    'PORT_SCAN': {
+        name: 'Port Scan',
+        description: 'Een aanvaller scant systematisch meerdere poorten op een systeem om open services te vinden.',
+        impact: 'HOOG - Dit is vaak de eerste stap in een aanval. Geeft aanvaller informatie over kwetsbare services.',
+        icon: 'bi-radar',
+        color: '#dc3545'
+    },
+    'CONNECTION_FLOOD': {
+        name: 'Connection Flood',
+        description: 'Overmatig aantal connectie-pogingen in korte tijd, mogelijk DDoS aanval of gecompromitteerd systeem.',
+        impact: 'CRITICAL - Kan services overweldigen en offline halen. Resource uitputting.',
+        icon: 'bi-tsunami',
+        color: '#dc3545'
+    },
+    'DNS_TUNNELING': {
+        name: 'DNS Tunneling',
+        description: 'Verdacht DNS verkeer dat mogelijk gebruikt wordt om data te exfiltreren of C&C communicatie te verbergen.',
+        impact: 'HOOG - Data exfiltratie, command & control communicatie, bypassing van firewalls.',
+        icon: 'bi-diagram-3',
+        color: '#fd7e14'
+    },
+    'LARGE_PACKET': {
+        name: 'Large Packet',
+        description: 'Ongebruikelijk grote pakketten die kunnen wijzen op data exfiltratie of buffer overflow pogingen.',
+        impact: 'MEDIUM - Mogelijke data diefstal of exploit poging.',
+        icon: 'bi-box-arrow-up',
+        color: '#ffc107'
+    },
+    'BLACKLIST_IP': {
+        name: 'Blacklisted IP',
+        description: 'Communicatie met een IP adres dat bekend staat als malicious (malware C&C, phishing, etc).',
+        impact: 'CRITICAL - Gecompromitteerd systeem. Mogelijke malware infectie of data breach.',
+        icon: 'bi-shield-x',
+        color: '#dc3545'
+    },
+    'THREAT_FEED_MATCH': {
+        name: 'Threat Feed Match',
+        description: 'Match met bekende Indicator of Compromise (IOC) uit threat intelligence feeds.',
+        impact: 'CRITICAL - Zeer waarschijnlijk gecompromitteerd. Malware communicatie gedetecteerd.',
+        icon: 'bi-exclamation-octagon',
+        color: '#dc3545'
+    },
+    'BEACONING_DETECTED': {
+        name: 'Beaconing',
+        description: 'Regelmatige, periodieke verbindingen naar externe server - typisch gedrag van malware.',
+        impact: 'CRITICAL - Zeer sterke indicatie van malware infectie. C&C communicatie actief.',
+        icon: 'bi-broadcast',
+        color: '#dc3545'
+    },
+    'HIGH_OUTBOUND_VOLUME': {
+        name: 'High Outbound Volume',
+        description: 'Ongewoon hoog uitgaand verkeer, mogelijke data exfiltratie.',
+        impact: 'HOOG - Data diefstal in uitvoering. Database dump, bestandsdiefstal.',
+        icon: 'bi-upload',
+        color: '#fd7e14'
+    },
+    'LATERAL_MOVEMENT': {
+        name: 'Lateral Movement',
+        description: 'Intern systeem scant andere interne systemen - typisch voor aanvallers die netwerk verkennen.',
+        impact: 'CRITICAL - Actieve aanval in uitvoering. Aanvaller beweegt door netwerk.',
+        icon: 'bi-arrows-move',
+        color: '#dc3545'
+    },
+    'ABUSEIPDB_HIGH_SCORE': {
+        name: 'AbuseIPDB High Score',
+        description: 'IP adres met hoge abuse score op AbuseIPDB - gerapporteerd door meerdere bronnen.',
+        impact: 'HOOG - Bekend malicious IP. Scanners, brute force attacks, spam.',
+        icon: 'bi-database-exclamation',
+        color: '#fd7e14'
+    }
+};
+
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('Initializing Network Monitor Dashboard...');
+    console.log('[DASHBOARD] Starting initialization...');
+    const startTime = Date.now();
 
     // Initialize WebSocket
+    console.log('[DASHBOARD] Step 1/3: Initializing WebSocket...');
     initWebSocket();
 
     // Initialize charts
+    console.log('[DASHBOARD] Step 2/3: Initializing charts...');
     initCharts();
 
     // Load initial data
-    loadDashboardData();
+    console.log('[DASHBOARD] Step 3/3: Loading initial data...');
+    loadDashboardData().finally(() => {
+        const elapsed = Date.now() - startTime;
+        console.log(`[DASHBOARD] Initialization complete in ${elapsed}ms`);
+    });
 
     // Update clock
     updateClock();
@@ -81,17 +162,30 @@ function updateConnectionStatus(connected) {
 // ==================== Data Loading ====================
 
 async function loadDashboardData() {
+    const fetchStart = Date.now();
+    console.log('[API] Fetching dashboard data...');
+
     try {
         const response = await fetch('/api/dashboard');
+        const fetchTime = Date.now() - fetchStart;
+        console.log(`[API] Response received in ${fetchTime}ms`);
+
+        const parseStart = Date.now();
         const result = await response.json();
+        const parseTime = Date.now() - parseStart;
+        console.log(`[API] JSON parsed in ${parseTime}ms`);
 
         if (result.success) {
+            const updateStart = Date.now();
             updateDashboard(result.data);
+            const updateTime = Date.now() - updateStart;
+            console.log(`[API] Dashboard updated in ${updateTime}ms`);
+            console.log(`[API] Total: ${Date.now() - fetchStart}ms`);
         } else {
-            console.error('Error loading dashboard data:', result.error);
+            console.error('[API] Error loading dashboard data:', result.error);
         }
     } catch (error) {
-        console.error('Error fetching dashboard data:', error);
+        console.error('[API] Error fetching dashboard data:', error);
     }
 }
 
@@ -590,13 +684,51 @@ function updateAlertStats(stats) {
         }
 
         sortedTypes.forEach(([type, count]) => {
+            const threatInfo = THREAT_INFO[type] || {
+                name: type.replace(/_/g, ' '),
+                description: 'Onbekend threat type',
+                impact: 'Zie alert details voor meer informatie',
+                icon: 'bi-question-circle',
+                color: '#6c757d'
+            };
+
             const item = document.createElement('div');
-            item.className = 'list-group-item bg-dark d-flex justify-content-between align-items-center';
+            item.className = 'list-group-item bg-dark d-flex justify-content-between align-items-center threat-type-item';
+            item.style.cursor = 'pointer';
+            item.style.borderLeft = `3px solid ${threatInfo.color}`;
+
+            // Add tooltip
+            item.setAttribute('data-bs-toggle', 'tooltip');
+            item.setAttribute('data-bs-placement', 'left');
+            item.setAttribute('data-bs-html', 'true');
+            item.setAttribute('title', `
+                <div class="text-start">
+                    <strong>${threatInfo.name}</strong><br/>
+                    <small>${threatInfo.description}</small><br/>
+                    <br/>
+                    <strong>Impact:</strong><br/>
+                    <small>${threatInfo.impact}</small>
+                </div>
+            `);
+
             item.innerHTML = `
-                <span>${type.replace(/_/g, ' ')}</span>
+                <span>
+                    <i class="bi ${threatInfo.icon} me-2"></i>
+                    ${threatInfo.name}
+                </span>
                 <span class="badge bg-danger rounded-pill">${count}</span>
             `;
+
             list.appendChild(item);
+        });
+
+        // Initialize Bootstrap tooltips
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl, {
+                html: true,
+                trigger: 'hover'
+            });
         });
     }
 }

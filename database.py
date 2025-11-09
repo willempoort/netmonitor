@@ -240,43 +240,27 @@ class DatabaseManager:
 
     def get_traffic_history(self, hours: int = 24, limit: int = 100) -> List[Dict]:
         """
-        Get traffic history with optional limit for performance
-        Returns aggregated data if there are many records
+        Get traffic history with limit for performance
+        Returns most recent records up to limit
         """
         conn = self._get_connection()
         cursor = conn.cursor()
 
         cutoff_time = datetime.now() - timedelta(hours=hours)
 
-        # Get count first to decide if we need to aggregate
+        # Simple LIMIT query - much faster
         cursor.execute('''
-            SELECT COUNT(*) as count FROM traffic_metrics
+            SELECT * FROM traffic_metrics
             WHERE timestamp > ?
-        ''', (cutoff_time,))
+            ORDER BY timestamp DESC
+            LIMIT ?
+        ''', (cutoff_time, limit))
 
-        count = cursor.fetchone()['count']
+        # Reverse to get chronological order (oldest first)
+        results = [dict(row) for row in cursor.fetchall()]
+        results.reverse()
 
-        if count <= limit:
-            # Return all data if under limit
-            cursor.execute('''
-                SELECT * FROM traffic_metrics
-                WHERE timestamp > ?
-                ORDER BY timestamp ASC
-            ''', (cutoff_time,))
-        else:
-            # Return evenly spaced samples for better performance
-            # This takes every Nth record to get approximately 'limit' records
-            step = max(1, count // limit)
-            cursor.execute(f'''
-                SELECT * FROM (
-                    SELECT *, ROW_NUMBER() OVER (ORDER BY timestamp ASC) as rn
-                    FROM traffic_metrics
-                    WHERE timestamp > ?
-                ) WHERE rn % ? = 1
-                ORDER BY timestamp ASC
-            ''', (cutoff_time, step))
-
-        return [dict(row) for row in cursor.fetchall()]
+        return results
 
     def update_top_talkers(self, talkers: List[Dict]):
         """Update top talkers"""
