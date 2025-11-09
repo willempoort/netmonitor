@@ -60,6 +60,14 @@ class MetricsCollector:
             '192.168.0.0/16'
         ])
 
+        # Protect against None
+        if internal_ranges is None:
+            internal_ranges = [
+                '10.0.0.0/8',
+                '172.16.0.0/12',
+                '192.168.0.0/16'
+            ]
+
         for net_str in internal_ranges:
             try:
                 networks.append(ipaddress.ip_network(net_str, strict=False))
