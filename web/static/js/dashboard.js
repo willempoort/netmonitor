@@ -773,9 +773,12 @@ function updateTopTalkers(talkers) {
             '<span class="badge badge-direction outbound">OUT</span>' :
             '<span class="badge badge-direction inbound">IN</span>';
 
+        // Support both 'ip' and 'ip_address' for backwards compatibility
+        const ipAddress = talker.ip || talker.ip_address || 'unknown';
+
         row.innerHTML = `
             <td>
-                <small>${talker.ip_address}</small>
+                <small>${ipAddress}</small>
             </td>
             <td>${mb} MB</td>
             <td>${directionBadge}</td>
