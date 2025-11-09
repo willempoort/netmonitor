@@ -10,6 +10,10 @@ import threading
 from pathlib import Path
 from datetime import datetime
 
+# Import eventlet first and monkey patch
+import eventlet
+eventlet.monkey_patch()
+
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
@@ -28,8 +32,14 @@ app = Flask(__name__,
 app.config['SECRET_KEY'] = 'netmonitor-secret-key-change-in-production'
 CORS(app)
 
-# Initialize SocketIO
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+# Initialize SocketIO with eventlet for production
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode='eventlet',
+    logger=True,
+    engineio_logger=False
+)
 
 # Global instances
 db = None
@@ -220,10 +230,21 @@ class DashboardServer:
 
         def run_server():
             logger.info(f"Starting dashboard server on {self.host}:{self.port}")
-            socketio.run(app, host=self.host, port=self.port, debug=False, use_reloader=False)
+            # Use eventlet's wsgi server instead of Flask's development server
+            socketio.run(
+                app,
+                host=self.host,
+                port=self.port,
+                debug=False,
+                use_reloader=False,
+                log_output=False  # Disable werkzeug logs, we have our own
+            )
 
         self.thread = threading.Thread(target=run_server, daemon=True)
         self.thread.start()
+
+        # Give server time to start
+        eventlet.sleep(0.5)
 
         logger.info(f"Dashboard server started: http://{self.host}:{self.port}")
 
