@@ -182,6 +182,11 @@ body {
     background-color: #28a745;
 }
 
+/* Hostname styling in Top Talkers */
+.table-dark .text-muted {
+    color: #aaa !important;
+}
+
 /* Threat Types List */
 .list-group-item {
     background-color: #1e1e1e;
