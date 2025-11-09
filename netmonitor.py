@@ -44,11 +44,28 @@ class NetworkMonitor:
         self.db = None
         if self.config.get('dashboard', {}).get('enabled', True):
             try:
-                db_path = self.config.get('dashboard', {}).get('database_path', '/var/lib/netmonitor/netmonitor.db')
-                self.db = DatabaseManager(db_path=db_path)
-                self.logger.info("Database Manager enabled")
+                db_config = self.config.get('database', {})
+                db_type = db_config.get('type', 'postgresql')
+
+                if db_type == 'postgresql':
+                    pg_config = db_config.get('postgresql', {})
+                    self.db = DatabaseManager(
+                        host=pg_config.get('host', 'localhost'),
+                        port=pg_config.get('port', 5432),
+                        database=pg_config.get('database', 'netmonitor'),
+                        user=pg_config.get('user', 'netmonitor'),
+                        password=pg_config.get('password', 'netmonitor'),
+                        min_connections=pg_config.get('min_connections', 2),
+                        max_connections=pg_config.get('max_connections', 10)
+                    )
+                    self.logger.info("Database Manager enabled (PostgreSQL + TimescaleDB)")
+                else:
+                    self.logger.error(f"Unsupported database type: {db_type}")
+                    raise ValueError(f"Database type '{db_type}' not supported")
+
             except Exception as e:
                 self.logger.error(f"Fout bij initialiseren database: {e}")
+                raise
 
         # Initialiseer metrics collector
         self.metrics = None

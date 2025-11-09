@@ -62,8 +62,24 @@ def init_dashboard(config_file='config.yaml'):
     logger = logging.getLogger('NetMonitor.WebDashboard')
 
     # Initialize database
-    db_path = config.get('dashboard', {}).get('database_path', '/var/lib/netmonitor/netmonitor.db')
-    db = DatabaseManager(db_path=db_path)
+    db_config = config.get('database', {})
+    db_type = db_config.get('type', 'postgresql')
+
+    if db_type == 'postgresql':
+        pg_config = db_config.get('postgresql', {})
+        db = DatabaseManager(
+            host=pg_config.get('host', 'localhost'),
+            port=pg_config.get('port', 5432),
+            database=pg_config.get('database', 'netmonitor'),
+            user=pg_config.get('user', 'netmonitor'),
+            password=pg_config.get('password', 'netmonitor'),
+            min_connections=pg_config.get('min_connections', 2),
+            max_connections=pg_config.get('max_connections', 10)
+        )
+        logger.info("Database connected (PostgreSQL + TimescaleDB)")
+    else:
+        logger.error(f"Unsupported database type: {db_type}")
+        raise ValueError(f"Database type '{db_type}' not supported")
 
     logger.info("Web Dashboard geïnitialiseerd")
 

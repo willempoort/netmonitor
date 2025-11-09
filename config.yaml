@@ -121,7 +121,7 @@ abuseipdb:
   # Als false, wordt elke external IP gechecked (niet aanbevolen)
   query_suspicious_only: true
 
-# Web Dashboard (NIEUW!)
+# Web Dashboard
 dashboard:
   # Enable/disable web dashboard
   enabled: true
@@ -130,5 +130,21 @@ dashboard:
   host: 0.0.0.0  # 0.0.0.0 = toegankelijk vanaf andere machines
   port: 8080
 
-  # Database path voor alerts en metrics
-  database_path: /var/lib/netmonitor/netmonitor.db
+# Database Configuration (PostgreSQL + TimescaleDB)
+database:
+  # Database type: 'postgresql' or 'sqlite' (legacy)
+  type: postgresql
+
+  # PostgreSQL settings
+  postgresql:
+    host: localhost
+    port: 5432
+    database: netmonitor
+    user: netmonitor
+    password: netmonitor  # Change in production!
+    min_connections: 2
+    max_connections: 10
+
+  # Legacy SQLite (only used if type=sqlite)
+  sqlite:
+    path: /var/lib/netmonitor/netmonitor.db
