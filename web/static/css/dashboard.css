@@ -29,6 +29,7 @@ body {
     border-bottom: 1px solid #333;
     transition: background-color 0.2s;
     cursor: pointer;
+    color: #e0e0e0;  /* Better text visibility */
 }
 
 .alert-item:hover {
@@ -100,11 +101,12 @@ body {
 .alert-description {
     margin-top: 5px;
     font-size: 0.9rem;
+    color: #e0e0e0;  /* Lighter color for better visibility */
 }
 
 .alert-meta {
     font-size: 0.85rem;
-    color: #aaa;
+    color: #c0c0c0;  /* Lighter color for better contrast */
     margin-top: 4px;
 }
 
@@ -244,4 +246,46 @@ canvas {
 @keyframes glow {
     0%, 100% { box-shadow: 0 0 20px rgba(220, 53, 69, 0.5); }
     50% { box-shadow: 0 0 30px rgba(220, 53, 69, 0.8); }
+}
+
+/* Modal Styles */
+.modal-content {
+    border: 1px solid #444;
+}
+
+.modal-header {
+    border-bottom: 1px solid #444;
+}
+
+.modal-footer {
+    border-top: 1px solid #444;
+}
+
+.alert-detail-section {
+    margin-bottom: 20px;
+}
+
+.alert-detail-section h6 {
+    color: #17a2b8;
+    border-bottom: 1px solid #333;
+    padding-bottom: 5px;
+    margin-bottom: 10px;
+}
+
+.alert-detail-section p {
+    color: #e0e0e0;
+    margin-bottom: 5px;
+}
+
+.alert-detail-section pre {
+    color: #e0e0e0;
+    font-size: 0.85rem;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+/* Count badge on grouped alerts */
+.badge.bg-warning {
+    font-size: 0.75rem;
+    font-weight: bold;
 }

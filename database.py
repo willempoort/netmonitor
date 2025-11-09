@@ -55,10 +55,15 @@ class DatabaseManager:
             )
         ''')
 
-        # Create index on timestamp for faster queries
+        # Create indices on timestamp for faster queries
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_alerts_timestamp
             ON alerts(timestamp DESC)
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_alerts_severity
+            ON alerts(severity)
         ''')
 
         # Traffic metrics table (aggregated per minute)
@@ -73,6 +78,11 @@ class DatabaseManager:
                 outbound_packets INTEGER DEFAULT 0,
                 outbound_bytes INTEGER DEFAULT 0
             )
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_traffic_timestamp
+            ON traffic_metrics(timestamp DESC)
         ''')
 
         # Top talkers (IPs with most traffic)
@@ -339,13 +349,52 @@ class DatabaseManager:
 
         self.logger.info(f"Database cleanup: {deleted_alerts} alerts, {deleted_metrics} metrics, {deleted_stats} stats verwijderd")
 
+    def get_latest_system_stats(self) -> Dict:
+        """Get latest system statistics for gauges"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Get most recent system stats
+        cursor.execute('''
+            SELECT * FROM system_stats
+            ORDER BY timestamp DESC
+            LIMIT 1
+        ''')
+
+        row = cursor.fetchone()
+        if row:
+            stats = dict(row)
+            return {
+                'traffic': {
+                    'packets_per_second': stats.get('packets_per_second', 0),
+                    'alerts_per_minute': stats.get('alerts_per_minute', 0)
+                },
+                'system': {
+                    'cpu_percent': stats.get('cpu_percent', 0),
+                    'memory_percent': stats.get('memory_percent', 0)
+                }
+            }
+        else:
+            # Return zeros if no data yet
+            return {
+                'traffic': {
+                    'packets_per_second': 0,
+                    'alerts_per_minute': 0
+                },
+                'system': {
+                    'cpu_percent': 0,
+                    'memory_percent': 0
+                }
+            }
+
     def get_dashboard_data(self) -> Dict:
         """Get all data for dashboard in one call"""
         return {
-            'recent_alerts': self.get_recent_alerts(limit=50, hours=24),
+            'recent_alerts': self.get_recent_alerts(limit=25, hours=24),  # Reduced from 50 to 25 for faster load
             'alert_stats': self.get_alert_statistics(hours=24),
             'traffic_history': self.get_traffic_history(hours=24),
-            'top_talkers': self.get_top_talkers(limit=10)
+            'top_talkers': self.get_top_talkers(limit=10),
+            'current_metrics': self.get_latest_system_stats()
         }
 
     def close(self):

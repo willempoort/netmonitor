@@ -111,6 +111,11 @@ function updateDashboard(data) {
     if (data.top_talkers) {
         updateTopTalkers(data.top_talkers);
     }
+
+    // Update gauges with current metrics
+    if (data.current_metrics) {
+        updateMetrics(data.current_metrics);
+    }
 }
 
 // ==================== Charts ====================
@@ -288,6 +293,43 @@ function updateTrafficChart(history) {
 
 // ==================== Alerts ====================
 
+function groupAlerts(alerts) {
+    /**
+     * Group consecutive similar alerts by threat_type and source_ip
+     */
+    if (!alerts || alerts.length === 0) return [];
+
+    const groups = [];
+    let currentGroup = null;
+
+    alerts.forEach(alert => {
+        const key = `${alert.threat_type}_${alert.source_ip || 'unknown'}`;
+
+        if (!currentGroup || currentGroup.key !== key) {
+            // Start new group
+            currentGroup = {
+                key: key,
+                threat_type: alert.threat_type,
+                source_ip: alert.source_ip,
+                destination_ip: alert.destination_ip,
+                severity: alert.severity,
+                count: 1,
+                first_seen: alert.timestamp,
+                last_seen: alert.timestamp,
+                alerts: [alert]
+            };
+            groups.push(currentGroup);
+        } else {
+            // Add to existing group
+            currentGroup.count++;
+            currentGroup.last_seen = alert.timestamp;
+            currentGroup.alerts.push(alert);
+        }
+    });
+
+    return groups;
+}
+
 function updateAlertFeed(alerts) {
     const feed = document.getElementById('alert-feed');
     const alertCount = document.getElementById('alert-count');
@@ -300,19 +342,77 @@ function updateAlertFeed(alerts) {
 
     alertCount.textContent = alerts.length;
 
+    // Group similar alerts
+    const groups = groupAlerts(alerts);
+
     // Clear feed
     feed.innerHTML = '';
 
-    // Add alerts
-    alerts.forEach(alert => addAlertToFeed(alert, false));
+    // Add grouped alerts
+    groups.forEach(group => addGroupedAlertToFeed(group));
+}
+
+function addGroupedAlertToFeed(group) {
+    const feed = document.getElementById('alert-feed');
+
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert-item ${group.severity}`;
+    alertDiv.style.cursor = 'pointer';
+
+    const timestamp = new Date(group.last_seen).toLocaleString('nl-NL');
+    const countBadge = group.count > 1 ?
+        `<span class="badge bg-warning text-dark ms-2">${group.count}x</span>` : '';
+
+    let metaInfo = '';
+    if (group.source_ip) {
+        metaInfo += `<i class="bi bi-arrow-right-circle"></i> ${group.source_ip}`;
+    }
+    if (group.destination_ip) {
+        metaInfo += ` → ${group.destination_ip}`;
+    }
+
+    // Use first alert's description
+    const description = group.alerts[0].description;
+
+    alertDiv.innerHTML = `
+        <div class="d-flex justify-content-between align-items-start">
+            <div class="flex-grow-1">
+                <div>
+                    <span class="alert-severity ${group.severity}">${group.severity}</span>
+                    <strong>${group.threat_type}</strong>${countBadge}
+                    <span class="alert-timestamp">${timestamp}</span>
+                </div>
+                <div class="alert-description">${description}</div>
+                ${metaInfo ? `<div class="alert-meta">${metaInfo}</div>` : ''}
+            </div>
+            ${group.count > 1 ? '<i class="bi bi-chevron-right ms-2"></i>' : ''}
+        </div>
+    `;
+
+    // Add click handler to show modal
+    alertDiv.addEventListener('click', () => showAlertDetails(group));
+
+    feed.appendChild(alertDiv);
 }
 
 function addAlertToFeed(alert, prepend = false) {
+    // Create a group with single alert for new real-time alerts
+    const group = {
+        threat_type: alert.threat_type,
+        source_ip: alert.source_ip,
+        destination_ip: alert.destination_ip,
+        severity: alert.severity,
+        count: 1,
+        last_seen: alert.timestamp,
+        alerts: [alert]
+    };
+
     const feed = document.getElementById('alert-feed');
 
     const alertDiv = document.createElement('div');
     alertDiv.className = `alert-item ${alert.severity}`;
     if (prepend) alertDiv.classList.add('new');
+    alertDiv.style.cursor = 'pointer';
 
     const timestamp = new Date(alert.timestamp).toLocaleString('nl-NL');
 
@@ -338,6 +438,9 @@ function addAlertToFeed(alert, prepend = false) {
         </div>
     `;
 
+    // Add click handler to show modal
+    alertDiv.addEventListener('click', () => showAlertDetails(group));
+
     if (prepend) {
         feed.prepend(alertDiv);
     } else {
@@ -348,6 +451,117 @@ function addAlertToFeed(alert, prepend = false) {
     if (prepend) {
         setTimeout(() => alertDiv.classList.remove('new'), 300);
     }
+}
+
+function showAlertDetails(group) {
+    const modalTitle = document.getElementById('alertDetailsModalLabel');
+    const modalBody = document.getElementById('alertDetailsBody');
+
+    // Update modal title
+    const countText = group.count > 1 ? ` (${group.count} occurrences)` : '';
+    modalTitle.innerHTML = `
+        <i class="bi bi-info-circle"></i>
+        <span class="alert-severity ${group.severity}">${group.severity}</span>
+        ${group.threat_type}${countText}
+    `;
+
+    // Build alert details
+    let detailsHTML = '';
+
+    if (group.count === 1) {
+        // Single alert - show full details
+        const alert = group.alerts[0];
+        detailsHTML = `
+            <div class="alert-detail-section">
+                <h6><i class="bi bi-clock"></i> Timestamp</h6>
+                <p>${new Date(alert.timestamp).toLocaleString('nl-NL')}</p>
+            </div>
+
+            <div class="alert-detail-section">
+                <h6><i class="bi bi-shield-exclamation"></i> Threat Type</h6>
+                <p>${alert.threat_type}</p>
+            </div>
+
+            ${alert.source_ip ? `
+            <div class="alert-detail-section">
+                <h6><i class="bi bi-hdd-network"></i> Source IP</h6>
+                <p>${alert.source_ip}</p>
+            </div>
+            ` : ''}
+
+            ${alert.destination_ip ? `
+            <div class="alert-detail-section">
+                <h6><i class="bi bi-hdd-network-fill"></i> Destination IP</h6>
+                <p>${alert.destination_ip}</p>
+            </div>
+            ` : ''}
+
+            <div class="alert-detail-section">
+                <h6><i class="bi bi-file-text"></i> Description</h6>
+                <p>${alert.description}</p>
+            </div>
+
+            ${alert.metadata ? `
+            <div class="alert-detail-section">
+                <h6><i class="bi bi-code-square"></i> Additional Information</h6>
+                <pre class="bg-secondary p-2 rounded"><code>${alert.metadata}</code></pre>
+            </div>
+            ` : ''}
+        `;
+    } else {
+        // Multiple alerts - show summary and list
+        detailsHTML = `
+            <div class="alert-detail-section">
+                <h6><i class="bi bi-calendar-range"></i> Time Range</h6>
+                <p>
+                    First seen: ${new Date(group.first_seen).toLocaleString('nl-NL')}<br>
+                    Last seen: ${new Date(group.last_seen).toLocaleString('nl-NL')}
+                </p>
+            </div>
+
+            ${group.source_ip ? `
+            <div class="alert-detail-section">
+                <h6><i class="bi bi-hdd-network"></i> Source IP</h6>
+                <p>${group.source_ip}</p>
+            </div>
+            ` : ''}
+
+            ${group.destination_ip ? `
+            <div class="alert-detail-section">
+                <h6><i class="bi bi-hdd-network-fill"></i> Destination IP</h6>
+                <p>${group.destination_ip}</p>
+            </div>
+            ` : ''}
+
+            <div class="alert-detail-section">
+                <h6><i class="bi bi-list-ul"></i> All Occurrences (${group.count})</h6>
+                <div class="list-group">
+        `;
+
+        group.alerts.forEach((alert, index) => {
+            detailsHTML += `
+                <div class="list-group-item bg-secondary text-light mb-2">
+                    <div class="d-flex justify-content-between">
+                        <strong>#${index + 1}</strong>
+                        <small>${new Date(alert.timestamp).toLocaleString('nl-NL')}</small>
+                    </div>
+                    <p class="mb-1 mt-2">${alert.description}</p>
+                    ${alert.metadata ? `<small class="text-muted">${alert.metadata}</small>` : ''}
+                </div>
+            `;
+        });
+
+        detailsHTML += `
+                </div>
+            </div>
+        `;
+    }
+
+    modalBody.innerHTML = detailsHTML;
+
+    // Show the modal
+    const modal = new bootstrap.Modal(document.getElementById('alertDetailsModal'));
+    modal.show();
 }
 
 function updateAlertStats(stats) {
