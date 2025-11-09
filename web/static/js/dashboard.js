@@ -85,13 +85,18 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('[DASHBOARD] Starting initialization...');
     const startTime = Date.now();
 
+    // Update loading message
+    updateLoadingMessage('Connecting to server...');
+
     // Initialize WebSocket
     console.log('[DASHBOARD] Step 1/3: Initializing WebSocket...');
     initWebSocket();
+    updateLoadingMessage('Initializing charts...');
 
     // Initialize charts
     console.log('[DASHBOARD] Step 2/3: Initializing charts...');
     initCharts();
+    updateLoadingMessage('Loading data...');
 
     // Load initial data
     console.log('[DASHBOARD] Step 3/3: Loading initial data...');
@@ -107,6 +112,13 @@ document.addEventListener('DOMContentLoaded', function() {
     // Auto-refresh data every 30 seconds
     setInterval(loadDashboardData, 30000);
 });
+
+function updateLoadingMessage(message, hint = null) {
+    const msgEl = document.getElementById('loading-message');
+    const hintEl = document.getElementById('loading-hint');
+    if (msgEl) msgEl.textContent = message;
+    if (hintEl && hint) hintEl.textContent = hint;
+}
 
 // ==================== WebSocket ====================
 
@@ -134,7 +146,12 @@ function initWebSocket() {
     });
 
     socket.on('metrics_update', function(metrics) {
-        console.log('Metrics update received');
+        console.log('[WEBSOCKET] Live metrics received:', {
+            pps: metrics.traffic?.packets_per_second,
+            apm: metrics.traffic?.alerts_per_minute,
+            cpu: metrics.system?.cpu_percent,
+            memory: metrics.system?.memory_percent
+        });
         updateMetrics(metrics);
     });
 

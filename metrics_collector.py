@@ -44,7 +44,8 @@ class MetricsCollector:
         # Packet rate tracking
         self.packet_timestamps = []
         self.last_metrics_save = time.time()
-        self.metrics_save_interval = 60  # 1 minute
+        self.metrics_save_interval = 10  # 10 seconds - was 60, now much faster for dashboard
+        self.first_packet_seen = False  # Track if we've seen any packets yet
 
         # Internal networks (from config)
         self.internal_networks = self._parse_internal_networks()
@@ -129,8 +130,14 @@ class MetricsCollector:
             cutoff = current_time - 60
             self.packet_timestamps = [ts for ts in self.packet_timestamps if ts > cutoff]
 
-            # Save metrics periodically
-            if current_time - self.last_metrics_save >= self.metrics_save_interval:
+            # Force save on first packet for immediate dashboard feedback
+            if not self.first_packet_seen:
+                self.first_packet_seen = True
+                self.save_metrics()
+                self.last_metrics_save = current_time
+                self.logger.info("First packet processed - metrics saved to database")
+            # Then save metrics periodically
+            elif current_time - self.last_metrics_save >= self.metrics_save_interval:
                 self.save_metrics()
                 self.last_metrics_save = current_time
 
