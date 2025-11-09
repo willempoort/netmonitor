@@ -238,18 +238,43 @@ class DatabaseManager:
 
         conn.commit()
 
-    def get_traffic_history(self, hours: int = 24) -> List[Dict]:
-        """Get traffic history"""
+    def get_traffic_history(self, hours: int = 24, limit: int = 100) -> List[Dict]:
+        """
+        Get traffic history with optional limit for performance
+        Returns aggregated data if there are many records
+        """
         conn = self._get_connection()
         cursor = conn.cursor()
 
         cutoff_time = datetime.now() - timedelta(hours=hours)
 
+        # Get count first to decide if we need to aggregate
         cursor.execute('''
-            SELECT * FROM traffic_metrics
+            SELECT COUNT(*) as count FROM traffic_metrics
             WHERE timestamp > ?
-            ORDER BY timestamp ASC
         ''', (cutoff_time,))
+
+        count = cursor.fetchone()['count']
+
+        if count <= limit:
+            # Return all data if under limit
+            cursor.execute('''
+                SELECT * FROM traffic_metrics
+                WHERE timestamp > ?
+                ORDER BY timestamp ASC
+            ''', (cutoff_time,))
+        else:
+            # Return evenly spaced samples for better performance
+            # This takes every Nth record to get approximately 'limit' records
+            step = max(1, count // limit)
+            cursor.execute(f'''
+                SELECT * FROM (
+                    SELECT *, ROW_NUMBER() OVER (ORDER BY timestamp ASC) as rn
+                    FROM traffic_metrics
+                    WHERE timestamp > ?
+                ) WHERE rn % ? = 1
+                ORDER BY timestamp ASC
+            ''', (cutoff_time, step))
 
         return [dict(row) for row in cursor.fetchall()]
 
@@ -388,11 +413,11 @@ class DatabaseManager:
             }
 
     def get_dashboard_data(self) -> Dict:
-        """Get all data for dashboard in one call"""
+        """Get all data for dashboard in one call - optimized for performance"""
         return {
-            'recent_alerts': self.get_recent_alerts(limit=25, hours=24),  # Reduced from 50 to 25 for faster load
+            'recent_alerts': self.get_recent_alerts(limit=20, hours=24),  # Reduced to 20 for faster load
             'alert_stats': self.get_alert_statistics(hours=24),
-            'traffic_history': self.get_traffic_history(hours=24),
+            'traffic_history': self.get_traffic_history(hours=24, limit=100),  # Limit to 100 data points
             'top_talkers': self.get_top_talkers(limit=10),
             'current_metrics': self.get_latest_system_stats()
         }
