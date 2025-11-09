@@ -44,6 +44,10 @@ class ThreatDetector:
     def _parse_ip_list(self, ip_list):
         """Parse lijst van IPs/CIDRs naar ipaddress objecten"""
         parsed = []
+        # Protect against None
+        if ip_list is None:
+            return parsed
+
         for ip_str in ip_list:
             try:
                 parsed.append(ipaddress.ip_network(ip_str, strict=False))
