@@ -469,7 +469,7 @@ class DatabaseManager:
 
             cursor.execute('''
                 SELECT
-                    ip_address::text as ip_address,
+                    ip_address::text as ip,
                     SUM(packet_count) as packets,
                     SUM(byte_count) as bytes,
                     direction
