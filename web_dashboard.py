@@ -195,6 +195,52 @@ def api_top_talkers():
         logger.error(f"Error getting top talkers: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/threat-details/<threat_type>')
+def api_threat_details(threat_type):
+    """Get detailed information for a specific threat type"""
+    try:
+        hours = int(request.args.get('hours', 24))
+        limit = int(request.args.get('limit', 100))
+
+        details = db.get_threat_type_details(threat_type, hours=hours, limit=limit)
+
+        # Add geolocation for IPs
+        from geoip_helper import get_country_for_ips
+
+        # Collect all unique IPs
+        all_ips = set()
+        for alert in details.get('alerts', []):
+            if alert.get('source_ip'):
+                all_ips.add(alert['source_ip'])
+            if alert.get('destination_ip'):
+                all_ips.add(alert['destination_ip'])
+
+        # Get country information
+        ip_countries = get_country_for_ips(list(all_ips))
+
+        # Add country info to alerts
+        for alert in details.get('alerts', []):
+            if alert.get('source_ip'):
+                alert['source_country'] = ip_countries.get(alert['source_ip'])
+            if alert.get('destination_ip'):
+                alert['destination_country'] = ip_countries.get(alert['destination_ip'])
+
+        # Add country info to top sources
+        for source in details.get('top_sources', []):
+            source['country'] = ip_countries.get(source['ip'])
+
+        # Add country info to top targets
+        for target in details.get('top_targets', []):
+            target['country'] = ip_countries.get(target['ip'])
+
+        return jsonify({
+            'success': True,
+            'data': details
+        })
+    except Exception as e:
+        logger.error(f"Error getting threat details for {threat_type}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 # ==================== WebSocket Events ====================
 

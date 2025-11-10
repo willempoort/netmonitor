@@ -736,6 +736,9 @@ function updateAlertStats(stats) {
                 <span class="badge bg-danger rounded-pill">${count}</span>
             `;
 
+            // Add click handler to show threat details
+            item.addEventListener('click', () => showThreatTypeDetails(type));
+
             list.appendChild(item);
         });
 
@@ -748,6 +751,236 @@ function updateAlertStats(stats) {
             });
         });
     }
+}
+
+// ==================== Threat Type Details ====================
+
+async function showThreatTypeDetails(threatType) {
+    console.log(`[THREAT DETAILS] Loading details for: ${threatType}`);
+
+    // Get threat info
+    const threatInfo = THREAT_INFO[threatType] || {
+        name: threatType.replace(/_/g, ' '),
+        description: 'Onbekend threat type',
+        impact: 'Zie alert details voor meer informatie',
+        icon: 'bi-question-circle',
+        color: '#6c757d'
+    };
+
+    // Update modal title
+    const modalTitle = document.getElementById('threatDetailsModalLabel');
+    modalTitle.innerHTML = `
+        <i class="bi ${threatInfo.icon}"></i>
+        ${threatInfo.name}
+    `;
+
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('threatDetailsModal'));
+    modal.show();
+
+    // Show loading
+    document.getElementById('threatDetailsLoading').style.display = 'block';
+    document.getElementById('threatDetailsContent').style.display = 'none';
+
+    try {
+        // Fetch threat details
+        const response = await fetch(`/api/threat-details/${threatType}?hours=24&limit=100`);
+        const result = await response.json();
+
+        if (result.success) {
+            console.log(`[THREAT DETAILS] Received data:`, result.data);
+            displayThreatDetails(result.data, threatInfo);
+        } else {
+            console.error('[THREAT DETAILS] Error:', result.error);
+            showThreatDetailsError(result.error);
+        }
+    } catch (error) {
+        console.error('[THREAT DETAILS] Fetch error:', error);
+        showThreatDetailsError(error.message);
+    }
+}
+
+function displayThreatDetails(data, threatInfo) {
+    // Hide loading, show content
+    document.getElementById('threatDetailsLoading').style.display = 'none';
+    document.getElementById('threatDetailsContent').style.display = 'block';
+
+    const stats = data.statistics || {};
+
+    // Populate statistics cards
+    const statsRow = document.getElementById('threatStatsRow');
+    statsRow.innerHTML = `
+        <div class="col-md-3">
+            <div class="card bg-secondary">
+                <div class="card-body text-center">
+                    <h6 class="text-muted">Total Alerts</h6>
+                    <h3 class="text-danger">${stats.total_count || 0}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-secondary">
+                <div class="card-body text-center">
+                    <h6 class="text-muted">Unique Sources</h6>
+                    <h3 class="text-warning">${stats.unique_sources || 0}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-secondary">
+                <div class="card-body text-center">
+                    <h6 class="text-muted">Unique Targets</h6>
+                    <h3 class="text-info">${stats.unique_targets || 0}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-secondary">
+                <div class="card-body text-center">
+                    <h6 class="text-muted">First Seen</h6>
+                    <p class="mb-0"><small>${stats.first_seen ? new Date(stats.first_seen).toLocaleString('nl-NL') : 'N/A'}</small></p>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Populate overview
+    const overviewContent = document.getElementById('threatOverviewContent');
+    overviewContent.innerHTML = `
+        <div class="alert alert-info">
+            <h6><i class="bi bi-info-circle"></i> Beschrijving</h6>
+            <p class="mb-2">${threatInfo.description}</p>
+            <h6 class="mt-3"><i class="bi bi-exclamation-triangle"></i> Impact</h6>
+            <p class="mb-0">${threatInfo.impact}</p>
+        </div>
+
+        <h6 class="mt-3">Recente Activiteit</h6>
+        <div class="row">
+            <div class="col-md-6">
+                <p><strong>Eerste detectie:</strong> ${stats.first_seen ? new Date(stats.first_seen).toLocaleString('nl-NL') : 'N/A'}</p>
+            </div>
+            <div class="col-md-6">
+                <p><strong>Laatste detectie:</strong> ${stats.last_seen ? new Date(stats.last_seen).toLocaleString('nl-NL') : 'N/A'}</p>
+            </div>
+        </div>
+    `;
+
+    // Populate top sources table
+    const sourcesTable = document.getElementById('threatSourcesTable');
+    if (data.top_sources && data.top_sources.length > 0) {
+        sourcesTable.innerHTML = data.top_sources.map(source => `
+            <tr>
+                <td><code>${source.ip}</code></td>
+                <td>${source.hostname || '<span class="text-muted">N/A</span>'}</td>
+                <td>${source.country || '<span class="text-muted">Unknown</span>'}</td>
+                <td><span class="badge bg-danger">${source.count}</span></td>
+            </tr>
+        `).join('');
+    } else {
+        sourcesTable.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No source IPs</td></tr>';
+    }
+
+    // Populate top targets table
+    const targetsTable = document.getElementById('threatTargetsTable');
+    if (data.top_targets && data.top_targets.length > 0) {
+        targetsTable.innerHTML = data.top_targets.map(target => `
+            <tr>
+                <td><code>${target.ip}</code></td>
+                <td>${target.hostname || '<span class="text-muted">N/A</span>'}</td>
+                <td>${target.country || '<span class="text-muted">Unknown</span>'}</td>
+                <td><span class="badge bg-danger">${target.count}</span></td>
+            </tr>
+        `).join('');
+    } else {
+        targetsTable.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No target IPs</td></tr>';
+    }
+
+    // Populate all alerts
+    const alertsContent = document.getElementById('threatAlertsContent');
+    if (data.alerts && data.alerts.length > 0) {
+        alertsContent.innerHTML = `
+            <div class="alert-list">
+                ${data.alerts.map((alert, index) => {
+                    const metadata = alert.metadata_parsed || {};
+                    let extraInfo = '';
+
+                    // Special handling for PORT_SCAN
+                    if (data.threat_type === 'PORT_SCAN' && metadata.ports) {
+                        extraInfo = `
+                            <div class="mt-2">
+                                <strong>Gescande poorten:</strong>
+                                <div class="mt-1">
+                                    ${metadata.ports.slice(0, 20).map(port =>
+                                        `<span class="badge bg-secondary me-1">${port}</span>`
+                                    ).join('')}
+                                    ${metadata.ports.length > 20 ?
+                                        `<span class="badge bg-info">+${metadata.ports.length - 20} more</span>` : ''}
+                                </div>
+                            </div>
+                        `;
+                    }
+
+                    // Special handling for BEACONING_DETECTED
+                    if (data.threat_type === 'BEACONING_DETECTED' && metadata.interval) {
+                        extraInfo = `
+                            <div class="mt-2">
+                                <strong>Beacon interval:</strong> ${metadata.interval}s
+                            </div>
+                        `;
+                    }
+
+                    return `
+                        <div class="card bg-secondary mb-2">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <span class="badge bg-${alert.severity === 'CRITICAL' ? 'danger' : alert.severity === 'HIGH' ? 'warning' : 'info'}">${alert.severity}</span>
+                                        <small class="text-muted ms-2">${new Date(alert.timestamp).toLocaleString('nl-NL')}</small>
+                                    </div>
+                                    <div>
+                                        ${alert.acknowledged ? '<span class="badge bg-success">Acknowledged</span>' : ''}
+                                    </div>
+                                </div>
+                                <p class="mb-1 mt-2">${alert.description}</p>
+                                ${alert.source_ip ? `
+                                    <div class="mt-2">
+                                        <i class="bi bi-arrow-right-circle text-danger"></i>
+                                        <code>${alert.source_ip}</code>
+                                        ${alert.source_hostname ? `<small class="text-muted">(${alert.source_hostname})</small>` : ''}
+                                        ${alert.source_country ? `<small class="text-muted"> - ${alert.source_country}</small>` : ''}
+                                    </div>
+                                ` : ''}
+                                ${alert.destination_ip ? `
+                                    <div class="mt-1">
+                                        <i class="bi bi-arrow-down-circle text-info"></i>
+                                        <code>${alert.destination_ip}</code>
+                                        ${alert.destination_hostname ? `<small class="text-muted">(${alert.destination_hostname})</small>` : ''}
+                                        ${alert.destination_country ? `<small class="text-muted"> - ${alert.destination_country}</small>` : ''}
+                                    </div>
+                                ` : ''}
+                                ${extraInfo}
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    } else {
+        alertsContent.innerHTML = '<div class="text-center text-muted p-4">No alerts found</div>';
+    }
+}
+
+function showThreatDetailsError(error) {
+    document.getElementById('threatDetailsLoading').style.display = 'none';
+    document.getElementById('threatDetailsContent').style.display = 'block';
+
+    const overviewContent = document.getElementById('threatOverviewContent');
+    overviewContent.innerHTML = `
+        <div class="alert alert-danger">
+            <h6><i class="bi bi-exclamation-triangle"></i> Error Loading Threat Details</h6>
+            <p class="mb-0">${error}</p>
+        </div>
+    `;
 }
 
 // ==================== Top Talkers ====================

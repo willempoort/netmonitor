@@ -592,6 +592,145 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
+    def get_threat_type_details(self, threat_type: str, hours: int = 24, limit: int = 100) -> Dict:
+        """Get detailed information for a specific threat type"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            cutoff_time = datetime.now() - timedelta(hours=hours)
+
+            # Get all alerts for this threat type
+            cursor.execute('''
+                SELECT
+                    id,
+                    timestamp,
+                    severity,
+                    threat_type,
+                    source_ip::text as source_ip,
+                    destination_ip::text as destination_ip,
+                    description,
+                    metadata,
+                    acknowledged
+                FROM alerts
+                WHERE threat_type = %s AND timestamp > %s
+                ORDER BY timestamp DESC
+                LIMIT %s
+            ''', (threat_type, cutoff_time, limit))
+
+            alerts = [dict(row) for row in cursor.fetchall()]
+
+            # Collect unique IPs for hostname resolution
+            unique_ips = set()
+            for alert in alerts:
+                if alert['source_ip']:
+                    unique_ips.add(alert['source_ip'])
+                if alert['destination_ip']:
+                    unique_ips.add(alert['destination_ip'])
+
+            # Try to get hostnames from top_talkers table
+            ip_hostnames = {}
+            if unique_ips:
+                placeholders = ','.join(['%s'] * len(unique_ips))
+                cursor.execute(f'''
+                    SELECT DISTINCT ON (ip_address)
+                        ip_address::text as ip,
+                        hostname
+                    FROM top_talkers
+                    WHERE ip_address IN ({placeholders})
+                    AND hostname IS NOT NULL
+                    ORDER BY ip_address, timestamp DESC
+                ''', tuple(unique_ips))
+
+                for row in cursor.fetchall():
+                    if row['hostname'] and row['hostname'] != row['ip']:
+                        ip_hostnames[row['ip']] = row['hostname']
+
+            # Parse metadata for additional details
+            for alert in alerts:
+                if alert['source_ip']:
+                    alert['source_hostname'] = ip_hostnames.get(alert['source_ip'])
+                if alert['destination_ip']:
+                    alert['destination_hostname'] = ip_hostnames.get(alert['destination_ip'])
+
+                # Parse metadata JSON if present
+                if alert['metadata']:
+                    import json
+                    try:
+                        alert['metadata_parsed'] = json.loads(alert['metadata'])
+                    except:
+                        alert['metadata_parsed'] = {}
+
+            # Get statistics for this threat type
+            cursor.execute('''
+                SELECT
+                    COUNT(*) as total_count,
+                    COUNT(DISTINCT source_ip) as unique_sources,
+                    COUNT(DISTINCT destination_ip) as unique_targets,
+                    MIN(timestamp) as first_seen,
+                    MAX(timestamp) as last_seen
+                FROM alerts
+                WHERE threat_type = %s AND timestamp > %s
+            ''', (threat_type, cutoff_time))
+
+            stats = dict(cursor.fetchone())
+
+            # Get top source IPs for this threat type
+            cursor.execute('''
+                SELECT
+                    source_ip::text as ip,
+                    COUNT(*) as count
+                FROM alerts
+                WHERE threat_type = %s AND timestamp > %s AND source_ip IS NOT NULL
+                GROUP BY source_ip
+                ORDER BY count DESC
+                LIMIT 10
+            ''', (threat_type, cutoff_time))
+
+            top_sources = [dict(row) for row in cursor.fetchall()]
+
+            # Add hostnames to top sources
+            for source in top_sources:
+                source['hostname'] = ip_hostnames.get(source['ip'])
+
+            # Get top destination IPs for this threat type
+            cursor.execute('''
+                SELECT
+                    destination_ip::text as ip,
+                    COUNT(*) as count
+                FROM alerts
+                WHERE threat_type = %s AND timestamp > %s AND destination_ip IS NOT NULL
+                GROUP BY destination_ip
+                ORDER BY count DESC
+                LIMIT 10
+            ''', (threat_type, cutoff_time))
+
+            top_targets = [dict(row) for row in cursor.fetchall()]
+
+            # Add hostnames to top targets
+            for target in top_targets:
+                target['hostname'] = ip_hostnames.get(target['ip'])
+
+            return {
+                'threat_type': threat_type,
+                'alerts': alerts,
+                'statistics': stats,
+                'top_sources': top_sources,
+                'top_targets': top_targets
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error getting threat type details: {e}")
+            return {
+                'threat_type': threat_type,
+                'alerts': [],
+                'statistics': {},
+                'top_sources': [],
+                'top_targets': []
+            }
+        finally:
+            self._return_connection(conn)
+
     def get_dashboard_data(self) -> Dict:
         """Get all data for dashboard in one call - optimized for performance"""
         return {

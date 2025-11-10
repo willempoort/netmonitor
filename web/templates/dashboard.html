@@ -230,6 +230,108 @@
         </div>
     </div>
 
+    <!-- Threat Type Details Modal -->
+    <div class="modal fade" id="threatDetailsModal" tabindex="-1" aria-labelledby="threatDetailsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content bg-dark text-light">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="threatDetailsModalLabel">
+                        <i class="bi bi-bug-fill"></i> Threat Details
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="threatDetailsBody">
+                    <!-- Loading indicator -->
+                    <div id="threatDetailsLoading" class="text-center p-4">
+                        <div class="spinner-border text-success" role="status"></div>
+                        <div class="text-muted mt-2">Loading threat details...</div>
+                    </div>
+                    <!-- Threat details will be populated here -->
+                    <div id="threatDetailsContent" style="display: none;">
+                        <!-- Statistics Cards -->
+                        <div class="row mb-4" id="threatStatsRow">
+                            <!-- Statistics will be populated here -->
+                        </div>
+
+                        <!-- Tabs -->
+                        <ul class="nav nav-tabs mb-3" id="threatDetailsTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview-pane" type="button" role="tab">
+                                    <i class="bi bi-grid"></i> Overview
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="sources-tab" data-bs-toggle="tab" data-bs-target="#sources-pane" type="button" role="tab">
+                                    <i class="bi bi-hdd-network"></i> Source IPs
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="targets-tab" data-bs-toggle="tab" data-bs-target="#targets-pane" type="button" role="tab">
+                                    <i class="bi bi-hdd-network-fill"></i> Targets
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="alerts-tab" data-bs-toggle="tab" data-bs-target="#alerts-pane" type="button" role="tab">
+                                    <i class="bi bi-list-ul"></i> All Alerts
+                                </button>
+                            </li>
+                        </ul>
+
+                        <!-- Tab Content -->
+                        <div class="tab-content" id="threatDetailsTabContent">
+                            <!-- Overview Tab -->
+                            <div class="tab-pane fade show active" id="overview-pane" role="tabpanel">
+                                <div id="threatOverviewContent"></div>
+                            </div>
+
+                            <!-- Sources Tab -->
+                            <div class="tab-pane fade" id="sources-pane" role="tabpanel">
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Source IP</th>
+                                                <th>Hostname</th>
+                                                <th>Country</th>
+                                                <th>Count</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="threatSourcesTable"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- Targets Tab -->
+                            <div class="tab-pane fade" id="targets-pane" role="tabpanel">
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Target IP</th>
+                                                <th>Hostname</th>
+                                                <th>Country</th>
+                                                <th>Count</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="threatTargetsTable"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- All Alerts Tab -->
+                            <div class="tab-pane fade" id="alerts-pane" role="tabpanel">
+                                <div id="threatAlertsContent"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- External Libraries - Load asynchronously for better performance -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
     <script src="https://cdn.socket.io/4.6.0/socket.io.min.js" defer></script>
