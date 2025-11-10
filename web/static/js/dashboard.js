@@ -903,6 +903,103 @@ function displayThreatDetails(data, threatInfo) {
 
     // Populate overview
     const overviewContent = document.getElementById('threatOverviewContent');
+
+    // Extract threat-specific information
+    let threatSpecificInfo = '';
+
+    // For PORT_SCAN: collect all scanned ports
+    if (data.threat_type === 'PORT_SCAN') {
+        const allPorts = new Set();
+        const portFrequency = {};
+
+        data.alerts.forEach(alert => {
+            if (alert.metadata_parsed && alert.metadata_parsed.ports) {
+                alert.metadata_parsed.ports.forEach(port => {
+                    allPorts.add(port);
+                    portFrequency[port] = (portFrequency[port] || 0) + 1;
+                });
+            }
+        });
+
+        if (allPorts.size > 0) {
+            // Sort ports numerically
+            const sortedPorts = Array.from(allPorts).sort((a, b) => a - b);
+
+            // Get most scanned ports
+            const topPorts = Object.entries(portFrequency)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10)
+                .map(([port, count]) => ({ port: parseInt(port), count }));
+
+            threatSpecificInfo = `
+                <div class="card bg-secondary mt-3">
+                    <div class="card-body">
+                        <h6><i class="bi bi-hdd-network"></i> Gescande Poorten</h6>
+                        <p><strong>Totaal aantal unieke poorten:</strong> ${allPorts.size}</p>
+
+                        <div class="mt-3">
+                            <strong>Top 10 meest gescande poorten:</strong>
+                            <div class="mt-2">
+                                ${topPorts.map(p => `
+                                    <div class="d-inline-block me-2 mb-2">
+                                        <span class="badge bg-danger" style="font-size: 0.9rem;">
+                                            Port ${p.port}
+                                            <span class="badge bg-dark ms-1">${p.count}x</span>
+                                        </span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        ${sortedPorts.length <= 50 ? `
+                            <div class="mt-3">
+                                <strong>Alle gescande poorten:</strong>
+                                <div class="mt-2" style="max-height: 200px; overflow-y: auto;">
+                                    ${sortedPorts.map(port =>
+                                        `<span class="badge bg-secondary me-1 mb-1">${port}</span>`
+                                    ).join('')}
+                                </div>
+                            </div>
+                        ` : `
+                            <div class="mt-3">
+                                <p class="text-muted mb-0">
+                                    <small>Eerste 50 poorten: ${sortedPorts.slice(0, 50).join(', ')}...</small>
+                                </p>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            `;
+        }
+    }
+
+    // For BEACONING: show beacon patterns
+    if (data.threat_type === 'BEACONING_DETECTED') {
+        const intervals = new Set();
+
+        data.alerts.forEach(alert => {
+            if (alert.metadata_parsed && alert.metadata_parsed.interval) {
+                intervals.add(alert.metadata_parsed.interval);
+            }
+        });
+
+        if (intervals.size > 0) {
+            threatSpecificInfo = `
+                <div class="card bg-secondary mt-3">
+                    <div class="card-body">
+                        <h6><i class="bi bi-broadcast"></i> Beacon Patronen</h6>
+                        <p><strong>Gedetecteerde intervals:</strong></p>
+                        <div class="mt-2">
+                            ${Array.from(intervals).sort((a, b) => a - b).map(interval =>
+                                `<span class="badge bg-warning text-dark me-2 mb-2" style="font-size: 0.9rem;">${interval}s</span>`
+                            ).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    }
+
     overviewContent.innerHTML = `
         <div class="alert alert-info">
             <h6><i class="bi bi-info-circle"></i> Beschrijving</h6>
@@ -920,6 +1017,8 @@ function displayThreatDetails(data, threatInfo) {
                 <p><strong>Laatste detectie:</strong> ${stats.last_seen ? new Date(stats.last_seen).toLocaleString('nl-NL') : 'N/A'}</p>
             </div>
         </div>
+
+        ${threatSpecificInfo}
     `;
 
     // Populate top sources table
