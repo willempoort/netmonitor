@@ -755,6 +755,15 @@ function updateAlertStats(stats) {
 
 // ==================== Threat Type Details ====================
 
+// State for threat details
+let currentThreatData = {
+    threatType: null,
+    threatInfo: null,
+    allAlerts: [],
+    displayedAlerts: 0,
+    alertsPerPage: 20
+};
+
 async function showThreatTypeDetails(threatType) {
     console.log(`[THREAT DETAILS] Loading details for: ${threatType}`);
 
@@ -766,6 +775,11 @@ async function showThreatTypeDetails(threatType) {
         icon: 'bi-question-circle',
         color: '#6c757d'
     };
+
+    // Store in state
+    currentThreatData.threatType = threatType;
+    currentThreatData.threatInfo = threatInfo;
+    currentThreatData.displayedAlerts = 0;
 
     // Update modal title
     const modalTitle = document.getElementById('threatDetailsModalLabel');
@@ -783,12 +797,16 @@ async function showThreatTypeDetails(threatType) {
     document.getElementById('threatDetailsContent').style.display = 'none';
 
     try {
-        // Fetch threat details
-        const response = await fetch(`/api/threat-details/${threatType}?hours=24&limit=100`);
+        // Fetch threat details - only load first 20 alerts for speed
+        const response = await fetch(`/api/threat-details/${threatType}?hours=24&limit=20`);
         const result = await response.json();
 
         if (result.success) {
             console.log(`[THREAT DETAILS] Received data:`, result.data);
+
+            // Store all alerts
+            currentThreatData.allAlerts = result.data.alerts || [];
+
             displayThreatDetails(result.data, threatInfo);
         } else {
             console.error('[THREAT DETAILS] Error:', result.error);
@@ -797,6 +815,42 @@ async function showThreatTypeDetails(threatType) {
     } catch (error) {
         console.error('[THREAT DETAILS] Fetch error:', error);
         showThreatDetailsError(error.message);
+    }
+}
+
+async function loadMoreAlerts() {
+    console.log('[THREAT DETAILS] Loading more alerts...');
+
+    const loadMoreBtn = document.getElementById('loadMoreAlertsBtn');
+    const btnText = loadMoreBtn.querySelector('.btn-text');
+    const btnSpinner = loadMoreBtn.querySelector('.btn-spinner');
+
+    // Show loading state
+    loadMoreBtn.disabled = true;
+    btnText.style.display = 'none';
+    btnSpinner.style.display = 'inline-block';
+
+    try {
+        // Calculate new limit
+        const newLimit = currentThreatData.displayedAlerts + currentThreatData.alertsPerPage + 20;
+
+        // Fetch more alerts
+        const response = await fetch(`/api/threat-details/${currentThreatData.threatType}?hours=24&limit=${newLimit}`);
+        const result = await response.json();
+
+        if (result.success) {
+            currentThreatData.allAlerts = result.data.alerts || [];
+
+            // Render alerts starting from where we left off
+            renderAlertsIncremental();
+        }
+    } catch (error) {
+        console.error('[THREAT DETAILS] Error loading more alerts:', error);
+    } finally {
+        // Restore button state
+        loadMoreBtn.disabled = false;
+        btnText.style.display = 'inline';
+        btnSpinner.style.display = 'none';
     }
 }
 
@@ -895,79 +949,154 @@ function displayThreatDetails(data, threatInfo) {
         targetsTable.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No target IPs</td></tr>';
     }
 
-    // Populate all alerts
+    // Populate all alerts - initial load with first batch only
+    renderAlertsList(data);
+}
+
+function renderAlertsList(data) {
     const alertsContent = document.getElementById('threatAlertsContent');
-    if (data.alerts && data.alerts.length > 0) {
-        alertsContent.innerHTML = `
-            <div class="alert-list">
-                ${data.alerts.map((alert, index) => {
-                    const metadata = alert.metadata_parsed || {};
-                    let extraInfo = '';
 
-                    // Special handling for PORT_SCAN
-                    if (data.threat_type === 'PORT_SCAN' && metadata.ports) {
-                        extraInfo = `
-                            <div class="mt-2">
-                                <strong>Gescande poorten:</strong>
-                                <div class="mt-1">
-                                    ${metadata.ports.slice(0, 20).map(port =>
-                                        `<span class="badge bg-secondary me-1">${port}</span>`
-                                    ).join('')}
-                                    ${metadata.ports.length > 20 ?
-                                        `<span class="badge bg-info">+${metadata.ports.length - 20} more</span>` : ''}
-                                </div>
-                            </div>
-                        `;
-                    }
+    if (!data.alerts || data.alerts.length === 0) {
+        alertsContent.innerHTML = '<div class="text-center text-muted p-4">No alerts found</div>';
+        return;
+    }
 
-                    // Special handling for BEACONING_DETECTED
-                    if (data.threat_type === 'BEACONING_DETECTED' && metadata.interval) {
-                        extraInfo = `
-                            <div class="mt-2">
-                                <strong>Beacon interval:</strong> ${metadata.interval}s
-                            </div>
-                        `;
-                    }
+    // Show first batch of alerts
+    const alertsToShow = data.alerts.slice(0, currentThreatData.alertsPerPage);
+    currentThreatData.displayedAlerts = alertsToShow.length;
 
-                    return `
-                        <div class="card bg-secondary mb-2">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between">
-                                    <div>
-                                        <span class="badge bg-${alert.severity === 'CRITICAL' ? 'danger' : alert.severity === 'HIGH' ? 'warning' : 'info'}">${alert.severity}</span>
-                                        <small class="text-muted ms-2">${new Date(alert.timestamp).toLocaleString('nl-NL')}</small>
-                                    </div>
-                                    <div>
-                                        ${alert.acknowledged ? '<span class="badge bg-success">Acknowledged</span>' : ''}
-                                    </div>
-                                </div>
-                                <p class="mb-1 mt-2">${alert.description}</p>
-                                ${alert.source_ip ? `
-                                    <div class="mt-2">
-                                        <i class="bi bi-arrow-right-circle text-danger"></i>
-                                        <code>${alert.source_ip}</code>
-                                        ${alert.source_hostname ? `<small class="text-muted">(${alert.source_hostname})</small>` : ''}
-                                        ${alert.source_country ? `<small class="text-muted"> - ${alert.source_country}</small>` : ''}
-                                    </div>
-                                ` : ''}
-                                ${alert.destination_ip ? `
-                                    <div class="mt-1">
-                                        <i class="bi bi-arrow-down-circle text-info"></i>
-                                        <code>${alert.destination_ip}</code>
-                                        ${alert.destination_hostname ? `<small class="text-muted">(${alert.destination_hostname})</small>` : ''}
-                                        ${alert.destination_country ? `<small class="text-muted"> - ${alert.destination_country}</small>` : ''}
-                                    </div>
-                                ` : ''}
-                                ${extraInfo}
-                            </div>
-                        </div>
-                    `;
-                }).join('')}
+    const alertsHTML = alertsToShow.map((alert, index) => {
+        return renderAlertCard(alert, data.threat_type);
+    }).join('');
+
+    const hasMore = data.alerts.length > currentThreatData.displayedAlerts;
+    const remainingCount = data.alerts.length - currentThreatData.displayedAlerts;
+
+    alertsContent.innerHTML = `
+        <div class="alert-list" id="alertListContainer">
+            ${alertsHTML}
+        </div>
+        ${hasMore ? `
+            <div class="text-center mt-3">
+                <button class="btn btn-outline-info" id="loadMoreAlertsBtn" onclick="loadMoreAlerts()">
+                    <span class="btn-text">
+                        <i class="bi bi-arrow-down-circle"></i>
+                        Laad ${Math.min(20, remainingCount)} meer alerts (${remainingCount} remaining)
+                    </span>
+                    <span class="btn-spinner" style="display: none;">
+                        <span class="spinner-border spinner-border-sm" role="status"></span>
+                        Loading...
+                    </span>
+                </button>
+            </div>
+        ` : `
+            <div class="text-center text-muted mt-3">
+                <small>Alle ${data.alerts.length} alerts getoond</small>
+            </div>
+        `}
+    `;
+}
+
+function renderAlertsIncremental() {
+    const alertListContainer = document.getElementById('alertListContainer');
+    if (!alertListContainer) return;
+
+    const data = { alerts: currentThreatData.allAlerts, threat_type: currentThreatData.threatType };
+
+    // Calculate which alerts to add
+    const startIndex = currentThreatData.displayedAlerts;
+    const endIndex = Math.min(startIndex + currentThreatData.alertsPerPage, data.alerts.length);
+    const newAlerts = data.alerts.slice(startIndex, endIndex);
+
+    // Append new alerts
+    const newAlertsHTML = newAlerts.map(alert => renderAlertCard(alert, data.threat_type)).join('');
+    alertListContainer.insertAdjacentHTML('beforeend', newAlertsHTML);
+
+    // Update displayed count
+    currentThreatData.displayedAlerts = endIndex;
+
+    // Update or hide the button
+    const loadMoreBtn = document.getElementById('loadMoreAlertsBtn');
+    const hasMore = data.alerts.length > currentThreatData.displayedAlerts;
+    const remainingCount = data.alerts.length - currentThreatData.displayedAlerts;
+
+    if (hasMore && loadMoreBtn) {
+        const btnText = loadMoreBtn.querySelector('.btn-text');
+        btnText.innerHTML = `
+            <i class="bi bi-arrow-down-circle"></i>
+            Laad ${Math.min(20, remainingCount)} meer alerts (${remainingCount} remaining)
+        `;
+    } else if (loadMoreBtn) {
+        loadMoreBtn.parentElement.innerHTML = `
+            <div class="text-center text-muted">
+                <small>Alle ${data.alerts.length} alerts getoond</small>
             </div>
         `;
-    } else {
-        alertsContent.innerHTML = '<div class="text-center text-muted p-4">No alerts found</div>';
     }
+}
+
+function renderAlertCard(alert, threatType) {
+    const metadata = alert.metadata_parsed || {};
+    let extraInfo = '';
+
+    // Special handling for PORT_SCAN
+    if (threatType === 'PORT_SCAN' && metadata.ports) {
+        extraInfo = `
+            <div class="mt-2">
+                <strong>Gescande poorten:</strong>
+                <div class="mt-1">
+                    ${metadata.ports.slice(0, 20).map(port =>
+                        `<span class="badge bg-secondary me-1">${port}</span>`
+                    ).join('')}
+                    ${metadata.ports.length > 20 ?
+                        `<span class="badge bg-info">+${metadata.ports.length - 20} more</span>` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    // Special handling for BEACONING_DETECTED
+    if (threatType === 'BEACONING_DETECTED' && metadata.interval) {
+        extraInfo = `
+            <div class="mt-2">
+                <strong>Beacon interval:</strong> ${metadata.interval}s
+            </div>
+        `;
+    }
+
+    return `
+        <div class="card bg-secondary mb-2">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <span class="badge bg-${alert.severity === 'CRITICAL' ? 'danger' : alert.severity === 'HIGH' ? 'warning' : 'info'}">${alert.severity}</span>
+                        <small class="text-muted ms-2">${new Date(alert.timestamp).toLocaleString('nl-NL')}</small>
+                    </div>
+                    <div>
+                        ${alert.acknowledged ? '<span class="badge bg-success">Acknowledged</span>' : ''}
+                    </div>
+                </div>
+                <p class="mb-1 mt-2">${alert.description}</p>
+                ${alert.source_ip ? `
+                    <div class="mt-2">
+                        <i class="bi bi-arrow-right-circle text-danger"></i>
+                        <code>${alert.source_ip}</code>
+                        ${alert.source_hostname ? `<small class="text-muted">(${alert.source_hostname})</small>` : ''}
+                        ${alert.source_country ? `<small class="text-muted"> - ${alert.source_country}</small>` : ''}
+                    </div>
+                ` : ''}
+                ${alert.destination_ip ? `
+                    <div class="mt-1">
+                        <i class="bi bi-arrow-down-circle text-info"></i>
+                        <code>${alert.destination_ip}</code>
+                        ${alert.destination_hostname ? `<small class="text-muted">(${alert.destination_hostname})</small>` : ''}
+                        ${alert.destination_country ? `<small class="text-muted"> - ${alert.destination_country}</small>` : ''}
+                    </div>
+                ` : ''}
+                ${extraInfo}
+            </div>
+        </div>
+    `;
 }
 
 function showThreatDetailsError(error) {

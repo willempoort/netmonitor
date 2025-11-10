@@ -424,3 +424,19 @@ canvas {
 #threatStatsRow .card:hover {
     transform: translateY(-3px);
 }
+
+/* Load More Button */
+#loadMoreAlertsBtn {
+    min-width: 200px;
+    transition: all 0.3s;
+}
+
+#loadMoreAlertsBtn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+
+#loadMoreAlertsBtn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
