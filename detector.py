@@ -5,6 +5,7 @@ Implementeert verschillende detectie algoritmes voor verdacht netwerkverkeer
 
 import time
 import logging
+import json
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 import ipaddress
@@ -182,18 +183,27 @@ class ThreatDetector:
         # Check threshold
         threshold = self.config['thresholds']['port_scan']['unique_ports']
         if len(tracker['ports']) >= threshold:
-            # Reset om duplicate alerts te voorkomen
+            # Bewaar de gescande poorten voordat we resetten
             ports_found = len(tracker['ports'])
+            scanned_ports = sorted(list(tracker['ports']))  # Sla de lijst op
+
+            # Reset om duplicate alerts te voorkomen
             tracker['ports'].clear()
             tracker['first_seen'] = current_time
 
+            # Include metadata with the actual ports scanned
             return {
                 'type': 'PORT_SCAN',
                 'severity': 'HIGH',
                 'source_ip': src_ip,
                 'destination_ip': ip_layer.dst,
                 'description': f'Mogelijk port scan gedetecteerd: {ports_found} unieke poorten binnen {self.config["thresholds"]["port_scan"]["time_window"]}s',
-                'ports_scanned': ports_found
+                'ports_scanned': ports_found,
+                'metadata': json.dumps({
+                    'ports': scanned_ports,
+                    'port_count': ports_found,
+                    'time_window': self.config["thresholds"]["port_scan"]["time_window"]
+                })
             }
 
         return None

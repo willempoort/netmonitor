@@ -5,6 +5,7 @@ Detecteert verdacht gedrag van interne machines
 
 import time
 import logging
+import json
 import ipaddress
 from collections import defaultdict, deque
 from datetime import datetime
@@ -207,7 +208,13 @@ class BehaviorDetector:
                 'description': f'Beaconing gedetecteerd: {len(dest_connections)} connecties met avg interval {avg_interval:.1f}s',
                 'avg_interval': avg_interval,
                 'consistency': consistency_ratio,
-                'connection_count': len(dest_connections)
+                'connection_count': len(dest_connections),
+                'metadata': json.dumps({
+                    'interval': round(avg_interval, 1),
+                    'consistency': round(consistency_ratio, 2),
+                    'connection_count': len(dest_connections),
+                    'destination_port': dst_port
+                })
             }
 
         return None
