@@ -761,7 +761,8 @@ let currentThreatData = {
     threatInfo: null,
     allAlerts: [],
     displayedAlerts: 0,
-    alertsPerPage: 20
+    alertsPerPage: 20,
+    totalAlerts: 0  // Track total number of alerts available
 };
 
 async function showThreatTypeDetails(threatType) {
@@ -804,8 +805,9 @@ async function showThreatTypeDetails(threatType) {
         if (result.success) {
             console.log(`[THREAT DETAILS] Received data:`, result.data);
 
-            // Store all alerts
+            // Store all alerts and total count
             currentThreatData.allAlerts = result.data.alerts || [];
+            currentThreatData.totalAlerts = (result.data.statistics && result.data.statistics.total_count) || result.data.alerts.length;
 
             displayThreatDetails(result.data, threatInfo);
         } else {
@@ -840,6 +842,7 @@ async function loadMoreAlerts() {
 
         if (result.success) {
             currentThreatData.allAlerts = result.data.alerts || [];
+            currentThreatData.totalAlerts = (result.data.statistics && result.data.statistics.total_count) || result.data.alerts.length;
 
             // Render alerts starting from where we left off
             renderAlertsIncremental();
@@ -969,8 +972,10 @@ function renderAlertsList(data) {
         return renderAlertCard(alert, data.threat_type);
     }).join('');
 
-    const hasMore = data.alerts.length > currentThreatData.displayedAlerts;
-    const remainingCount = data.alerts.length - currentThreatData.displayedAlerts;
+    // Use totalAlerts from statistics instead of data.alerts.length
+    const totalCount = currentThreatData.totalAlerts;
+    const hasMore = totalCount > currentThreatData.displayedAlerts;
+    const remainingCount = totalCount - currentThreatData.displayedAlerts;
 
     alertsContent.innerHTML = `
         <div class="alert-list" id="alertListContainer">
@@ -990,8 +995,8 @@ function renderAlertsList(data) {
                 </button>
             </div>
         ` : `
-            <div class="text-center text-muted mt-3">
-                <small>Alle ${data.alerts.length} alerts getoond</small>
+            <div class="text-center mt-3" style="color: #aaa;">
+                <small>Alle ${totalCount} alerts getoond</small>
             </div>
         `}
     `;
@@ -1017,8 +1022,9 @@ function renderAlertsIncremental() {
 
     // Update or hide the button
     const loadMoreBtn = document.getElementById('loadMoreAlertsBtn');
-    const hasMore = data.alerts.length > currentThreatData.displayedAlerts;
-    const remainingCount = data.alerts.length - currentThreatData.displayedAlerts;
+    const totalCount = currentThreatData.totalAlerts;
+    const hasMore = totalCount > currentThreatData.displayedAlerts;
+    const remainingCount = totalCount - currentThreatData.displayedAlerts;
 
     if (hasMore && loadMoreBtn) {
         const btnText = loadMoreBtn.querySelector('.btn-text');
@@ -1028,8 +1034,8 @@ function renderAlertsIncremental() {
         `;
     } else if (loadMoreBtn) {
         loadMoreBtn.parentElement.innerHTML = `
-            <div class="text-center text-muted">
-                <small>Alle ${data.alerts.length} alerts getoond</small>
+            <div class="text-center mt-3" style="color: #aaa;">
+                <small>Alle ${totalCount} alerts getoond</small>
             </div>
         `;
     }
