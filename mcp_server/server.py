@@ -460,9 +460,14 @@ class NetMonitorMCPServer:
     def run_stdio(self):
         """Run the MCP server in stdio mode (local)"""
         logger.info("Starting NetMonitor MCP Server in STDIO mode...")
-        # stdio_server is async, must be run with asyncio
+        # stdio_server is an async context manager, must use async with
+        async def run():
+            async with stdio_server(self.server) as (read_stream, write_stream):
+                # Server is now running, wait until it finishes
+                await read_stream.wait_closed()
+
         try:
-            asyncio.run(stdio_server(self.server))
+            asyncio.run(run())
         except KeyboardInterrupt:
             logger.info("Server stopped by user (KeyboardInterrupt)")
         except Exception as e:
