@@ -33,27 +33,43 @@ De installatie scripts (`install_mcp_service.sh` en `setup_mcp_user.sh`) detecte
 
 ## 🚀 Installatie Stappen
 
-### Stap 1: Installeer SSE Dependencies op Linux Server
+### Stap 0: Virtual Environment Setup (BELANGRIJK!)
 
-SSH naar je server en installeer de extra dependencies:
+⚠️ **Eerst moet je een Python virtual environment maken!**
+
+Zie: **[VENV_SETUP.md](VENV_SETUP.md)** voor uitleg waarom dit belangrijk is.
+
+SSH naar je server en maak de venv:
 
 ```bash
 ssh user@soc.poort.net
-cd /home/user/netmonitor/mcp_server
-pip3 install -r requirements.txt --user
+cd /path/to/netmonitor  # jouw NetMonitor directory
+./setup_venv.sh
 ```
 
-Dit installeert:
-- `starlette` - Web framework
-- `uvicorn` - ASGI server
-- `sse-starlette` - Server-Sent Events support
+Dit script:
+- Maakt een virtual environment in `./venv/`
+- Installeert alle Python dependencies (inclusief MCP!)
+- Neemt ~1-2 minuten
 
-### Stap 2: Test de MCP Server Handmatig
+**Waarom venv?**
+- MCP is niet beschikbaar via apt-get
+- pipx is voor CLI tools, niet voor libraries
+- venv isoleert dependencies proper
+- Services kunnen venv gebruiken
 
-Test eerst of de server werkt:
+### Stap 1: Test de MCP Server Handmatig (Optioneel)
+
+Test eerst of de server werkt voordat je de service installeert:
 
 ```bash
-cd /home/user/netmonitor/mcp_server
+cd /path/to/netmonitor
+
+# Activeer de venv
+source venv/bin/activate
+
+# Ga naar MCP server directory
+cd mcp_server
 
 # Set environment variables
 export NETMONITOR_DB_HOST=localhost
@@ -82,6 +98,31 @@ curl http://localhost:3000/health
 
 Zou moeten returnen: `OK`
 
+### Stap 2: Installeer als Systemd Service
+
+Het install script detecteert automatisch de venv en gebruikt deze voor de service:
+
+```bash
+cd /path/to/netmonitor
+sudo ./install_mcp_service.sh
+```
+
+**Het script doet:**
+- ✅ Checkt of venv bestaat (maakt deze aan als niet aanwezig)
+- ✅ Genereert service file met venv Python path
+- ✅ Installeert en start de service
+- ✅ Configureert auto-start bij boot
+
+**Check service status:**
+```bash
+sudo systemctl status netmonitor-mcp
+```
+
+**View logs:**
+```bash
+sudo journalctl -u netmonitor-mcp -f
+```
+
 ### Stap 3: Configureer Firewall (indien nodig)
 
 **Check of poort 3000 open is:**
@@ -109,31 +150,7 @@ curl http://soc.poort.net:3000/health
 
 Zou `OK` moeten returnen.
 
-### Stap 4: Installeer als Systemd Service (Aanbevolen)
-
-Voor always-on gebruik:
-
-```bash
-cd /home/user/netmonitor
-sudo ./install_mcp_service.sh
-```
-
-Dit installeert de service die automatisch:
-- Start bij boot
-- Herstart bij crash
-- Draait in SSE mode op poort 3000
-
-**Check service status:**
-```bash
-sudo systemctl status netmonitor-mcp
-```
-
-**View logs:**
-```bash
-sudo journalctl -u netmonitor-mcp -f
-```
-
-### Stap 5: Configureer Claude Desktop op je Mac
+### Stap 4: Configureer Claude Desktop op je Mac
 
 **Voor macOS:**
 ```bash
@@ -154,11 +171,11 @@ nano ~/Library/Application\ Support/Claude/claude_desktop_config.json
 
 **Sla op:** Cmd+O, Enter, Cmd+X
 
-### Stap 6: Herstart Claude Desktop
+### Stap 5: Herstart Claude Desktop
 
 Sluit Claude Desktop volledig af (Cmd+Q) en start opnieuw.
 
-### Stap 7: Test de Verbinding
+### Stap 6: Test de Verbinding
 
 Open Claude Desktop en typ:
 ```
@@ -371,7 +388,8 @@ python3 server.py --transport sse --host 0.0.0.0 --port 3000
 
 ## ✅ Quick Start Checklist
 
-- [ ] SSH dependencies geïnstalleerd op server: `pip3 install -r requirements.txt --user`
+- [ ] Virtual environment gemaakt: `./setup_venv.sh`
+- [ ] MCP service geïnstalleerd: `sudo ./install_mcp_service.sh`
 - [ ] Firewall poort 3000 open (of SSH tunnel)
 - [ ] MCP service draait: `sudo systemctl status netmonitor-mcp`
 - [ ] Health check werkt: `curl http://soc.poort.net:3000/health`

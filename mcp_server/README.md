@@ -190,24 +190,19 @@ Features:
 
 ### Quick Start (Netwerk)
 
-1. **Database User (already done):**
+1. **Setup Virtual Environment:**
 ```bash
-/home/user/netmonitor/setup_mcp_user.sh
+cd /path/to/netmonitor
+./setup_venv.sh
 ```
 
-2. **Install Dependencies:**
+2. **Install MCP Service:**
 ```bash
-cd /home/user/netmonitor/mcp_server
-pip3 install -r requirements.txt --user
-```
-
-3. **Start Service:**
-```bash
-cd /home/user/netmonitor
 sudo ./install_mcp_service.sh
+# (Dit checkt/maakt automatisch de venv en installeert de service)
 ```
 
-4. **Configure Claude Desktop (on Mac):**
+3. **Configure Claude Desktop (on Mac):**
 ```json
 {
   "mcpServers": {
@@ -219,7 +214,9 @@ sudo ./install_mcp_service.sh
 }
 ```
 
-5. **Restart Claude Desktop**
+4. **Restart Claude Desktop**
+
+⚠️ **Waarom venv?** Zie [VENV_SETUP.md](../VENV_SETUP.md) voor uitleg over virtual environments.
 
 Zie de volledige guides voor gedetailleerde instructies!
 
