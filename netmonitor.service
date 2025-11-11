@@ -1,3 +1,9 @@
+# NOTE: This is a TEMPLATE file. Do not use directly!
+# Use install_services.sh which will generate the correct service file
+# with the actual paths for your installation.
+#
+# Example paths shown below - will be replaced by install script:
+
 [Unit]
 Description=Network Monitor - Verdacht Verkeer Detectie
 After=network.target
@@ -5,8 +11,8 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/netmonitor
-ExecStart=/usr/bin/python3 /opt/netmonitor/netmonitor.py
+WorkingDirectory=/path/to/netmonitor
+ExecStart=/path/to/netmonitor/venv/bin/python3 /path/to/netmonitor/netmonitor.py
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
