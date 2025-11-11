@@ -1,0 +1,25 @@
+[Unit]
+Description=NetMonitor MCP Server
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/user/netmonitor/mcp_server
+Environment="NETMONITOR_DB_HOST=localhost"
+Environment="NETMONITOR_DB_PORT=5432"
+Environment="NETMONITOR_DB_NAME=netmonitor"
+Environment="NETMONITOR_DB_USER=mcp_readonly"
+Environment="NETMONITOR_DB_PASSWORD=mcp_netmonitor_readonly_2024"
+ExecStart=/usr/bin/python3 /home/user/netmonitor/mcp_server/server.py
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=netmonitor-mcp
+
+[Install]
+WantedBy=multi-user.target
