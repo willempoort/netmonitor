@@ -1,9 +1,42 @@
 # NetMonitor MCP Server - Setup Guide
 
-Er zijn **twee manieren** om de MCP server te gebruiken:
+## ⚠️ BELANGRIJK: Kies Eerst Je Setup
 
-1. **Claude Desktop Managed** (Aanbevolen voor nu) - Automatisch beheerd door Claude Desktop
-2. **Always-On Service** (Voor 24/7 Ollama monitoring later) - Draait altijd als systemd service
+### 🌐 Netwerk Setup (Mac → Linux Server)
+
+**Als je Claude Desktop op een ANDERE machine draait dan waar NetMonitor staat:**
+
+➡️ **Gebruik: [MCP_NETWORK_SETUP.md](MCP_NETWORK_SETUP.md)**
+
+Bijvoorbeeld:
+- Claude Desktop op **Mac** ← jouw situatie!
+- NetMonitor op **Linux server** (soc.poort.net)
+
+Dit vereist **SSE/HTTP transport** over het netwerk.
+
+---
+
+### 💻 Lokale Setup (Alles op 1 Machine)
+
+**Als Claude Desktop en NetMonitor op DEZELFDE machine draaien:**
+
+➡️ **Gebruik deze guide hieronder**
+
+Bijvoorbeeld:
+- Alles op Linux
+- Alles op Mac
+- Alles op Windows
+
+Dit gebruikt **stdio transport** (lokaal proces).
+
+---
+
+# Lokale Setup Guide
+
+Er zijn **twee manieren** om de MCP server lokaal te gebruiken:
+
+1. **Claude Desktop Managed** (Aanbevolen) - Automatisch beheerd door Claude Desktop
+2. **Always-On Service** (Voor 24/7 Ollama monitoring) - Draait altijd als systemd service
 
 ---
 

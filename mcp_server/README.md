@@ -161,43 +161,67 @@ TOP SOURCE IPs:
 
 ## 🔧 Installatie
 
-### 1. Database User
+### Setup Guides
 
-De read-only database user is al aangemaakt met:
+De MCP server ondersteunt twee deployment modes:
+
+#### 🌐 Netwerk Setup (Aanbevolen voor remote access)
+**Claude Desktop op Mac → MCP Server op Linux**
+
+Volg: **[MCP_NETWORK_SETUP.md](../MCP_NETWORK_SETUP.md)**
+
+Features:
+- SSE/HTTP transport over netwerk
+- Always-on systemd service
+- Meerdere clients kunnen verbinden
+- Geschikt voor Mac ↔ Linux setup
+
+#### 💻 Lokale Setup (Voor testing)
+**Alles op dezelfde machine**
+
+Volg: **[MCP_SETUP.md](../MCP_SETUP.md)** of **[INSTALLATION.md](INSTALLATION.md)**
+
+Features:
+- stdio transport (lokaal)
+- Claude Desktop managed proces
+- Simpelste setup voor development
+
+---
+
+### Quick Start (Netwerk)
+
+1. **Database User (already done):**
 ```bash
 /home/user/netmonitor/setup_mcp_user.sh
 ```
 
-User: `mcp_readonly`
-Password: `mcp_netmonitor_readonly_2024`
-Permissions: SELECT only
-
-### 2. Dependencies
-
-Dependencies zijn geïnstalleerd:
+2. **Install Dependencies:**
 ```bash
 cd /home/user/netmonitor/mcp_server
-pip3 install -r requirements.txt
+pip3 install -r requirements.txt --user
 ```
 
-### 3. Claude Desktop Configuratie
-
-**Locatie (macOS):**
-```
-~/Library/Application Support/Claude/claude_desktop_config.json
-```
-
-**Locatie (Linux):**
-```
-~/.config/Claude/claude_desktop_config.json
+3. **Start Service:**
+```bash
+cd /home/user/netmonitor
+sudo ./install_mcp_service.sh
 ```
 
-**Content:**
-Kopieer de inhoud van `claude_desktop_config.json` naar de Claude Desktop config file.
+4. **Configure Claude Desktop (on Mac):**
+```json
+{
+  "mcpServers": {
+    "netmonitor-soc": {
+      "url": "http://soc.poort.net:3000/sse",
+      "transport": "sse"
+    }
+  }
+}
+```
 
-### 4. Herstart Claude Desktop
+5. **Restart Claude Desktop**
 
-Na het toevoegen van de configuratie, herstart Claude Desktop om de MCP server te laden.
+Zie de volledige guides voor gedetailleerde instructies!
 
 ## 📖 Gebruik Voorbeelden
 

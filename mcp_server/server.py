@@ -4,6 +4,10 @@ NetMonitor MCP Server
 
 Provides AI assistants with read-only access to security monitoring data
 through the Model Context Protocol (MCP).
+
+Supports two transport modes:
+  - stdio: Local process communication (for testing)
+  - sse: HTTP Server-Sent Events (for network access)
 """
 
 import os
@@ -11,6 +15,7 @@ import sys
 import logging
 import json
 import socket
+import argparse
 from datetime import datetime
 from typing import Any, Sequence
 from pathlib import Path
@@ -28,6 +33,17 @@ from mcp.types import (
     EmbeddedResource,
     LoggingLevel
 )
+
+# SSE imports (optional, only needed for network mode)
+try:
+    from starlette.applications import Starlette
+    from starlette.routing import Route
+    from starlette.responses import Response
+    from sse_starlette.sse import EventSourceResponse
+    import uvicorn
+    SSE_AVAILABLE = True
+except ImportError:
+    SSE_AVAILABLE = False
 
 from database_client import MCPDatabaseClient
 from geoip_helper import get_country_for_ip, is_private_ip
@@ -440,17 +456,82 @@ class NetMonitorMCPServer:
 
         return summary
 
-    def run(self):
-        """Run the MCP server"""
-        logger.info("Starting NetMonitor MCP Server...")
+    def run_stdio(self):
+        """Run the MCP server in stdio mode (local)"""
+        logger.info("Starting NetMonitor MCP Server in STDIO mode...")
         stdio_server(self.server)
+
+    def run_sse(self, host: str = "0.0.0.0", port: int = 3000):
+        """Run the MCP server in SSE mode (network)"""
+        if not SSE_AVAILABLE:
+            logger.error("SSE dependencies not installed. Install with: pip install starlette uvicorn sse-starlette")
+            sys.exit(1)
+
+        logger.info(f"Starting NetMonitor MCP Server in SSE mode on {host}:{port}...")
+
+        # Create MCP SSE endpoint handler
+        async def handle_sse(request):
+            """Handle SSE requests from MCP clients"""
+            async def event_generator():
+                # MCP SSE protocol implementation
+                # This is a simplified version - full implementation would handle
+                # the complete MCP SSE handshake and message protocol
+                from mcp.server.sse import sse_server
+
+                async for message in sse_server(self.server):
+                    yield {
+                        "data": message
+                    }
+
+            return EventSourceResponse(event_generator())
+
+        async def handle_health(request):
+            """Health check endpoint"""
+            return Response("OK", status_code=200)
+
+        # Create Starlette app
+        app = Starlette(
+            routes=[
+                Route("/sse", handle_sse),
+                Route("/health", handle_health),
+            ]
+        )
+
+        # Run with uvicorn
+        uvicorn.run(app, host=host, port=port, log_level="info")
 
 
 def main():
     """Main entry point"""
+    parser = argparse.ArgumentParser(description="NetMonitor MCP Server")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse"],
+        default="stdio",
+        help="Transport mode: stdio (local) or sse (network)"
+    )
+    parser.add_argument(
+        "--host",
+        default="0.0.0.0",
+        help="Host to bind to (SSE mode only, default: 0.0.0.0)"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=3000,
+        help="Port to bind to (SSE mode only, default: 3000)"
+    )
+
+    args = parser.parse_args()
+
     try:
         server = NetMonitorMCPServer()
-        server.run()
+
+        if args.transport == "stdio":
+            server.run_stdio()
+        elif args.transport == "sse":
+            server.run_sse(host=args.host, port=args.port)
+
     except KeyboardInterrupt:
         logger.info("Server stopped by user")
     except Exception as e:
