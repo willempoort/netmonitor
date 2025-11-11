@@ -318,14 +318,16 @@ class DashboardServer:
     def broadcast_alert(self, alert):
         """Broadcast new alert to all connected clients"""
         try:
-            socketio.emit('new_alert', alert, broadcast=True)
+            # Note: broadcast=True removed - socketio.emit() broadcasts by default in v5.x+
+            socketio.emit('new_alert', alert)
         except Exception as e:
             logger.error(f"Error broadcasting alert: {e}")
 
     def broadcast_metrics(self, metrics):
         """Broadcast metrics update to all connected clients"""
         try:
-            socketio.emit('metrics_update', metrics, broadcast=True)
+            # Note: broadcast=True removed - socketio.emit() broadcasts by default in v5.x+
+            socketio.emit('metrics_update', metrics)
         except Exception as e:
             logger.error(f"Error broadcasting metrics: {e}")
 
