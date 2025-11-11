@@ -16,6 +16,7 @@ import logging
 import json
 import socket
 import argparse
+import asyncio
 from datetime import datetime
 from typing import Any, Sequence
 from pathlib import Path
@@ -459,7 +460,14 @@ class NetMonitorMCPServer:
     def run_stdio(self):
         """Run the MCP server in stdio mode (local)"""
         logger.info("Starting NetMonitor MCP Server in STDIO mode...")
-        stdio_server(self.server)
+        # stdio_server is async, must be run with asyncio
+        try:
+            asyncio.run(stdio_server(self.server))
+        except KeyboardInterrupt:
+            logger.info("Server stopped by user (KeyboardInterrupt)")
+        except Exception as e:
+            logger.error(f"Server error in stdio mode: {e}", exc_info=True)
+            raise
 
     def run_sse(self, host: str = "0.0.0.0", port: int = 3000):
         """Run the MCP server in SSE mode (network)"""

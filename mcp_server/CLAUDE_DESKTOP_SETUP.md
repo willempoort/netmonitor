@@ -170,7 +170,7 @@ def main():
     "netmonitor-soc": {
       "command": "ssh",
       "args": [
-        "-t",
+        
         "user@soc.poort.net",
         "cd /home/user/netmonitor/mcp_server && source ../venv/bin/activate && exec python3 server.py --transport stdio"
       ]
@@ -235,7 +235,7 @@ ssh user@soc.poort.net 'echo "Success!"'
     "netmonitor-soc": {
       "command": "ssh",
       "args": [
-        "-t",
+        
         "user@soc.poort.net",
         "cd /home/user/netmonitor/mcp_server && source ../venv/bin/activate && exec python3 server.py --transport stdio"
       ]
@@ -323,7 +323,7 @@ ssh-add ~/.ssh/id_ed25519
 {
   "command": "ssh",
   "args": [
-    "-t",
+    
     "user@soc.poort.net",
     "bash -l -c 'cd /home/user/netmonitor/mcp_server && source ../venv/bin/activate && exec python3 server.py --transport stdio'"
   ]
@@ -462,3 +462,34 @@ sudo systemctl disable netmonitor-mcp
 ---
 
 **Dit zou moeten werken! SSH + stdio is de meest betrouwbare methode voor remote MCP servers.** 🚀
+
+---
+
+## 🔧 UPDATED CONFIG (na async fix)
+
+**Gebruik deze configuratie (gefixed voor async stdio_server):**
+
+```json
+{
+  "mcpServers": {
+    "netmonitor-soc": {
+      "command": "ssh",
+      "args": [
+        "user@soc.poort.net",
+        "cd /home/user/netmonitor/mcp_server && source ../venv/bin/activate && python3 server.py --transport stdio 2>&1"
+      ]
+    }
+  }
+}
+```
+
+**Wijzigingen:**
+- ✅ **Geen `-t` flag meer**: Voorkomt "Pseudo-terminal" warnings
+- ✅ **Geen `exec` meer**: Betere process cleanup
+- ✅ **`2>&1` toegevoegd**: Stuurt stderr naar stdout voor error logging  
+- ✅ **server.py nu gefixed**: `asyncio.run(stdio_server())` zorgt dat server blijft draaien
+
+**Pas aan:**
+- `user@soc.poort.net` → jouw SSH user@host
+- `/home/user/netmonitor` → jouw NetMonitor path
+
