@@ -2,3 +2,8 @@
 mcp>=1.0.0
 psycopg2-binary>=2.9.0
 python-dateutil>=2.8.0
+
+# SSE/HTTP Server Dependencies
+starlette>=0.27.0
+uvicorn>=0.23.0
+sse-starlette>=1.6.0
