@@ -31,6 +31,16 @@ Dit gebruikt **stdio transport** (lokaal proces).
 
 ---
 
+## ⚠️ BELANGRIJK: Paths in deze Documentatie
+
+In de voorbeelden hieronder gebruik ik `/home/user/netmonitor` als voorbeeld pad.
+
+**Vervang dit met jouw eigen NetMonitor installatie pad!**
+
+De installatie scripts (`install_mcp_service.sh` en `setup_mcp_user.sh`) detecteren automatisch de correcte directory, dus je hoeft geen paths aan te passen als je deze scripts gebruikt.
+
+---
+
 # Lokale Setup Guide
 
 Er zijn **twee manieren** om de MCP server lokaal te gebruiken:

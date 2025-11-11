@@ -1,3 +1,9 @@
+# NOTE: This is a TEMPLATE file. Do not use directly!
+# Use install_mcp_service.sh which will generate the correct service file
+# with the actual paths for your installation.
+#
+# Example paths shown below - will be replaced by install script:
+
 [Unit]
 Description=NetMonitor MCP Server (SSE/HTTP)
 After=network.target postgresql.service
@@ -6,13 +12,13 @@ Requires=postgresql.service
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/home/user/netmonitor/mcp_server
+WorkingDirectory=/path/to/netmonitor/mcp_server
 Environment="NETMONITOR_DB_HOST=localhost"
 Environment="NETMONITOR_DB_PORT=5432"
 Environment="NETMONITOR_DB_NAME=netmonitor"
 Environment="NETMONITOR_DB_USER=mcp_readonly"
 Environment="NETMONITOR_DB_PASSWORD=mcp_netmonitor_readonly_2024"
-ExecStart=/usr/bin/python3 /home/user/netmonitor/mcp_server/server.py --transport sse --host 0.0.0.0 --port 3000
+ExecStart=/usr/bin/python3 /path/to/netmonitor/mcp_server/server.py --transport sse --host 0.0.0.0 --port 3000
 Restart=always
 RestartSec=10
 
