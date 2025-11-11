@@ -60,51 +60,63 @@ Een krachtig netwerk monitoring platform voor Linux met **real-time web dashboar
 - Python 3.7 of hoger
 - libpcap (meestal standaard geïnstalleerd)
 
-## Installatie
+## 🚀 Quick Start Installation
 
-### 1. Clone de repository
+### Modern Installatie (Aanbevolen - Met Virtual Environment)
 
 ```bash
+# 1. Clone repository
 git clone <repository-url>
 cd netmonitor
-```
 
-### 2. Installeer Python dependencies
+# 2. Setup Python virtual environment (BELANGRIJK!)
+./setup_venv.sh
 
-```bash
-pip install -r requirements.txt
-```
-
-Of met sudo voor system-wide installatie:
-
-```bash
-sudo pip install -r requirements.txt
-```
-
-### 3. Maak directories aan
-
-```bash
+# 3. Maak directories aan
 sudo mkdir -p /var/log/netmonitor
 sudo mkdir -p /var/cache/netmonitor/feeds
 sudo mkdir -p /var/lib/netmonitor
-sudo chmod 755 /var/log/netmonitor
-sudo chmod 755 /var/cache/netmonitor
-sudo chmod 755 /var/lib/netmonitor
+
+# 4. Installeer alle systemd services
+sudo ./install_services.sh
+# → Kies welke services je wilt enablen (main monitor, feed update, MCP server)
+
+# 5. Klaar! Check status
+sudo systemctl status netmonitor netmonitor-feed-update.timer
 ```
 
-### 4. Download threat feeds (eerste keer)
+**Waarom virtual environment?**
+- Isoleert Python dependencies
+- Geen conflicts met system packages
+- Geen sudo pip nodig
+- MCP package alleen via pip beschikbaar
+
+Zie [VENV_SETUP.md](VENV_SETUP.md) voor details en [SERVICE_INSTALLATION.md](SERVICE_INSTALLATION.md) voor service management.
+
+---
+
+### Legacy Installatie (Niet aanbevolen)
+
+<details>
+<summary>Klik hier voor oude installatie methode (deprecated)</summary>
 
 ```bash
+# Stap 1: Clone repository
+git clone <repository-url>
+cd netmonitor
+
+# Stap 2: Installeer dependencies system-wide
+sudo pip install -r requirements.txt
+
+# Stap 3: Maak directories aan
+sudo mkdir -p /var/log/netmonitor /var/cache/netmonitor/feeds /var/lib/netmonitor
+
+# Stap 4: Download threat feeds
 sudo python3 update_feeds.py
-```
 
-### 5. Setup auto-updates (optioneel maar aanbevolen)
-
-```bash
-# Installeer systemd timer voor automatische feed updates
+# Stap 5: Setup services handmatig
 sudo cp netmonitor-feed-update.service /etc/systemd/system/
 sudo cp netmonitor-feed-update.timer /etc/systemd/system/
-
 sudo systemctl daemon-reload
 sudo systemctl enable netmonitor-feed-update.timer
 sudo systemctl start netmonitor-feed-update.timer
@@ -112,6 +124,22 @@ sudo systemctl start netmonitor-feed-update.timer
 # Verificeer
 sudo systemctl status netmonitor-feed-update.timer
 ```
+
+**⚠️ Nadelen van legacy methode:**
+- MCP server werkt niet (MCP package niet beschikbaar via apt)
+- System-wide pip vereist sudo
+- Kan conflicten veroorzaken met system packages
+- Services moeten handmatig geüpdate worden bij nieuwe Python versie
+
+**Migreren naar venv:**
+```bash
+./setup_venv.sh
+sudo ./install_services.sh
+```
+
+</details>
+
+---
 
 ## Configuratie
 
