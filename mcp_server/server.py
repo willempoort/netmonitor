@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
+from mcp.server.models import InitializationOptions
 from mcp.types import (
     Resource,
     Tool,
@@ -463,8 +464,17 @@ class NetMonitorMCPServer:
         # stdio_server creates stdin/stdout streams, no parameters needed
         async def run():
             async with stdio_server() as (read_stream, write_stream):
-                # Run the server with the stdio streams
-                await self.server.run(read_stream, write_stream)
+                # Create initialization options for the server
+                init_options = InitializationOptions(
+                    server_name="netmonitor-soc",
+                    server_version="1.0.0",
+                    capabilities=self.server.get_capabilities(
+                        notification_options=None,
+                        experimental_capabilities={}
+                    )
+                )
+                # Run the server with the stdio streams and init options
+                await self.server.run(read_stream, write_stream, init_options)
 
         try:
             asyncio.run(run())
