@@ -460,11 +460,11 @@ class NetMonitorMCPServer:
     def run_stdio(self):
         """Run the MCP server in stdio mode (local)"""
         logger.info("Starting NetMonitor MCP Server in STDIO mode...")
-        # stdio_server is an async context manager, must use async with
+        # stdio_server creates stdin/stdout streams, no parameters needed
         async def run():
-            async with stdio_server(self.server) as (read_stream, write_stream):
-                # Server is now running, wait until it finishes
-                await read_stream.wait_closed()
+            async with stdio_server() as (read_stream, write_stream):
+                # Run the server with the stdio streams
+                await self.server.run(read_stream, write_stream)
 
         try:
             asyncio.run(run())
