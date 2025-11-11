@@ -1,0 +1,4 @@
+# MCP Server Dependencies
+mcp>=1.0.0
+psycopg2-binary>=2.9.0
+python-dateutil>=2.8.0

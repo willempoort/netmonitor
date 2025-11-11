@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "netmonitor-soc": {
+      "command": "python3",
+      "args": [
+        "/home/user/netmonitor/mcp_server/server.py"
+      ],
+      "env": {
+        "NETMONITOR_DB_HOST": "localhost",
+        "NETMONITOR_DB_PORT": "5432",
+        "NETMONITOR_DB_NAME": "netmonitor",
+        "NETMONITOR_DB_USER": "mcp_readonly",
+        "NETMONITOR_DB_PASSWORD": "mcp_netmonitor_readonly_2024"
+      }
+    }
+  }
+}
