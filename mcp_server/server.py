@@ -50,8 +50,12 @@ try:
 except ImportError:
     SSE_AVAILABLE = False
 
+import psycopg2
+import psycopg2.extras
+
 from database_client import MCPDatabaseClient
 from geoip_helper import get_country_for_ip, is_private_ip
+from ollama_client import OllamaClient
 
 
 # Setup logging
@@ -73,9 +77,13 @@ class NetMonitorMCPServer:
         """Initialize MCP server"""
         self.server = Server("netmonitor-soc")
         self.db = None
+        self.ollama = None
 
         # Connect to database
         self._connect_database()
+
+        # Initialize Ollama client (optional, may not be available)
+        self._initialize_ollama()
 
         # Register handlers
         self._register_handlers()
@@ -104,6 +112,24 @@ class NetMonitorMCPServer:
         except Exception as e:
             logger.error(f"Failed to connect to database: {e}")
             raise
+
+    def _initialize_ollama(self):
+        """Initialize Ollama client (optional)"""
+        try:
+            # Get Ollama configuration from environment
+            ollama_url = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
+            ollama_model = os.environ.get('OLLAMA_MODEL', 'llama3.2')
+
+            self.ollama = OllamaClient(base_url=ollama_url, model=ollama_model)
+
+            if self.ollama.available:
+                logger.info(f"Ollama initialized: {ollama_model} at {ollama_url}")
+            else:
+                logger.warning("Ollama not available - AI analysis tools will be disabled")
+
+        except Exception as e:
+            logger.warning(f"Failed to initialize Ollama: {e}")
+            self.ollama = None
 
     def _register_handlers(self):
         """Register MCP protocol handlers"""
@@ -353,6 +379,67 @@ class NetMonitorMCPServer:
                         "type": "object",
                         "properties": {}
                     }
+                ),
+                # ==================== Ollama AI Tools ====================
+                Tool(
+                    name="analyze_threat_with_ollama",
+                    description="Use local Ollama AI to analyze a security threat and provide detailed assessment",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "alert_id": {
+                                "type": "number",
+                                "description": "Alert ID to analyze (get from other tools first)"
+                            }
+                        },
+                        "required": ["alert_id"]
+                    }
+                ),
+                Tool(
+                    name="suggest_incident_response",
+                    description="Use Ollama AI to generate incident response recommendations following NIST framework",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "alert_id": {
+                                "type": "number",
+                                "description": "Alert ID for incident response planning"
+                            },
+                            "context": {
+                                "type": "string",
+                                "description": "Additional context for response planning (optional)"
+                            }
+                        },
+                        "required": ["alert_id"]
+                    }
+                ),
+                Tool(
+                    name="explain_ioc",
+                    description="Use Ollama AI to explain an Indicator of Compromise (IOC) in simple, non-technical language",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "ioc": {
+                                "type": "string",
+                                "description": "The IOC value (IP address, domain, hash, URL)"
+                            },
+                            "ioc_type": {
+                                "type": "string",
+                                "description": "Type of IOC",
+                                "enum": ["ip", "domain", "hash", "url"],
+                                "default": "ip"
+                            }
+                        },
+                        "required": ["ioc"]
+                    }
+                ),
+                Tool(
+                    name="get_ollama_status",
+                    description="Check Ollama availability and list available AI models",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {}
+                    }
                 )
             ]
 
@@ -389,6 +476,16 @@ class NetMonitorMCPServer:
                     result = await self._get_config(**arguments)
                 elif name == "get_detection_rules":
                     result = await self._get_detection_rules(**arguments)
+
+                # Ollama AI Tools
+                elif name == "analyze_threat_with_ollama":
+                    result = await self._analyze_threat_with_ollama(**arguments)
+                elif name == "suggest_incident_response":
+                    result = await self._suggest_incident_response(**arguments)
+                elif name == "explain_ioc":
+                    result = await self._explain_ioc(**arguments)
+                elif name == "get_ollama_status":
+                    result = await self._get_ollama_status(**arguments)
 
                 else:
                     raise ValueError(f"Unknown tool: {name}")
@@ -941,6 +1038,202 @@ class NetMonitorMCPServer:
         except Exception as e:
             logger.error(f"Error getting detection rules: {e}")
             return {"error": str(e)}
+
+    # ==================== Ollama AI Tool Implementations ====================
+
+    async def _analyze_threat_with_ollama(self, alert_id: int) -> dict:
+        """
+        Analyze a security threat using Ollama AI
+
+        Args:
+            alert_id: Alert ID to analyze
+
+        Returns:
+            AI analysis of the threat
+        """
+        logger.info(f"Analyzing threat with Ollama (alert_id={alert_id})")
+
+        # Check if Ollama is available
+        if not self.ollama or not self.ollama.available:
+            return {
+                "error": "Ollama is not available",
+                "message": "Please install and start Ollama: https://ollama.ai",
+                "available": False
+            }
+
+        # Get alert from database
+        try:
+            cursor = self.db.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor.execute('''
+                SELECT
+                    id,
+                    timestamp,
+                    severity,
+                    threat_type,
+                    source_ip::text as source_ip,
+                    destination_ip::text as destination_ip,
+                    description,
+                    metadata
+                FROM alerts
+                WHERE id = %s
+            ''', (alert_id,))
+
+            alert = cursor.fetchone()
+
+            if not alert:
+                return {"error": f"Alert ID {alert_id} not found"}
+
+            # Convert to dict for Ollama
+            alert_dict = dict(alert)
+
+            # Analyze with Ollama
+            result = self.ollama.analyze_threat(alert_dict)
+
+            return {
+                "alert_id": alert_id,
+                "alert": alert_dict,
+                "ai_analysis": result,
+                "ollama_model": result.get("model"),
+                "success": result.get("success", False)
+            }
+
+        except Exception as e:
+            logger.error(f"Error analyzing threat with Ollama: {e}")
+            return {"error": str(e)}
+
+    async def _suggest_incident_response(self, alert_id: int, context: str = None) -> dict:
+        """
+        Generate incident response recommendations using Ollama AI
+
+        Args:
+            alert_id: Alert ID for incident response planning
+            context: Additional context (optional)
+
+        Returns:
+            Incident response recommendations
+        """
+        logger.info(f"Generating incident response with Ollama (alert_id={alert_id})")
+
+        # Check if Ollama is available
+        if not self.ollama or not self.ollama.available:
+            return {
+                "error": "Ollama is not available",
+                "message": "Please install and start Ollama: https://ollama.ai",
+                "available": False
+            }
+
+        # Get alert from database
+        try:
+            cursor = self.db.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor.execute('''
+                SELECT
+                    id,
+                    timestamp,
+                    severity,
+                    threat_type,
+                    source_ip::text as source_ip,
+                    destination_ip::text as destination_ip,
+                    description,
+                    metadata
+                FROM alerts
+                WHERE id = %s
+            ''', (alert_id,))
+
+            alert = cursor.fetchone()
+
+            if not alert:
+                return {"error": f"Alert ID {alert_id} not found"}
+
+            # Convert to dict for Ollama
+            alert_dict = dict(alert)
+
+            # Generate response plan with Ollama
+            result = self.ollama.suggest_incident_response(alert_dict, context=context)
+
+            return {
+                "alert_id": alert_id,
+                "alert": alert_dict,
+                "context": context,
+                "incident_response": result,
+                "ollama_model": result.get("model"),
+                "success": result.get("success", False)
+            }
+
+        except Exception as e:
+            logger.error(f"Error generating incident response with Ollama: {e}")
+            return {"error": str(e)}
+
+    async def _explain_ioc(self, ioc: str, ioc_type: str = "ip") -> dict:
+        """
+        Explain an Indicator of Compromise using Ollama AI
+
+        Args:
+            ioc: The IOC value
+            ioc_type: Type of IOC (ip, domain, hash, url)
+
+        Returns:
+            Simple explanation of the IOC
+        """
+        logger.info(f"Explaining IOC with Ollama (ioc={ioc}, type={ioc_type})")
+
+        # Check if Ollama is available
+        if not self.ollama or not self.ollama.available:
+            return {
+                "error": "Ollama is not available",
+                "message": "Please install and start Ollama: https://ollama.ai",
+                "available": False
+            }
+
+        try:
+            # Explain IOC with Ollama
+            result = self.ollama.explain_ioc(ioc, ioc_type=ioc_type)
+
+            return {
+                "ioc": ioc,
+                "ioc_type": ioc_type,
+                "explanation": result,
+                "ollama_model": result.get("model"),
+                "success": result.get("success", False)
+            }
+
+        except Exception as e:
+            logger.error(f"Error explaining IOC with Ollama: {e}")
+            return {"error": str(e)}
+
+    async def _get_ollama_status(self) -> dict:
+        """
+        Get Ollama status and available models
+
+        Returns:
+            Ollama status information
+        """
+        logger.info("Getting Ollama status")
+
+        if not self.ollama:
+            return {
+                "available": False,
+                "message": "Ollama client not initialized",
+                "installation_url": "https://ollama.ai"
+            }
+
+        try:
+            status = self.ollama.get_status()
+
+            return {
+                "available": status.get("available", False),
+                "base_url": status.get("base_url"),
+                "current_model": status.get("current_model"),
+                "models_available": status.get("models_available", 0),
+                "models": status.get("models", []),
+                "message": "Ollama is ready" if status.get("available") else "Ollama is not running. Start with: ollama serve"
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting Ollama status: {e}")
+            return {
+                "available": False,
+                "error": str(e)
+            }
 
     # ==================== Resource Implementations ====================
 
