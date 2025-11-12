@@ -255,6 +255,182 @@ class MCPDatabaseClient:
                 'period_hours': 24
             }
 
+    def get_traffic_trends(self, hours: int = 24, interval: str = 'hourly') -> List[Dict]:
+        """
+        Get traffic trends over time
+
+        Args:
+            hours: Lookback period in hours
+            interval: 'hourly' or 'daily' aggregation
+
+        Returns:
+            List of traffic metrics grouped by time interval
+        """
+        try:
+            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+            cutoff_time = datetime.now() - timedelta(hours=hours)
+
+            # Determine time bucket based on interval
+            if interval == 'daily':
+                time_bucket = "1 day"
+            else:  # hourly
+                time_bucket = "1 hour"
+
+            cursor.execute(f'''
+                SELECT
+                    time_bucket(%s, timestamp) AS time_period,
+                    SUM(total_packets) as total_packets,
+                    SUM(total_bytes) as total_bytes,
+                    SUM(inbound_packets) as inbound_packets,
+                    SUM(inbound_bytes) as inbound_bytes,
+                    SUM(outbound_packets) as outbound_packets,
+                    SUM(outbound_bytes) as outbound_bytes,
+                    AVG(total_packets) as avg_packets,
+                    AVG(total_bytes) as avg_bytes
+                FROM traffic_metrics
+                WHERE timestamp > %s
+                GROUP BY time_period
+                ORDER BY time_period DESC
+            ''', (time_bucket, cutoff_time))
+
+            return [dict(row) for row in cursor.fetchall()]
+
+        except Exception as e:
+            self.logger.error(f"Error getting traffic trends: {e}")
+            return []
+
+    def get_top_talkers_stats(self, hours: int = 24, limit: int = 20,
+                              direction: Optional[str] = None) -> List[Dict]:
+        """
+        Get top communicating hosts with statistics
+
+        Args:
+            hours: Lookback period in hours
+            limit: Maximum number of results
+            direction: Filter by 'inbound' or 'outbound' (optional)
+
+        Returns:
+            List of top talkers with packet/byte counts
+        """
+        try:
+            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+            cutoff_time = datetime.now() - timedelta(hours=hours)
+
+            # Build query with optional direction filter
+            direction_filter = ""
+            params = [cutoff_time, limit]
+
+            if direction:
+                direction_filter = "AND direction = %s"
+                params.insert(1, direction)
+
+            cursor.execute(f'''
+                SELECT
+                    ip_address::text as ip_address,
+                    hostname,
+                    direction,
+                    SUM(packet_count) as total_packets,
+                    SUM(byte_count) as total_bytes,
+                    COUNT(*) as observation_count,
+                    MAX(timestamp) as last_seen,
+                    MIN(timestamp) as first_seen
+                FROM top_talkers
+                WHERE timestamp > %s
+                {direction_filter}
+                GROUP BY ip_address, hostname, direction
+                ORDER BY total_bytes DESC
+                LIMIT %s
+            ''', params)
+
+            return [dict(row) for row in cursor.fetchall()]
+
+        except Exception as e:
+            self.logger.error(f"Error getting top talkers: {e}")
+            return []
+
+    def get_alert_statistics(self, hours: int = 24, group_by: str = 'severity') -> Dict:
+        """
+        Get alert statistics grouped by specified field
+
+        Args:
+            hours: Lookback period in hours
+            group_by: Group by 'severity', 'threat_type', or 'hour'
+
+        Returns:
+            Dictionary with statistics
+        """
+        try:
+            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+            cutoff_time = datetime.now() - timedelta(hours=hours)
+
+            # Get total count
+            cursor.execute('''
+                SELECT COUNT(*) as total
+                FROM alerts
+                WHERE timestamp > %s
+            ''', (cutoff_time,))
+
+            total = cursor.fetchone()['total']
+
+            # Get grouped statistics
+            if group_by == 'hour':
+                cursor.execute('''
+                    SELECT
+                        time_bucket('1 hour', timestamp) AS time_period,
+                        COUNT(*) as count
+                    FROM alerts
+                    WHERE timestamp > %s
+                    GROUP BY time_period
+                    ORDER BY time_period DESC
+                ''', (cutoff_time,))
+            elif group_by == 'threat_type':
+                cursor.execute('''
+                    SELECT
+                        threat_type as category,
+                        COUNT(*) as count,
+                        MAX(timestamp) as last_occurrence
+                    FROM alerts
+                    WHERE timestamp > %s
+                    GROUP BY threat_type
+                    ORDER BY count DESC
+                ''', (cutoff_time,))
+            else:  # severity
+                cursor.execute('''
+                    SELECT
+                        severity as category,
+                        COUNT(*) as count,
+                        MAX(timestamp) as last_occurrence
+                    FROM alerts
+                    WHERE timestamp > %s
+                    GROUP BY severity
+                    ORDER BY
+                        CASE severity
+                            WHEN 'CRITICAL' THEN 1
+                            WHEN 'HIGH' THEN 2
+                            WHEN 'MEDIUM' THEN 3
+                            WHEN 'LOW' THEN 4
+                            WHEN 'INFO' THEN 5
+                        END
+                ''', (cutoff_time,))
+
+            grouped_data = [dict(row) for row in cursor.fetchall()]
+
+            return {
+                'total_alerts': total,
+                'analysis_period_hours': hours,
+                'grouped_by': group_by,
+                'data': grouped_data
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error getting alert statistics: {e}")
+            return {
+                'total_alerts': 0,
+                'analysis_period_hours': hours,
+                'grouped_by': group_by,
+                'data': []
+            }
+
     def close(self):
         """Close database connection"""
         if hasattr(self, 'conn'):

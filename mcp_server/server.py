@@ -14,9 +14,12 @@ import os
 import sys
 import logging
 import json
+import csv
+import io
 import socket
 import argparse
 import asyncio
+import yaml
 from datetime import datetime
 from typing import Any, Sequence
 from pathlib import Path
@@ -193,6 +196,163 @@ class NetMonitorMCPServer:
                             }
                         }
                     }
+                ),
+                # ==================== Statistics Tools ====================
+                Tool(
+                    name="get_traffic_trends",
+                    description="Get network traffic trends over time for capacity planning and trend analysis",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "hours": {
+                                "type": "number",
+                                "description": "Lookback period in hours (default: 24)",
+                                "default": 24
+                            },
+                            "interval": {
+                                "type": "string",
+                                "description": "Time aggregation interval: 'hourly' or 'daily' (default: hourly)",
+                                "enum": ["hourly", "daily"],
+                                "default": "hourly"
+                            }
+                        }
+                    }
+                ),
+                Tool(
+                    name="get_top_talkers_stats",
+                    description="Get top communicating hosts with bandwidth statistics for identifying bandwidth hogs",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "hours": {
+                                "type": "number",
+                                "description": "Lookback period in hours (default: 24)",
+                                "default": 24
+                            },
+                            "limit": {
+                                "type": "number",
+                                "description": "Maximum number of results (default: 20)",
+                                "default": 20
+                            },
+                            "direction": {
+                                "type": "string",
+                                "description": "Filter by direction: 'inbound' or 'outbound' (optional)",
+                                "enum": ["inbound", "outbound"]
+                            }
+                        }
+                    }
+                ),
+                Tool(
+                    name="get_alert_statistics",
+                    description="Get alert statistics and trends for security posture overview and reporting",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "hours": {
+                                "type": "number",
+                                "description": "Lookback period in hours (default: 24)",
+                                "default": 24
+                            },
+                            "group_by": {
+                                "type": "string",
+                                "description": "Group statistics by: 'severity', 'threat_type', or 'hour' (default: severity)",
+                                "enum": ["severity", "threat_type", "hour"],
+                                "default": "severity"
+                            }
+                        }
+                    }
+                ),
+                # ==================== Export Tools ====================
+                Tool(
+                    name="export_alerts_csv",
+                    description="Export security alerts to CSV format for periodic reporting",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "hours": {
+                                "type": "number",
+                                "description": "Lookback period in hours (default: 24)",
+                                "default": 24
+                            },
+                            "severity": {
+                                "type": "string",
+                                "description": "Filter by severity: CRITICAL, HIGH, MEDIUM, LOW, INFO",
+                                "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
+                            },
+                            "threat_type": {
+                                "type": "string",
+                                "description": "Filter by threat type (optional)"
+                            }
+                        }
+                    }
+                ),
+                Tool(
+                    name="export_traffic_stats_csv",
+                    description="Export traffic statistics to CSV for capacity planning and trend analysis",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "hours": {
+                                "type": "number",
+                                "description": "Lookback period in hours (default: 168 = 1 week)",
+                                "default": 168
+                            },
+                            "interval": {
+                                "type": "string",
+                                "description": "Time aggregation: 'hourly' or 'daily' (default: daily)",
+                                "enum": ["hourly", "daily"],
+                                "default": "daily"
+                            }
+                        }
+                    }
+                ),
+                Tool(
+                    name="export_top_talkers_csv",
+                    description="Export top communicating hosts to CSV for bandwidth analysis",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "hours": {
+                                "type": "number",
+                                "description": "Lookback period in hours (default: 24)",
+                                "default": 24
+                            },
+                            "limit": {
+                                "type": "number",
+                                "description": "Maximum number of results (default: 50)",
+                                "default": 50
+                            },
+                            "direction": {
+                                "type": "string",
+                                "description": "Filter by direction: 'inbound' or 'outbound'",
+                                "enum": ["inbound", "outbound"]
+                            }
+                        }
+                    }
+                ),
+                # ==================== Configuration Tools ====================
+                Tool(
+                    name="get_config",
+                    description="Get current NetMonitor configuration settings",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "section": {
+                                "type": "string",
+                                "description": "Config section: 'thresholds', 'alerts', 'threat_feeds', or 'all' (default: all)",
+                                "enum": ["thresholds", "alerts", "threat_feeds", "all"],
+                                "default": "all"
+                            }
+                        }
+                    }
+                ),
+                Tool(
+                    name="get_detection_rules",
+                    description="List all active detection rules with their current settings",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {}
+                    }
                 )
             ]
 
@@ -200,12 +360,36 @@ class NetMonitorMCPServer:
         async def call_tool(name: str, arguments: Any) -> Sequence[TextContent | ImageContent | EmbeddedResource]:
             """Call a tool"""
             try:
+                # Threat Analysis Tools
                 if name == "analyze_ip":
                     result = await self._analyze_ip(**arguments)
                 elif name == "get_recent_threats":
                     result = await self._get_recent_threats(**arguments)
                 elif name == "get_threat_timeline":
                     result = await self._get_threat_timeline(**arguments)
+
+                # Statistics Tools
+                elif name == "get_traffic_trends":
+                    result = await self._get_traffic_trends(**arguments)
+                elif name == "get_top_talkers_stats":
+                    result = await self._get_top_talkers_stats(**arguments)
+                elif name == "get_alert_statistics":
+                    result = await self._get_alert_statistics(**arguments)
+
+                # Export Tools
+                elif name == "export_alerts_csv":
+                    result = await self._export_alerts_csv(**arguments)
+                elif name == "export_traffic_stats_csv":
+                    result = await self._export_traffic_stats_csv(**arguments)
+                elif name == "export_top_talkers_csv":
+                    result = await self._export_top_talkers_csv(**arguments)
+
+                # Configuration Tools
+                elif name == "get_config":
+                    result = await self._get_config(**arguments)
+                elif name == "get_detection_rules":
+                    result = await self._get_detection_rules(**arguments)
+
                 else:
                     raise ValueError(f"Unknown tool: {name}")
 
@@ -425,6 +609,338 @@ class NetMonitorMCPServer:
             summary_parts.append(f"Latest event: {timeline[-1]['threat_type']} at {timeline[-1]['timestamp']}")
 
         return ". ".join(summary_parts)
+
+    # ==================== Statistics Tool Implementations ====================
+
+    async def _get_traffic_trends(self, hours: int = 24, interval: str = 'hourly') -> dict:
+        """
+        Get network traffic trends over time
+
+        Args:
+            hours: Lookback period in hours
+            interval: 'hourly' or 'daily' aggregation
+
+        Returns:
+            Traffic trends data
+        """
+        logger.info(f"Getting traffic trends (hours={hours}, interval={interval})")
+
+        trends = self.db.get_traffic_trends(hours=hours, interval=interval)
+
+        # Calculate summary statistics
+        if trends:
+            total_bytes = sum(t['total_bytes'] or 0 for t in trends)
+            total_packets = sum(t['total_packets'] or 0 for t in trends)
+            avg_bytes = sum(t['avg_bytes'] or 0 for t in trends) / len(trends)
+            avg_packets = sum(t['avg_packets'] or 0 for t in trends) / len(trends)
+        else:
+            total_bytes = total_packets = avg_bytes = avg_packets = 0
+
+        return {
+            "analysis_period_hours": hours,
+            "interval": interval,
+            "data_points": len(trends),
+            "summary": {
+                "total_bytes": total_bytes,
+                "total_packets": total_packets,
+                "average_bytes_per_period": int(avg_bytes),
+                "average_packets_per_period": int(avg_packets),
+                "total_bytes_gb": round(total_bytes / (1024**3), 2),
+                "total_bytes_mb": round(total_bytes / (1024**2), 2)
+            },
+            "trends": trends
+        }
+
+    async def _get_top_talkers_stats(self, hours: int = 24, limit: int = 20,
+                                     direction: str = None) -> dict:
+        """
+        Get top communicating hosts with statistics
+
+        Args:
+            hours: Lookback period in hours
+            limit: Maximum number of results
+            direction: Filter by 'inbound' or 'outbound'
+
+        Returns:
+            Top talkers data
+        """
+        logger.info(f"Getting top talkers stats (hours={hours}, limit={limit}, direction={direction})")
+
+        talkers = self.db.get_top_talkers_stats(hours=hours, limit=limit, direction=direction)
+
+        # Calculate summary
+        total_bytes = sum(t['total_bytes'] or 0 for t in talkers)
+        total_packets = sum(t['total_packets'] or 0 for t in talkers)
+
+        return {
+            "analysis_period_hours": hours,
+            "filters": {
+                "limit": limit,
+                "direction": direction
+            },
+            "total_hosts": len(talkers),
+            "summary": {
+                "combined_total_bytes": total_bytes,
+                "combined_total_packets": total_packets,
+                "combined_total_gb": round(total_bytes / (1024**3), 2),
+                "combined_total_mb": round(total_bytes / (1024**2), 2)
+            },
+            "top_talkers": talkers
+        }
+
+    async def _get_alert_statistics(self, hours: int = 24, group_by: str = 'severity') -> dict:
+        """
+        Get alert statistics grouped by specified field
+
+        Args:
+            hours: Lookback period in hours
+            group_by: Group by 'severity', 'threat_type', or 'hour'
+
+        Returns:
+            Alert statistics
+        """
+        logger.info(f"Getting alert statistics (hours={hours}, group_by={group_by})")
+
+        stats = self.db.get_alert_statistics(hours=hours, group_by=group_by)
+
+        # Add analysis
+        if stats['data']:
+            most_common = max(stats['data'], key=lambda x: x['count'])
+            stats['insights'] = {
+                'most_common_category': most_common.get('category') or most_common.get('time_period'),
+                'most_common_count': most_common['count']
+            }
+
+        return stats
+
+    # ==================== Export Tool Implementations ====================
+
+    async def _export_alerts_csv(self, hours: int = 24, severity: str = None,
+                                 threat_type: str = None) -> dict:
+        """
+        Export security alerts to CSV format
+
+        Args:
+            hours: Lookback period in hours
+            severity: Filter by severity (optional)
+            threat_type: Filter by threat type (optional)
+
+        Returns:
+            CSV data as string
+        """
+        logger.info(f"Exporting alerts to CSV (hours={hours}, severity={severity}, threat_type={threat_type})")
+
+        alerts = self.db.get_recent_alerts(
+            limit=10000,  # High limit for exports
+            hours=hours,
+            severity=severity,
+            threat_type=threat_type
+        )
+
+        # Generate CSV
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        # Write header
+        writer.writerow(['Timestamp', 'Severity', 'Threat Type', 'Source IP', 'Destination IP', 'Description', 'Acknowledged'])
+
+        # Write data
+        for alert in alerts:
+            writer.writerow([
+                alert['timestamp'],
+                alert['severity'],
+                alert['threat_type'],
+                alert.get('source_ip', ''),
+                alert.get('destination_ip', ''),
+                alert.get('description', ''),
+                'Yes' if alert.get('acknowledged') else 'No'
+            ])
+
+        csv_data = output.getvalue()
+        output.close()
+
+        return {
+            "format": "csv",
+            "rows": len(alerts),
+            "filters": {
+                "hours": hours,
+                "severity": severity,
+                "threat_type": threat_type
+            },
+            "csv_data": csv_data
+        }
+
+    async def _export_traffic_stats_csv(self, hours: int = 168, interval: str = 'daily') -> dict:
+        """
+        Export traffic statistics to CSV
+
+        Args:
+            hours: Lookback period in hours
+            interval: 'hourly' or 'daily' aggregation
+
+        Returns:
+            CSV data as string
+        """
+        logger.info(f"Exporting traffic stats to CSV (hours={hours}, interval={interval})")
+
+        trends = self.db.get_traffic_trends(hours=hours, interval=interval)
+
+        # Generate CSV
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        # Write header
+        writer.writerow(['Time Period', 'Total Packets', 'Total Bytes', 'Inbound Packets', 'Inbound Bytes',
+                        'Outbound Packets', 'Outbound Bytes', 'Avg Packets', 'Avg Bytes'])
+
+        # Write data
+        for trend in trends:
+            writer.writerow([
+                trend['time_period'],
+                trend['total_packets'],
+                trend['total_bytes'],
+                trend['inbound_packets'],
+                trend['inbound_bytes'],
+                trend['outbound_packets'],
+                trend['outbound_bytes'],
+                int(trend['avg_packets']) if trend['avg_packets'] else 0,
+                int(trend['avg_bytes']) if trend['avg_bytes'] else 0
+            ])
+
+        csv_data = output.getvalue()
+        output.close()
+
+        return {
+            "format": "csv",
+            "rows": len(trends),
+            "interval": interval,
+            "analysis_period_hours": hours,
+            "csv_data": csv_data
+        }
+
+    async def _export_top_talkers_csv(self, hours: int = 24, limit: int = 50,
+                                      direction: str = None) -> dict:
+        """
+        Export top communicating hosts to CSV
+
+        Args:
+            hours: Lookback period in hours
+            limit: Maximum number of results
+            direction: Filter by direction (optional)
+
+        Returns:
+            CSV data as string
+        """
+        logger.info(f"Exporting top talkers to CSV (hours={hours}, limit={limit}, direction={direction})")
+
+        talkers = self.db.get_top_talkers_stats(hours=hours, limit=limit, direction=direction)
+
+        # Generate CSV
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        # Write header
+        writer.writerow(['IP Address', 'Hostname', 'Direction', 'Total Packets', 'Total Bytes',
+                        'Total MB', 'Total GB', 'Observations', 'First Seen', 'Last Seen'])
+
+        # Write data
+        for talker in talkers:
+            writer.writerow([
+                talker['ip_address'],
+                talker.get('hostname', ''),
+                talker['direction'],
+                talker['total_packets'],
+                talker['total_bytes'],
+                round(talker['total_bytes'] / (1024**2), 2),
+                round(talker['total_bytes'] / (1024**3), 2),
+                talker['observation_count'],
+                talker['first_seen'],
+                talker['last_seen']
+            ])
+
+        csv_data = output.getvalue()
+        output.close()
+
+        return {
+            "format": "csv",
+            "rows": len(talkers),
+            "filters": {
+                "hours": hours,
+                "limit": limit,
+                "direction": direction
+            },
+            "csv_data": csv_data
+        }
+
+    # ==================== Configuration Tool Implementations ====================
+
+    async def _get_config(self, section: str = 'all') -> dict:
+        """
+        Get current NetMonitor configuration
+
+        Args:
+            section: Config section to retrieve
+
+        Returns:
+            Configuration data
+        """
+        logger.info(f"Getting config (section={section})")
+
+        # Load config from file
+        config_path = Path(__file__).parent.parent / 'config.yaml'
+
+        try:
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+
+            if section == 'all':
+                return config
+            elif section in config:
+                return {section: config[section]}
+            else:
+                return {"error": f"Section '{section}' not found in configuration"}
+
+        except Exception as e:
+            logger.error(f"Error reading config: {e}")
+            return {"error": str(e)}
+
+    async def _get_detection_rules(self) -> dict:
+        """
+        List all active detection rules with current settings
+
+        Returns:
+            Detection rules overview
+        """
+        logger.info("Getting detection rules")
+
+        # Load config to get thresholds
+        config_path = Path(__file__).parent.parent / 'config.yaml'
+
+        try:
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+
+            thresholds = config.get('thresholds', {})
+
+            # Format detection rules
+            rules = []
+            for detection_type, settings in thresholds.items():
+                rule = {
+                    "detection_type": detection_type,
+                    "enabled": settings.get('enabled', False),
+                    "settings": {k: v for k, v in settings.items() if k != 'enabled'}
+                }
+                rules.append(rule)
+
+            return {
+                "total_rules": len(rules),
+                "active_rules": sum(1 for r in rules if r['enabled']),
+                "rules": rules
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting detection rules: {e}")
+            return {"error": str(e)}
 
     # ==================== Resource Implementations ====================
 
