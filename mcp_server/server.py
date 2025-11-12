@@ -440,6 +440,50 @@ class NetMonitorMCPServer:
                         "type": "object",
                         "properties": {}
                     }
+                ),
+                # ==================== Configuration Modification Tools ====================
+                Tool(
+                    name="update_threshold",
+                    description="Update a detection threshold setting (WRITE operation - modifies config.yaml)",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "detection_type": {
+                                "type": "string",
+                                "description": "Detection type to modify",
+                                "enum": ["port_scan", "connection_flood", "packet_size", "dns_tunnel",
+                                        "beaconing", "outbound_volume", "lateral_movement"]
+                            },
+                            "setting": {
+                                "type": "string",
+                                "description": "Setting to modify (e.g., 'unique_ports', 'connections_per_second', 'threshold_mb')"
+                            },
+                            "value": {
+                                "description": "New value (number or boolean)"
+                            }
+                        },
+                        "required": ["detection_type", "setting", "value"]
+                    }
+                ),
+                Tool(
+                    name="toggle_detection_rule",
+                    description="Enable or disable a detection rule (WRITE operation - modifies config.yaml)",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "detection_type": {
+                                "type": "string",
+                                "description": "Detection type to enable/disable",
+                                "enum": ["port_scan", "connection_flood", "packet_size", "dns_tunnel",
+                                        "beaconing", "outbound_volume", "lateral_movement"]
+                            },
+                            "enabled": {
+                                "type": "boolean",
+                                "description": "True to enable, False to disable"
+                            }
+                        },
+                        "required": ["detection_type", "enabled"]
+                    }
                 )
             ]
 
@@ -486,6 +530,12 @@ class NetMonitorMCPServer:
                     result = await self._explain_ioc(**arguments)
                 elif name == "get_ollama_status":
                     result = await self._get_ollama_status(**arguments)
+
+                # Configuration Modification Tools
+                elif name == "update_threshold":
+                    result = await self._update_threshold(**arguments)
+                elif name == "toggle_detection_rule":
+                    result = await self._toggle_detection_rule(**arguments)
 
                 else:
                     raise ValueError(f"Unknown tool: {name}")
@@ -1232,6 +1282,164 @@ class NetMonitorMCPServer:
             logger.error(f"Error getting Ollama status: {e}")
             return {
                 "available": False,
+                "error": str(e)
+            }
+
+    # ==================== Configuration Modification Tool Implementations ====================
+
+    async def _update_threshold(self, detection_type: str, setting: str, value: Any) -> dict:
+        """
+        Update a detection threshold setting (WRITE operation)
+
+        Args:
+            detection_type: Detection type (e.g., 'port_scan')
+            setting: Setting to modify (e.g., 'unique_ports')
+            value: New value
+
+        Returns:
+            Result of the update operation
+        """
+        logger.info(f"Updating threshold: {detection_type}.{setting} = {value}")
+
+        config_path = Path(__file__).parent.parent / 'config.yaml'
+
+        try:
+            # Load current config
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+
+            # Validate detection type exists
+            if detection_type not in config.get('thresholds', {}):
+                return {
+                    "success": False,
+                    "error": f"Detection type '{detection_type}' not found",
+                    "available_types": list(config.get('thresholds', {}).keys())
+                }
+
+            # Validate setting exists
+            if setting not in config['thresholds'][detection_type]:
+                return {
+                    "success": False,
+                    "error": f"Setting '{setting}' not found in {detection_type}",
+                    "available_settings": list(config['thresholds'][detection_type].keys())
+                }
+
+            # Store old value
+            old_value = config['thresholds'][detection_type][setting]
+
+            # Validate value type matches old value type
+            if type(value) != type(old_value):
+                return {
+                    "success": False,
+                    "error": f"Type mismatch: expected {type(old_value).__name__}, got {type(value).__name__}",
+                    "old_value": old_value,
+                    "old_type": type(old_value).__name__
+                }
+
+            # Update the value
+            config['thresholds'][detection_type][setting] = value
+
+            # Create backup
+            backup_path = config_path.parent / f"config.yaml.backup.{int(datetime.now().timestamp())}"
+            with open(config_path, 'r') as f:
+                with open(backup_path, 'w') as backup:
+                    backup.write(f.read())
+
+            # Write updated config
+            with open(config_path, 'w') as f:
+                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+            logger.info(f"Successfully updated {detection_type}.{setting}: {old_value} -> {value}")
+
+            return {
+                "success": True,
+                "detection_type": detection_type,
+                "setting": setting,
+                "old_value": old_value,
+                "new_value": value,
+                "backup_file": str(backup_path),
+                "message": f"Updated {detection_type}.{setting} from {old_value} to {value}",
+                "note": "⚠️ Restart NetMonitor service to apply changes: sudo systemctl restart netmonitor"
+            }
+
+        except Exception as e:
+            logger.error(f"Error updating threshold: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    async def _toggle_detection_rule(self, detection_type: str, enabled: bool) -> dict:
+        """
+        Enable or disable a detection rule (WRITE operation)
+
+        Args:
+            detection_type: Detection type to toggle
+            enabled: True to enable, False to disable
+
+        Returns:
+            Result of the operation
+        """
+        logger.info(f"Toggling detection rule: {detection_type} -> {'enabled' if enabled else 'disabled'}")
+
+        config_path = Path(__file__).parent.parent / 'config.yaml'
+
+        try:
+            # Load current config
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+
+            # Validate detection type exists
+            if detection_type not in config.get('thresholds', {}):
+                return {
+                    "success": False,
+                    "error": f"Detection type '{detection_type}' not found",
+                    "available_types": list(config.get('thresholds', {}).keys())
+                }
+
+            # Store old value
+            old_enabled = config['thresholds'][detection_type].get('enabled', False)
+
+            # Check if already in desired state
+            if old_enabled == enabled:
+                return {
+                    "success": True,
+                    "detection_type": detection_type,
+                    "enabled": enabled,
+                    "message": f"Detection rule '{detection_type}' is already {'enabled' if enabled else 'disabled'}",
+                    "changed": False
+                }
+
+            # Update the enabled status
+            config['thresholds'][detection_type]['enabled'] = enabled
+
+            # Create backup
+            backup_path = config_path.parent / f"config.yaml.backup.{int(datetime.now().timestamp())}"
+            with open(config_path, 'r') as f:
+                with open(backup_path, 'w') as backup:
+                    backup.write(f.read())
+
+            # Write updated config
+            with open(config_path, 'w') as f:
+                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+            logger.info(f"Successfully {'enabled' if enabled else 'disabled'} {detection_type}")
+
+            return {
+                "success": True,
+                "detection_type": detection_type,
+                "old_enabled": old_enabled,
+                "new_enabled": enabled,
+                "backup_file": str(backup_path),
+                "message": f"Detection rule '{detection_type}' {'enabled' if enabled else 'disabled'}",
+                "changed": True,
+                "note": "⚠️ Restart NetMonitor service to apply changes: sudo systemctl restart netmonitor"
+            }
+
+        except Exception as e:
+            logger.error(f"Error toggling detection rule: {e}")
+            return {
+                "success": False,
                 "error": str(e)
             }
 
