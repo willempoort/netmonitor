@@ -105,10 +105,12 @@ cd netmonitor
 python3 -m venv venv
 
 # Activate venv
-source venv/bin/python
+source venv/bin/activate
 
-# Install dependencies
-venv/bin/pip install -r requirements.txt
+# Install dependencies (lightweight for sensors!)
+venv/bin/pip install -r requirements-sensor.txt
+
+# Note: Use requirements.txt only on central SOC server
 ```
 
 ### Stap 4: Configure Sensor

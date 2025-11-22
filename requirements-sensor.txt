@@ -1,0 +1,17 @@
+# Lightweight requirements for remote sensors (Nano Pi)
+# Only includes what's needed for sensor_client.py
+
+# Core packet capture
+scapy>=2.5.0
+
+# Configuration
+pyyaml>=6.0
+
+# HTTP client for SOC server communication
+requests>=2.31.0
+
+# System metrics
+psutil>=5.9.0
+
+# Optional: Only if using PostgreSQL on sensor (usually not needed)
+# psycopg2-binary>=2.9.0
