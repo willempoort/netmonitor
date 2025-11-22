@@ -68,14 +68,7 @@ class SensorClient:
         self.alert_buffer = deque(maxlen=10000)  # Max 10k alerts in buffer
 
         # Setup logging
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler('/var/log/netmonitor/sensor.log'),
-                logging.StreamHandler()
-            ]
-        )
+        self._setup_logging()
         self.logger = logging.getLogger('NetMonitor.Sensor')
 
         # Validate configuration
@@ -105,6 +98,34 @@ class SensorClient:
             return f"{hostname}-{mac[:8]}"
         except:
             return f"{hostname}-{int(time.time())}"
+
+    def _setup_logging(self):
+        """Setup logging with fallback to console-only if file logging fails"""
+        handlers = []
+
+        # Try to setup file logging
+        log_dir = '/var/log/netmonitor'
+        log_file = os.path.join(log_dir, 'sensor.log')
+
+        try:
+            # Create log directory if it doesn't exist
+            os.makedirs(log_dir, exist_ok=True)
+            # Add file handler
+            handlers.append(logging.FileHandler(log_file))
+        except (OSError, PermissionError) as e:
+            # If we can't create log directory or file, just use console
+            print(f"Warning: Cannot create log file {log_file}: {e}")
+            print("Logging to console only")
+
+        # Always add console handler
+        handlers.append(logging.StreamHandler())
+
+        # Configure logging
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=handlers
+        )
 
     def _init_components(self):
         """Initialize threat detection components"""
