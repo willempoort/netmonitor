@@ -4,6 +4,7 @@ Web Dashboard Server
 Real-time security monitoring dashboard
 """
 
+import os
 import sys
 import logging
 import threading
@@ -29,7 +30,11 @@ from database import DatabaseManager
 app = Flask(__name__,
            template_folder='web/templates',
            static_folder='web/static')
-app.config['SECRET_KEY'] = 'netmonitor-secret-key-change-in-production'
+
+# Configure SECRET_KEY from environment or use a development default
+# SECURITY: Set FLASK_SECRET_KEY environment variable in production!
+app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'dev-key-CHANGE-ME-IN-PRODUCTION')
+
 CORS(app)
 
 # Initialize SocketIO with eventlet for production
@@ -53,6 +58,14 @@ def init_dashboard(config_file='config.yaml'):
 
     # Load config
     config = load_config(config_file)
+
+    # Configure SECRET_KEY from config if not already set by environment variable
+    if 'FLASK_SECRET_KEY' not in os.environ:
+        dashboard_config = config.get('dashboard', {})
+        if 'secret_key' in dashboard_config:
+            app.config['SECRET_KEY'] = dashboard_config['secret_key']
+            logger_temp = logging.getLogger('NetMonitor.WebDashboard')
+            logger_temp.info("SECRET_KEY loaded from config file")
 
     # Setup logging
     logging.basicConfig(

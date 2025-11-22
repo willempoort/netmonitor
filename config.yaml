@@ -130,6 +130,11 @@ dashboard:
   host: 0.0.0.0  # 0.0.0.0 = toegankelijk vanaf andere machines
   port: 8080
 
+  # Flask secret key for session security (optional)
+  # Can also be set via FLASK_SECRET_KEY environment variable
+  # Generate a secure key with: python3 -c "import secrets; print(secrets.token_hex(32))"
+  # secret_key: "your-secret-key-here"
+
 # Database Configuration (PostgreSQL + TimescaleDB)
 database:
   # Database type: 'postgresql' or 'sqlite' (legacy)
