@@ -255,6 +255,173 @@ def api_threat_details(threat_type):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ==================== Sensor API Endpoints ====================
+
+@app.route('/api/sensors', methods=['GET'])
+def api_get_sensors():
+    """Get all registered sensors"""
+    try:
+        sensors = db.get_sensors()
+        return jsonify({
+            'success': True,
+            'data': sensors,
+            'count': len(sensors)
+        })
+    except Exception as e:
+        logger.error(f"Error getting sensors: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/sensors/register', methods=['POST'])
+def api_register_sensor():
+    """Register a new sensor or update existing one"""
+    try:
+        data = request.get_json()
+
+        # Validate required fields
+        required = ['sensor_id', 'hostname']
+        for field in required:
+            if field not in data:
+                return jsonify({'success': False, 'error': f'Missing required field: {field}'}), 400
+
+        # Register sensor
+        success = db.register_sensor(
+            sensor_id=data['sensor_id'],
+            hostname=data['hostname'],
+            location=data.get('location'),
+            ip_address=data.get('ip_address'),
+            version=data.get('version'),
+            config=data.get('config')
+        )
+
+        if success:
+            return jsonify({'success': True, 'message': 'Sensor registered'})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to register sensor'}), 500
+
+    except Exception as e:
+        logger.error(f"Error registering sensor: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/sensors/<sensor_id>/heartbeat', methods=['POST'])
+def api_sensor_heartbeat(sensor_id):
+    """Update sensor heartbeat"""
+    try:
+        success = db.update_sensor_heartbeat(sensor_id)
+        if success:
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Sensor not found'}), 404
+    except Exception as e:
+        logger.error(f"Error updating heartbeat: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/sensors/<sensor_id>/metrics', methods=['POST'])
+def api_submit_sensor_metrics(sensor_id):
+    """Submit sensor performance metrics"""
+    try:
+        data = request.get_json()
+
+        # Update heartbeat
+        db.update_sensor_heartbeat(sensor_id)
+
+        # Save metrics
+        success = db.save_sensor_metrics(
+            sensor_id=sensor_id,
+            cpu_percent=data.get('cpu_percent'),
+            memory_percent=data.get('memory_percent'),
+            disk_percent=data.get('disk_percent'),
+            uptime_seconds=data.get('uptime_seconds'),
+            packets_captured=data.get('packets_captured'),
+            alerts_sent=data.get('alerts_sent'),
+            network_interface=data.get('network_interface')
+        )
+
+        if success:
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to save metrics'}), 500
+
+    except Exception as e:
+        logger.error(f"Error submitting metrics: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/sensors/<sensor_id>/alerts', methods=['POST'])
+def api_submit_sensor_alerts(sensor_id):
+    """Submit alerts from remote sensor (batch)"""
+    try:
+        data = request.get_json()
+
+        # Expect array of alerts
+        alerts = data.get('alerts', [])
+        if not isinstance(alerts, list):
+            return jsonify({'success': False, 'error': 'alerts must be an array'}), 400
+
+        # Update heartbeat
+        db.update_sensor_heartbeat(sensor_id)
+
+        # Insert all alerts
+        success_count = 0
+        for alert in alerts:
+            # Parse timestamp if provided
+            timestamp = None
+            if 'timestamp' in alert:
+                try:
+                    timestamp = datetime.fromisoformat(alert['timestamp'].replace('Z', '+00:00'))
+                except:
+                    pass
+
+            success = db.insert_alert_from_sensor(
+                sensor_id=sensor_id,
+                severity=alert.get('severity', 'INFO'),
+                threat_type=alert.get('threat_type', 'UNKNOWN'),
+                source_ip=alert.get('source_ip'),
+                destination_ip=alert.get('destination_ip'),
+                description=alert.get('description', ''),
+                metadata=alert.get('metadata'),
+                timestamp=timestamp
+            )
+
+            if success:
+                success_count += 1
+
+                # Broadcast to dashboard
+                try:
+                    socketio.emit('new_alert', {
+                        'severity': alert.get('severity'),
+                        'threat_type': alert.get('threat_type'),
+                        'source_ip': alert.get('source_ip'),
+                        'destination_ip': alert.get('destination_ip'),
+                        'description': alert.get('description'),
+                        'sensor_id': sensor_id,
+                        'timestamp': alert.get('timestamp', datetime.now().isoformat())
+                    })
+                except:
+                    pass  # Don't fail if broadcast fails
+
+        return jsonify({
+            'success': True,
+            'received': len(alerts),
+            'inserted': success_count
+        })
+
+    except Exception as e:
+        logger.error(f"Error submitting alerts from sensor {sensor_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/sensors/<sensor_id>', methods=['GET'])
+def api_get_sensor(sensor_id):
+    """Get specific sensor details"""
+    try:
+        sensor = db.get_sensor_by_id(sensor_id)
+        if sensor:
+            return jsonify({'success': True, 'data': sensor})
+        else:
+            return jsonify({'success': False, 'error': 'Sensor not found'}), 404
+    except Exception as e:
+        logger.error(f"Error getting sensor: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ==================== WebSocket Events ====================
 
 @socketio.on('connect')

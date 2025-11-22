@@ -1,0 +1,55 @@
+# NOTE: This is a TEMPLATE file for remote sensors. Do not use directly!
+#
+# Installation steps for Nano Pi / remote sensor:
+#
+# 1. Copy this file to /etc/systemd/system/:
+#    sudo cp netmonitor-sensor.service /etc/systemd/system/
+#
+# 2. Edit the file and configure:
+#    sudo nano /etc/systemd/system/netmonitor-sensor.service
+#    - Set WorkingDirectory to your installation path
+#    - Set ExecStart python path
+#    - Set SOC_SERVER_URL to your central server
+#    - Set SENSOR_ID (unique per sensor)
+#    - Set SENSOR_LOCATION
+#
+# 3. Reload systemd and enable:
+#    sudo systemctl daemon-reload
+#    sudo systemctl enable netmonitor-sensor
+#    sudo systemctl start netmonitor-sensor
+#
+# 4. Check status:
+#    sudo systemctl status netmonitor-sensor
+#    sudo journalctl -u netmonitor-sensor -f
+
+[Unit]
+Description=NetMonitor Remote Sensor Client
+Documentation=https://github.com/yourusername/netmonitor
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/user/netmonitor
+ExecStart=/home/user/netmonitor/venv/bin/python3 /home/user/netmonitor/sensor_client.py -c /home/user/netmonitor/config.yaml
+
+# Environment variables (EDIT THESE!)
+Environment="SOC_SERVER_URL=http://192.168.1.100:8080"
+Environment="SENSOR_ID=nanopi-sensor-01"
+Environment="SENSOR_LOCATION=Building A - VLAN 10"
+
+# Restart on failure
+Restart=on-failure
+RestartSec=10
+
+# Security
+PrivateTmp=yes
+NoNewPrivileges=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=netmonitor-sensor
+
+[Install]
+WantedBy=multi-user.target

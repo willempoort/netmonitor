@@ -1322,6 +1322,115 @@ function playAlertSound(severity) {
     }
 }
 
+// ==================== Sensors ====================
+
+async function loadSensors() {
+    try {
+        const response = await fetch('/api/sensors');
+        const result = await response.json();
+
+        if (result.success) {
+            updateSensorsTable(result.data);
+        }
+    } catch (error) {
+        console.error('[SENSORS] Error loading sensors:', error);
+    }
+}
+
+function updateSensorsTable(sensors) {
+    const tbody = document.getElementById('sensors-table');
+    const countBadge = document.getElementById('sensors-count');
+    const onlineBadge = document.getElementById('sensors-online');
+
+    if (!sensors || sensors.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No sensors registered</td></tr>';
+        countBadge.textContent = '0';
+        onlineBadge.textContent = '0';
+        return;
+    }
+
+    // Count online sensors
+    const online = sensors.filter(s => s.computed_status === 'online').length;
+
+    countBadge.textContent = sensors.length;
+    onlineBadge.textContent = online;
+
+    tbody.innerHTML = '';
+
+    sensors.forEach(sensor => {
+        const row = document.createElement('tr');
+
+        // Status badge
+        let statusBadge = '';
+        let statusClass = '';
+        switch(sensor.computed_status) {
+            case 'online':
+                statusBadge = '<span class="badge bg-success"><i class="bi bi-circle-fill"></i> Online</span>';
+                break;
+            case 'warning':
+                statusBadge = '<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle"></i> Warning</span>';
+                break;
+            default:
+                statusBadge = '<span class="badge bg-danger"><i class="bi bi-x-circle"></i> Offline</span>';
+        }
+
+        // Format last seen
+        let lastSeen = 'Never';
+        if (sensor.last_seen) {
+            const diff = Date.now() - new Date(sensor.last_seen);
+            const seconds = Math.floor(diff / 1000);
+            if (seconds < 60) {
+                lastSeen = `${seconds}s ago`;
+            } else if (seconds < 3600) {
+                lastSeen = `${Math.floor(seconds / 60)}m ago`;
+            } else if (seconds < 86400) {
+                lastSeen = `${Math.floor(seconds / 3600)}h ago`;
+            } else {
+                lastSeen = new Date(sensor.last_seen).toLocaleString('nl-NL');
+            }
+        }
+
+        // CPU and RAM with color coding
+        const cpuClass = sensor.cpu_percent > 80 ? 'text-danger' : sensor.cpu_percent > 60 ? 'text-warning' : 'text-success';
+        const ramClass = sensor.memory_percent > 80 ? 'text-danger' : sensor.memory_percent > 60 ? 'text-warning' : 'text-success';
+
+        row.innerHTML = `
+            <td>${statusBadge}</td>
+            <td>
+                <strong>${sensor.hostname}</strong><br>
+                <small class="text-muted">${sensor.sensor_id}</small>
+            </td>
+            <td>${sensor.location || '<span class="text-muted">-</span>'}</td>
+            <td class="${cpuClass}">
+                ${sensor.cpu_percent != null ? sensor.cpu_percent.toFixed(1) + '%' : '<span class="text-muted">-</span>'}
+            </td>
+            <td class="${ramClass}">
+                ${sensor.memory_percent != null ? sensor.memory_percent.toFixed(1) + '%' : '<span class="text-muted">-</span>'}
+            </td>
+            <td>
+                ${sensor.packets_captured != null ? sensor.packets_captured.toLocaleString() : '<span class="text-muted">-</span>'}
+            </td>
+            <td>
+                <span class="badge ${sensor.alerts_24h > 0 ? 'bg-danger' : 'bg-secondary'}">
+                    ${sensor.alerts_24h || 0}
+                </span>
+            </td>
+            <td><small>${lastSeen}</small></td>
+        `;
+
+        tbody.appendChild(row);
+    });
+}
+
+// Load sensors on page load and refresh every 30 seconds
+document.addEventListener('DOMContentLoaded', function() {
+    // Initial load
+    setTimeout(loadSensors, 2000);  // Load after dashboard data
+
+    // Auto-refresh every 30 seconds
+    setInterval(loadSensors, 30000);
+});
+
 // ==================== Export for debugging ====================
 
 window.dashboardDebug = {
@@ -1329,5 +1438,6 @@ window.dashboardDebug = {
     trafficChart,
     alertPieChart,
     loadDashboardData,
-    updateMetrics
+    updateMetrics,
+    loadSensors
 };
