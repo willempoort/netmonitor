@@ -133,8 +133,13 @@ class SensorClient:
 
         # Initialize threat feeds
         if self.config.get('threat_feeds', {}).get('enabled', False):
-            self.threat_feeds = ThreatFeedManager(self.config)
-            self.logger.info("Threat Feed Manager enabled")
+            try:
+                cache_dir = self.config.get('threat_feeds', {}).get('cache_dir', '/var/cache/netmonitor/feeds')
+                self.threat_feeds = ThreatFeedManager(cache_dir=cache_dir)
+                self.logger.info("Threat Feed Manager enabled")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize threat feeds: {e}")
+                self.threat_feeds = None
         else:
             self.threat_feeds = None
 
@@ -144,10 +149,15 @@ class SensorClient:
 
         # Initialize AbuseIPDB client
         if self.config.get('abuseipdb', {}).get('enabled', False):
-            api_key = self.config['abuseipdb'].get('api_key')
+            api_key = self.config.get('abuseipdb', {}).get('api_key', '')
             if api_key:
-                self.abuseipdb = AbuseIPDBClient(self.config)
-                self.logger.info("AbuseIPDB client enabled")
+                try:
+                    rate_limit = self.config.get('abuseipdb', {}).get('rate_limit', 1000)
+                    self.abuseipdb = AbuseIPDBClient(api_key, rate_limit=rate_limit)
+                    self.logger.info("AbuseIPDB client enabled")
+                except Exception as e:
+                    self.logger.error(f"Failed to initialize AbuseIPDB: {e}")
+                    self.abuseipdb = None
             else:
                 self.abuseipdb = None
         else:
