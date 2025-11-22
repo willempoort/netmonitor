@@ -115,6 +115,38 @@ class DatabaseManager:
                 );
             ''')
 
+            # Remote sensors table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS sensors (
+                    id SERIAL PRIMARY KEY,
+                    sensor_id TEXT UNIQUE NOT NULL,
+                    hostname TEXT NOT NULL,
+                    location TEXT,
+                    ip_address INET,
+                    version TEXT,
+                    status TEXT DEFAULT 'offline',
+                    registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    last_seen TIMESTAMPTZ,
+                    config JSONB
+                );
+            ''')
+
+            # Sensor metrics table (will become hypertable)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS sensor_metrics (
+                    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    sensor_id TEXT NOT NULL,
+                    cpu_percent REAL,
+                    memory_percent REAL,
+                    disk_percent REAL,
+                    uptime_seconds BIGINT,
+                    packets_captured BIGINT,
+                    alerts_sent BIGINT,
+                    network_interface TEXT,
+                    FOREIGN KEY (sensor_id) REFERENCES sensors(sensor_id) ON DELETE CASCADE
+                );
+            ''')
+
             conn.commit()
             self.logger.info("Database schema created")
 
@@ -130,6 +162,20 @@ class DatabaseManager:
                     END IF;
                 END $$;
             """)
+
+            # Migration: Add sensor_id column to alerts table
+            cursor.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'alerts' AND column_name = 'sensor_id'
+                    ) THEN
+                        ALTER TABLE alerts ADD COLUMN sensor_id TEXT DEFAULT 'central';
+                    END IF;
+                END $$;
+            """)
+
             conn.commit()
 
         except Exception as e:
@@ -207,11 +253,28 @@ class DatabaseManager:
                 """)
                 self.logger.info("Created hypertable: system_stats")
 
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT 1 FROM timescaledb_information.hypertables
+                    WHERE hypertable_name = 'sensor_metrics'
+                );
+            """)
+            if not cursor.fetchone()[0]:
+                cursor.execute("""
+                    SELECT create_hypertable('sensor_metrics', 'timestamp',
+                        chunk_time_interval => INTERVAL '1 day',
+                        if_not_exists => TRUE
+                    );
+                """)
+                self.logger.info("Created hypertable: sensor_metrics")
+
             # Create indices for fast queries
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_timestamp ON alerts (timestamp DESC);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts (severity);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_source_ip ON alerts (source_ip);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_threat_type ON alerts (threat_type);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_sensor_id ON alerts (sensor_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sensor_metrics_sensor_id ON sensor_metrics (sensor_id, timestamp DESC);")
 
             # Create continuous aggregate for alert statistics (pre-computed every hour)
             cursor.execute("""
@@ -740,6 +803,229 @@ class DatabaseManager:
             'top_talkers': self.get_top_talkers(limit=10),
             'current_metrics': self.get_latest_system_stats()
         }
+
+    # ==================== Sensor Management Methods ====================
+
+    def register_sensor(self, sensor_id: str, hostname: str, location: str = None,
+                       ip_address: str = None, version: str = None, config: Dict = None) -> bool:
+        """Register a new remote sensor or update existing one"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            # Upsert sensor
+            cursor.execute('''
+                INSERT INTO sensors (sensor_id, hostname, location, ip_address, version, status, last_seen, config)
+                VALUES (%s, %s, %s, %s, %s, 'online', NOW(), %s)
+                ON CONFLICT (sensor_id)
+                DO UPDATE SET
+                    hostname = EXCLUDED.hostname,
+                    location = EXCLUDED.location,
+                    ip_address = EXCLUDED.ip_address,
+                    version = EXCLUDED.version,
+                    status = 'online',
+                    last_seen = NOW(),
+                    config = EXCLUDED.config
+            ''', (sensor_id, hostname, location, ip_address, version, json.dumps(config) if config else None))
+
+            conn.commit()
+            self.logger.info(f"Sensor registered: {sensor_id} ({hostname})")
+            return True
+
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error registering sensor: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    def update_sensor_heartbeat(self, sensor_id: str) -> bool:
+        """Update sensor last_seen timestamp"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE sensors
+                SET last_seen = NOW(), status = 'online'
+                WHERE sensor_id = %s
+            ''', (sensor_id,))
+            conn.commit()
+            return True
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error updating sensor heartbeat: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    def get_sensors(self) -> List[Dict]:
+        """Get all registered sensors with their latest metrics"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            cursor.execute('''
+                SELECT
+                    s.sensor_id,
+                    s.hostname,
+                    s.location,
+                    s.ip_address::text as ip_address,
+                    s.version,
+                    s.status,
+                    s.registered_at,
+                    s.last_seen,
+                    CASE
+                        WHEN s.last_seen > NOW() - INTERVAL '2 minutes' THEN 'online'
+                        WHEN s.last_seen > NOW() - INTERVAL '10 minutes' THEN 'warning'
+                        ELSE 'offline'
+                    END as computed_status,
+                    sm.cpu_percent,
+                    sm.memory_percent,
+                    sm.disk_percent,
+                    sm.uptime_seconds,
+                    sm.packets_captured,
+                    sm.alerts_sent,
+                    sm.network_interface
+                FROM sensors s
+                LEFT JOIN LATERAL (
+                    SELECT *
+                    FROM sensor_metrics
+                    WHERE sensor_id = s.sensor_id
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                ) sm ON true
+                ORDER BY s.hostname
+            ''')
+
+            sensors = [dict(row) for row in cursor.fetchall()]
+
+            # Get alert counts for each sensor
+            for sensor in sensors:
+                cursor.execute('''
+                    SELECT COUNT(*) as count
+                    FROM alerts
+                    WHERE sensor_id = %s AND timestamp > NOW() - INTERVAL '24 hours'
+                ''', (sensor['sensor_id'],))
+                sensor['alerts_24h'] = cursor.fetchone()['count']
+
+            return sensors
+
+        except Exception as e:
+            self.logger.error(f"Error getting sensors: {e}")
+            return []
+        finally:
+            self._return_connection(conn)
+
+    def get_sensor_by_id(self, sensor_id: str) -> Optional[Dict]:
+        """Get specific sensor details"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute('''
+                SELECT
+                    sensor_id,
+                    hostname,
+                    location,
+                    ip_address::text as ip_address,
+                    version,
+                    status,
+                    registered_at,
+                    last_seen,
+                    config
+                FROM sensors
+                WHERE sensor_id = %s
+            ''', (sensor_id,))
+
+            result = cursor.fetchone()
+            return dict(result) if result else None
+
+        except Exception as e:
+            self.logger.error(f"Error getting sensor: {e}")
+            return None
+        finally:
+            self._return_connection(conn)
+
+    def save_sensor_metrics(self, sensor_id: str, cpu_percent: float = None,
+                          memory_percent: float = None, disk_percent: float = None,
+                          uptime_seconds: int = None, packets_captured: int = None,
+                          alerts_sent: int = None, network_interface: str = None) -> bool:
+        """Save sensor performance metrics"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO sensor_metrics
+                (sensor_id, cpu_percent, memory_percent, disk_percent, uptime_seconds,
+                 packets_captured, alerts_sent, network_interface)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ''', (sensor_id, cpu_percent, memory_percent, disk_percent, uptime_seconds,
+                  packets_captured, alerts_sent, network_interface))
+            conn.commit()
+            return True
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error saving sensor metrics: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    def get_sensor_metrics(self, sensor_id: str, hours: int = 24) -> List[Dict]:
+        """Get sensor metrics history"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cutoff = datetime.now() - timedelta(hours=hours)
+
+            cursor.execute('''
+                SELECT
+                    timestamp,
+                    cpu_percent,
+                    memory_percent,
+                    disk_percent,
+                    uptime_seconds,
+                    packets_captured,
+                    alerts_sent,
+                    network_interface
+                FROM sensor_metrics
+                WHERE sensor_id = %s AND timestamp > %s
+                ORDER BY timestamp DESC
+            ''', (sensor_id, cutoff))
+
+            return [dict(row) for row in cursor.fetchall()]
+
+        except Exception as e:
+            self.logger.error(f"Error getting sensor metrics: {e}")
+            return []
+        finally:
+            self._return_connection(conn)
+
+    def insert_alert_from_sensor(self, sensor_id: str, severity: str, threat_type: str,
+                                 source_ip: str = None, destination_ip: str = None,
+                                 description: str = None, metadata: Dict = None,
+                                 timestamp: datetime = None) -> bool:
+        """Insert alert from remote sensor"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            ts = timestamp if timestamp else datetime.now()
+
+            cursor.execute('''
+                INSERT INTO alerts
+                (timestamp, severity, threat_type, source_ip, destination_ip, description, metadata, sensor_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ''', (ts, severity, threat_type, source_ip, destination_ip, description,
+                  json.dumps(metadata) if metadata else None, sensor_id))
+
+            conn.commit()
+            return True
+
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error inserting alert from sensor: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
 
     def close(self):
         """Close all connections in the pool"""
