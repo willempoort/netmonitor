@@ -1431,6 +1431,266 @@ document.addEventListener('DOMContentLoaded', function() {
     setInterval(loadSensors, 30000);
 });
 
+// ==================== Sensor Command Center ====================
+
+function populateCommandSensorSelects() {
+    fetch('/api/sensors')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.data) {
+                const commandSelect = document.getElementById('command-sensor-select');
+                const whitelistSelect = document.getElementById('whitelist-sensor-select');
+
+                // Clear existing options except first
+                commandSelect.innerHTML = '<option value="">-- Select Sensor --</option>';
+                whitelistSelect.innerHTML = '<option value="">-- Select Sensor --</option>';
+
+                data.data.forEach(sensor => {
+                    const option1 = document.createElement('option');
+                    option1.value = sensor.sensor_id;
+                    option1.textContent = `${sensor.hostname} (${sensor.sensor_id})`;
+                    commandSelect.appendChild(option1);
+
+                    const option2 = document.createElement('option');
+                    option2.value = sensor.sensor_id;
+                    option2.textContent = `${sensor.hostname} (${sensor.sensor_id})`;
+                    whitelistSelect.appendChild(option2);
+                });
+            }
+        })
+        .catch(error => console.error('Error loading sensors for selects:', error));
+}
+
+// Show/hide params based on command type
+document.getElementById('command-type-select').addEventListener('change', function() {
+    const paramsContainer = document.getElementById('command-params-container');
+    const commandType = this.value;
+
+    if (commandType === 'change_interval') {
+        paramsContainer.style.display = 'block';
+        document.getElementById('command-params').placeholder = '{"interval": 60}';
+    } else {
+        paramsContainer.style.display = 'none';
+    }
+});
+
+// Send command button
+document.getElementById('send-command-btn').addEventListener('click', function() {
+    const sensorId = document.getElementById('command-sensor-select').value;
+    const commandType = document.getElementById('command-type-select').value;
+    const paramsInput = document.getElementById('command-params').value;
+    const resultDiv = document.getElementById('command-result');
+    const alertDiv = resultDiv.querySelector('.alert');
+
+    if (!sensorId || !commandType) {
+        alertDiv.className = 'alert alert-warning';
+        alertDiv.textContent = 'Please select sensor and command';
+        resultDiv.style.display = 'block';
+        return;
+    }
+
+    let parameters = {};
+    if (commandType === 'change_interval' && paramsInput) {
+        try {
+            parameters = JSON.parse(paramsInput);
+        } catch (e) {
+            alertDiv.className = 'alert alert-danger';
+            alertDiv.textContent = 'Invalid JSON parameters';
+            resultDiv.style.display = 'block';
+            return;
+        }
+    }
+
+    // Show loading
+    alertDiv.className = 'alert alert-info';
+    alertDiv.textContent = 'Sending command...';
+    resultDiv.style.display = 'block';
+
+    fetch(`/api/sensors/${sensorId}/commands`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            command_type: commandType,
+            parameters: parameters
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alertDiv.className = 'alert alert-success';
+            alertDiv.innerHTML = `<strong>Success!</strong> ${data.message}<br><small>Command ID: ${data.command_id}</small>`;
+        } else {
+            alertDiv.className = 'alert alert-danger';
+            alertDiv.textContent = 'Error: ' + data.error;
+        }
+    })
+    .catch(error => {
+        alertDiv.className = 'alert alert-danger';
+        alertDiv.textContent = 'Error: ' + error.message;
+    });
+});
+
+// Command history button
+document.getElementById('command-history-btn').addEventListener('click', function() {
+    const sensorId = document.getElementById('command-sensor-select').value;
+
+    if (!sensorId) {
+        alert('Please select a sensor first');
+        return;
+    }
+
+    fetch(`/api/sensors/${sensorId}/commands/history`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                let html = '<h6>Command History for ' + sensorId + '</h6><ul class="list-group">';
+                data.commands.forEach(cmd => {
+                    const statusClass = cmd.status === 'completed' ? 'success' : cmd.status === 'failed' ? 'danger' : 'warning';
+                    html += `<li class="list-group-item bg-dark text-light border-secondary">
+                        <strong>${cmd.command_type}</strong>
+                        <span class="badge bg-${statusClass}">${cmd.status}</span><br>
+                        <small>${new Date(cmd.created_at).toLocaleString()}</small>
+                    </li>`;
+                });
+                html += '</ul>';
+
+                const resultDiv = document.getElementById('command-result');
+                const alertDiv = resultDiv.querySelector('.alert');
+                alertDiv.className = 'alert alert-info';
+                alertDiv.innerHTML = html;
+                resultDiv.style.display = 'block';
+            }
+        })
+        .catch(error => console.error('Error loading command history:', error));
+});
+
+// ==================== Whitelist Management ====================
+
+function loadWhitelist() {
+    fetch('/api/whitelist')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                updateWhitelistTable(data.entries);
+                document.getElementById('whitelist-count').textContent = data.entries.length;
+            }
+        })
+        .catch(error => console.error('Error loading whitelist:', error));
+}
+
+function updateWhitelistTable(entries) {
+    const tbody = document.getElementById('whitelist-table');
+    tbody.innerHTML = '';
+
+    if (entries.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No whitelist entries</td></tr>';
+        return;
+    }
+
+    entries.forEach(entry => {
+        const row = document.createElement('tr');
+        const scopeBadge = entry.scope === 'global'
+            ? '<span class="badge bg-primary">Global</span>'
+            : '<span class="badge bg-info">Sensor</span>';
+
+        row.innerHTML = `
+            <td><code>${entry.ip_cidr}</code></td>
+            <td>${entry.description || '<span class="text-muted">-</span>'}</td>
+            <td>${scopeBadge}</td>
+            <td>${entry.sensor_id || '<span class="text-muted">-</span>'}</td>
+            <td><small>${new Date(entry.created_at).toLocaleString()}</small></td>
+            <td>
+                <button class="btn btn-sm btn-danger" onclick="deleteWhitelistEntry(${entry.id})">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+// Show/hide sensor select based on scope
+document.getElementById('whitelist-scope').addEventListener('change', function() {
+    const sensorContainer = document.getElementById('whitelist-sensor-container');
+    sensorContainer.style.display = this.value === 'sensor' ? 'block' : 'none';
+});
+
+// Add whitelist entry
+document.getElementById('add-whitelist-btn').addEventListener('click', function() {
+    const ipCidr = document.getElementById('whitelist-ip').value;
+    const description = document.getElementById('whitelist-description').value;
+    const scope = document.getElementById('whitelist-scope').value;
+    const sensorId = scope === 'sensor' ? document.getElementById('whitelist-sensor-select').value : null;
+
+    if (!ipCidr) {
+        alert('Please enter IP/CIDR');
+        return;
+    }
+
+    if (scope === 'sensor' && !sensorId) {
+        alert('Please select a sensor for sensor-specific whitelist');
+        return;
+    }
+
+    fetch('/api/whitelist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            ip_cidr: ipCidr,
+            description: description,
+            scope: scope,
+            sensor_id: sensorId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Clear form
+            document.getElementById('whitelist-ip').value = '';
+            document.getElementById('whitelist-description').value = '';
+            document.getElementById('whitelist-scope').value = 'global';
+            document.getElementById('whitelist-sensor-container').style.display = 'none';
+
+            // Reload whitelist
+            loadWhitelist();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => alert('Error: ' + error.message));
+});
+
+// Delete whitelist entry
+window.deleteWhitelistEntry = function(entryId) {
+    if (!confirm('Are you sure you want to delete this whitelist entry?')) {
+        return;
+    }
+
+    fetch(`/api/whitelist/${entryId}`, {
+        method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            loadWhitelist();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => alert('Error: ' + error.message));
+};
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(() => {
+        populateCommandSensorSelects();
+        loadWhitelist();
+    }, 2000);
+
+    // Auto-refresh whitelist every 60 seconds
+    setInterval(loadWhitelist, 60000);
+});
+
 // ==================== Export for debugging ====================
 
 window.dashboardDebug = {

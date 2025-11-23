@@ -168,6 +168,27 @@ class DatabaseManager:
                 ON sensor_commands(sensor_id, status, created_at);
             ''')
 
+            # IP Whitelist table for centralized whitelist management
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS ip_whitelists (
+                    id SERIAL PRIMARY KEY,
+                    ip_cidr CIDR NOT NULL,
+                    description TEXT,
+                    scope TEXT DEFAULT 'global',
+                    sensor_id TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    created_by TEXT,
+                    FOREIGN KEY (sensor_id) REFERENCES sensors(sensor_id) ON DELETE CASCADE,
+                    CONSTRAINT valid_scope CHECK (scope IN ('global', 'sensor'))
+                );
+            ''')
+
+            # Index for faster whitelist lookups
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_ip_whitelists_scope
+                ON ip_whitelists(scope, sensor_id);
+            ''')
+
             conn.commit()
             self.logger.info("Database schema created")
 
@@ -1150,6 +1171,118 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"Error getting command history: {e}")
             return []
+        finally:
+            self._return_connection(conn)
+
+    # ==================== Whitelist Management Methods ====================
+
+    def add_whitelist_entry(self, ip_cidr: str, description: str = None,
+                          scope: str = 'global', sensor_id: str = None,
+                          created_by: str = 'system') -> Optional[int]:
+        """Add IP/CIDR to whitelist"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            # Validate scope
+            if scope == 'sensor' and not sensor_id:
+                self.logger.error("sensor_id required for sensor-scoped whitelist")
+                return None
+
+            cursor.execute('''
+                INSERT INTO ip_whitelists (ip_cidr, description, scope, sensor_id, created_by)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
+            ''', (ip_cidr, description, scope, sensor_id, created_by))
+
+            entry_id = cursor.fetchone()[0]
+            conn.commit()
+            self.logger.info(f"Whitelist entry added: {ip_cidr} ({scope})")
+            return entry_id
+
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error adding whitelist entry: {e}")
+            return None
+        finally:
+            self._return_connection(conn)
+
+    def get_whitelist(self, scope: str = None, sensor_id: str = None) -> List[Dict]:
+        """Get whitelist entries"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            query = 'SELECT * FROM ip_whitelists WHERE 1=1'
+            params = []
+
+            if scope:
+                query += ' AND scope = %s'
+                params.append(scope)
+
+            if sensor_id:
+                query += ' AND (sensor_id = %s OR scope = \'global\')'
+                params.append(sensor_id)
+
+            query += ' ORDER BY created_at DESC'
+
+            cursor.execute(query, params)
+            entries = [dict(row) for row in cursor.fetchall()]
+
+            # Convert CIDR to string
+            for entry in entries:
+                if entry.get('ip_cidr'):
+                    entry['ip_cidr'] = str(entry['ip_cidr'])
+
+            return entries
+
+        except Exception as e:
+            self.logger.error(f"Error getting whitelist: {e}")
+            return []
+        finally:
+            self._return_connection(conn)
+
+    def delete_whitelist_entry(self, entry_id: int) -> bool:
+        """Delete whitelist entry"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM ip_whitelists WHERE id = %s', (entry_id,))
+            conn.commit()
+            self.logger.info(f"Whitelist entry {entry_id} deleted")
+            return True
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error deleting whitelist entry: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    def check_ip_whitelisted(self, ip_address: str, sensor_id: str = None) -> bool:
+        """Check if IP is whitelisted (for sensor or globally)"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            # Check both global and sensor-specific whitelists
+            if sensor_id:
+                cursor.execute('''
+                    SELECT COUNT(*) FROM ip_whitelists
+                    WHERE %s << ip_cidr
+                      AND (scope = 'global' OR (scope = 'sensor' AND sensor_id = %s))
+                ''', (ip_address, sensor_id))
+            else:
+                cursor.execute('''
+                    SELECT COUNT(*) FROM ip_whitelists
+                    WHERE %s << ip_cidr AND scope = 'global'
+                ''', (ip_address,))
+
+            count = cursor.fetchone()[0]
+            return count > 0
+
+        except Exception as e:
+            self.logger.error(f"Error checking whitelist: {e}")
+            return False
         finally:
             self._return_connection(conn)
 

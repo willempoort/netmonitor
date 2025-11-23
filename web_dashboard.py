@@ -502,6 +502,83 @@ def api_get_command_history(sensor_id):
         logger.error(f"Error getting command history for sensor {sensor_id}: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# ==================== Whitelist Management Endpoints ====================
+
+@app.route('/api/whitelist', methods=['GET'])
+def api_get_whitelist():
+    """Get whitelist entries"""
+    try:
+        scope = request.args.get('scope')
+        sensor_id = request.args.get('sensor_id')
+        entries = db.get_whitelist(scope=scope, sensor_id=sensor_id)
+        return jsonify({'success': True, 'entries': entries})
+    except Exception as e:
+        logger.error(f"Error getting whitelist: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/whitelist', methods=['POST'])
+def api_add_whitelist():
+    """Add whitelist entry"""
+    try:
+        data = request.get_json()
+        ip_cidr = data.get('ip_cidr')
+        description = data.get('description', '')
+        scope = data.get('scope', 'global')
+        sensor_id = data.get('sensor_id')
+        created_by = data.get('created_by', 'dashboard')
+
+        if not ip_cidr:
+            return jsonify({'success': False, 'error': 'ip_cidr required'}), 400
+
+        entry_id = db.add_whitelist_entry(
+            ip_cidr=ip_cidr,
+            description=description,
+            scope=scope,
+            sensor_id=sensor_id,
+            created_by=created_by
+        )
+
+        if entry_id:
+            return jsonify({
+                'success': True,
+                'entry_id': entry_id,
+                'message': f'Whitelist entry added: {ip_cidr}'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to add whitelist entry'}), 500
+
+    except Exception as e:
+        logger.error(f"Error adding whitelist entry: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/whitelist/<int:entry_id>', methods=['DELETE'])
+def api_delete_whitelist(entry_id):
+    """Delete whitelist entry"""
+    try:
+        success = db.delete_whitelist_entry(entry_id)
+        if success:
+            return jsonify({'success': True, 'message': 'Whitelist entry deleted'})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to delete entry'}), 500
+    except Exception as e:
+        logger.error(f"Error deleting whitelist entry: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/whitelist/check/<ip_address>', methods=['GET'])
+def api_check_whitelist(ip_address):
+    """Check if IP is whitelisted"""
+    try:
+        sensor_id = request.args.get('sensor_id')
+        is_whitelisted = db.check_ip_whitelisted(ip_address, sensor_id=sensor_id)
+        return jsonify({
+            'success': True,
+            'ip_address': ip_address,
+            'is_whitelisted': is_whitelisted
+        })
+    except Exception as e:
+        logger.error(f"Error checking whitelist: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 # ==================== WebSocket Events ====================
 
