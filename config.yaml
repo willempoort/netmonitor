@@ -34,7 +34,7 @@ thresholds:
   dns_tunnel:
     enabled: true
     query_length_threshold: 50  # DNS queries langer dan dit zijn verdacht
-    queries_per_minute: 30
+    queries_per_minute: 150     # Verhoogd voor netwerken met monitoring sensoren
 
   # Beaconing detection - detecteert regelmatige callbacks naar C&C servers
   beaconing:

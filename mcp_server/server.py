@@ -1434,11 +1434,24 @@ class NetMonitorMCPServer:
             # Store old value
             old_value = config['thresholds'][detection_type][setting]
 
-            # Validate value type matches old value type
-            if type(value) != type(old_value):
+            # Auto-convert value to match old value type
+            try:
+                if isinstance(old_value, bool):
+                    # Handle bool first (before int, since bool is subclass of int in Python)
+                    if isinstance(value, str):
+                        value = value.lower() in ('true', '1', 'yes', 'on')
+                    else:
+                        value = bool(value)
+                elif isinstance(old_value, int):
+                    value = int(value)
+                elif isinstance(old_value, float):
+                    value = float(value)
+                elif isinstance(old_value, str):
+                    value = str(value)
+            except (ValueError, TypeError) as e:
                 return {
                     "success": False,
-                    "error": f"Type mismatch: expected {type(old_value).__name__}, got {type(value).__name__}",
+                    "error": f"Cannot convert value '{value}' to {type(old_value).__name__}: {e}",
                     "old_value": old_value,
                     "old_type": type(old_value).__name__
                 }
