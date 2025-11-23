@@ -17,7 +17,7 @@ from scapy.layers.dns import DNS, DNSQR
 class ThreatDetector:
     """Detecteert verschillende soorten verdacht netwerkverkeer"""
 
-    def __init__(self, config, threat_feed_manager=None, behavior_detector=None, abuseipdb_client=None):
+    def __init__(self, config, threat_feed_manager=None, behavior_detector=None, abuseipdb_client=None, db_manager=None, sensor_id=None):
         self.config = config
         self.logger = logging.getLogger('NetMonitor.Detector')
 
@@ -25,6 +25,8 @@ class ThreatDetector:
         self.threat_feeds = threat_feed_manager
         self.behavior_detector = behavior_detector
         self.abuseipdb = abuseipdb_client
+        self.db_manager = db_manager  # Optional: for database whitelist checks
+        self.sensor_id = sensor_id     # Optional: for sensor-specific whitelists
 
         # Tracking data structures
         self.port_scan_tracker = defaultdict(lambda: {
@@ -36,8 +38,8 @@ class ThreatDetector:
         self.connection_tracker = defaultdict(lambda: deque(maxlen=1000))
         self.dns_tracker = defaultdict(lambda: deque(maxlen=100))
 
-        # Parsed whitelist/blacklist
-        self.whitelist = self._parse_ip_list(config.get('whitelist', []))
+        # Parsed whitelist/blacklist from config
+        self.config_whitelist = self._parse_ip_list(config.get('whitelist', []))
         self.blacklist = self._parse_ip_list(config.get('blacklist', []))
 
         self.logger.info("Threat Detector geïnitialiseerd")
@@ -67,6 +69,22 @@ class ThreatDetector:
             pass
         return False
 
+    def _is_whitelisted(self, ip_str):
+        """Check if IP is whitelisted (config OR database)"""
+        # First check config whitelist (fast, in-memory)
+        if self._is_in_list(ip_str, self.config_whitelist):
+            return True
+
+        # Then check database whitelist (if available)
+        if self.db_manager:
+            try:
+                if self.db_manager.check_ip_whitelisted(ip_str, sensor_id=self.sensor_id):
+                    return True
+            except Exception as e:
+                self.logger.warning(f"Error checking database whitelist: {e}")
+
+        return False
+
     def analyze_packet(self, packet):
         """
         Analyseer een packet en detecteer threats
@@ -81,8 +99,8 @@ class ThreatDetector:
         src_ip = ip_layer.src
         dst_ip = ip_layer.dst
 
-        # Skip whitelisted IPs
-        if self._is_in_list(src_ip, self.whitelist):
+        # Skip whitelisted IPs (config + database)
+        if self._is_whitelisted(src_ip):
             return threats
 
         # Check blacklist (static config)

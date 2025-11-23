@@ -114,7 +114,8 @@ class NetworkMonitor:
             self.config,
             threat_feed_manager=self.threat_feeds,
             behavior_detector=self.behavior_detector,
-            abuseipdb_client=self.abuseipdb
+            abuseipdb_client=self.abuseipdb,
+            db_manager=self.db  # Pass database for whitelist checks
         )
         self.alert_manager = AlertManager(self.config)
 
