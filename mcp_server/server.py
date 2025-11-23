@@ -484,6 +484,101 @@ class NetMonitorMCPServer:
                         },
                         "required": ["detection_type", "enabled"]
                     }
+                ),
+                # ==================== Sensor Management Tools ====================
+                Tool(
+                    name="get_sensor_status",
+                    description="Get status of all remote sensors including health metrics and alert counts",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "status_filter": {
+                                "type": "string",
+                                "description": "Filter by status: 'online', 'warning', or 'offline' (optional)",
+                                "enum": ["online", "warning", "offline"]
+                            }
+                        }
+                    }
+                ),
+                Tool(
+                    name="get_sensor_details",
+                    description="Get detailed information about a specific sensor",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "sensor_id": {
+                                "type": "string",
+                                "description": "Sensor ID to query"
+                            }
+                        },
+                        "required": ["sensor_id"]
+                    }
+                ),
+                Tool(
+                    name="send_sensor_command",
+                    description="Send a command to a remote sensor (WRITE operation)",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "sensor_id": {
+                                "type": "string",
+                                "description": "Target sensor ID"
+                            },
+                            "command_type": {
+                                "type": "string",
+                                "description": "Command to execute",
+                                "enum": ["restart", "change_interval", "get_status", "flush_buffer", "update_config"]
+                            },
+                            "parameters": {
+                                "type": "object",
+                                "description": "Command parameters (e.g., {'interval': 60} for change_interval)"
+                            }
+                        },
+                        "required": ["sensor_id", "command_type"]
+                    }
+                ),
+                Tool(
+                    name="get_sensor_alerts",
+                    description="Get alerts from a specific sensor",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "sensor_id": {
+                                "type": "string",
+                                "description": "Sensor ID to query"
+                            },
+                            "hours": {
+                                "type": "number",
+                                "description": "Lookback period in hours (default: 24)",
+                                "default": 24
+                            },
+                            "limit": {
+                                "type": "number",
+                                "description": "Maximum number of alerts (default: 50)",
+                                "default": 50
+                            }
+                        },
+                        "required": ["sensor_id"]
+                    }
+                ),
+                Tool(
+                    name="get_sensor_command_history",
+                    description="Get command execution history for a sensor",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "sensor_id": {
+                                "type": "string",
+                                "description": "Sensor ID to query"
+                            },
+                            "limit": {
+                                "type": "number",
+                                "description": "Maximum number of commands (default: 20)",
+                                "default": 20
+                            }
+                        },
+                        "required": ["sensor_id"]
+                    }
                 )
             ]
 
@@ -536,6 +631,18 @@ class NetMonitorMCPServer:
                     result = await self._update_threshold(**arguments)
                 elif name == "toggle_detection_rule":
                     result = await self._toggle_detection_rule(**arguments)
+
+                # Sensor Management Tools
+                elif name == "get_sensor_status":
+                    result = await self._get_sensor_status(**arguments)
+                elif name == "get_sensor_details":
+                    result = await self._get_sensor_details(**arguments)
+                elif name == "send_sensor_command":
+                    result = await self._send_sensor_command(**arguments)
+                elif name == "get_sensor_alerts":
+                    result = await self._get_sensor_alerts(**arguments)
+                elif name == "get_sensor_command_history":
+                    result = await self._get_sensor_command_history(**arguments)
 
                 else:
                     raise ValueError(f"Unknown tool: {name}")
@@ -1442,6 +1549,281 @@ class NetMonitorMCPServer:
                 "success": False,
                 "error": str(e)
             }
+
+    # ==================== Sensor Management Tool Implementations ====================
+
+    async def _get_sensor_status(self, status_filter: str = None) -> dict:
+        """
+        Get status of all remote sensors
+
+        Args:
+            status_filter: Filter by status (optional)
+
+        Returns:
+            Sensor status information
+        """
+        logger.info(f"Getting sensor status (filter={status_filter})")
+
+        try:
+            # Import database module to access sensor methods
+            sys.path.insert(0, str(Path(__file__).parent.parent))
+            from database import DatabaseManager
+
+            # Create DB connection with main credentials (not readonly)
+            host = os.environ.get('NETMONITOR_DB_HOST', 'localhost')
+            db_main = DatabaseManager(
+                host=host,
+                database='netmonitor',
+                user='netmonitor',
+                password='netmonitor'
+            )
+
+            sensors = db_main.get_sensors()
+            db_main.close()
+
+            # Apply status filter if provided
+            if status_filter:
+                sensors = [s for s in sensors if s.get('computed_status') == status_filter]
+
+            # Calculate summary statistics
+            total_sensors = len(sensors)
+            online_count = sum(1 for s in sensors if s.get('computed_status') == 'online')
+            warning_count = sum(1 for s in sensors if s.get('computed_status') == 'warning')
+            offline_count = sum(1 for s in sensors if s.get('computed_status') == 'offline')
+            total_alerts_24h = sum(s.get('alerts_24h', 0) for s in sensors)
+
+            return {
+                "total_sensors": total_sensors,
+                "status_summary": {
+                    "online": online_count,
+                    "warning": warning_count,
+                    "offline": offline_count
+                },
+                "total_alerts_24h": total_alerts_24h,
+                "filters_applied": {
+                    "status": status_filter
+                },
+                "sensors": sensors
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting sensor status: {e}")
+            return {"error": str(e)}
+
+    async def _get_sensor_details(self, sensor_id: str) -> dict:
+        """
+        Get detailed information about a specific sensor
+
+        Args:
+            sensor_id: Sensor ID to query
+
+        Returns:
+            Detailed sensor information
+        """
+        logger.info(f"Getting sensor details for {sensor_id}")
+
+        try:
+            sys.path.insert(0, str(Path(__file__).parent.parent))
+            from database import DatabaseManager
+
+            host = os.environ.get('NETMONITOR_DB_HOST', 'localhost')
+            db_main = DatabaseManager(
+                host=host,
+                database='netmonitor',
+                user='netmonitor',
+                password='netmonitor'
+            )
+
+            sensor = db_main.get_sensor_by_id(sensor_id)
+
+            if not sensor:
+                db_main.close()
+                return {"error": f"Sensor '{sensor_id}' not found"}
+
+            # Get metrics history
+            metrics = db_main.get_sensor_metrics(sensor_id, hours=24)
+
+            db_main.close()
+
+            return {
+                "sensor": sensor,
+                "metrics_24h": metrics[:20],  # Last 20 metrics
+                "metrics_count": len(metrics)
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting sensor details: {e}")
+            return {"error": str(e)}
+
+    async def _send_sensor_command(self, sensor_id: str, command_type: str,
+                                  parameters: dict = None) -> dict:
+        """
+        Send a command to a remote sensor
+
+        Args:
+            sensor_id: Target sensor ID
+            command_type: Command to execute
+            parameters: Command parameters
+
+        Returns:
+            Command creation result
+        """
+        logger.info(f"Sending command '{command_type}' to sensor {sensor_id}")
+
+        try:
+            sys.path.insert(0, str(Path(__file__).parent.parent))
+            from database import DatabaseManager
+
+            host = os.environ.get('NETMONITOR_DB_HOST', 'localhost')
+            db_main = DatabaseManager(
+                host=host,
+                database='netmonitor',
+                user='netmonitor',
+                password='netmonitor'
+            )
+
+            # Verify sensor exists
+            sensor = db_main.get_sensor_by_id(sensor_id)
+            if not sensor:
+                db_main.close()
+                return {"error": f"Sensor '{sensor_id}' not found"}
+
+            # Create command
+            command_id = db_main.create_sensor_command(
+                sensor_id=sensor_id,
+                command_type=command_type,
+                parameters=parameters
+            )
+
+            db_main.close()
+
+            if command_id:
+                return {
+                    "success": True,
+                    "command_id": command_id,
+                    "sensor_id": sensor_id,
+                    "command_type": command_type,
+                    "parameters": parameters,
+                    "message": f"Command '{command_type}' queued for sensor '{sensor_id}' (ID: {command_id})",
+                    "note": "Sensor will poll for this command within 30 seconds"
+                }
+            else:
+                return {"error": "Failed to create command"}
+
+        except Exception as e:
+            logger.error(f"Error sending sensor command: {e}")
+            return {"error": str(e)}
+
+    async def _get_sensor_alerts(self, sensor_id: str, hours: int = 24,
+                                limit: int = 50) -> dict:
+        """
+        Get alerts from a specific sensor
+
+        Args:
+            sensor_id: Sensor ID to query
+            hours: Lookback period in hours
+            limit: Maximum number of alerts
+
+        Returns:
+            Sensor alerts
+        """
+        logger.info(f"Getting alerts for sensor {sensor_id} (hours={hours}, limit={limit})")
+
+        try:
+            # Get alerts with sensor_id filter
+            cursor = self.db.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+            cursor.execute('''
+                SELECT
+                    id,
+                    timestamp,
+                    severity,
+                    threat_type,
+                    source_ip::text as source_ip,
+                    destination_ip::text as destination_ip,
+                    description,
+                    acknowledged
+                FROM alerts
+                WHERE sensor_id = %s
+                  AND timestamp > NOW() - INTERVAL '%s hours'
+                ORDER BY timestamp DESC
+                LIMIT %s
+            ''', (sensor_id, hours, limit))
+
+            alerts = [dict(row) for row in cursor.fetchall()]
+
+            # Calculate statistics
+            by_severity = {}
+            by_type = {}
+            for alert in alerts:
+                by_severity[alert['severity']] = by_severity.get(alert['severity'], 0) + 1
+                by_type[alert['threat_type']] = by_type.get(alert['threat_type'], 0) + 1
+
+            return {
+                "sensor_id": sensor_id,
+                "total_alerts": len(alerts),
+                "analysis_period_hours": hours,
+                "statistics": {
+                    "by_severity": by_severity,
+                    "by_type": by_type
+                },
+                "alerts": alerts
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting sensor alerts: {e}")
+            return {"error": str(e)}
+
+    async def _get_sensor_command_history(self, sensor_id: str, limit: int = 20) -> dict:
+        """
+        Get command execution history for a sensor
+
+        Args:
+            sensor_id: Sensor ID to query
+            limit: Maximum number of commands
+
+        Returns:
+            Command history
+        """
+        logger.info(f"Getting command history for sensor {sensor_id} (limit={limit})")
+
+        try:
+            sys.path.insert(0, str(Path(__file__).parent.parent))
+            from database import DatabaseManager
+
+            host = os.environ.get('NETMONITOR_DB_HOST', 'localhost')
+            db_main = DatabaseManager(
+                host=host,
+                database='netmonitor',
+                user='netmonitor',
+                password='netmonitor'
+            )
+
+            commands = db_main.get_sensor_command_history(sensor_id, limit=limit)
+
+            db_main.close()
+
+            # Calculate statistics
+            total_commands = len(commands)
+            by_status = {}
+            by_type = {}
+            for cmd in commands:
+                by_status[cmd['status']] = by_status.get(cmd['status'], 0) + 1
+                by_type[cmd['command_type']] = by_type.get(cmd['command_type'], 0) + 1
+
+            return {
+                "sensor_id": sensor_id,
+                "total_commands": total_commands,
+                "statistics": {
+                    "by_status": by_status,
+                    "by_type": by_type
+                },
+                "commands": commands
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting command history: {e}")
+            return {"error": str(e)}
 
     # ==================== Resource Implementations ====================
 

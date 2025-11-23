@@ -223,6 +223,120 @@ class SensorClient:
         except:
             return False
 
+    def _poll_commands(self):
+        """Poll server for pending commands"""
+        try:
+            response = requests.get(
+                f"{self.server_url}/api/sensors/{self.sensor_id}/commands",
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success') and result.get('commands'):
+                    return result['commands']
+            return []
+
+        except Exception as e:
+            self.logger.error(f"Error polling commands: {e}")
+            return []
+
+    def _execute_command(self, command):
+        """Execute a sensor command"""
+        command_id = command['id']
+        command_type = command['command_type']
+        parameters = command.get('parameters', {})
+
+        self.logger.info(f"Executing command: {command_type} (ID: {command_id})")
+
+        try:
+            # Update status to executing
+            requests.put(
+                f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
+                json={'status': 'executing'},
+                timeout=10
+            )
+
+            result = {'success': False, 'message': 'Unknown command'}
+
+            # Execute based on command type
+            if command_type == 'restart':
+                result = {
+                    'success': True,
+                    'message': 'Sensor will restart in 5 seconds'
+                }
+                self.logger.warning("RESTART command received - sensor will restart")
+                # Update status before restarting
+                requests.put(
+                    f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
+                    json={'status': 'completed', 'result': result},
+                    timeout=10
+                )
+                # Schedule restart
+                import subprocess
+                subprocess.Popen(['sleep', '5', '&&', 'systemctl', 'restart', 'netmonitor-sensor'])
+                return
+
+            elif command_type == 'change_interval':
+                new_interval = parameters.get('interval', self.batch_interval)
+                old_interval = self.batch_interval
+                self.batch_interval = int(new_interval)
+                result = {
+                    'success': True,
+                    'message': f'Batch interval changed from {old_interval}s to {self.batch_interval}s'
+                }
+                self.logger.info(f"Batch interval changed to {self.batch_interval}s")
+
+            elif command_type == 'get_status':
+                uptime = int(time.time() - self.start_time)
+                result = {
+                    'success': True,
+                    'data': {
+                        'uptime_seconds': uptime,
+                        'packets_captured': self.packets_captured,
+                        'alerts_sent': self.alerts_sent,
+                        'buffer_size': len(self.alert_buffer),
+                        'batch_interval': self.batch_interval
+                    }
+                }
+
+            elif command_type == 'flush_buffer':
+                buffer_size = len(self.alert_buffer)
+                self._upload_alerts()
+                result = {
+                    'success': True,
+                    'message': f'Flushed {buffer_size} alerts from buffer'
+                }
+                self.logger.info(f"Manual buffer flush: {buffer_size} alerts")
+
+            elif command_type == 'update_config':
+                # Could reload config file in the future
+                result = {
+                    'success': False,
+                    'message': 'Config update not yet implemented'
+                }
+
+            # Report result
+            requests.put(
+                f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
+                json={'status': 'completed', 'result': result},
+                timeout=10
+            )
+
+            self.logger.info(f"Command {command_type} completed: {result.get('message', 'OK')}")
+
+        except Exception as e:
+            self.logger.error(f"Error executing command {command_type}: {e}")
+            # Report failure
+            try:
+                requests.put(
+                    f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
+                    json={'status': 'failed', 'result': {'error': str(e)}},
+                    timeout=10
+                )
+            except:
+                pass
+
     def _send_metrics(self):
         """Send performance metrics to server"""
         try:
@@ -253,6 +367,28 @@ class SensorClient:
 
         except Exception as e:
             self.logger.error(f"Error sending metrics: {e}")
+
+    def _upload_alert_immediate(self, alert):
+        """Upload a single high-priority alert immediately"""
+        try:
+            response = requests.post(
+                f"{self.server_url}/api/sensors/{self.sensor_id}/alerts",
+                json={'alerts': [alert]},
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                self.alerts_sent += result.get('inserted', 0)
+                self.logger.info(f"⚡ Immediate upload: [{alert['severity']}] {alert['threat_type']}")
+                return True
+            else:
+                self.logger.warning(f"Failed to upload immediate alert: {response.text}")
+                return False
+
+        except Exception as e:
+            self.logger.error(f"Error uploading immediate alert: {e}")
+            return False
 
     def _upload_alerts(self):
         """Upload buffered alerts to server in batch"""
@@ -298,7 +434,7 @@ class SensorClient:
             # Detect threats
             threats = self.detector.analyze_packet(packet)
 
-            # Add to buffer
+            # Process alerts with priority handling
             for threat in threats:
                 alert = {
                     'timestamp': datetime.now().isoformat(),
@@ -309,11 +445,20 @@ class SensorClient:
                     'description': threat.get('description', ''),
                     'metadata': threat.get('metadata', {})
                 }
-                self.alert_buffer.append(alert)
 
-                # Log critical threats immediately
-                if threat.get('severity') in ['CRITICAL', 'HIGH']:
-                    self.logger.warning(f"[{threat.get('severity')}] {threat.get('type')}: {threat.get('description')}")
+                # Priority-based upload strategy
+                severity = threat.get('severity')
+                if severity in ['CRITICAL', 'HIGH']:
+                    # Upload immediately for high-priority alerts
+                    self.logger.warning(f"⚠️  [{severity}] {threat.get('type')}: {threat.get('description')}")
+                    success = self._upload_alert_immediate(alert)
+
+                    # If immediate upload fails, add to buffer as fallback
+                    if not success:
+                        self.alert_buffer.append(alert)
+                else:
+                    # Batch upload for lower priority alerts
+                    self.alert_buffer.append(alert)
 
         except Exception as e:
             self.logger.error(f"Error processing packet: {e}")
@@ -333,9 +478,10 @@ class SensorClient:
         import threading
 
         def upload_loop():
-            """Background thread for uploading alerts and metrics"""
+            """Background thread for uploading alerts, metrics, and polling commands"""
             last_upload = time.time()
             last_metrics = time.time()
+            last_command_poll = time.time()
 
             while self.running:
                 now = time.time()
@@ -352,6 +498,13 @@ class SensorClient:
                 # Send heartbeat every 30 seconds
                 elif now - last_metrics >= 30:
                     self._send_heartbeat()
+
+                # Poll for commands every 30 seconds
+                if now - last_command_poll >= 30:
+                    commands = self._poll_commands()
+                    for command in commands:
+                        self._execute_command(command)
+                    last_command_poll = now
 
                 time.sleep(1)
 

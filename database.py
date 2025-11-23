@@ -147,6 +147,27 @@ class DatabaseManager:
                 );
             ''')
 
+            # Sensor commands table for remote control
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS sensor_commands (
+                    id SERIAL PRIMARY KEY,
+                    sensor_id TEXT NOT NULL,
+                    command_type TEXT NOT NULL,
+                    parameters JSONB,
+                    status TEXT DEFAULT 'pending',
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    executed_at TIMESTAMPTZ,
+                    result JSONB,
+                    FOREIGN KEY (sensor_id) REFERENCES sensors(sensor_id) ON DELETE CASCADE
+                );
+            ''')
+
+            # Index for faster command polling
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_sensor_commands_sensor_status
+                ON sensor_commands(sensor_id, status, created_at);
+            ''')
+
             conn.commit()
             self.logger.info("Database schema created")
 
@@ -1024,6 +1045,111 @@ class DatabaseManager:
             conn.rollback()
             self.logger.error(f"Error inserting alert from sensor: {e}")
             return False
+        finally:
+            self._return_connection(conn)
+
+    # ==================== Sensor Command Methods ====================
+
+    def create_sensor_command(self, sensor_id: str, command_type: str,
+                            parameters: Dict = None) -> Optional[int]:
+        """Create a new command for a sensor"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO sensor_commands (sensor_id, command_type, parameters, status)
+                VALUES (%s, %s, %s, 'pending')
+                RETURNING id
+            ''', (sensor_id, command_type, json.dumps(parameters) if parameters else None))
+
+            command_id = cursor.fetchone()[0]
+            conn.commit()
+            self.logger.info(f"Command created: {command_type} for sensor {sensor_id}")
+            return command_id
+
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error creating sensor command: {e}")
+            return None
+        finally:
+            self._return_connection(conn)
+
+    def get_pending_commands(self, sensor_id: str) -> List[Dict]:
+        """Get all pending commands for a sensor"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute('''
+                SELECT id, command_type, parameters, created_at
+                FROM sensor_commands
+                WHERE sensor_id = %s AND status = 'pending'
+                ORDER BY created_at ASC
+            ''', (sensor_id,))
+
+            commands = [dict(row) for row in cursor.fetchall()]
+
+            # Parse JSON parameters
+            for cmd in commands:
+                if cmd.get('parameters'):
+                    cmd['parameters'] = json.loads(cmd['parameters']) if isinstance(cmd['parameters'], str) else cmd['parameters']
+
+            return commands
+
+        except Exception as e:
+            self.logger.error(f"Error getting pending commands: {e}")
+            return []
+        finally:
+            self._return_connection(conn)
+
+    def update_command_status(self, command_id: int, status: str,
+                            result: Dict = None) -> bool:
+        """Update command execution status"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE sensor_commands
+                SET status = %s, executed_at = NOW(), result = %s
+                WHERE id = %s
+            ''', (status, json.dumps(result) if result else None, command_id))
+
+            conn.commit()
+            return True
+
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error updating command status: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    def get_sensor_command_history(self, sensor_id: str, limit: int = 50) -> List[Dict]:
+        """Get command history for a sensor"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute('''
+                SELECT id, command_type, parameters, status, created_at, executed_at, result
+                FROM sensor_commands
+                WHERE sensor_id = %s
+                ORDER BY created_at DESC
+                LIMIT %s
+            ''', (sensor_id, limit))
+
+            commands = [dict(row) for row in cursor.fetchall()]
+
+            # Parse JSON fields
+            for cmd in commands:
+                if cmd.get('parameters'):
+                    cmd['parameters'] = json.loads(cmd['parameters']) if isinstance(cmd['parameters'], str) else cmd['parameters']
+                if cmd.get('result'):
+                    cmd['result'] = json.loads(cmd['result']) if isinstance(cmd['result'], str) else cmd['result']
+
+            return commands
+
+        except Exception as e:
+            self.logger.error(f"Error getting command history: {e}")
+            return []
         finally:
             self._return_connection(conn)
 

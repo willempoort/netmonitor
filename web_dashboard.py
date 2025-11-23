@@ -421,6 +421,87 @@ def api_get_sensor(sensor_id):
         logger.error(f"Error getting sensor: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# ==================== Sensor Command Endpoints ====================
+
+@app.route('/api/sensors/<sensor_id>/commands', methods=['POST'])
+def api_create_sensor_command(sensor_id):
+    """Create a command for a sensor"""
+    try:
+        data = request.get_json()
+        command_type = data.get('command_type')
+        parameters = data.get('parameters', {})
+
+        if not command_type:
+            return jsonify({'success': False, 'error': 'command_type required'}), 400
+
+        # Verify sensor exists
+        sensor = db.get_sensor_by_id(sensor_id)
+        if not sensor:
+            return jsonify({'success': False, 'error': 'Sensor not found'}), 404
+
+        # Create command
+        command_id = db.create_sensor_command(sensor_id, command_type, parameters)
+
+        if command_id:
+            logger.info(f"Command {command_type} created for sensor {sensor_id}")
+            return jsonify({
+                'success': True,
+                'command_id': command_id,
+                'message': f'Command {command_type} queued for sensor {sensor_id}'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to create command'}), 500
+
+    except Exception as e:
+        logger.error(f"Error creating command for sensor {sensor_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/sensors/<sensor_id>/commands', methods=['GET'])
+def api_get_sensor_commands(sensor_id):
+    """Get pending commands for a sensor (used by sensor for polling)"""
+    try:
+        commands = db.get_pending_commands(sensor_id)
+        return jsonify({'success': True, 'commands': commands})
+
+    except Exception as e:
+        logger.error(f"Error getting commands for sensor {sensor_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/sensors/<sensor_id>/commands/<int:command_id>', methods=['PUT'])
+def api_update_command_status(sensor_id, command_id):
+    """Update command execution status (used by sensor to report results)"""
+    try:
+        data = request.get_json()
+        status = data.get('status')
+        result = data.get('result', {})
+
+        if status not in ['executing', 'completed', 'failed']:
+            return jsonify({'success': False, 'error': 'Invalid status'}), 400
+
+        success = db.update_command_status(command_id, status, result)
+
+        if success:
+            logger.info(f"Command {command_id} status updated to {status}")
+            return jsonify({'success': True, 'message': 'Command status updated'})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to update command'}), 500
+
+    except Exception as e:
+        logger.error(f"Error updating command {command_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/sensors/<sensor_id>/commands/history', methods=['GET'])
+def api_get_command_history(sensor_id):
+    """Get command history for a sensor (for dashboard)"""
+    try:
+        limit = request.args.get('limit', 50, type=int)
+        commands = db.get_sensor_command_history(sensor_id, limit)
+        return jsonify({'success': True, 'commands': commands})
+
+    except Exception as e:
+        logger.error(f"Error getting command history for sensor {sensor_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 # ==================== WebSocket Events ====================
 
