@@ -181,6 +181,81 @@ class SensorClient:
         # Fetch and cache server whitelist
         self._update_whitelist()
 
+        # Fetch and merge server configuration
+        self._update_config()
+
+    def _update_config(self):
+        """Fetch configuration from SOC server and merge with local config"""
+        try:
+            response = requests.get(
+                f"{self.server_url}/api/config",
+                params={'sensor_id': self.sensor_id},
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success'):
+                    server_config = result.get('config', {})
+
+                    if not server_config:
+                        self.logger.info("No server-side config overrides")
+                        return
+
+                    # Deep merge server config with local config
+                    # Server config takes precedence
+                    merged_config = self._deep_merge_config(self.config.copy(), server_config)
+
+                    # Update detector's config
+                    self.detector.config = merged_config
+
+                    # Log what changed
+                    changes = self._count_config_differences(self.config, server_config)
+                    if changes > 0:
+                        self.logger.info(f"✓ Config updated from server: {changes} parameter(s) overridden")
+                    else:
+                        self.logger.info("✓ Config synced (no changes)")
+
+                    # Update local config reference
+                    self.config = merged_config
+
+                else:
+                    self.logger.warning(f"Failed to fetch config: {result.get('error')}")
+            else:
+                self.logger.warning(f"Config fetch returned status {response.status_code}")
+
+        except Exception as e:
+            self.logger.warning(f"Failed to update config from server: {e}")
+            self.logger.info("Continuing with local config...")
+
+    def _deep_merge_config(self, base: dict, override: dict) -> dict:
+        """Deep merge two config dicts (override takes precedence)"""
+        result = base.copy()
+
+        for key, value in override.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = self._deep_merge_config(result[key], value)
+            else:
+                result[key] = value
+
+        return result
+
+    def _count_config_differences(self, base: dict, override: dict, prefix: str = "") -> int:
+        """Count how many parameters are different between configs"""
+        count = 0
+
+        for key, value in override.items():
+            path = f"{prefix}.{key}" if prefix else key
+
+            if key not in base:
+                count += 1
+            elif isinstance(value, dict) and isinstance(base.get(key), dict):
+                count += self._count_config_differences(base[key], value, path)
+            elif base[key] != value:
+                count += 1
+
+        return count
+
     def _update_whitelist(self):
         """Fetch whitelist from SOC server and merge with local config"""
         try:
@@ -354,11 +429,28 @@ class SensorClient:
                 self.logger.info(f"Manual buffer flush: {buffer_size} alerts")
 
             elif command_type == 'update_config':
-                # Could reload config file in the future
-                result = {
-                    'success': False,
-                    'message': 'Config update not yet implemented'
-                }
+                # Force config update from server
+                try:
+                    old_config_snapshot = str(self.config)  # Simple string comparison
+                    self._update_config()
+                    new_config_snapshot = str(self.config)
+
+                    if old_config_snapshot != new_config_snapshot:
+                        result = {
+                            'success': True,
+                            'message': 'Configuration updated from server'
+                        }
+                    else:
+                        result = {
+                            'success': True,
+                            'message': 'Configuration synced (no changes)'
+                        }
+                    self.logger.info(f"Config manually updated via command")
+                except Exception as e:
+                    result = {
+                        'success': False,
+                        'message': f'Config update failed: {e}'
+                    }
 
             elif command_type == 'update_whitelist':
                 # Force whitelist update from server
@@ -568,6 +660,7 @@ class SensorClient:
             last_metrics = time.time()
             last_command_poll = time.time()
             last_whitelist_update = time.time()
+            last_config_update = time.time()
 
             while self.running:
                 now = time.time()
@@ -596,6 +689,11 @@ class SensorClient:
                 if now - last_whitelist_update >= 300:
                     self._update_whitelist()
                     last_whitelist_update = now
+
+                # Update config every 5 minutes
+                if now - last_config_update >= 300:
+                    self._update_config()
+                    last_config_update = now
 
                 time.sleep(1)
 

@@ -581,6 +581,162 @@ def api_check_whitelist(ip_address):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ==================== Configuration Management Endpoints ====================
+
+@app.route('/api/config', methods=['GET'])
+def api_get_config():
+    """Get configuration for a sensor (merged global + sensor-specific)"""
+    try:
+        sensor_id = request.args.get('sensor_id')
+        parameter_path = request.args.get('parameter_path')
+
+        config = db.get_sensor_config(sensor_id=sensor_id, parameter_path=parameter_path)
+        return jsonify({'success': True, 'config': config})
+    except Exception as e:
+        logger.error(f"Error getting config: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/config/parameters', methods=['GET'])
+def api_get_config_parameters():
+    """Get all configuration parameters with metadata"""
+    try:
+        sensor_id = request.args.get('sensor_id')
+        parameters = db.get_all_config_parameters(sensor_id=sensor_id)
+        return jsonify({'success': True, 'parameters': parameters})
+    except Exception as e:
+        logger.error(f"Error getting config parameters: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/config/parameter', methods=['PUT'])
+def api_set_config_parameter():
+    """Set a configuration parameter (global or per-sensor)"""
+    try:
+        data = request.get_json()
+        parameter_path = data.get('parameter_path')
+        value = data.get('value')
+        sensor_id = data.get('sensor_id')  # None = global
+        scope = data.get('scope', 'global')
+        description = data.get('description')
+        updated_by = data.get('updated_by', 'dashboard')
+
+        if not parameter_path or value is None:
+            return jsonify({'success': False, 'error': 'parameter_path and value are required'}), 400
+
+        success = db.set_config_parameter(
+            parameter_path=parameter_path,
+            value=value,
+            sensor_id=sensor_id,
+            scope=scope,
+            description=description,
+            updated_by=updated_by
+        )
+
+        if success:
+            # Broadcast config update to connected clients
+            socketio.emit('config_updated', {
+                'parameter_path': parameter_path,
+                'value': value,
+                'sensor_id': sensor_id,
+                'scope': scope
+            })
+
+            return jsonify({
+                'success': True,
+                'message': f'Parameter {parameter_path} updated',
+                'parameter_path': parameter_path,
+                'value': value
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to update parameter'}), 500
+
+    except Exception as e:
+        logger.error(f"Error setting config parameter: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/config/parameter', methods=['DELETE'])
+def api_delete_config_parameter():
+    """Delete a configuration parameter"""
+    try:
+        parameter_path = request.args.get('parameter_path')
+        sensor_id = request.args.get('sensor_id')
+
+        if not parameter_path:
+            return jsonify({'success': False, 'error': 'parameter_path is required'}), 400
+
+        success = db.delete_config_parameter(parameter_path=parameter_path, sensor_id=sensor_id)
+
+        if success:
+            return jsonify({'success': True, 'message': f'Parameter {parameter_path} deleted'})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to delete parameter'}), 500
+
+    except Exception as e:
+        logger.error(f"Error deleting config parameter: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/config/defaults', methods=['GET'])
+def api_get_config_defaults():
+    """Get best practice default configuration"""
+    try:
+        from config_defaults import BEST_PRACTICE_CONFIG, PARAMETER_DESCRIPTIONS, PARAMETER_CATEGORIES
+
+        return jsonify({
+            'success': True,
+            'defaults': BEST_PRACTICE_CONFIG,
+            'descriptions': PARAMETER_DESCRIPTIONS,
+            'categories': PARAMETER_CATEGORIES
+        })
+    except Exception as e:
+        logger.error(f"Error getting config defaults: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/config/reset', methods=['POST'])
+def api_reset_config():
+    """Reset configuration to best practice defaults"""
+    try:
+        data = request.get_json()
+        sensor_id = data.get('sensor_id')  # None = global
+        confirm = data.get('confirm', False)
+
+        if not confirm:
+            return jsonify({'success': False, 'error': 'Confirmation required'}), 400
+
+        from config_defaults import BEST_PRACTICE_CONFIG, flatten_config
+
+        # Flatten config to parameter paths
+        flat_config = flatten_config(BEST_PRACTICE_CONFIG)
+
+        # Set each parameter
+        count = 0
+        for parameter_path, value in flat_config.items():
+            success = db.set_config_parameter(
+                parameter_path=parameter_path,
+                value=value,
+                sensor_id=sensor_id,
+                scope='global' if not sensor_id else 'sensor',
+                description='Reset to best practice default',
+                updated_by='dashboard_reset'
+            )
+            if success:
+                count += 1
+
+        # Broadcast reset event
+        socketio.emit('config_reset', {
+            'sensor_id': sensor_id,
+            'parameters_reset': count
+        })
+
+        return jsonify({
+            'success': True,
+            'message': f'Reset {count} parameters to defaults',
+            'parameters_reset': count
+        })
+
+    except Exception as e:
+        logger.error(f"Error resetting config: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ==================== WebSocket Events ====================
 
 @socketio.on('connect')
