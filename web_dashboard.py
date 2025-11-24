@@ -585,12 +585,34 @@ def api_check_whitelist(ip_address):
 
 @app.route('/api/config', methods=['GET'])
 def api_get_config():
-    """Get configuration for a sensor (merged global + sensor-specific)"""
+    """Get configuration for a sensor (merged defaults + global + sensor-specific)"""
     try:
         sensor_id = request.args.get('sensor_id') or None  # Convert empty string to None
         parameter_path = request.args.get('parameter_path') or None
+        include_defaults = request.args.get('include_defaults', 'true').lower() == 'true'
 
-        config = db.get_sensor_config(sensor_id=sensor_id, parameter_path=parameter_path)
+        # Get database config (global + sensor-specific)
+        db_config = db.get_sensor_config(sensor_id=sensor_id, parameter_path=parameter_path)
+
+        # Merge with defaults if requested (for UI display)
+        if include_defaults and not parameter_path:
+            from config_defaults import BEST_PRACTICE_CONFIG
+            import copy
+
+            def deep_merge(base, override):
+                """Deep merge override into base"""
+                result = copy.deepcopy(base)
+                for key, value in override.items():
+                    if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                        result[key] = deep_merge(result[key], value)
+                    else:
+                        result[key] = value
+                return result
+
+            config = deep_merge(BEST_PRACTICE_CONFIG, db_config)
+        else:
+            config = db_config
+
         return jsonify({'success': True, 'config': config})
     except Exception as e:
         logger.error(f"Error getting config: {e}")

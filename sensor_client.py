@@ -189,7 +189,10 @@ class SensorClient:
         try:
             response = requests.get(
                 f"{self.server_url}/api/config",
-                params={'sensor_id': self.sensor_id},
+                params={
+                    'sensor_id': self.sensor_id,
+                    'include_defaults': 'false'  # Sensors use local config as base
+                },
                 timeout=10
             )
 
