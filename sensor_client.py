@@ -178,6 +178,44 @@ class SensorClient:
         )
         self.logger.info("Threat Detector initialized")
 
+        # Fetch and cache server whitelist
+        self._update_whitelist()
+
+    def _update_whitelist(self):
+        """Fetch whitelist from SOC server and merge with local config"""
+        try:
+            response = requests.get(
+                f"{self.server_url}/api/whitelist",
+                params={'sensor_id': self.sensor_id},
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success'):
+                    entries = result.get('entries', [])
+
+                    # Extract IP CIDRs from whitelist entries
+                    server_whitelist = [entry['ip_cidr'] for entry in entries]
+
+                    # Merge with config whitelist
+                    config_whitelist = self.config.get('whitelist', [])
+                    combined_whitelist = list(set(config_whitelist + server_whitelist))
+
+                    # Update detector's whitelist
+                    self.detector.config['whitelist'] = combined_whitelist
+                    self.detector.config_whitelist = self.detector._parse_ip_list(combined_whitelist)
+
+                    self.logger.info(f"✓ Whitelist updated: {len(config_whitelist)} config + {len(server_whitelist)} server = {len(combined_whitelist)} total")
+                else:
+                    self.logger.warning(f"Failed to fetch whitelist: {result.get('error')}")
+            else:
+                self.logger.warning(f"Whitelist fetch returned status {response.status_code}")
+
+        except Exception as e:
+            self.logger.warning(f"Failed to update whitelist from server: {e}")
+            self.logger.info("Continuing with config-only whitelist...")
+
     def _register_sensor(self):
         """Register sensor with central SOC server"""
         self.logger.info("Registering sensor with SOC server...")
@@ -321,6 +359,17 @@ class SensorClient:
                     'success': False,
                     'message': 'Config update not yet implemented'
                 }
+
+            elif command_type == 'update_whitelist':
+                # Force whitelist update from server
+                old_count = len(self.detector.config.get('whitelist', []))
+                self._update_whitelist()
+                new_count = len(self.detector.config.get('whitelist', []))
+                result = {
+                    'success': True,
+                    'message': f'Whitelist updated: {old_count} → {new_count} entries'
+                }
+                self.logger.info(f"Whitelist manually updated via command")
 
             # Report result
             requests.put(
@@ -518,6 +567,7 @@ class SensorClient:
             last_upload = time.time()
             last_metrics = time.time()
             last_command_poll = time.time()
+            last_whitelist_update = time.time()
 
             while self.running:
                 now = time.time()
@@ -541,6 +591,11 @@ class SensorClient:
                     for command in commands:
                         self._execute_command(command)
                     last_command_poll = now
+
+                # Update whitelist every 5 minutes
+                if now - last_whitelist_update >= 300:
+                    self._update_whitelist()
+                    last_whitelist_update = now
 
                 time.sleep(1)
 
