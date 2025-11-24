@@ -529,7 +529,7 @@ canvas {
 
 .param-card-header {
     display: flex;
-    justify-content: space-between;
+    justify-content-between;
     align-items: center;
     margin-bottom: 12px;
 }
@@ -539,6 +539,20 @@ canvas {
     color: #e0e0e0;
     font-size: 0.95rem;
     font-weight: 600;
+}
+
+/* Force text color in cards */
+.card.bg-dark .card-body,
+.card.bg-dark .card-body * {
+    color: #e0e0e0 !important;
+}
+
+.card.bg-dark .card-title {
+    color: #ffffff !important;
+}
+
+.card.bg-dark small.text-muted {
+    color: #aaa !important;
 }
 
 .param-type-badge {
@@ -601,9 +615,14 @@ canvas {
 
 .param-checkbox-container label {
     margin: 0;
-    color: #e0e0e0;
+    color: #e0e0e0 !important;
     cursor: pointer;
     user-select: none;
+}
+
+/* Form labels in config */
+.card.bg-dark label {
+    color: #e0e0e0 !important;
 }
 
 /* Example values */
