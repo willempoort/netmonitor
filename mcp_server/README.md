@@ -1,14 +1,53 @@
 # NetMonitor MCP Server
 
-MCP (Model Context Protocol) server voor NetMonitor Security Operations Center. Geeft AI assistenten zoals Claude read-only toegang tot security monitoring data.
+MCP (Model Context Protocol) server voor NetMonitor Security Operations Center. Geeft AI assistenten zoals Claude **volledige SOC management** mogelijkheden via natuurlijke taal.
 
 ## 📋 Overzicht
 
 De MCP server biedt:
-- **3 Tools** voor actieve security analysis
+- **20+ Tools** voor security analysis én management
 - **1 Resource** voor real-time dashboard context
-- **Read-only** database toegang (extra security layer)
+- **Read & Write** toegang: van monitoring tot configuratie
+- **Sensor Management**: Remote command & control via AI
+- **Configuration Management**: Alle settings aanpasbaar via chat
 - **Gestructureerde** threat intelligence data
+
+## 🎯 Tool Categorieën
+
+### 🔍 Security Analysis (Read-Only)
+- `analyze_ip` - Analyseer IP voor threat intelligence
+- `get_recent_threats` - Recente security alerts
+- `get_threat_timeline` - Timeline visualisatie
+- `get_alert_statistics` - Alert statistieken
+- `get_sensor_alerts` - Alerts per sensor
+- `get_bandwidth_summary` - Bandwidth analyse
+
+### 🎛️ Sensor Management (Read & Write)
+- `get_sensor_status` - Live sensor status en metrics
+- `get_sensor_details` - Gedetailleerde sensor info
+- `send_sensor_command` - Verstuur commands (restart, update_config, etc.)
+- `get_sensor_command_history` - Command geschiedenis
+
+### ⚙️ Configuration Management (Read & Write)
+- `set_config_parameter` - Wijzig configuratie parameters
+- `get_config_parameters` - Lijst alle parameters
+- `reset_config_to_defaults` - Reset naar best practices
+- `get_config` - Huidige configuratie
+- `get_detection_rules` - Actieve detection rules
+- `update_threshold` - Pas detection thresholds aan
+- `toggle_detection_rule` - Enable/disable rules
+
+### 🤖 AI-Powered Analysis (Ollama Integration)
+- `analyze_threat_with_ollama` - AI threat analyse
+- `suggest_incident_response` - AI incident response suggesties
+- `explain_ioc` - IOC uitleg via AI
+- `get_ollama_status` - Ollama beschikbaarheid
+
+### 📊 Exports & Reporting
+- `export_alerts_csv` - Export alerts naar CSV
+- `export_traffic_stats_csv` - Traffic statistieken export
+- `export_top_talkers_csv` - Top talkers export
+- `get_dashboard_summary` - Complete dashboard overzicht
 
 ## 🛠️ Tools
 
