@@ -359,6 +359,10 @@ class SensorClient:
             if window_duration > 0:
                 # Convert bytes to Mbps: (bytes * 8) / (duration * 1000000)
                 mbps = (self.bandwidth_window_bytes * 8) / (window_duration * 1_000_000)
+
+                # Debug logging for bandwidth calculation
+                mb_captured = self.bandwidth_window_bytes / (1024 * 1024)  # Convert to MB
+                self.logger.info(f"Bandwidth: {mb_captured:.2f} MB captured in {window_duration:.1f}s = {mbps:.2f} Mbps")
             else:
                 mbps = 0.0
 
@@ -453,8 +457,15 @@ class SensorClient:
             self.packets_captured += 1
 
             # Track bandwidth (packet size in bytes)
+            # Note: len(packet) includes all layers starting from where scapy captures
             packet_size = len(packet) if hasattr(packet, '__len__') else 0
             self.bandwidth_window_bytes += packet_size
+
+            # Debug: log high packet rates (every 1000 packets)
+            if self.packets_captured % 1000 == 0:
+                elapsed = time.time() - self.start_time
+                pps = self.packets_captured / elapsed if elapsed > 0 else 0
+                self.logger.debug(f"Captured {self.packets_captured} packets, avg {pps:.0f} pps")
 
             # Detect threats
             threats = self.detector.analyze_packet(packet)
