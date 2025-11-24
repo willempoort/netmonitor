@@ -9,7 +9,7 @@ from psycopg2.extras import RealDictCursor
 import logging
 import json
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import threading
 
 
