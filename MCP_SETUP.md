@@ -420,24 +420,84 @@ python3 server.py
 
 ---
 
+## 🛠️ Beschikbare MCP Tools
+
+De NetMonitor MCP server biedt **20+ tools** verdeeld over verschillende categorieën:
+
+### 🔍 Security Analysis (Read-Only)
+- `analyze_ip` - Gedetailleerde IP analyse met threat intelligence
+- `get_recent_threats` - Recent gedetecteerde threats
+- `get_threat_timeline` - Timeline van attacks
+- `search_alerts` - Zoek in alert history
+- `get_top_threat_sources` - Top aanvallers
+
+### 🎛️ Configuration Management (Read & Write)
+- `set_config_parameter` - Wijzig sensor parameters
+- `get_config_parameters` - Haal configuratie op
+- `reset_config_to_defaults` - Reset naar best practices
+- `get_config_history` - Bekijk config changes
+
+### 👥 Sensor Management (Read & Write)
+- `get_sensor_status` - Status van alle sensors
+- `send_sensor_command` - Stuur remote commands
+- `get_sensor_command_history` - Command history per sensor
+- `get_sensor_metrics` - CPU, memory, disk usage
+
+### 🚫 Whitelist Management (Read & Write)
+- `add_whitelist_entry` - Voeg IP/CIDR/domain toe
+- `get_whitelist_entries` - Bekijk whitelist
+- `remove_whitelist_entry` - Verwijder whitelist entry
+
+### 🤖 AI-Powered Analysis (Ollama)
+- `analyze_threat_with_ollama` - Deep threat analysis
+- `suggest_incident_response` - Response suggesties
+- `monitor_threats_continuous` - 24/7 monitoring
+
+### 📊 Exports & Reporting
+- `export_alerts_csv` - Export naar CSV
+- `get_dashboard_summary` - SOC overzicht
+- `get_statistics` - Gedetailleerde statistieken
+
+**Zie [mcp_server/README.md](mcp_server/README.md) voor complete tool documentatie en voorbeelden.**
+
+---
+
 ## 🎯 Volgende Stappen
 
 Na succesvolle setup:
 
-1. **Experimenteer met Claude Desktop**
+1. **Experimenteer met Claude Desktop - Security Analysis**
    - "What's the current threat situation?"
    - "Analyze IP 192.168.1.50"
    - "Show me the attack timeline from suspicious IPs"
+   - "Get recent threats from the last hour"
 
-2. **Genereer wat test traffic**
+2. **Experimenteer met Configuration Management (Nieuw!)**
+   - "Set config parameter detection_rules.port_scan.enabled to false"
+   - "Show me all config parameters"
+   - "What's the current config_sync_interval?"
+   - "Reset config to defaults"
+
+3. **Experimenteer met Sensor Management (Nieuw!)**
+   - "Show me sensor status"
+   - "Send command restart_monitoring to sensor sensor01"
+   - "Get sensor command history"
+   - "Which sensors are offline?"
+
+4. **Experimenteer met Whitelist Management (Nieuw!)**
+   - "Add 192.168.1.100 to whitelist with reason Office network"
+   - "Show me all whitelist entries"
+   - "Remove 192.168.1.50 from whitelist"
+
+5. **Genereer wat test traffic**
    - Run een nmap scan
    - Check hoe Claude de data analyseert
 
-3. **Geef feedback**
+6. **Geef feedback**
    - Wat werkt goed?
    - Welke features wil je nog meer?
 
-4. **Later: Ollama 24/7 monitoring**
+7. **Later: Ollama 24/7 monitoring**
    - Upgrade naar Scenario 2
    - Configureer Ollama
    - Automated alerting!

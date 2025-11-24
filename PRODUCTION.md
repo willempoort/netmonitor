@@ -268,6 +268,26 @@ sudo systemctl status netmonitor.service
 
 ### Config Update
 
+**Nieuwe Methode (Aanbevolen):** Gebruik de dashboard GUI:
+
+```
+http://your-server:8080/config
+```
+
+- Pas alle sensor parameters aan via GUI (detection rules, thresholds, performance)
+- Kies global (alle sensors) of sensor-specific scope
+- Type-aware inputs (checkboxes, number inputs, etc.)
+- Real-time sync: sensors updaten binnen 1-5 minuten (configureerbaar)
+- Reset naar best practice defaults indien nodig
+
+**Of via MCP (Claude Desktop):**
+
+```
+Set config parameter performance.config_sync_interval to 60
+```
+
+**Legacy Methode:** Handmatig config bewerken:
+
 ```bash
 # Edit config
 sudo nano /opt/netmonitor/config.yaml
@@ -275,6 +295,8 @@ sudo nano /opt/netmonitor/config.yaml
 # Restart service om nieuwe config te laden
 sudo systemctl restart netmonitor.service
 ```
+
+**Let op:** Handmatig aangepaste config wordt overschreven door database configuratie voor remote sensors!
 
 ### Database Reset
 
@@ -352,6 +374,71 @@ CPUQuota=50%
 TasksMax=100
 ```
 
+## 🎛️ Remote Sensor Management (Nieuw!)
+
+**Beheer remote sensors volledig via dashboard:**
+
+### Sensor Status Monitoring
+
+```
+http://your-server:8080/sensors
+```
+
+Zie real-time:
+- Welke sensors online/offline zijn
+- CPU, memory, disk usage per sensor
+- Laatste heartbeat en metrics
+- Configuratie status
+
+### Remote Commands
+
+Via dashboard of MCP kun je commands versturen naar sensors:
+
+**Via Dashboard:**
+- Navigate naar Sensors pagina
+- Selecteer sensor
+- Verstuur commands (restart, update_whitelist, reload_config, etc.)
+
+**Via MCP (Claude Desktop):**
+```
+Send command "restart_monitoring" to sensor sensor01
+```
+
+**Beschikbare commands:**
+- `restart_monitoring` - Herstart monitoring zonder sensor reboot
+- `update_whitelist` - Force whitelist update
+- `reload_config` - Force config reload
+- `clear_cache` - Clear local caches
+- `diagnostic` - Run diagnostics
+
+### Centralized Whitelist Management
+
+**Via Dashboard:**
+```
+http://your-server:8080/config → Whitelist tab
+```
+
+- Voeg IPs, CIDRs, en domains toe aan whitelist
+- Changes synced naar alle sensors binnen 1-5 minuten
+- Geen SSH of Ansible nodig!
+
+**Via MCP:**
+```
+Add 192.168.1.100 to whitelist with reason "Office network"
+```
+
+### Configuration Deployment
+
+**Geen Ansible, Puppet of Chef nodig!**
+
+Alle configuration changes via dashboard → automatisch naar sensors.
+
+```
+Dashboard → Config tab → Wijzig parameter → Opslaan → Auto-sync naar sensors
+```
+
+Zie [DASHBOARD.md](DASHBOARD.md) voor complete management guide.
+
 ## 📈 Production Best Practices
 
 ### 1. Log Rotation
@@ -417,9 +504,28 @@ OnFailure=netmonitor-alert.service
 
 ## 🚀 Performance Tuning
 
+### Sensor Sync Intervals (Nieuw!)
+
+**Alle sync intervals configureerbaar via dashboard GUI:**
+
+```
+http://your-server:8080/config → Performance tab
+```
+
+Beschikbare parameters:
+- `config_sync_interval` (default: 300s) - Hoe vaak sensors config ophalen
+- `whitelist_sync_interval` (default: 300s) - Whitelist sync frequentie
+- `metrics_interval` (default: 60s) - Metrics reporting frequentie
+- `heartbeat_interval` (default: 30s) - Heartbeat signals
+- `command_poll_interval` (default: 30s) - Command polling frequentie
+
+**Voor snellere config updates:** Zet `config_sync_interval` op 60s voor updates binnen 1 minuut!
+
+**Voor lagere server load:** Verhoog intervals naar 600s (10 minuten).
+
 ### High Traffic Networks
 
-Edit `config.yaml`:
+Edit `config.yaml` (of via dashboard):
 
 ```yaml
 # Reduce log verbosity
@@ -456,6 +562,7 @@ Als je nog steeds problemen hebt:
 
 ## ✅ Checklist voor Production
 
+### Basis Setup
 - [ ] Eventlet geïnstalleerd (`pip show eventlet`)
 - [ ] Config file correct (`/opt/netmonitor/config.yaml`)
 - [ ] Directories exist (`/var/lib/netmonitor`, `/var/log/netmonitor`)
@@ -467,5 +574,14 @@ Als je nog steeds problemen hebt:
 - [ ] Database wordt aangemaakt
 - [ ] Threat feeds gedownload
 - [ ] Auto-update timer actief
+
+### Centralized Management (Nieuw!)
+- [ ] Dashboard config pagina werkt (`http://localhost:8080/config`)
+- [ ] Sensor status pagina werkt (`http://localhost:8080/sensors`)
+- [ ] Test config parameter wijziging via GUI
+- [ ] Test whitelist entry toevoegen via GUI
+- [ ] Verify sensor sync intervals ingesteld (Performance tab)
+- [ ] Test remote command naar sensor (indien van toepassing)
+- [ ] MCP server configured in Claude Desktop (optioneel)
 
 **Alle checks OK? Dan ben je klaar voor productie!** 🎉
