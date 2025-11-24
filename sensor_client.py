@@ -673,28 +673,33 @@ class SensorClient:
                     self._upload_alerts()
                     last_upload = now
 
-                # Send metrics every 60 seconds
-                if now - last_metrics >= 60:
+                # Send metrics every X seconds (configurable)
+                metrics_interval = self.config.get('performance', {}).get('metrics_interval', 60)
+                heartbeat_interval = self.config.get('performance', {}).get('heartbeat_interval', 30)
+                if now - last_metrics >= metrics_interval:
                     self._send_metrics()
                     last_metrics = now
-                # Send heartbeat every 30 seconds
-                elif now - last_metrics >= 30:
+                # Send heartbeat every X seconds (configurable)
+                elif now - last_metrics >= heartbeat_interval:
                     self._send_heartbeat()
 
-                # Poll for commands every 30 seconds
-                if now - last_command_poll >= 30:
+                # Poll for commands every X seconds (configurable)
+                command_poll_interval = self.config.get('performance', {}).get('command_poll_interval', 30)
+                if now - last_command_poll >= command_poll_interval:
                     commands = self._poll_commands()
                     for command in commands:
                         self._execute_command(command)
                     last_command_poll = now
 
-                # Update whitelist every 5 minutes
-                if now - last_whitelist_update >= 300:
+                # Update whitelist every X minutes (configurable)
+                whitelist_interval = self.config.get('performance', {}).get('whitelist_sync_interval', 300)
+                if now - last_whitelist_update >= whitelist_interval:
                     self._update_whitelist()
                     last_whitelist_update = now
 
-                # Update config every 5 minutes
-                if now - last_config_update >= 300:
+                # Update config every X minutes (configurable)
+                config_interval = self.config.get('performance', {}).get('config_sync_interval', 300)
+                if now - last_config_update >= config_interval:
                     self._update_config()
                     last_config_update = now
 
