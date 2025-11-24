@@ -587,8 +587,8 @@ def api_check_whitelist(ip_address):
 def api_get_config():
     """Get configuration for a sensor (merged global + sensor-specific)"""
     try:
-        sensor_id = request.args.get('sensor_id')
-        parameter_path = request.args.get('parameter_path')
+        sensor_id = request.args.get('sensor_id') or None  # Convert empty string to None
+        parameter_path = request.args.get('parameter_path') or None
 
         config = db.get_sensor_config(sensor_id=sensor_id, parameter_path=parameter_path)
         return jsonify({'success': True, 'config': config})
