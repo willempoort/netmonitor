@@ -660,6 +660,9 @@
         </div>
     </div>
 
+    <!-- Toast Notifications Container -->
+    <div class="toast-container" id="toast-container"></div>
+
     <!-- External Libraries - Load asynchronously for better performance -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
     <script src="https://cdn.socket.io/4.6.0/socket.io.min.js" defer></script>
@@ -667,6 +670,7 @@
 
     <!-- Custom JS - Load last with defer -->
     <script src="{{ url_for('static', filename='js/dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/config-management.js') }}" defer></script>
 
     <!-- Hide loading overlay when DOM is ready -->
     <script>

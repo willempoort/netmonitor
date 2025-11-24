@@ -440,3 +440,461 @@ canvas {
     opacity: 0.6;
     cursor: not-allowed;
 }
+
+/* ==================== Configuration Management Styles ==================== */
+
+/* Config Management Card */
+#config-management-card .card-body {
+    padding: 20px;
+}
+
+/* Scope Selector */
+.config-scope-selector {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: #1e1e1e;
+    border-radius: 6px;
+}
+
+.config-scope-selector label {
+    margin-bottom: 0;
+    font-weight: 500;
+    color: #e0e0e0;
+}
+
+.config-scope-selector select {
+    background-color: #2a2a2a;
+    color: #e0e0e0;
+    border: 1px solid #444;
+    padding: 6px 12px;
+    border-radius: 4px;
+}
+
+.config-scope-selector select:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+/* Category Tabs */
+#configTabs {
+    margin-bottom: 20px;
+    border-bottom: 2px solid #333;
+}
+
+#configTabs .nav-link {
+    color: #aaa;
+    background-color: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    padding: 10px 20px;
+    transition: all 0.2s;
+}
+
+#configTabs .nav-link:hover {
+    color: #fff;
+    background-color: #2a2a2a;
+}
+
+#configTabs .nav-link.active {
+    color: #fff;
+    background-color: transparent;
+    border-bottom-color: #007bff;
+    font-weight: 600;
+}
+
+/* Tab Content */
+.tab-pane {
+    min-height: 300px;
+}
+
+/* Parameter Cards */
+.param-card {
+    background-color: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 15px;
+    margin-bottom: 15px;
+    transition: all 0.2s;
+}
+
+.param-card:hover {
+    background-color: #2a2a2a;
+    border-color: #444;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.param-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.param-card-header h6 {
+    margin: 0;
+    color: #e0e0e0;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.param-type-badge {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background-color: #444;
+    color: #aaa;
+}
+
+.param-description {
+    color: #aaa;
+    font-size: 0.85rem;
+    margin-bottom: 10px;
+}
+
+.param-input-group {
+    margin-bottom: 10px;
+}
+
+.param-input-group input,
+.param-input-group textarea {
+    width: 100%;
+    background-color: #2a2a2a;
+    color: #e0e0e0;
+    border: 1px solid #444;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.param-input-group input:focus,
+.param-input-group textarea:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.param-input-group textarea {
+    min-height: 80px;
+    resize: vertical;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+}
+
+/* Checkbox styling */
+.param-checkbox-container {
+    display: flex;
+    align-items: center;
+    padding: 10px 0;
+}
+
+.param-checkbox-container input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    margin-right: 10px;
+    cursor: pointer;
+    accent-color: #007bff;
+}
+
+.param-checkbox-container label {
+    margin: 0;
+    color: #e0e0e0;
+    cursor: pointer;
+    user-select: none;
+}
+
+/* Example values */
+.param-example {
+    font-size: 0.8rem;
+    color: #888;
+    font-style: italic;
+    margin-top: 5px;
+}
+
+.param-example.visible {
+    display: block;
+}
+
+/* Parameter actions */
+.param-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.param-actions button {
+    flex: 1;
+    padding: 6px 12px;
+    font-size: 0.85rem;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.save-param-btn {
+    background-color: #28a745;
+    color: white;
+}
+
+.save-param-btn:hover {
+    background-color: #218838;
+}
+
+.reset-param-btn {
+    background-color: #6c757d;
+    color: white;
+}
+
+.reset-param-btn:hover {
+    background-color: #5a6268;
+}
+
+.save-param-btn:disabled,
+.reset-param-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Reset Config Button */
+#reset-config-btn {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: 500;
+}
+
+#reset-config-btn:hover {
+    background-color: #c82333;
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.4);
+}
+
+/* Show Example Toggle */
+#show-example-toggle {
+    margin-left: auto;
+}
+
+#show-example-toggle input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin-right: 8px;
+    vertical-align: middle;
+    cursor: pointer;
+    accent-color: #007bff;
+}
+
+#show-example-toggle label {
+    margin: 0;
+    color: #aaa;
+    font-size: 0.9rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+/* Loading state */
+.config-loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+    color: #888;
+}
+
+.config-loading .spinner-border {
+    margin-right: 10px;
+}
+
+/* Toast Notifications */
+.toast-container {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    z-index: 9999;
+}
+
+.toast {
+    background-color: #1e1e1e;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 15px 20px;
+    margin-bottom: 10px;
+    min-width: 300px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(100px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.toast.success {
+    border-left: 4px solid #28a745;
+}
+
+.toast.error {
+    border-left: 4px solid #dc3545;
+}
+
+.toast.warning {
+    border-left: 4px solid #ffc107;
+}
+
+.toast.info {
+    border-left: 4px solid #17a2b8;
+}
+
+.toast-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.toast.success .toast-icon {
+    color: #28a745;
+}
+
+.toast.error .toast-icon {
+    color: #dc3545;
+}
+
+.toast.warning .toast-icon {
+    color: #ffc107;
+}
+
+.toast.info .toast-icon {
+    color: #17a2b8;
+}
+
+.toast-message {
+    flex: 1;
+    color: #e0e0e0;
+    font-size: 0.9rem;
+}
+
+.toast-close {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.toast-close:hover {
+    color: #fff;
+}
+
+/* Reset Config Modal */
+#resetConfigModal .modal-content {
+    background-color: #2a2a2a;
+}
+
+#resetConfigModal .modal-header {
+    background-color: #1e1e1e;
+}
+
+#resetConfigModal .form-check-input {
+    width: 18px;
+    height: 18px;
+    margin-top: 0.2rem;
+    cursor: pointer;
+    accent-color: #007bff;
+}
+
+#resetConfigModal .form-check-label {
+    color: #e0e0e0;
+    cursor: pointer;
+    user-select: none;
+}
+
+#confirm-reset-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* List input styling (for array parameters) */
+.param-input-group textarea.list-input {
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    line-height: 1.6;
+}
+
+.param-input-hint {
+    font-size: 0.75rem;
+    color: #666;
+    margin-top: 3px;
+}
+
+/* Category sections */
+.config-category-section {
+    margin-bottom: 30px;
+}
+
+.config-category-section h5 {
+    color: #17a2b8;
+    margin-bottom: 15px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #333;
+}
+
+/* Nested parameter grouping */
+.param-group {
+    border-left: 3px solid #444;
+    padding-left: 15px;
+    margin-bottom: 20px;
+}
+
+.param-group-title {
+    color: #17a2b8;
+    font-weight: 600;
+    margin-bottom: 10px;
+    font-size: 1rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .config-scope-selector {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .config-scope-selector select {
+        width: 100%;
+    }
+
+    #configTabs .nav-link {
+        padding: 8px 12px;
+        font-size: 0.85rem;
+    }
+
+    .toast-container {
+        right: 10px;
+        left: 10px;
+    }
+
+    .toast {
+        min-width: auto;
+    }
+}

@@ -98,6 +98,12 @@ document.addEventListener('DOMContentLoaded', function() {
     initCharts();
     updateLoadingMessage('Loading data...');
 
+    // Initialize configuration management
+    console.log('[DASHBOARD] Step 2.5/3: Initializing configuration management...');
+    if (typeof initConfigManagement === 'function') {
+        initConfigManagement();
+    }
+
     // Load initial data
     console.log('[DASHBOARD] Step 3/3: Loading initial data...');
     loadDashboardData().finally(() => {
@@ -158,6 +164,20 @@ function initWebSocket() {
     socket.on('dashboard_update', function(data) {
         console.log('Dashboard update received');
         updateDashboard(data);
+    });
+
+    socket.on('config_updated', function(data) {
+        console.log('Configuration updated:', data);
+        if (typeof handleConfigUpdate === 'function') {
+            handleConfigUpdate(data);
+        }
+    });
+
+    socket.on('config_reset', function(data) {
+        console.log('Configuration reset:', data);
+        if (typeof handleConfigReset === 'function') {
+            handleConfigReset(data);
+        }
     });
 
     socket.on('error', function(error) {
