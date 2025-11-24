@@ -241,7 +241,7 @@ sudo systemctl is-active netmonitor.service
 curl http://localhost:8080/api/status
 
 # Check database
-sqlite3 /var/lib/netmonitor/netmonitor.db "SELECT COUNT(*) FROM alerts;"
+psql -U netmonitor -d netmonitor -c "SELECT COUNT(*) FROM alerts;"
 ```
 
 ## 🔄 Updates en Restart

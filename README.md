@@ -382,15 +382,20 @@ Drie log files worden aangemaakt:
 
 ### Database
 
-Alerts en metrics worden opgeslagen in SQLite database:
+Alerts en metrics worden opgeslagen in PostgreSQL database met TimescaleDB extensie:
 
-**Location**: `/var/lib/netmonitor/netmonitor.db`
+**Default Location**: `localhost:5432/netmonitor`
 
-**Tables**:
-- `alerts` - Alle security alerts met metadata
+**Main Tables**:
+- `alerts` - Alle security alerts met metadata (TimescaleDB hypertable)
 - `traffic_metrics` - Traffic statistieken per minuut
 - `top_talkers` - Top IPs per 5 minuten
 - `system_stats` - System resource metrics
+- `sensors` - Remote sensor registratie en status
+- `sensor_metrics` - Sensor performance metrics (CPU, RAM, bandwidth)
+- `whitelist` - Centralized IP whitelist management
+
+**Setup**: Zie `POSTGRESQL_SETUP.md` en `TIMESCALEDB_SETUP.md` voor installatie instructies.
 
 Toegang via web dashboard of direct via API.
 
@@ -505,7 +510,7 @@ WebSocket connection failed
 
 ```bash
 # Check database
-sqlite3 /var/lib/netmonitor/netmonitor.db "SELECT COUNT(*) FROM alerts;"
+psql -U netmonitor -d netmonitor -c "SELECT COUNT(*) FROM alerts;"
 
 # Check logs
 tail -f /var/log/netmonitor/alerts.log
@@ -645,7 +650,7 @@ netmonitor.py              - Main entry point, packet capture loop
 ├── threat_feeds.py        - Threat intelligence feed manager
 ├── abuseipdb_client.py    - AbuseIPDB API client
 ├── alerts.py              - Alert management en logging
-├── database.py            - SQLite database manager
+├── database.py            - PostgreSQL/TimescaleDB database manager
 ├── metrics_collector.py   - Traffic & system metrics
 ├── web_dashboard.py       - Flask web server + WebSocket
 └── web/                   - Dashboard frontend
@@ -670,7 +675,7 @@ netmonitor.py              - Main entry point, packet capture loop
    ↓
 4. Alert Found?
    ├─→ Console/File (AlertManager)
-   ├─→ Database (SQLite)
+   ├─→ Database (PostgreSQL/TimescaleDB)
    └─→ WebSocket Broadcast (Dashboard)
    ↓
 5. Dashboard Updates (real-time)

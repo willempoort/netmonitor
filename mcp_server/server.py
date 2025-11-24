@@ -579,6 +579,20 @@ class NetMonitorMCPServer:
                         },
                         "required": ["sensor_id"]
                     }
+                ),
+                Tool(
+                    name="get_bandwidth_summary",
+                    description="Get bandwidth usage summary for all sensors with trend analysis",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "hours": {
+                                "type": "number",
+                                "description": "Lookback period in hours for trend analysis (default: 24)",
+                                "default": 24
+                            }
+                        }
+                    }
                 )
             ]
 
@@ -643,6 +657,8 @@ class NetMonitorMCPServer:
                     result = await self._get_sensor_alerts(**arguments)
                 elif name == "get_sensor_command_history":
                     result = await self._get_sensor_command_history(**arguments)
+                elif name == "get_bandwidth_summary":
+                    result = await self._get_bandwidth_summary(**arguments)
 
                 else:
                     raise ValueError(f"Unknown tool: {name}")
@@ -1836,6 +1852,136 @@ class NetMonitorMCPServer:
 
         except Exception as e:
             logger.error(f"Error getting command history: {e}")
+            return {"error": str(e)}
+
+    async def _get_bandwidth_summary(self, hours: int = 24) -> dict:
+        """
+        Get bandwidth usage summary for all sensors with trend analysis
+
+        Args:
+            hours: Lookback period in hours for trend analysis
+
+        Returns:
+            Bandwidth summary with current usage and trends
+        """
+        logger.info(f"Getting bandwidth summary for {hours} hours")
+
+        try:
+            sys.path.insert(0, str(Path(__file__).parent.parent))
+            from database import DatabaseManager
+            from datetime import timedelta
+
+            host = os.environ.get('NETMONITOR_DB_HOST', 'localhost')
+            db_main = DatabaseManager(
+                host=host,
+                database='netmonitor',
+                user='netmonitor',
+                password='netmonitor'
+            )
+
+            # Get all sensors
+            sensors = db_main.get_sensors()
+
+            summary = {
+                "total_sensors": len(sensors),
+                "analysis_period_hours": hours,
+                "sensors": [],
+                "statistics": {
+                    "total_bandwidth_mbps": 0.0,
+                    "avg_bandwidth_mbps": 0.0,
+                    "max_bandwidth_mbps": 0.0,
+                    "sensors_over_80mbps": 0,
+                    "sensors_over_200mbps": 0
+                }
+            }
+
+            total_bandwidth = 0.0
+            bandwidth_values = []
+
+            for sensor in sensors:
+                # Get recent metrics
+                metrics = db_main.get_sensor_metrics(sensor['sensor_id'], hours=hours)
+
+                if not metrics:
+                    continue
+
+                # Calculate bandwidth statistics
+                bandwidth_readings = [m['bandwidth_mbps'] for m in metrics if m.get('bandwidth_mbps') is not None]
+
+                if not bandwidth_readings:
+                    continue
+
+                current_bw = bandwidth_readings[0]  # Most recent
+                avg_bw = sum(bandwidth_readings) / len(bandwidth_readings)
+                max_bw = max(bandwidth_readings)
+                min_bw = min(bandwidth_readings)
+
+                # Trend analysis (compare first half vs second half)
+                mid = len(bandwidth_readings) // 2
+                if mid > 0:
+                    recent_avg = sum(bandwidth_readings[:mid]) / mid
+                    older_avg = sum(bandwidth_readings[mid:]) / (len(bandwidth_readings) - mid)
+                    trend_pct = ((recent_avg - older_avg) / older_avg * 100) if older_avg > 0 else 0
+                    trend = "increasing" if trend_pct > 10 else "decreasing" if trend_pct < -10 else "stable"
+                else:
+                    trend = "unknown"
+                    trend_pct = 0
+
+                sensor_summary = {
+                    "sensor_id": sensor['sensor_id'],
+                    "location": sensor.get('location', 'Unknown'),
+                    "status": sensor.get('status', 'unknown'),
+                    "bandwidth": {
+                        "current_mbps": round(current_bw, 2),
+                        "avg_mbps": round(avg_bw, 2),
+                        "max_mbps": round(max_bw, 2),
+                        "min_mbps": round(min_bw, 2),
+                        "trend": trend,
+                        "trend_percent": round(trend_pct, 1)
+                    },
+                    "health": "critical" if current_bw > 200 else "warning" if current_bw > 80 else "normal",
+                    "samples": len(bandwidth_readings)
+                }
+
+                summary["sensors"].append(sensor_summary)
+                total_bandwidth += current_bw
+                bandwidth_values.append(current_bw)
+
+                # Update statistics
+                if current_bw > 80:
+                    summary["statistics"]["sensors_over_80mbps"] += 1
+                if current_bw > 200:
+                    summary["statistics"]["sensors_over_200mbps"] += 1
+
+            # Calculate overall statistics
+            if bandwidth_values:
+                summary["statistics"]["total_bandwidth_mbps"] = round(total_bandwidth, 2)
+                summary["statistics"]["avg_bandwidth_mbps"] = round(sum(bandwidth_values) / len(bandwidth_values), 2)
+                summary["statistics"]["max_bandwidth_mbps"] = round(max(bandwidth_values), 2)
+
+            # Sort sensors by current bandwidth (highest first)
+            summary["sensors"].sort(key=lambda s: s["bandwidth"]["current_mbps"], reverse=True)
+
+            # Add recommendations
+            recommendations = []
+            if summary["statistics"]["sensors_over_200mbps"] > 0:
+                recommendations.append(f"⚠️  {summary['statistics']['sensors_over_200mbps']} sensor(s) are using >200 Mbps - possible bottleneck")
+            if summary["statistics"]["sensors_over_80mbps"] > 0:
+                recommendations.append(f"⚡ {summary['statistics']['sensors_over_80mbps']} sensor(s) are using >80 Mbps - monitor closely")
+
+            # Check for sensors with increasing trends
+            increasing = [s for s in summary["sensors"] if s["bandwidth"]["trend"] == "increasing"]
+            if increasing:
+                recommendations.append(f"📈 {len(increasing)} sensor(s) show increasing bandwidth trends")
+
+            summary["recommendations"] = recommendations if recommendations else ["✅ All sensors operating within normal bandwidth ranges"]
+
+            db_main.close()
+
+            return summary
+
+        except Exception as e:
+            logger.error(f"Error getting bandwidth summary: {e}")
             return {"error": str(e)}
 
     # ==================== Resource Implementations ====================

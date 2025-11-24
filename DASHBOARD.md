@@ -209,15 +209,18 @@ Returns: Top IPs by traffic volume
 
 ## 🗄️ Database
 
-Alle data wordt opgeslagen in SQLite database:
+Alle data wordt opgeslagen in PostgreSQL database met TimescaleDB extensie:
 
-**Location**: `/var/lib/netmonitor/netmonitor.db`
+**Default Location**: `localhost:5432/netmonitor`
 
-### Tables:
-- **alerts**: Alle security alerts met metadata
+### Main Tables:
+- **alerts**: Alle security alerts met metadata (TimescaleDB hypertable)
 - **traffic_metrics**: Traffic statistieken per minuut
 - **top_talkers**: Top IPs per 5 minuten
 - **system_stats**: System resource metrics
+- **sensors**: Remote sensor registratie en status
+- **sensor_metrics**: Sensor performance metrics (CPU, RAM, bandwidth)
+- **whitelist**: Centralized IP whitelist management
 
 ### Database Cleanup
 
@@ -359,7 +362,7 @@ WebSocket connection failed
 
 ```bash
 # Check database
-sqlite3 /var/lib/netmonitor/netmonitor.db "SELECT COUNT(*) FROM alerts;"
+psql -U netmonitor -d netmonitor -c "SELECT COUNT(*) FROM alerts;"
 
 # Check logs
 tail -f /var/log/netmonitor/alerts.log
@@ -376,7 +379,7 @@ Check browser console voor JavaScript errors. Zorg dat Chart.js correct geladen 
 - **Backend**: Flask + Flask-SocketIO
 - **Frontend**: HTML5 + Bootstrap 5 + Chart.js
 - **Real-time**: Socket.IO WebSocket
-- **Database**: SQLite
+- **Database**: PostgreSQL + TimescaleDB
 - **Charts**: Chart.js 4.4
 - **Icons**: Bootstrap Icons
 
