@@ -333,7 +333,8 @@ def api_submit_sensor_metrics(sensor_id):
             uptime_seconds=data.get('uptime_seconds'),
             packets_captured=data.get('packets_captured'),
             alerts_sent=data.get('alerts_sent'),
-            network_interface=data.get('network_interface')
+            network_interface=data.get('network_interface'),
+            bandwidth_mbps=data.get('bandwidth_mbps')
         )
 
         if success:

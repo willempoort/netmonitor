@@ -1394,6 +1394,9 @@ function updateSensorsTable(sensors) {
         const cpuClass = sensor.cpu_percent > 80 ? 'text-danger' : sensor.cpu_percent > 60 ? 'text-warning' : 'text-success';
         const ramClass = sensor.memory_percent > 80 ? 'text-danger' : sensor.memory_percent > 60 ? 'text-warning' : 'text-success';
 
+        // Bandwidth with color coding (>80 Mbps = warning, >200 = danger)
+        const bwClass = sensor.bandwidth_mbps > 200 ? 'text-danger' : sensor.bandwidth_mbps > 80 ? 'text-warning' : 'text-success';
+
         row.innerHTML = `
             <td>${statusBadge}</td>
             <td>
@@ -1406,6 +1409,9 @@ function updateSensorsTable(sensors) {
             </td>
             <td class="${ramClass}">
                 ${sensor.memory_percent != null ? sensor.memory_percent.toFixed(1) + '%' : '<span class="text-muted">-</span>'}
+            </td>
+            <td class="${bwClass}">
+                ${sensor.bandwidth_mbps != null ? sensor.bandwidth_mbps.toFixed(1) + ' Mbps' : '<span class="text-muted">-</span>'}
             </td>
             <td>
                 ${sensor.packets_captured != null ? sensor.packets_captured.toLocaleString() : '<span class="text-muted">-</span>'}

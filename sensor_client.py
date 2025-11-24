@@ -64,6 +64,12 @@ class SensorClient:
         self.alerts_sent = 0
         self.start_time = time.time()
 
+        # Bandwidth tracking
+        self.bytes_received = 0
+        self.bytes_sent = 0
+        self.bandwidth_window_start = time.time()
+        self.bandwidth_window_bytes = 0  # Bytes in current measurement window
+
         # Alert buffer for batching
         self.alert_buffer = deque(maxlen=10000)  # Max 10k alerts in buffer
 
@@ -346,6 +352,20 @@ class SensorClient:
             disk = psutil.disk_usage('/')
             uptime = int(time.time() - self.start_time)
 
+            # Calculate bandwidth (Mbps) over measurement window
+            now = time.time()
+            window_duration = now - self.bandwidth_window_start
+
+            if window_duration > 0:
+                # Convert bytes to Mbps: (bytes * 8) / (duration * 1000000)
+                mbps = (self.bandwidth_window_bytes * 8) / (window_duration * 1_000_000)
+            else:
+                mbps = 0.0
+
+            # Reset bandwidth window
+            self.bandwidth_window_start = now
+            self.bandwidth_window_bytes = 0
+
             response = requests.post(
                 f"{self.server_url}/api/sensors/{self.sensor_id}/metrics",
                 json={
@@ -355,7 +375,8 @@ class SensorClient:
                     'uptime_seconds': uptime,
                     'packets_captured': self.packets_captured,
                     'alerts_sent': self.alerts_sent,
-                    'network_interface': self.config.get('interface', 'unknown')
+                    'network_interface': self.config.get('interface', 'unknown'),
+                    'bandwidth_mbps': round(mbps, 2)  # Add bandwidth in Mbps
                 },
                 timeout=10
             )
@@ -430,6 +451,10 @@ class SensorClient:
         """Process captured packet"""
         try:
             self.packets_captured += 1
+
+            # Track bandwidth (packet size in bytes)
+            packet_size = len(packet) if hasattr(packet, '__len__') else 0
+            self.bandwidth_window_bytes += packet_size
 
             # Detect threats
             threats = self.detector.analyze_packet(packet)

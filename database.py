@@ -218,6 +218,19 @@ class DatabaseManager:
                 END $$;
             """)
 
+            # Migration: Add bandwidth_mbps column to sensor_metrics table
+            cursor.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'sensor_metrics' AND column_name = 'bandwidth_mbps'
+                    ) THEN
+                        ALTER TABLE sensor_metrics ADD COLUMN bandwidth_mbps REAL;
+                    END IF;
+                END $$;
+            """)
+
             conn.commit()
 
         except Exception as e:
@@ -927,7 +940,8 @@ class DatabaseManager:
                     sm.uptime_seconds,
                     sm.packets_captured,
                     sm.alerts_sent,
-                    sm.network_interface
+                    sm.network_interface,
+                    sm.bandwidth_mbps
                 FROM sensors s
                 LEFT JOIN LATERAL (
                     SELECT *
@@ -990,7 +1004,8 @@ class DatabaseManager:
     def save_sensor_metrics(self, sensor_id: str, cpu_percent: float = None,
                           memory_percent: float = None, disk_percent: float = None,
                           uptime_seconds: int = None, packets_captured: int = None,
-                          alerts_sent: int = None, network_interface: str = None) -> bool:
+                          alerts_sent: int = None, network_interface: str = None,
+                          bandwidth_mbps: float = None) -> bool:
         """Save sensor performance metrics"""
         conn = self._get_connection()
         try:
@@ -998,10 +1013,10 @@ class DatabaseManager:
             cursor.execute('''
                 INSERT INTO sensor_metrics
                 (sensor_id, cpu_percent, memory_percent, disk_percent, uptime_seconds,
-                 packets_captured, alerts_sent, network_interface)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                 packets_captured, alerts_sent, network_interface, bandwidth_mbps)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ''', (sensor_id, cpu_percent, memory_percent, disk_percent, uptime_seconds,
-                  packets_captured, alerts_sent, network_interface))
+                  packets_captured, alerts_sent, network_interface, bandwidth_mbps))
             conn.commit()
             return True
         except Exception as e:
@@ -1027,6 +1042,7 @@ class DatabaseManager:
                     uptime_seconds,
                     packets_captured,
                     alerts_sent,
+                    bandwidth_mbps,
                     network_interface
                 FROM sensor_metrics
                 WHERE sensor_id = %s AND timestamp > %s
