@@ -10,14 +10,14 @@ let currentConfigSensor = null;
 function initConfigManagement() {
     console.log('[CONFIG] Initializing configuration management');
 
-    // Load defaults and descriptions
-    loadConfigDefaults();
-
-    // Setup event listeners
+    // Setup event listeners first
     setupConfigEventListeners();
 
-    // Load initial config
-    loadConfigParameters();
+    // Load defaults and descriptions, then load config
+    loadConfigDefaults().then(() => {
+        console.log('[CONFIG] Defaults loaded, loading parameters...');
+        loadConfigParameters();
+    });
 }
 
 function setupConfigEventListeners() {
@@ -75,7 +75,7 @@ function setupConfigEventListeners() {
 }
 
 function loadConfigDefaults() {
-    fetch('/api/config/defaults')
+    return fetch('/api/config/defaults')
         .then(response => response.json())
         .then(data => {
             if (data.success) {
@@ -110,7 +110,11 @@ function loadConfigParameters() {
         .then(data => {
             if (data.success) {
                 const config = data.config;
-                renderConfigByCategory(config);
+                // If config is empty, use defaults
+                const displayConfig = (Object.keys(config).length === 0 && Object.keys(configDefaults).length > 0)
+                    ? configDefaults
+                    : config;
+                renderConfigByCategory(displayConfig);
             } else {
                 showConfigError(data.error);
             }
