@@ -593,6 +593,66 @@ class NetMonitorMCPServer:
                             }
                         }
                     }
+                ),
+                # ==================== Configuration Management Tools (Database-backed) ====================
+                Tool(
+                    name="set_config_parameter",
+                    description="Set configuration parameter in database (global or per-sensor)",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "parameter_path": {
+                                "type": "string",
+                                "description": "Parameter path (e.g., 'detection.dns_tunnel.queries_per_minute')"
+                            },
+                            "value": {
+                                "description": "Parameter value (auto-typed: bool/int/float/str)"
+                            },
+                            "sensor_id": {
+                                "type": "string",
+                                "description": "Sensor ID for sensor-specific config (omit for global)"
+                            },
+                            "scope": {
+                                "type": "string",
+                                "description": "Scope: 'global' or 'sensor'",
+                                "enum": ["global", "sensor"],
+                                "default": "global"
+                            }
+                        },
+                        "required": ["parameter_path", "value"]
+                    }
+                ),
+                Tool(
+                    name="get_config_parameters",
+                    description="Get all configuration parameters with metadata",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "sensor_id": {
+                                "type": "string",
+                                "description": "Sensor ID to get sensor-specific config"
+                            }
+                        }
+                    }
+                ),
+                Tool(
+                    name="reset_config_to_defaults",
+                    description="Reset configuration to best practice defaults (requires confirmation)",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "sensor_id": {
+                                "type": "string",
+                                "description": "Sensor ID to reset (omit for global reset)"
+                            },
+                            "confirm": {
+                                "type": "boolean",
+                                "description": "Must be true to confirm reset",
+                                "default": False
+                            }
+                        },
+                        "required": ["confirm"]
+                    }
                 )
             ]
 
@@ -659,6 +719,14 @@ class NetMonitorMCPServer:
                     result = await self._get_sensor_command_history(**arguments)
                 elif name == "get_bandwidth_summary":
                     result = await self._get_bandwidth_summary(**arguments)
+
+                # Configuration Management Tools
+                elif name == "set_config_parameter":
+                    result = await self._set_config_parameter(**arguments)
+                elif name == "get_config_parameters":
+                    result = await self._get_config_parameters(**arguments)
+                elif name == "reset_config_to_defaults":
+                    result = await self._reset_config_to_defaults(**arguments)
 
                 else:
                     raise ValueError(f"Unknown tool: {name}")
@@ -1982,6 +2050,156 @@ class NetMonitorMCPServer:
 
         except Exception as e:
             logger.error(f"Error getting bandwidth summary: {e}")
+            return {"error": str(e)}
+
+    # ==================== Configuration Management Tool Implementations ====================
+
+    async def _set_config_parameter(self, parameter_path: str, value: Any,
+                                    sensor_id: str = None, scope: str = 'global') -> dict:
+        """
+        Set configuration parameter in database
+
+        Args:
+            parameter_path: Parameter path (e.g., 'detection.dns_tunnel.queries_per_minute')
+            value: Parameter value (auto-typed)
+            sensor_id: Optional sensor ID for sensor-specific config
+            scope: 'global' or 'sensor'
+
+        Returns:
+            Result with success status
+        """
+        logger.info(f"Setting config parameter: {parameter_path} = {value} (scope={scope}, sensor={sensor_id})")
+
+        try:
+            import requests
+
+            # Call dashboard API
+            response = requests.put(
+                f"http://localhost:8080/api/config/parameter",
+                json={
+                    'parameter_path': parameter_path,
+                    'value': value,
+                    'sensor_id': sensor_id,
+                    'scope': scope,
+                    'updated_by': 'mcp_server'
+                },
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success'):
+                    return {
+                        "success": True,
+                        "message": f"Parameter {parameter_path} updated successfully",
+                        "parameter_path": parameter_path,
+                        "value": value,
+                        "scope": scope,
+                        "sensor_id": sensor_id or "global"
+                    }
+                else:
+                    return {"error": result.get('error', 'Unknown error')}
+            else:
+                return {"error": f"API returned status {response.status_code}"}
+
+        except Exception as e:
+            logger.error(f"Error setting config parameter: {e}")
+            return {"error": str(e)}
+
+    async def _get_config_parameters(self, sensor_id: str = None) -> dict:
+        """
+        Get all configuration parameters with metadata
+
+        Args:
+            sensor_id: Optional sensor ID to get sensor-specific config
+
+        Returns:
+            List of parameters with values and metadata
+        """
+        logger.info(f"Getting config parameters for sensor: {sensor_id or 'global'}")
+
+        try:
+            import requests
+
+            # Call dashboard API
+            params = {}
+            if sensor_id:
+                params['sensor_id'] = sensor_id
+
+            response = requests.get(
+                f"http://localhost:8080/api/config/parameters",
+                params=params,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success'):
+                    parameters = result.get('parameters', [])
+
+                    return {
+                        "success": True,
+                        "total_parameters": len(parameters),
+                        "sensor_id": sensor_id or "global",
+                        "parameters": parameters
+                    }
+                else:
+                    return {"error": result.get('error', 'Unknown error')}
+            else:
+                return {"error": f"API returned status {response.status_code}"}
+
+        except Exception as e:
+            logger.error(f"Error getting config parameters: {e}")
+            return {"error": str(e)}
+
+    async def _reset_config_to_defaults(self, confirm: bool = False, sensor_id: str = None) -> dict:
+        """
+        Reset configuration to best practice defaults
+
+        Args:
+            confirm: Must be True to confirm reset
+            sensor_id: Optional sensor ID to reset specific sensor
+
+        Returns:
+            Result with number of parameters reset
+        """
+        if not confirm:
+            return {
+                "error": "Confirmation required",
+                "message": "Set confirm=True to reset configuration to defaults"
+            }
+
+        logger.warning(f"Resetting config to defaults for sensor: {sensor_id or 'global'}")
+
+        try:
+            import requests
+
+            # Call dashboard API
+            response = requests.post(
+                f"http://localhost:8080/api/config/reset",
+                json={
+                    'sensor_id': sensor_id,
+                    'confirm': True
+                },
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success'):
+                    return {
+                        "success": True,
+                        "message": result.get('message'),
+                        "parameters_reset": result.get('parameters_reset', 0),
+                        "sensor_id": sensor_id or "global"
+                    }
+                else:
+                    return {"error": result.get('error', 'Unknown error')}
+            else:
+                return {"error": f"API returned status {response.status_code}"}
+
+        except Exception as e:
+            logger.error(f"Error resetting config: {e}")
             return {"error": str(e)}
 
     # ==================== Resource Implementations ====================
