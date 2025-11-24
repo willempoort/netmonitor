@@ -47,6 +47,10 @@ class MetricsCollector:
         self.metrics_save_interval = 10  # 10 seconds - was 60, now much faster for dashboard
         self.first_packet_seen = False  # Track if we've seen any packets yet
 
+        # Bandwidth tracking (for real-time Mbps calculation)
+        self.bandwidth_window_start = time.time()
+        self.bandwidth_window_bytes = 0
+
         # Internal networks (from config)
         self.internal_networks = self._parse_internal_networks()
 
@@ -101,6 +105,7 @@ class MetricsCollector:
             # Update totals
             self.total_packets += 1
             self.total_bytes += packet_size
+            self.bandwidth_window_bytes += packet_size
 
             # Determine direction
             src_internal = self.is_internal_ip(src_ip)
@@ -169,6 +174,18 @@ class MetricsCollector:
         else:
             alerts_per_minute = int(self.alert_count / (time_since_reset / 60))
 
+        # Calculate bandwidth in Mbps
+        window_duration = current_time - self.bandwidth_window_start
+        if window_duration > 0:
+            # Convert bytes to Mbps: (bytes * 8) / (duration * 1000000)
+            bandwidth_mbps = (self.bandwidth_window_bytes * 8) / (window_duration * 1_000_000)
+        else:
+            bandwidth_mbps = 0.0
+
+        # Reset bandwidth window
+        self.bandwidth_window_start = current_time
+        self.bandwidth_window_bytes = 0
+
         return {
             'total_packets': self.total_packets,
             'total_bytes': self.total_bytes,
@@ -178,6 +195,7 @@ class MetricsCollector:
             'outbound_bytes': self.outbound_bytes,
             'packets_per_second': packets_per_second,
             'alerts_per_minute': alerts_per_minute,
+            'bandwidth_mbps': round(bandwidth_mbps, 2),
             'timestamp': datetime.now().isoformat()
         }
 
@@ -279,6 +297,8 @@ class MetricsCollector:
         self.ip_stats.clear()
         self.packet_timestamps.clear()
         self.alert_count = 0
+        self.bandwidth_window_start = time.time()
+        self.bandwidth_window_bytes = 0
 
     def get_dashboard_metrics(self) -> Dict:
         """Get alle metrics voor dashboard"""
