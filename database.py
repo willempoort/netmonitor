@@ -189,6 +189,30 @@ class DatabaseManager:
                 ON ip_whitelists(scope, sensor_id);
             ''')
 
+            # Sensor configuration table for centralized config management
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS sensor_configs (
+                    id SERIAL PRIMARY KEY,
+                    sensor_id TEXT,
+                    parameter_path TEXT NOT NULL,
+                    parameter_value JSONB NOT NULL,
+                    parameter_type TEXT NOT NULL,
+                    scope TEXT DEFAULT 'global',
+                    description TEXT,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_by TEXT,
+                    FOREIGN KEY (sensor_id) REFERENCES sensors(sensor_id) ON DELETE CASCADE,
+                    CONSTRAINT valid_config_scope CHECK (scope IN ('global', 'sensor')),
+                    CONSTRAINT unique_sensor_param UNIQUE (sensor_id, parameter_path)
+                );
+            ''')
+
+            # Index for faster config lookups
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_sensor_configs_lookup
+                ON sensor_configs(sensor_id, parameter_path);
+            ''')
+
             conn.commit()
             self.logger.info("Database schema created")
 
@@ -1298,6 +1322,191 @@ class DatabaseManager:
 
         except Exception as e:
             self.logger.error(f"Error checking whitelist: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    # ==================== Configuration Management ====================
+
+    def set_config_parameter(self, parameter_path: str, value: Any,
+                            sensor_id: str = None, scope: str = 'global',
+                            description: str = None, updated_by: str = None) -> bool:
+        """Set a configuration parameter (global or per-sensor)"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            # Determine parameter type
+            param_type = type(value).__name__
+
+            # Convert value to JSON-serializable format
+            import json
+            json_value = json.dumps(value)
+
+            cursor.execute('''
+                INSERT INTO sensor_configs
+                (sensor_id, parameter_path, parameter_value, parameter_type, scope, description, updated_by)
+                VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s)
+                ON CONFLICT (sensor_id, parameter_path)
+                DO UPDATE SET
+                    parameter_value = EXCLUDED.parameter_value,
+                    parameter_type = EXCLUDED.parameter_type,
+                    updated_at = NOW(),
+                    updated_by = EXCLUDED.updated_by
+            ''', (sensor_id, parameter_path, json_value, param_type, scope, description, updated_by))
+
+            conn.commit()
+            return True
+
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error setting config parameter: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    def get_sensor_config(self, sensor_id: str = None, parameter_path: str = None) -> Dict:
+        """Get configuration for a sensor (merges global + sensor-specific)"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            if parameter_path:
+                # Get specific parameter (sensor-specific overrides global)
+                if sensor_id:
+                    cursor.execute('''
+                        SELECT parameter_path, parameter_value, parameter_type, scope
+                        FROM sensor_configs
+                        WHERE parameter_path = %s
+                          AND (sensor_id IS NULL OR sensor_id = %s)
+                        ORDER BY CASE WHEN sensor_id IS NULL THEN 1 ELSE 0 END
+                        LIMIT 1
+                    ''', (parameter_path, sensor_id))
+                else:
+                    cursor.execute('''
+                        SELECT parameter_path, parameter_value, parameter_type, scope
+                        FROM sensor_configs
+                        WHERE parameter_path = %s AND sensor_id IS NULL
+                    ''', (parameter_path,))
+            else:
+                # Get all parameters
+                if sensor_id:
+                    # Get global + sensor-specific (sensor-specific overrides)
+                    cursor.execute('''
+                        WITH ranked_configs AS (
+                            SELECT
+                                parameter_path,
+                                parameter_value,
+                                parameter_type,
+                                scope,
+                                ROW_NUMBER() OVER (
+                                    PARTITION BY parameter_path
+                                    ORDER BY CASE WHEN sensor_id IS NULL THEN 1 ELSE 0 END
+                                ) as rn
+                            FROM sensor_configs
+                            WHERE sensor_id IS NULL OR sensor_id = %s
+                        )
+                        SELECT parameter_path, parameter_value, parameter_type, scope
+                        FROM ranked_configs
+                        WHERE rn = 1
+                    ''', (sensor_id,))
+                else:
+                    cursor.execute('''
+                        SELECT parameter_path, parameter_value, parameter_type, scope
+                        FROM sensor_configs
+                        WHERE sensor_id IS NULL
+                    ''')
+
+            rows = cursor.fetchall()
+
+            # Build config dict from parameter paths
+            import json
+            config = {}
+            for row in rows:
+                path_parts = row['parameter_path'].split('.')
+                current = config
+
+                # Navigate/create nested structure
+                for i, part in enumerate(path_parts[:-1]):
+                    if part not in current:
+                        current[part] = {}
+                    current = current[part]
+
+                # Set the value (parse JSON)
+                value = json.loads(row['parameter_value'])
+                current[path_parts[-1]] = value
+
+            return config
+
+        except Exception as e:
+            self.logger.error(f"Error getting sensor config: {e}")
+            return {}
+        finally:
+            self._return_connection(conn)
+
+    def get_all_config_parameters(self, sensor_id: str = None) -> List[Dict]:
+        """Get all configuration parameters with metadata"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            if sensor_id:
+                cursor.execute('''
+                    SELECT
+                        id, sensor_id, parameter_path, parameter_value,
+                        parameter_type, scope, description, updated_at, updated_by
+                    FROM sensor_configs
+                    WHERE sensor_id IS NULL OR sensor_id = %s
+                    ORDER BY parameter_path, sensor_id NULLS FIRST
+                ''', (sensor_id,))
+            else:
+                cursor.execute('''
+                    SELECT
+                        id, sensor_id, parameter_path, parameter_value,
+                        parameter_type, scope, description, updated_at, updated_by
+                    FROM sensor_configs
+                    WHERE sensor_id IS NULL
+                    ORDER BY parameter_path
+                ''')
+
+            import json
+            results = []
+            for row in cursor.fetchall():
+                row_dict = dict(row)
+                row_dict['parameter_value'] = json.loads(row_dict['parameter_value'])
+                results.append(row_dict)
+
+            return results
+
+        except Exception as e:
+            self.logger.error(f"Error getting config parameters: {e}")
+            return []
+        finally:
+            self._return_connection(conn)
+
+    def delete_config_parameter(self, parameter_path: str, sensor_id: str = None) -> bool:
+        """Delete a configuration parameter"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            if sensor_id:
+                cursor.execute('''
+                    DELETE FROM sensor_configs
+                    WHERE parameter_path = %s AND sensor_id = %s
+                ''', (parameter_path, sensor_id))
+            else:
+                cursor.execute('''
+                    DELETE FROM sensor_configs
+                    WHERE parameter_path = %s AND sensor_id IS NULL
+                ''', (parameter_path,))
+
+            conn.commit()
+            return True
+
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error deleting config parameter: {e}")
             return False
         finally:
             self._return_connection(conn)
