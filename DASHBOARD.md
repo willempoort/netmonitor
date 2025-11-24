@@ -22,6 +22,50 @@ Een real-time web dashboard voor het monitoren van netwerkverkeer en security ev
 - **Smooth Animations**: Nieuwe alerts slide in met animatie
 - **Detailed Info**: Source/destination IPs, timestamps, beschrijvingen
 
+### 🎛️ Centralized Management (Nieuw!)
+
+#### Configuration Management
+- **GUI-based Settings**: Alle sensor parameters aanpasbaar via dashboard
+- **Category Tabs**: Detection Rules, Thresholds, Alert Management, Performance
+- **Type-Aware Inputs**:
+  - Checkboxes voor booleans
+  - Number inputs voor integers/floats
+  - Text areas voor lijsten (één per regel)
+  - Text inputs voor strings
+- **Global vs Sensor-Specific**:
+  - Global settings voor alle sensors
+  - Sensor-specific overrides voor individuele aanpassingen
+- **Example Values**: Toon default waarden als referentie
+- **Reset to Defaults**: Bulk reset naar best practice configuratie
+- **Real-time Sync**: Sensors updaten binnen 1-5 minuten (configureerbaar)
+
+#### Whitelist Management
+- **Centraal Beheer**: Één plek voor alle whitelisted IPs
+- **CIDR Support**: IP ranges (bijv. 192.168.1.0/24)
+- **Add/Remove**: Eenvoudig IPs toevoegen en verwijderen
+- **Automatic Sync**: Sensors ontvangen whitelist updates automatisch
+- **Comment Field**: Notities per whitelist entry
+
+#### Sensor Management
+- **Live Status**: Real-time sensor online/offline status
+- **Metrics Monitoring**: CPU, RAM, bandwidth per sensor
+- **Location Tracking**: Fysieke locatie per sensor
+- **Last Seen**: Laatste heartbeat timestamp
+- **Remote Commands**:
+  - `restart` - Herstart sensor
+  - `update_config` - Force config sync
+  - `update_whitelist` - Force whitelist sync
+  - `get_status` - Request status update
+- **Command History**: Bekijk uitgevoerde commands per sensor
+
+#### Performance Tuning
+Alle sync intervals instelbaar via Performance tab:
+- **Config Sync Interval** (default: 300s)
+- **Whitelist Sync Interval** (default: 300s)
+- **Metrics Interval** (default: 60s)
+- **Heartbeat Interval** (default: 30s)
+- **Command Poll Interval** (default: 30s)
+
 ## 🚀 Quick Start
 
 ### Standalone Dashboard Server

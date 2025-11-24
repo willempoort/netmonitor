@@ -453,7 +453,56 @@ sudo /opt/netmonitor/venv/bin/python3 sensor_client.py \
 
 ### Centralized Configuration Management
 
-Voor meerdere sensors, gebruik Ansible/Salt:
+**Modern Aanpak: GUI-based Management** (Nieuw!)
+
+Geen handmatige config edits of Ansible meer nodig! Beheer alle sensors vanuit het dashboard:
+
+#### Via Dashboard UI (http://localhost:8080)
+
+1. **Configuration Management**:
+   - Ga naar Configuration Management sectie
+   - Kies Global (alle sensors) of Sensor-Specific
+   - Wijzig parameters in categorieën:
+     - Detection Rules (port_scan, dns_tunnel, etc.)
+     - Thresholds (bandwidth limits, etc.)
+     - Alert Management (batch intervals, priorities)
+     - Performance (sync intervals)
+   - Klik Save
+   - Sensors updaten automatisch binnen 1-5 minuten
+
+2. **Whitelist Management**:
+   - Voeg IP ranges toe (CIDR notatie)
+   - Wijzigingen syncen automatisch naar alle sensors
+   - Geen sensor restart nodig
+
+3. **Remote Commands**:
+   - Stuur commands naar sensors:
+     - `restart` - Herstart sensor
+     - `update_config` - Force config sync (direct)
+     - `update_whitelist` - Force whitelist sync
+     - `get_status` - Status update
+   - Bekijk command geschiedenis per sensor
+
+4. **Performance Tuning**:
+   - Stel sync intervals in:
+     - `config_sync_interval` (default: 300s)
+     - Voor snellere updates: zet op 60s
+   - Alle sensors gebruiken deze instellingen
+
+#### Via MCP (Claude Desktop)
+
+```
+User: "Set dns_tunnel queries_per_minute to 200 for all sensors"
+Claude: Calls set_config_parameter(
+  parameter_path="detection.dns_tunnel.queries_per_minute",
+  value=200,
+  scope="global"
+)
+```
+
+#### Legacy: Ansible/Salt (Nog steeds mogelijk)
+
+Voor complexe orchestratie of OS-level changes:
 
 ```yaml
 # ansible playbook example
@@ -468,6 +517,8 @@ Voor meerdere sensors, gebruik Ansible/Salt:
         name: netmonitor-sensor
         state: restarted
 ```
+
+**Best Practice**: Gebruik Dashboard UI voor runtime config, Ansible voor OS/package management.
 
 ## 📞 Support
 
