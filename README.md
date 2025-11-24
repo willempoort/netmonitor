@@ -7,7 +7,13 @@ Een krachtig netwerk monitoring platform voor Linux met **real-time web dashboar
 
 ## 🎯 Key Features
 
-### 🖥️ Real-Time Web Dashboard (Nieuw!)
+### 🎛️ Centralized SOC Management
+- **Remote sensor management** - Control alle sensors vanuit één dashboard
+- **Configuration as Code** - Alle settings via GUI beheerbaar
+- **AI Integration** - MCP server voor Claude Desktop integratie
+- **Real-time synchronization** - Wijzigingen direct doorgevoerd
+
+### 🖥️ Real-Time Web Dashboard
 
 **Professional SOC Dashboard op http://localhost:8080**
 
@@ -20,6 +26,53 @@ Een krachtig netwerk monitoring platform voor Linux met **real-time web dashboar
 - **Responsive Design**: Werkt op desktop, tablet en mobile
 
 [Zie DASHBOARD.md voor complete dashboard documentatie →](DASHBOARD.md)
+
+### 🎛️ Centralized Management & Control (Nieuw!)
+
+**Complete SOC Management via Dashboard**
+
+- **Configuration Management**:
+  - Alle sensor parameters instelbaar via GUI (detection rules, thresholds, performance)
+  - Global (alle sensors) of sensor-specific configuratie
+  - Type-aware inputs (checkboxes voor booleans, number inputs, etc.)
+  - Categorized tabs: Detection Rules, Thresholds, Alert Management, Performance
+  - Reset to best practice defaults met confirmatie
+  - Real-time sync: sensors updaten binnen 1-5 minuten (configureerbaar)
+
+- **Whitelist Management**:
+  - Centraal whitelist beheer via dashboard
+  - Toevoegen/verwijderen van IP ranges (CIDR notatie)
+  - Automatic sensor synchronization
+  - Geen handmatige config edits meer nodig
+
+- **Remote Command & Control**:
+  - Verstuur commands naar sensors vanuit dashboard
+  - Beschikbare commands: restart, update_whitelist, update_config, get_status
+  - Command geschiedenis per sensor
+  - Real-time status updates
+
+- **Sensor Monitoring**:
+  - Live sensor status (online/offline)
+  - Real-time metrics: CPU, RAM, bandwidth per sensor
+  - Last seen timestamps
+  - Location tracking
+
+- **MCP Server Integration** (Claude Desktop):
+  - AI-assisted sensor management via Claude
+  - Natural language config updates
+  - Sensor status queries
+  - Command execution via chat interface
+
+### ⚡ Performance Tuning (Nieuw!)
+
+Alle sync intervals configureerbaar via dashboard:
+- `config_sync_interval` (default: 300s) - Hoe vaak sensors config ophalen
+- `whitelist_sync_interval` (default: 300s) - Whitelist sync frequentie
+- `metrics_interval` (default: 60s) - Metrics reporting frequentie
+- `heartbeat_interval` (default: 30s) - Heartbeat signals
+- `command_poll_interval` (default: 30s) - Command polling frequentie
+
+**Voor snellere updates**: Zet config_sync_interval op 60s voor updates binnen 1 minuut!
 
 ## Detection Features
 
