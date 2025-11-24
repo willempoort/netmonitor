@@ -1440,13 +1440,19 @@ class DatabaseManager:
                 current = config
 
                 # Navigate/create nested structure
-                for i, part in enumerate(path_parts[:-1]):
+                for part in path_parts[:-1]:
                     if part not in current:
                         current[part] = {}
                     current = current[part]
 
-                # Set the value (parse JSON)
-                value = json.loads(row['parameter_value'])
+                # Set the value (JSONB is already parsed by psycopg2)
+                value = row['parameter_value']
+                if isinstance(value, str):
+                    # If it's a string, try to parse as JSON
+                    try:
+                        value = json.loads(value)
+                    except:
+                        pass  # Keep as string if not valid JSON
                 current[path_parts[-1]] = value
 
             return config
