@@ -60,8 +60,16 @@ class DatabaseManager:
         try:
             cursor = conn.cursor()
 
-            # Enable TimescaleDB extension
-            cursor.execute("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;")
+            # Enable TimescaleDB extension (optional - will continue without it if not available)
+            try:
+                cursor.execute("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;")
+                self.logger.info("TimescaleDB extension enabled")
+                self.timescaledb_enabled = True
+            except Exception as e:
+                self.logger.warning(f"TimescaleDB not available, continuing without it: {e}")
+                self.timescaledb_enabled = False
+                conn.rollback()  # Rollback the failed transaction
+                cursor = conn.cursor()  # Get new cursor after rollback
 
             # Alerts table (will become hypertable)
             cursor.execute('''
@@ -266,6 +274,11 @@ class DatabaseManager:
 
     def _setup_timescaledb(self):
         """Setup TimescaleDB hypertables and continuous aggregates"""
+        # Skip if TimescaleDB is not available
+        if not hasattr(self, 'timescaledb_enabled') or not self.timescaledb_enabled:
+            self.logger.info("Skipping TimescaleDB setup (not available)")
+            return
+
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
