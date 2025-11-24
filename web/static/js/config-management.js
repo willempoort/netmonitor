@@ -13,6 +13,9 @@ function initConfigManagement() {
     // Setup event listeners first
     setupConfigEventListeners();
 
+    // Load sensors for dropdown
+    loadSensors();
+
     // Load defaults and descriptions, then load config
     loadConfigDefaults().then(() => {
         console.log('[CONFIG] Defaults loaded, loading parameters...');
@@ -87,6 +90,29 @@ function loadConfigDefaults() {
         })
         .catch(error => {
             console.error('[CONFIG] Error loading defaults:', error);
+        });
+}
+
+function loadSensors() {
+    fetch('/api/sensors')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.data) {
+                const sensorSelect = document.getElementById('config-sensor-select');
+                sensorSelect.innerHTML = '<option value="">Select sensor...</option>';
+
+                data.data.forEach(sensor => {
+                    const option = document.createElement('option');
+                    option.value = sensor.sensor_id;
+                    option.textContent = `${sensor.sensor_id} (${sensor.hostname || 'Unknown'})`;
+                    sensorSelect.appendChild(option);
+                });
+
+                console.log('[CONFIG] Loaded sensors:', data.data.length);
+            }
+        })
+        .catch(error => {
+            console.error('[CONFIG] Error loading sensors:', error);
         });
 }
 
@@ -288,6 +314,14 @@ function renderAllParameters(config) {
 }
 
 function attachParameterEventListeners(container) {
+    // Edit buttons (for All Parameters table)
+    container.querySelectorAll('.edit-param-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const path = this.getAttribute('data-param-path');
+            editParameter(path);
+        });
+    });
+
     // Save buttons
     container.querySelectorAll('.save-param-btn').forEach(btn => {
         btn.addEventListener('click', function() {
@@ -312,6 +346,69 @@ function attachParameterEventListeners(container) {
                 label.textContent = this.checked ? 'Enabled' : 'Disabled';
             }
         });
+    });
+}
+
+function editParameter(path) {
+    const config = currentConfigScope === 'sensor' && currentConfigSensor
+        ? {} // Would need to fetch sensor-specific config
+        : configDefaults;
+
+    const currentValue = getDefaultValue(path);
+    const type = detectParamType(currentValue);
+    const description = configDescriptions[path] || '';
+
+    let newValue;
+
+    if (type === 'bool') {
+        newValue = confirm(`${path}\n${description}\n\nCurrent value: ${currentValue}\n\nSet to ${!currentValue}?`) ? !currentValue : currentValue;
+    } else if (type === 'list' || type === 'array') {
+        const arrayStr = Array.isArray(currentValue) ? currentValue.join('\n') : '';
+        const input = prompt(`${path}\n${description}\n\nEnter values (one per line):`, arrayStr);
+        if (input !== null) {
+            newValue = input.split('\n').filter(line => line.trim());
+        } else {
+            return; // User cancelled
+        }
+    } else {
+        const input = prompt(`${path}\n${description}\n\nCurrent value: ${currentValue}\n\nEnter new value:`, currentValue);
+        if (input === null) return; // User cancelled
+
+        if (type === 'int') {
+            newValue = parseInt(input);
+        } else if (type === 'float') {
+            newValue = parseFloat(input);
+        } else {
+            newValue = input;
+        }
+    }
+
+    // Save directly via API
+    const payload = {
+        parameter_path: path,
+        value: newValue,
+        sensor_id: currentConfigScope === 'sensor' ? currentConfigSensor : null,
+        scope: currentConfigScope,
+        updated_by: 'dashboard'
+    };
+
+    fetch('/api/config/parameter', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Success', `Parameter ${path} updated successfully`, 'success');
+            loadConfigParameters(); // Reload to show new value
+        } else {
+            showToast('Error', data.error || 'Failed to update parameter', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('[CONFIG] Error updating parameter:', error);
+        showToast('Error', error.message, 'error');
     });
 }
 
