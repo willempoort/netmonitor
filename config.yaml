@@ -2,7 +2,7 @@
 
 # Network interface to monitor (example: eth0, ens33, etc.)
 # Use 'any' to monitor all interfaces
-interface: eth0
+interface: lo
 
 # Internal network ranges (voor internal traffic monitoring)
 # Pas deze aan naar je eigen netwerk configuratie
