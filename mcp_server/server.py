@@ -653,6 +653,68 @@ class NetMonitorMCPServer:
                         },
                         "required": ["confirm"]
                     }
+                ),
+
+                # ==================== Whitelist Management Tools ====================
+                Tool(
+                    name="add_whitelist_entry",
+                    description="Add an IP, CIDR range, or domain to the whitelist",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "ip_cidr": {
+                                "type": "string",
+                                "description": "IP address, CIDR range (e.g., 192.168.1.0/24), or domain"
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "Description/reason for whitelisting (e.g., 'Office network', 'Sonos speakers')"
+                            },
+                            "scope": {
+                                "type": "string",
+                                "enum": ["global", "sensor"],
+                                "description": "Whitelist scope: 'global' for all sensors or 'sensor' for specific sensor",
+                                "default": "global"
+                            },
+                            "sensor_id": {
+                                "type": "string",
+                                "description": "Sensor ID (required if scope is 'sensor')"
+                            }
+                        },
+                        "required": ["ip_cidr", "description"]
+                    }
+                ),
+                Tool(
+                    name="get_whitelist_entries",
+                    description="Get all whitelist entries or filter by scope/sensor",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "scope": {
+                                "type": "string",
+                                "enum": ["global", "sensor"],
+                                "description": "Filter by scope"
+                            },
+                            "sensor_id": {
+                                "type": "string",
+                                "description": "Filter by sensor ID"
+                            }
+                        }
+                    }
+                ),
+                Tool(
+                    name="remove_whitelist_entry",
+                    description="Remove a whitelist entry by ID",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "entry_id": {
+                                "type": "integer",
+                                "description": "Whitelist entry ID to remove"
+                            }
+                        },
+                        "required": ["entry_id"]
+                    }
                 )
             ]
 
@@ -727,6 +789,14 @@ class NetMonitorMCPServer:
                     result = await self._get_config_parameters(**arguments)
                 elif name == "reset_config_to_defaults":
                     result = await self._reset_config_to_defaults(**arguments)
+
+                # Whitelist Management Tools
+                elif name == "add_whitelist_entry":
+                    result = await self._add_whitelist_entry(**arguments)
+                elif name == "get_whitelist_entries":
+                    result = await self._get_whitelist_entries(**arguments)
+                elif name == "remove_whitelist_entry":
+                    result = await self._remove_whitelist_entry(**arguments)
 
                 else:
                     raise ValueError(f"Unknown tool: {name}")
@@ -2200,6 +2270,148 @@ class NetMonitorMCPServer:
 
         except Exception as e:
             logger.error(f"Error resetting config: {e}")
+            return {"error": str(e)}
+
+    # ==================== Whitelist Management Tool Implementations ====================
+
+    async def _add_whitelist_entry(self, ip_cidr: str, description: str,
+                                   scope: str = "global", sensor_id: str = None) -> dict:
+        """
+        Add an IP, CIDR range, or domain to the whitelist
+
+        Args:
+            ip_cidr: IP address, CIDR range, or domain to whitelist
+            description: Reason for whitelisting
+            scope: 'global' for all sensors or 'sensor' for specific sensor
+            sensor_id: Sensor ID (required if scope is 'sensor')
+
+        Returns:
+            Result with entry details
+        """
+        logger.info(f"Adding whitelist entry: {ip_cidr} (scope: {scope})")
+
+        if scope == "sensor" and not sensor_id:
+            return {"error": "sensor_id required when scope is 'sensor'"}
+
+        try:
+            import requests
+
+            # Call dashboard API
+            response = requests.post(
+                "http://localhost:8080/api/whitelist",
+                json={
+                    'ip_cidr': ip_cidr,
+                    'description': description,
+                    'scope': scope,
+                    'sensor_id': sensor_id,
+                    'created_by': 'mcp'
+                },
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success'):
+                    return {
+                        "success": True,
+                        "message": f"Added {ip_cidr} to whitelist",
+                        "entry_id": result.get('entry_id'),
+                        "ip_cidr": ip_cidr,
+                        "description": description,
+                        "scope": scope,
+                        "sensor_id": sensor_id
+                    }
+                else:
+                    return {"error": result.get('error', 'Unknown error')}
+            else:
+                return {"error": f"API returned status {response.status_code}"}
+
+        except Exception as e:
+            logger.error(f"Error adding whitelist entry: {e}")
+            return {"error": str(e)}
+
+    async def _get_whitelist_entries(self, scope: str = None, sensor_id: str = None) -> dict:
+        """
+        Get whitelist entries, optionally filtered by scope or sensor
+
+        Args:
+            scope: Filter by 'global' or 'sensor'
+            sensor_id: Filter by sensor ID
+
+        Returns:
+            List of whitelist entries
+        """
+        logger.info(f"Getting whitelist entries (scope: {scope}, sensor: {sensor_id})")
+
+        try:
+            import requests
+
+            params = {}
+            if scope:
+                params['scope'] = scope
+            if sensor_id:
+                params['sensor_id'] = sensor_id
+
+            response = requests.get(
+                "http://localhost:8080/api/whitelist",
+                params=params,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success'):
+                    entries = result.get('entries', [])
+                    return {
+                        "success": True,
+                        "total_entries": len(entries),
+                        "scope_filter": scope,
+                        "sensor_filter": sensor_id,
+                        "entries": entries
+                    }
+                else:
+                    return {"error": result.get('error', 'Unknown error')}
+            else:
+                return {"error": f"API returned status {response.status_code}"}
+
+        except Exception as e:
+            logger.error(f"Error getting whitelist entries: {e}")
+            return {"error": str(e)}
+
+    async def _remove_whitelist_entry(self, entry_id: int) -> dict:
+        """
+        Remove a whitelist entry by ID
+
+        Args:
+            entry_id: Whitelist entry ID to remove
+
+        Returns:
+            Success status
+        """
+        logger.info(f"Removing whitelist entry: {entry_id}")
+
+        try:
+            import requests
+
+            response = requests.delete(
+                f"http://localhost:8080/api/whitelist/{entry_id}",
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success'):
+                    return {
+                        "success": True,
+                        "message": f"Removed whitelist entry {entry_id}"
+                    }
+                else:
+                    return {"error": result.get('error', 'Unknown error')}
+            else:
+                return {"error": f"API returned status {response.status_code}"}
+
+        except Exception as e:
+            logger.error(f"Error removing whitelist entry: {e}")
             return {"error": str(e)}
 
     # ==================== Resource Implementations ====================
