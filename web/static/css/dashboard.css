@@ -933,9 +933,9 @@ canvas {
     -webkit-overflow-scrolling: touch;
 }
 
-/* Wrap long parameter names in tables */
-.table-dark code,
-.table-dark td:first-child {
+/* Wrap long parameter names in tables (only config/whitelist tables, not sensors table) */
+#all-params-content .table-dark code,
+#all-params-content .table-dark td:first-child {
     word-break: break-word;
     max-width: 250px;
     white-space: normal;
@@ -967,8 +967,8 @@ canvas {
     max-width: 180px;
 }
 
-/* Command history table: prevent stretching */
-.table-dark tbody td {
+/* Command history modal table: prevent stretching */
+.modal .table-dark tbody td {
     max-width: 300px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1001,27 +1001,27 @@ canvas {
     padding-right: 0.5rem;
 }
 
-/* Table column width constraints for "All Parameters" tab */
-.table-dark th:first-child,
-.table-dark td:first-child {
+/* Table column width constraints for "All Parameters" tab only */
+#all-params-content .table-dark th:first-child,
+#all-params-content .table-dark td:first-child {
     min-width: 150px;
     max-width: 300px;
 }
 
-.table-dark th:nth-child(2),
-.table-dark td:nth-child(2) {
+#all-params-content .table-dark th:nth-child(2),
+#all-params-content .table-dark td:nth-child(2) {
     min-width: 100px;
     max-width: 250px;
 }
 
-.table-dark th:nth-child(3),
-.table-dark td:nth-child(3) {
+#all-params-content .table-dark th:nth-child(3),
+#all-params-content .table-dark td:nth-child(3) {
     min-width: 60px;
     max-width: 100px;
 }
 
-.table-dark th:nth-child(4),
-.table-dark td:nth-child(4) {
+#all-params-content .table-dark th:nth-child(4),
+#all-params-content .table-dark td:nth-child(4) {
     min-width: 80px;
     max-width: 120px;
 }
@@ -1040,9 +1040,9 @@ canvas {
         max-width: 100%;
     }
 
-    /* Reduce max widths for tables on smaller screens */
-    .table-dark th:first-child,
-    .table-dark td:first-child {
+    /* Reduce max widths for config tables on smaller screens */
+    #all-params-content .table-dark th:first-child,
+    #all-params-content .table-dark td:first-child {
         max-width: 200px;
     }
 }

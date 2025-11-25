@@ -1372,7 +1372,7 @@ function updateSensorsTable(sensors) {
     const onlineBadge = document.getElementById('sensors-online');
 
     if (!sensors || sensors.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No sensors registered</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No sensors registered</td></tr>';
         countBadge.textContent = '0';
         onlineBadge.textContent = '0';
         return;
