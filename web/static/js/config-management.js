@@ -14,7 +14,7 @@ function initConfigManagement() {
     setupConfigEventListeners();
 
     // Load sensors for dropdown
-    loadSensors();
+    loadSensorsForConfig();
 
     // Load defaults and descriptions, then load config
     loadConfigDefaults().then(() => {
@@ -93,7 +93,7 @@ function loadConfigDefaults() {
         });
 }
 
-function loadSensors() {
+function loadSensorsForConfig() {
     fetch('/api/sensors')
         .then(response => response.json())
         .then(data => {
