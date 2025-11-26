@@ -44,10 +44,55 @@ De NetMonitor MCP server geeft AI assistenten zoals Claude Desktop volledige toe
 - **Claude Desktop** (laatste versie)
 - **SSH toegang** tot server (voor remote/network mode)
 
-### Python Dependencies
+### Python Virtual Environment (Aanbevolen!)
+
+**⚠️ Best Practice:** Gebruik altijd een virtual environment om dependency conflicts te voorkomen.
+
+**Op de NetMonitor server:**
 ```bash
-cd mcp_server
+cd /opt/netmonitor/mcp_server
+
+# Maak virtual environment
+python3 -m venv venv
+
+# Activeer venv
+source venv/bin/activate
+
+# Installeer dependencies
 pip install -r requirements.txt
+```
+
+**Op de client (voor SSE bridge):**
+```bash
+# Maak directory voor MCP bridge
+mkdir -p ~/mcp-clients/netmonitor
+cd ~/mcp-clients/netmonitor
+
+# Kopieer bridge script van server
+scp user@soc.poort.net:/opt/netmonitor/mcp_server/mcp_sse_bridge.py .
+scp user@soc.poort.net:/opt/netmonitor/mcp_server/requirements.txt .
+
+# Maak virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Installeer dependencies
+pip install -r requirements.txt
+```
+
+### Python Dependencies (met venv)
+
+**Met virtual environment (aanbevolen):**
+```bash
+cd /opt/netmonitor/mcp_server
+source venv/bin/activate  # Activeer eerst!
+pip install -r requirements.txt
+```
+
+**Zonder virtual environment (niet aanbevolen):**
+```bash
+cd /opt/netmonitor/mcp_server
+pip3 install --user -r requirements.txt
 ```
 
 **Vereiste packages:**
@@ -85,11 +130,13 @@ pip install -r requirements.txt
    ```
 
 2. **Voeg MCP server toe:**
+
+   **Met virtual environment (aanbevolen):**
    ```json
    {
      "mcpServers": {
        "netmonitor-soc": {
-         "command": "python3",
+         "command": "/opt/netmonitor/mcp_server/venv/bin/python",
          "args": [
            "/opt/netmonitor/mcp_server/server.py"
          ],
@@ -105,7 +152,26 @@ pip install -r requirements.txt
    }
    ```
 
-   **⚠️ Pas het pad aan** naar waar je netmonitor staat!
+   **Zonder venv (systeem Python):**
+   ```json
+   {
+     "mcpServers": {
+       "netmonitor-soc": {
+         "command": "python3",
+         "args": ["/opt/netmonitor/mcp_server/server.py"],
+         "env": {
+           "NETMONITOR_DB_HOST": "localhost",
+           "NETMONITOR_DB_PORT": "5432",
+           "NETMONITOR_DB_NAME": "netmonitor",
+           "NETMONITOR_DB_USER": "mcp_readonly",
+           "NETMONITOR_DB_PASSWORD": "mcp_netmonitor_readonly_2024"
+         }
+       }
+     }
+   }
+   ```
+
+   **⚠️ Pas de paden aan** naar waar je netmonitor staat!
 
 3. **Herstart Claude Desktop**
 
@@ -135,7 +201,8 @@ pip install -r requirements.txt
 1. **Start MCP server op NetMonitor server:**
    ```bash
    cd /opt/netmonitor/mcp_server
-   python3 server.py --transport sse --host 127.0.0.1 --port 3000
+   source venv/bin/activate  # Activeer venv
+   python server.py --transport sse --host 127.0.0.1 --port 3000
    ```
 
 2. **Maak SSH tunnel (op Mac/client):**
@@ -146,13 +213,15 @@ pip install -r requirements.txt
    ```
 
 3. **Configureer Claude Desktop:**
+
+   **Met venv (aanbevolen):**
    ```json
    {
      "mcpServers": {
        "netmonitor-soc": {
-         "command": "python3",
+         "command": "/Users/username/mcp-clients/netmonitor/venv/bin/python",
          "args": [
-           "/opt/netmonitor/mcp_server/mcp_sse_bridge.py",
+           "/Users/username/mcp-clients/netmonitor/mcp_sse_bridge.py",
            "--url",
            "http://localhost:3000/sse"
          ]
@@ -161,7 +230,23 @@ pip install -r requirements.txt
    }
    ```
 
-   **⚠️ Let op:** Je hebt `mcp_sse_bridge.py` lokaal nodig op de client!
+   **Linux pad voorbeeld:**
+   ```json
+   {
+     "mcpServers": {
+       "netmonitor-soc": {
+         "command": "/home/username/mcp-clients/netmonitor/venv/bin/python",
+         "args": [
+           "/home/username/mcp-clients/netmonitor/mcp_sse_bridge.py",
+           "--url",
+           "http://localhost:3000/sse"
+         ]
+       }
+     }
+   }
+   ```
+
+   **⚠️ Pas de paden aan** naar je eigen username en locatie!
 
 4. **Test de verbinding:**
    ```
@@ -173,7 +258,17 @@ pip install -r requirements.txt
 **Setup:**
 
 1. **Start MCP server (bind op 0.0.0.0):**
+
+   **Met venv (aanbevolen):**
    ```bash
+   cd /opt/netmonitor/mcp_server
+   source venv/bin/activate
+   python server.py --transport sse --host 0.0.0.0 --port 3000
+   ```
+
+   **Zonder venv:**
+   ```bash
+   cd /opt/netmonitor/mcp_server
    python3 server.py --transport sse --host 0.0.0.0 --port 3000
    ```
 
@@ -183,6 +278,24 @@ pip install -r requirements.txt
    ```
 
 3. **Gebruik bridge op client:**
+
+   **Met venv (aanbevolen):**
+   ```json
+   {
+     "mcpServers": {
+       "netmonitor-soc": {
+         "command": "/Users/username/mcp-clients/netmonitor/venv/bin/python",
+         "args": [
+           "/Users/username/mcp-clients/netmonitor/mcp_sse_bridge.py",
+           "--url",
+           "http://soc.poort.net:3000/sse"
+         ]
+       }
+     }
+   }
+   ```
+
+   **Zonder venv:**
    ```json
    {
      "mcpServers": {
@@ -402,6 +515,15 @@ chmod +x /opt/netmonitor/mcp_server/server.py
 ```
 
 **Python dependencies:**
+
+**Met venv (aanbevolen):**
+```bash
+cd /opt/netmonitor/mcp_server
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+**Zonder venv:**
 ```bash
 cd /opt/netmonitor/mcp_server
 pip3 install -r requirements.txt --user
@@ -517,6 +639,17 @@ kill $(lsof -t -i:3000)
 ## 🔄 Updates & Maintenance
 
 ### MCP Server Update
+
+**Met venv (aanbevolen):**
+```bash
+cd /opt/netmonitor
+git pull origin main
+cd mcp_server
+source venv/bin/activate
+pip install -r requirements.txt --upgrade
+```
+
+**Zonder venv:**
 ```bash
 cd /opt/netmonitor
 git pull origin main
@@ -548,6 +681,28 @@ List all available MCP tools
 ## 🎯 Advanced Configuration
 
 ### Custom Database Connection
+
+**Met venv (aanbevolen):**
+```json
+{
+  "mcpServers": {
+    "netmonitor-soc": {
+      "command": "/opt/netmonitor/mcp_server/venv/bin/python",
+      "args": ["/opt/netmonitor/mcp_server/server.py"],
+      "env": {
+        "NETMONITOR_DB_HOST": "db.example.com",
+        "NETMONITOR_DB_PORT": "5433",
+        "NETMONITOR_DB_NAME": "custom_db",
+        "NETMONITOR_DB_USER": "custom_user",
+        "NETMONITOR_DB_PASSWORD": "secure_password",
+        "NETMONITOR_DB_SSLMODE": "require"
+      }
+    }
+  }
+}
+```
+
+**Zonder venv:**
 ```json
 {
   "mcpServers": {
@@ -568,7 +723,24 @@ List all available MCP tools
 ```
 
 ### SSE Server Tuning
+
+**Met venv (aanbevolen):**
 ```bash
+cd /opt/netmonitor/mcp_server
+source venv/bin/activate
+
+# Start met custom configuratie
+python server.py \
+    --transport sse \
+    --host 127.0.0.1 \
+    --port 3000 \
+    --workers 4
+```
+
+**Zonder venv:**
+```bash
+cd /opt/netmonitor/mcp_server
+
 # Start met custom configuratie
 python3 server.py \
     --transport sse \
@@ -578,7 +750,21 @@ python3 server.py \
 ```
 
 ### Logging
+
+**Met venv:**
 ```bash
+cd /opt/netmonitor/mcp_server
+source venv/bin/activate
+
+# Enable debug logging
+export NETMONITOR_LOG_LEVEL=DEBUG
+python server.py
+```
+
+**Zonder venv:**
+```bash
+cd /opt/netmonitor/mcp_server
+
 # Enable debug logging
 export NETMONITOR_LOG_LEVEL=DEBUG
 python3 server.py
@@ -604,6 +790,27 @@ python3 server.py
 4. Test tools handmatig via API
 
 **Debug commands:**
+
+**Met venv (aanbevolen):**
+```bash
+# Test MCP server standalone
+cd /opt/netmonitor/mcp_server
+source venv/bin/activate
+export NETMONITOR_DB_HOST=localhost
+export NETMONITOR_DB_USER=mcp_readonly
+export NETMONITOR_DB_PASSWORD=mcp_netmonitor_readonly_2024
+export NETMONITOR_DB_NAME=netmonitor
+python server.py
+
+# Test database
+psql -U mcp_readonly -d netmonitor -h localhost -c "SELECT version();"
+
+# Test dashboard API
+curl http://localhost:8080/api/status
+curl http://localhost:8080/api/sensors
+```
+
+**Zonder venv:**
 ```bash
 # Test MCP server standalone
 cd /opt/netmonitor/mcp_server
