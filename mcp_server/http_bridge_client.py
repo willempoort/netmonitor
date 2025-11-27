@@ -112,6 +112,11 @@ class MCPHTTPBridge:
                 request_id = request.get('id')
 
                 try:
+                    # Handle notifications (no response needed)
+                    if method and method.startswith('notifications/'):
+                        logger.info(f"Received notification: {method}")
+                        continue  # No response for notifications
+
                     if method == 'initialize':
                         result = {
                             'protocolVersion': '2024-11-05',
@@ -177,28 +182,38 @@ class MCPHTTPBridge:
                         logger.warning(f"Unknown method: {method}")
                         result = {'error': f'Unknown method: {method}'}
 
-                    # Send JSON-RPC response
-                    response = {
-                        'jsonrpc': '2.0',
-                        'id': request_id,
-                        'result': result
-                    }
+                    # Only send response if request has an ID (not a notification)
+                    if request_id is not None:
+                        # Send JSON-RPC response
+                        response = {
+                            'jsonrpc': '2.0',
+                            'id': request_id,
+                            'result': result
+                        }
+
+                        # Write response to stdout
+                        sys.stdout.write(json.dumps(response) + '\n')
+                        sys.stdout.flush()
+                        logger.info(f"Sent response for request {request_id}")
 
                 except Exception as e:
                     logger.error(f"Error handling request: {e}", exc_info=True)
-                    response = {
-                        'jsonrpc': '2.0',
-                        'id': request_id,
-                        'error': {
-                            'code': -32603,
-                            'message': str(e)
-                        }
-                    }
 
-                # Write response to stdout
-                sys.stdout.write(json.dumps(response) + '\n')
-                sys.stdout.flush()
-                logger.info(f"Sent response for request {request_id}")
+                    # Only send error response if request has an ID
+                    if request_id is not None:
+                        response = {
+                            'jsonrpc': '2.0',
+                            'id': request_id,
+                            'error': {
+                                'code': -32603,
+                                'message': str(e)
+                            }
+                        }
+
+                        # Write response to stdout
+                        sys.stdout.write(json.dumps(response) + '\n')
+                        sys.stdout.flush()
+                        logger.info(f"Sent error response for request {request_id}")
 
             except json.JSONDecodeError as e:
                 logger.error(f"Invalid JSON: {e}")
