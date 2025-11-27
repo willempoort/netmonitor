@@ -94,7 +94,7 @@ from typing import Optional, List, Dict
 from pydantic import BaseModel, Field
 
 
-class Function:
+class Tools:
     """NetMonitor MCP API Tools"""
 
     class Valves(BaseModel):
@@ -369,17 +369,20 @@ class Function:
             return f"❌ Error: {str(e)}"
 ```
 
-### Stap 2: Installeer Function in Open WebUI
+### Stap 2: Installeer Tools in Open WebUI
 
 1. **Open Open WebUI:** http://localhost:3000
-2. **Ga naar Workspace → Functions**
-3. **Klik "+ Add Function"**
+2. **Ga naar Werkruimte → Gereedschappen** (of: Workspace → Tools)
+3. **Klik op de "+" knop** om nieuwe tool toe te voegen
 4. **Plak de code** van `netmonitor_mcp.py`
-5. **Klik "Save"**
+5. **Klik "Opslaan" / "Save"**
+
+> **LET OP:** Gebruik "Werkruimte → Gereedschappen", NIET "Beheerders paneel → Functies"!
+> De code gebruikt `class Tools` voor tool calling.
 
 ### Stap 3: Configureer MCP API Token
 
-1. **Ga naar Function Settings** (tandwiel icoon bij de function)
+1. **Ga naar Tool Settings** (tandwiel icoon bij de tool)
 2. **Vul in:**
    - **MCP_API_URL:** `https://soc.poort.net:8000`
    - **MCP_API_TOKEN:** `your_api_token_here`
@@ -554,18 +557,18 @@ Je kunt meerdere functions maken voor verschillende MCP servers:
 # Maak twee aparte function files in Open WebUI
 
 # File 1: netmonitor_production.py
-class Function:
+class Tools:
     class Valves(BaseModel):
         MCP_API_URL: str = Field(default="https://soc.poort.net:8000")
         MCP_API_TOKEN: str = Field(default="prod_token_here")
-    # ... rest van de function code
+    # ... rest van de tools code
 
 # File 2: netmonitor_development.py
-class Function:
+class Tools:
     class Valves(BaseModel):
         MCP_API_URL: str = Field(default="https://dev.poort.net:8000")
         MCP_API_TOKEN: str = Field(default="dev_token_here")
-    # ... rest van de function code
+    # ... rest van de tools code
 ```
 
 ### Custom Formatting
@@ -757,7 +760,7 @@ Voeg caching toe aan de function:
 ```python
 from datetime import datetime, timedelta
 
-class Function:
+class Tools:
     def __init__(self):
         self.valves = self.Valves()
         self.cache = {}
