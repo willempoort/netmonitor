@@ -94,7 +94,7 @@ from typing import Optional, List, Dict
 from pydantic import BaseModel, Field
 
 
-class Tools:
+class Function:
     """NetMonitor MCP API Tools"""
 
     class Valves(BaseModel):
@@ -551,16 +551,21 @@ Would you like me to analyze any of these IPs in detail?
 Je kunt meerdere functions maken voor verschillende MCP servers:
 
 ```python
-# In Open WebUI
-class ToolsProduction:
+# Maak twee aparte function files in Open WebUI
+
+# File 1: netmonitor_production.py
+class Function:
     class Valves(BaseModel):
         MCP_API_URL: str = Field(default="https://soc.poort.net:8000")
         MCP_API_TOKEN: str = Field(default="prod_token_here")
+    # ... rest van de function code
 
-class ToolsDevelopment:
+# File 2: netmonitor_development.py
+class Function:
     class Valves(BaseModel):
         MCP_API_URL: str = Field(default="https://dev.poort.net:8000")
         MCP_API_TOKEN: str = Field(default="dev_token_here")
+    # ... rest van de function code
 ```
 
 ### Custom Formatting
@@ -752,7 +757,7 @@ Voeg caching toe aan de function:
 ```python
 from datetime import datetime, timedelta
 
-class Tools:
+class Function:
     def __init__(self):
         self.valves = self.Valves()
         self.cache = {}
