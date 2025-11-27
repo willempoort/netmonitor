@@ -455,11 +455,68 @@ class MCPHTTPServer:
 
     async def _tool_analyze_ip(self, params: Dict) -> Dict:
         """Implement analyze_ip tool"""
+        import socket
+        from geoip_helper import get_country_for_ip, is_private_ip
+
         ip_address = params.get('ip_address')
         hours = params.get('hours', 24)
 
-        result = self.db.analyze_ip(ip_address, hours)
-        return result
+        # Get all alerts for this IP
+        alerts = self.db.get_alerts_by_ip(ip_address, hours)
+
+        # Get geolocation
+        country = get_country_for_ip(ip_address)
+
+        # Determine if internal
+        internal = is_private_ip(ip_address)
+
+        # Try hostname resolution
+        hostname = None
+        try:
+            hostname = socket.gethostbyaddr(ip_address)[0]
+        except:
+            pass
+
+        # Analyze alerts
+        threat_types = list(set(a['threat_type'] for a in alerts))
+        severity_counts = {}
+        for alert in alerts:
+            sev = alert['severity']
+            severity_counts[sev] = severity_counts.get(sev, 0) + 1
+
+        # Calculate threat score (0-100)
+        threat_score = min(100, len(alerts) * 5 + len(threat_types) * 10)
+
+        # Determine risk level
+        if threat_score >= 80:
+            risk_level = "CRITICAL"
+            recommendation = "URGENT: Block this IP immediately and investigate affected systems"
+        elif threat_score >= 60:
+            risk_level = "HIGH"
+            recommendation = "High priority: Review and consider blocking this IP"
+        elif threat_score >= 40:
+            risk_level = "MEDIUM"
+            recommendation = "Monitor this IP closely for suspicious activity"
+        elif threat_score >= 20:
+            risk_level = "LOW"
+            recommendation = "Informational: Minor suspicious activity detected"
+        else:
+            risk_level = "INFO"
+            recommendation = "No significant threats detected"
+
+        return {
+            'ip_address': ip_address,
+            'hostname': hostname,
+            'country': country,
+            'is_internal': internal,
+            'alert_count': len(alerts),
+            'threat_types': threat_types,
+            'severity_counts': severity_counts,
+            'threat_score': threat_score,
+            'risk_level': risk_level,
+            'recommendation': recommendation,
+            'recent_alerts': alerts[:10] if len(alerts) > 10 else alerts
+        }
 
     async def _tool_get_recent_threats(self, params: Dict) -> Dict:
         """Implement get_recent_threats tool"""
@@ -468,45 +525,124 @@ class MCPHTTPServer:
         threat_type = params.get('threat_type')
         limit = params.get('limit', 50)
 
-        result = self.db.get_recent_threats(
+        alerts = self.db.get_recent_alerts(
+            limit=limit,
             hours=hours,
             severity=severity,
-            threat_type=threat_type,
-            limit=limit
+            threat_type=threat_type
         )
-        return result
+
+        # Calculate statistics
+        total = len(alerts)
+        by_severity = {}
+        by_type = {}
+        unique_sources = set()
+
+        for alert in alerts:
+            by_severity[alert['severity']] = by_severity.get(alert['severity'], 0) + 1
+            by_type[alert['threat_type']] = by_type.get(alert['threat_type'], 0) + 1
+            unique_sources.add(alert.get('source_ip', 'unknown'))
+
+        return {
+            'total_alerts': total,
+            'statistics': {
+                'by_severity': by_severity,
+                'by_type': by_type
+            },
+            'unique_source_ips': len(unique_sources),
+            'alerts': alerts
+        }
 
     async def _tool_get_sensor_status(self, params: Dict) -> Dict:
         """Implement get_sensor_status tool"""
-        result = self.db.get_sensor_status()
-        return result
+        import sys
+        from pathlib import Path
+
+        # Import main database module for sensor access
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+
+        try:
+            from database import DatabaseManager
+
+            # Create DB connection with main credentials
+            host = os.environ.get('NETMONITOR_DB_HOST', 'localhost')
+            password = os.environ.get('NETMONITOR_DB_PASSWORD', 'netmonitor')
+
+            db_main = DatabaseManager(
+                host=host,
+                database='netmonitor',
+                user='netmonitor',
+                password=password
+            )
+
+            sensors = db_main.get_sensors()
+            db_main.close()
+
+            return {
+                'sensors': sensors,
+                'total': len(sensors),
+                'online': len([s for s in sensors if s.get('status') == 'online']),
+                'offline': len([s for s in sensors if s.get('status') == 'offline'])
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting sensor status: {e}")
+            return {
+                'error': str(e),
+                'sensors': [],
+                'total': 0
+            }
 
     async def _tool_set_config_parameter(self, params: Dict) -> Dict:
         """Implement set_config_parameter tool"""
+        import requests
+
         parameter_name = params.get('parameter_name')
         value = params.get('value')
         scope = params.get('scope', 'global')
         sensor_name = params.get('sensor_name')
 
-        result = self.db.set_config_parameter(
-            parameter_name=parameter_name,
-            value=value,
-            scope=scope,
-            sensor_name=sensor_name
-        )
-        return result
+        # Configuration changes go through the dashboard API
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.post(
+                f"{dashboard_url}/api/config/set",
+                json={
+                    'parameter': parameter_name,
+                    'value': value,
+                    'scope': scope,
+                    'sensor_name': sensor_name
+                },
+                timeout=10
+            )
+
+            response.raise_for_status()
+
+            return {
+                'success': True,
+                'message': f"Configuration parameter '{parameter_name}' updated successfully"
+            }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error setting config parameter: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to update configuration. Ensure the dashboard API is running.'
+            }
 
     async def _get_dashboard_summary(self) -> str:
         """Get dashboard summary text"""
-        data = self.db.get_dashboard_summary()
+        data = self.db.get_dashboard_stats()
 
         # Format as readable text
         summary = f"""=== NetMonitor Security Dashboard Summary ===
 
-Period: Last 24 hours
+Period: Last {data.get('period_hours', 24)} hours
 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
-TOTAL ALERTS: {data.get('total_alerts', 0)}
+TOTAL ALERTS: {data.get('total', 0)}
 
 ALERTS BY SEVERITY:
   CRITICAL: {data.get('by_severity', {}).get('CRITICAL', 0)}
@@ -521,7 +657,7 @@ TOP THREAT TYPES:
             summary += f"  {threat_type}: {count}\n"
 
         summary += "\nTOP SOURCE IPs:\n"
-        for ip_info in data.get('top_ips', []):
+        for ip_info in data.get('top_sources', []):
             summary += f"  {ip_info['ip']}: {ip_info['count']} alerts\n"
 
         return summary
