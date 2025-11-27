@@ -7,8 +7,12 @@
 ## ⚡ Ultra Quick Start
 
 ```bash
-# 1. Setup (één keer)
+# 0. Maak virtual environment (indien nog niet gedaan)
 cd /opt/netmonitor
+python3 -m venv venv
+source venv/bin/activate
+
+# 1. Setup (één keer) - installeert automatisch dependencies
 sudo ./mcp_server/setup_http_api.sh
 
 # 2. Start server

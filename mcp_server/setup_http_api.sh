@@ -57,21 +57,64 @@ fi
 
 echo ""
 
-# Step 2: Create initial admin token
-echo "Step 2: Creating initial admin API token..."
+# Step 2: Install Python dependencies
+echo "Step 2: Installing/updating Python dependencies..."
 echo ""
 
 # Check if Python virtual environment exists
 if [ -d "$NETMONITOR_DIR/venv" ]; then
     PYTHON="$NETMONITOR_DIR/venv/bin/python"
+    PIP="$NETMONITOR_DIR/venv/bin/pip"
+    VENV_DIR="$NETMONITOR_DIR/venv"
     echo "Using virtual environment: $NETMONITOR_DIR/venv"
 elif [ -d "$SCRIPT_DIR/venv" ]; then
     PYTHON="$SCRIPT_DIR/venv/bin/python"
+    PIP="$SCRIPT_DIR/venv/bin/pip"
+    VENV_DIR="$SCRIPT_DIR/venv"
     echo "Using virtual environment: $SCRIPT_DIR/venv"
 else
     PYTHON="python3"
+    PIP="pip3"
+    VENV_DIR=""
+    echo "⚠️  WARNING: No virtual environment found!"
     echo "Using system Python: $PYTHON"
+    echo ""
+    echo "It is HIGHLY RECOMMENDED to use a virtual environment."
+    echo "Run this first:"
+    echo "  cd $NETMONITOR_DIR"
+    echo "  python3 -m venv venv"
+    echo "  source venv/bin/activate"
+    echo ""
+    read -p "Continue with system Python? (yes/no): " confirm
+    if [ "$confirm" != "yes" ]; then
+        echo "Setup cancelled. Please create a virtual environment first."
+        exit 1
+    fi
 fi
+
+# Install/upgrade dependencies
+echo ""
+echo "Installing dependencies from requirements.txt..."
+$PIP install --upgrade pip
+$PIP install -r "$SCRIPT_DIR/requirements.txt"
+
+if [ $? -eq 0 ]; then
+    echo "✅ Dependencies installed successfully"
+else
+    echo "❌ Failed to install dependencies"
+    echo "Try manually:"
+    if [ -n "$VENV_DIR" ]; then
+        echo "  source $VENV_DIR/bin/activate"
+    fi
+    echo "  pip install -r $SCRIPT_DIR/requirements.txt"
+    exit 1
+fi
+
+echo ""
+
+# Step 3: Create initial admin token
+echo "Step 3: Creating initial admin API token..."
+echo ""
 
 # Export database credentials
 export NETMONITOR_DB_HOST="$DB_HOST"
@@ -94,9 +137,9 @@ $PYTHON "$SCRIPT_DIR/manage_tokens.py" create \
 
 echo ""
 
-# Step 3: Install systemd service (if running as root)
+# Step 4: Install systemd service (if running as root)
 if [ "$INSTALL_SERVICE" = true ]; then
-    echo "Step 3: Installing systemd service..."
+    echo "Step 4: Installing systemd service..."
     echo ""
 
     SERVICE_FILE="/etc/systemd/system/netmonitor-mcp-http.service"
@@ -147,7 +190,7 @@ EOF
     echo "To view logs:"
     echo "  sudo journalctl -u netmonitor-mcp-http -f"
 else
-    echo "Step 3: Skipping systemd service installation (not root)"
+    echo "Step 4: Skipping systemd service installation (not root)"
     echo ""
     echo "To install the systemd service, run this script with sudo:"
     echo "  sudo $0"

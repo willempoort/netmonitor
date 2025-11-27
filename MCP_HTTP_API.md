@@ -62,17 +62,31 @@ De MCP HTTP API is een moderne, veilige implementatie van het Model Context Prot
 ```bash
 cd /opt/netmonitor
 
-# Installeer dependencies
-pip install -r mcp_server/requirements.txt
+# Maak virtual environment (indien nog niet gedaan)
+python3 -m venv venv
+source venv/bin/activate
 
-# Setup database schema en eerste token
+# Setup database schema, dependencies en eerste token
 sudo ./mcp_server/setup_http_api.sh
 ```
 
 De setup script:
+- ✅ Detecteert en gebruikt virtual environment
+- ✅ Installeert alle benodigde Python dependencies
 - ✅ Creëert database schema voor API tokens
 - ✅ Genereert eerste admin token
 - ✅ Installeert systemd service (optioneel)
+
+**⚠️ Belangrijk:** De setup script controleert of je een virtual environment gebruikt en waarschuwt als dit niet het geval is. Het is **sterk aangeraden** om een venv te gebruiken om dependency conflicts te voorkomen.
+
+**Geïnstalleerde dependencies:**
+- `fastapi` - Modern async web framework
+- `uvicorn` - ASGI server
+- `pydantic` - Data validation
+- `slowapi` - Rate limiting
+- `python-jose` - JWT/crypto voor tokens
+- `tabulate` - CLI formatting
+- Plus alle bestaande MCP dependencies
 
 ### 2. Start de server
 
