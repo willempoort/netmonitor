@@ -1,34 +1,42 @@
-# NetMonitor MCP Server - Complete Installation Guide
+# NetMonitor MCP Server - Installation Guide
 
-**AI-powered Security Operations Center via Model Context Protocol**
+**Modern HTTP API met Token Authenticatie**
 
 ---
 
 ## 📋 Overzicht
 
-De NetMonitor MCP server geeft AI assistenten zoals Claude Desktop volledige toegang tot je Security Operations Center data via het Model Context Protocol. Met **23+ tools** voor security analysis, configuration management, sensor control, en whitelist beheer.
+De NetMonitor MCP server biedt AI assistenten zoals Claude **volledige SOC toegang** via een moderne HTTP REST API met token-based authenticatie.
 
 **Belangrijkste Features:**
-- 🔍 **Security Analysis**: Threat intelligence, IP analysis, attack timelines
-- 🎛️ **Configuration Management**: Wijzig sensor parameters, detection rules, thresholds
-- 👥 **Sensor Management**: Remote command & control voor distributed sensors
-- 🚫 **Whitelist Management**: Centraal beheer van whitelisted IPs/CIDRs/domains
-- 🤖 **AI Analysis**: Ollama integration voor deep threat analysis
-- 📊 **Exports & Reporting**: CSV exports, statistieken, dashboards
+- 🔐 **Token Authenticatie** - Veilige Bearer tokens per client
+- 🚦 **Rate Limiting** - Configureerbaar per token
+- 👥 **Permission Scopes** - read_only, read_write, admin
+- 📊 **Audit Logging** - Volledige request tracking
+- 🔍 **23+ Tools** - Van monitoring tot configuratie management
+- 📚 **Auto-Docs** - OpenAPI/Swagger documentatie
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start (5 minuten)
 
-**Wat je nodig hebt:**
-- NetMonitor SOC server (draaiend met PostgreSQL)
-- Claude Desktop (op Mac/Linux/Windows)
-- Python 3.8+ met MCP SDK
+```bash
+# 1. Maak virtual environment
+cd /opt/netmonitor
+python3 -m venv venv
+source venv/bin/activate
 
-**In 3 stappen:**
-1. Installeer dependencies: `pip install -r requirements.txt`
-2. Configureer Claude Desktop met MCP server
-3. Test: "Show me the dashboard summary"
+# 2. Run setup (installeert dependencies, maakt schema, genereert token)
+sudo ./mcp_server/setup_http_api.sh
+
+# 3. Start server
+sudo systemctl start netmonitor-mcp-http
+
+# 4. Test API
+curl http://localhost:8000/health
+```
+
+**Klaar!** De HTTP API draait op `http://localhost:8000`
 
 ---
 
@@ -36,603 +44,386 @@ De NetMonitor MCP server geeft AI assistenten zoals Claude Desktop volledige toe
 
 ### Server Requirements
 - **PostgreSQL 12+** met TimescaleDB (optioneel)
-- **Python 3.8+**
-- **NetMonitor SOC** (geïnstalleerd en draaiend)
-- **Database User**: `mcp_readonly` (automatisch aangemaakt)
+- **Python 3.8+** met virtual environment
+- **NetMonitor SOC** geïnstalleerd en draaiend
 
-### Client Requirements
-- **Claude Desktop** (laatste versie)
-- **SSH toegang** tot server (voor remote/network mode)
+### Python Dependencies
 
-### Python Virtual Environment (Aanbevolen!)
+Automatisch geïnstalleerd door setup script:
+- `fastapi` - Modern async web framework
+- `uvicorn` - ASGI HTTP server
+- `pydantic` - Data validation
+- `slowapi` - Rate limiting
+- `python-jose` - Token crypto
+- `tabulate` - CLI formatting
+- Plus alle MCP SDK dependencies
 
-**⚠️ Best Practice:** Gebruik altijd een virtual environment om dependency conflicts te voorkomen.
+---
 
-**Op de NetMonitor server:**
+## 🔧 Gedetailleerde Installatie
+
+### Stap 1: Virtual Environment
+
+**⚠️ BELANGRIJK:** Gebruik altijd een virtual environment!
+
 ```bash
-cd /opt/netmonitor/mcp_server
+cd /opt/netmonitor
 
-# Maak virtual environment
+# Maak venv
 python3 -m venv venv
 
 # Activeer venv
 source venv/bin/activate
 
-# Installeer dependencies
-pip install -r requirements.txt
+# Verify
+which python
+# Should show: /opt/netmonitor/venv/bin/python
 ```
 
-**Op de client (voor SSE bridge):**
+### Stap 2: Run Setup Script
+
 ```bash
-# Maak directory voor MCP bridge
-mkdir -p ~/mcp-clients/netmonitor
-cd ~/mcp-clients/netmonitor
-
-# Kopieer bridge script van server
-scp user@soc.poort.net:/opt/netmonitor/mcp_server/mcp_sse_bridge.py .
-scp user@soc.poort.net:/opt/netmonitor/mcp_server/requirements.txt .
-
-# Maak virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Installeer dependencies
-pip install -r requirements.txt
+sudo ./mcp_server/setup_http_api.sh
 ```
 
-### Python Dependencies (met venv)
+**Dit script doet:**
 
-**Met virtual environment (aanbevolen):**
+1. ✅ Creëert database schema voor API tokens
+2. ✅ Installeert Python dependencies in venv
+3. ✅ Genereert eerste admin token
+4. ✅ Installeert systemd service
+
+**Output:**
+```
+Step 1: Creating database schema for API tokens...
+✅ Database schema created successfully
+
+Step 2: Installing/updating Python dependencies...
+Using virtual environment: /opt/netmonitor/venv
+✅ Dependencies installed successfully
+
+Step 3: Creating initial admin API token...
+✅ API Token created successfully!
+
+🔑 Token: a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6...
+
+⚠️  IMPORTANT: Save this token now!
+
+Step 4: Installing systemd service...
+✅ Service enabled
+```
+
+**⚠️ Bewaar de token!** Je kunt hem niet meer ophalen.
+
+### Stap 3: Start de Service
+
 ```bash
-cd /opt/netmonitor/mcp_server
-source venv/bin/activate  # Activeer eerst!
-pip install -r requirements.txt
+# Start server
+sudo systemctl start netmonitor-mcp-http
+
+# Check status
+sudo systemctl status netmonitor-mcp-http
+
+# Enable auto-start
+sudo systemctl enable netmonitor-mcp-http
+
+# View logs
+sudo journalctl -u netmonitor-mcp-http -f
 ```
 
-**Zonder virtual environment (niet aanbevolen):**
+### Stap 4: Test de API
+
 ```bash
-cd /opt/netmonitor/mcp_server
-pip3 install --user -r requirements.txt
-```
+# Health check
+curl http://localhost:8000/health
 
-**Vereiste packages:**
-- `mcp>=0.9.0` - Model Context Protocol SDK
-- `psycopg2-binary>=2.9.0` - PostgreSQL adapter
-- `pyyaml>=6.0` - YAML config parser
-- `requests>=2.31.0` - HTTP client
-- `starlette>=0.27.0` - Web framework (network mode)
-- `sse-starlette>=1.6.0` - Server-Sent Events (network mode)
-- `uvicorn>=0.23.0` - ASGI server (network mode)
+# List tools (met token)
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+     http://localhost:8000/mcp/tools
+
+# Bekijk docs
+open http://localhost:8000/docs
+```
 
 ---
 
-## 🔧 Installatie
+## 🔑 Token Management
 
-### Methode 1: Lokale Setup (Aanbevolen voor beginners)
+### Token Aanmaken
 
-**Gebruik wanneer:**
-- Claude Desktop en NetMonitor op DEZELFDE machine draaien
-- Je simple stdio transport wilt (geen netwerk complexiteit)
+```bash
+cd /opt/netmonitor
 
-**Setup:**
+# Read-only token (voor AI monitoring)
+python3 mcp_server/manage_tokens.py create \
+    --name "Claude Desktop" \
+    --scope read_only \
+    --description "Security monitoring via Claude"
 
-1. **Configureer Claude Desktop**
+# Read-write token (voor automation)
+python3 mcp_server/manage_tokens.py create \
+    --name "Incident Response Bot" \
+    --scope read_write \
+    --expires-days 90
 
-   **macOS:**
-   ```bash
-   nano ~/Library/Application\ Support/Claude/claude_desktop_config.json
-   ```
+# Admin token (voor beheer)
+python3 mcp_server/manage_tokens.py create \
+    --name "Admin Console" \
+    --scope admin \
+    --rate-minute 200
+```
 
-   **Linux:**
-   ```bash
-   mkdir -p ~/.config/Claude
-   nano ~/.config/Claude/claude_desktop_config.json
-   ```
+### Token Beheren
 
-2. **Voeg MCP server toe:**
+```bash
+# Lijst alle tokens
+python3 mcp_server/manage_tokens.py list
 
-   **Met virtual environment (aanbevolen):**
-   ```json
-   {
-     "mcpServers": {
-       "netmonitor-soc": {
-         "command": "/opt/netmonitor/mcp_server/venv/bin/python",
-         "args": [
-           "/opt/netmonitor/mcp_server/server.py"
-         ],
-         "env": {
-           "NETMONITOR_DB_HOST": "localhost",
-           "NETMONITOR_DB_PORT": "5432",
-           "NETMONITOR_DB_NAME": "netmonitor",
-           "NETMONITOR_DB_USER": "mcp_readonly",
-           "NETMONITOR_DB_PASSWORD": "mcp_netmonitor_readonly_2024"
-         }
-       }
-     }
-   }
-   ```
+# Token details
+python3 mcp_server/manage_tokens.py show 1
 
-   **Zonder venv (systeem Python):**
-   ```json
-   {
-     "mcpServers": {
-       "netmonitor-soc": {
-         "command": "python3",
-         "args": ["/opt/netmonitor/mcp_server/server.py"],
-         "env": {
-           "NETMONITOR_DB_HOST": "localhost",
-           "NETMONITOR_DB_PORT": "5432",
-           "NETMONITOR_DB_NAME": "netmonitor",
-           "NETMONITOR_DB_USER": "mcp_readonly",
-           "NETMONITOR_DB_PASSWORD": "mcp_netmonitor_readonly_2024"
-         }
-       }
-     }
-   }
-   ```
+# Usage statistieken
+python3 mcp_server/manage_tokens.py stats
 
-   **⚠️ Pas de paden aan** naar waar je netmonitor staat!
-
-3. **Herstart Claude Desktop**
-
-4. **Test:**
-   ```
-   Show me the dashboard summary
-   ```
-
----
-
-### Methode 2: Network Setup (voor remote servers)
-
-**Gebruik wanneer:**
-- Claude Desktop op Mac, NetMonitor op Linux server
-- Je meerdere clients wilt verbinden
-- Je centraal logging wilt
-
-#### Optie A: SSH Tunnel (Simpelst)
-
-**Voordelen:**
-- ✅ Geen firewall changes
-- ✅ Encrypted verbinding
-- ✅ Eenvoudig te debuggen
-
-**Setup:**
-
-1. **Start MCP server op NetMonitor server:**
-   ```bash
-   cd /opt/netmonitor/mcp_server
-   source venv/bin/activate  # Activeer venv
-   python server.py --transport sse --host 127.0.0.1 --port 3000
-   ```
-
-2. **Maak SSH tunnel (op Mac/client):**
-   ```bash
-   ssh -N -L 3000:localhost:3000 user@soc.poort.net \
-       -o ServerAliveInterval=60 \
-       -o ServerAliveCountMax=3
-   ```
-
-3. **Configureer Claude Desktop:**
-
-   **Met venv (aanbevolen):**
-   ```json
-   {
-     "mcpServers": {
-       "netmonitor-soc": {
-         "command": "/Users/username/mcp-clients/netmonitor/venv/bin/python",
-         "args": [
-           "/Users/username/mcp-clients/netmonitor/mcp_sse_bridge.py",
-           "--url",
-           "http://localhost:3000/sse"
-         ]
-       }
-     }
-   }
-   ```
-
-   **Linux pad voorbeeld:**
-   ```json
-   {
-     "mcpServers": {
-       "netmonitor-soc": {
-         "command": "/home/username/mcp-clients/netmonitor/venv/bin/python",
-         "args": [
-           "/home/username/mcp-clients/netmonitor/mcp_sse_bridge.py",
-           "--url",
-           "http://localhost:3000/sse"
-         ]
-       }
-     }
-   }
-   ```
-
-   **⚠️ Pas de paden aan** naar je eigen username en locatie!
-
-4. **Test de verbinding:**
-   ```
-   Which sensors are online?
-   ```
-
-#### Optie B: Direct SSE (met firewall)
-
-**Setup:**
-
-1. **Start MCP server (bind op 0.0.0.0):**
-
-   **Met venv (aanbevolen):**
-   ```bash
-   cd /opt/netmonitor/mcp_server
-   source venv/bin/activate
-   python server.py --transport sse --host 0.0.0.0 --port 3000
-   ```
-
-   **Zonder venv:**
-   ```bash
-   cd /opt/netmonitor/mcp_server
-   python3 server.py --transport sse --host 0.0.0.0 --port 3000
-   ```
-
-2. **Open firewall:**
-   ```bash
-   sudo ufw allow from 192.168.1.0/24 to any port 3000
-   ```
-
-3. **Gebruik bridge op client:**
-
-   **Met venv (aanbevolen):**
-   ```json
-   {
-     "mcpServers": {
-       "netmonitor-soc": {
-         "command": "/Users/username/mcp-clients/netmonitor/venv/bin/python",
-         "args": [
-           "/Users/username/mcp-clients/netmonitor/mcp_sse_bridge.py",
-           "--url",
-           "http://soc.poort.net:3000/sse"
-         ]
-       }
-     }
-   }
-   ```
-
-   **Zonder venv:**
-   ```json
-   {
-     "mcpServers": {
-       "netmonitor-soc": {
-         "command": "python3",
-         "args": [
-           "/path/to/mcp_sse_bridge.py",
-           "--url",
-           "http://soc.poort.net:3000/sse"
-         ]
-       }
-     }
-   }
-   ```
+# Token intrekken
+python3 mcp_server/manage_tokens.py revoke 3
+```
 
 ---
 
 ## 🛠️ Beschikbare Tools
 
-De MCP server biedt **23 tools** verdeeld over 6 categorieën:
+De MCP API biedt **23+ tools** verdeeld over categorieën:
 
-### 🔍 Security Analysis (Read-Only)
-| Tool | Description |
-|------|-------------|
-| `analyze_ip` | Gedetailleerde IP analyse met threat intelligence |
-| `get_recent_threats` | Recent gedetecteerde threats met filters |
-| `get_threat_timeline` | Chronologische attack timeline |
-| `get_traffic_trends` | Traffic trends en patronen |
-| `get_top_talkers_stats` | Top communicerende hosts |
-| `get_alert_statistics` | Alert statistieken gegroepeerd |
+### 🔍 Security Analysis (read_only)
+- `analyze_ip` - IP threat intelligence
+- `get_recent_threats` - Recent security alerts
+- `get_threat_timeline` - Attack timeline
+- `get_alert_statistics` - Alert statistieken
 
-### 📊 Exports & Reporting
-| Tool | Description |
-|------|-------------|
-| `export_alerts_csv` | Export alerts naar CSV |
-| `export_traffic_stats_csv` | Export traffic statistieken |
-| `export_top_talkers_csv` | Export top talkers |
-| `get_dashboard_summary` | Complete SOC overzicht |
+### 🎛️ Sensor Management (read_only)
+- `get_sensor_status` - Live sensor status
+- `get_sensor_details` - Gedetailleerde info
+- `get_sensor_alerts` - Alerts per sensor
 
-### 🎛️ Configuration Management (Read & Write)
-| Tool | Description |
-|------|-------------|
-| `set_config_parameter` | Wijzig sensor parameters (detection rules, thresholds, etc.) |
-| `get_config_parameters` | Haal configuratie op (global of sensor-specific) |
-| `reset_config_to_defaults` | Reset naar best practice defaults |
+### ⚙️ Configuration (read_write)
+- `set_config_parameter` - Wijzig configuratie
+- `get_config_parameters` - Lijst parameters
+- `reset_config_to_defaults` - Reset naar defaults
 
-### 👥 Sensor Management (Read & Write)
-| Tool | Description |
-|------|-------------|
-| `get_sensor_status` | Status van alle sensors (online/offline, metrics) |
-| `get_sensor_details` | Gedetailleerde sensor informatie |
-| `send_sensor_command` | Stuur remote commands naar sensors |
-| `get_sensor_alerts` | Alerts van specifieke sensor |
-| `get_sensor_command_history` | Command history per sensor |
-| `get_bandwidth_summary` | Bandwidth usage per sensor |
+### 👥 Sensor Control (read_write)
+- `send_sensor_command` - Remote commands
+- `get_sensor_command_history` - Command log
 
-### 🚫 Whitelist Management (Read & Write)
-| Tool | Description |
-|------|-------------|
-| `add_whitelist_entry` | Voeg IP/CIDR/domain toe aan whitelist |
-| `get_whitelist_entries` | Haal whitelist op (met filtering) |
-| `remove_whitelist_entry` | Verwijder whitelist entry |
+### 🚫 Whitelist Management (read_write)
+- `add_whitelist_entry` - Voeg IP/CIDR toe
+- `get_whitelist_entries` - Lijst whitelist
+- `remove_whitelist_entry` - Verwijder entry
 
-### 🤖 AI-Powered Analysis (Ollama Integration)
-| Tool | Description |
-|------|-------------|
-| `analyze_threat_with_ollama` | Deep threat analysis met lokale LLM |
-| `suggest_incident_response` | AI-gegenereerde response suggesties |
-| `explain_ioc` | Uitleg over Indicators of Compromise |
-| `get_ollama_status` | Ollama server status |
+### 📊 Exports & Reporting (read_only)
+- `export_alerts_csv` - Export naar CSV
+- `get_dashboard_summary` - Dashboard data
+
+**Volledige lijst:** `http://localhost:8000/mcp/tools`
 
 ---
 
 ## 💡 Gebruik Voorbeelden
 
-### Security Analysis
-```
-"What's the current threat situation?"
-"Analyze IP 192.168.1.50 from the last 24 hours"
-"Show me the attack timeline for suspicious IPs"
-"Who are the top 10 talkers in my network?"
+### Via cURL
+
+```bash
+# Analyze IP
+curl -X POST http://localhost:8000/mcp/tools/execute \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tool_name": "analyze_ip",
+    "parameters": {
+      "ip_address": "185.220.101.50",
+      "hours": 24
+    }
+  }'
+
+# Get recent threats
+curl -X POST http://localhost:8000/mcp/tools/execute \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tool_name": "get_recent_threats",
+    "parameters": {
+      "severity": "CRITICAL",
+      "hours": 1
+    }
+  }'
 ```
 
-### Configuration Management
-```
-"Set config parameter detection_rules.port_scan.enabled to false"
-"Show me all config parameters for sensor npr2s-01"
-"What's the current config_sync_interval?"
-"Reset config to best practice defaults"
-```
+### Via Python
 
-### Sensor Management
-```
-"Show me sensor status"
-"Send command restart_monitoring to sensor npr2s-01"
-"Get sensor command history for npr2s-02"
-"Which sensors are offline?"
-"Show bandwidth usage for all sensors"
-```
+```python
+import requests
 
-### Whitelist Management
-```
-"Add 10.100.0.140 to whitelist with description Sonos speaker"
-"Show me all whitelist entries"
-"Get whitelist entries for scope global"
-"Remove whitelist entry 15"
-```
+class MCPClient:
+    def __init__(self, base_url, token):
+        self.base_url = base_url
+        self.headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
 
-### AI Analysis (met Ollama)
-```
-"Analyze alert 12345 with AI and give me recommendations"
-"Suggest incident response for the recent port scan"
-"Explain what a SYN flood attack is"
+    def execute_tool(self, tool_name, parameters):
+        response = requests.post(
+            f"{self.base_url}/mcp/tools/execute",
+            headers=self.headers,
+            json={
+                "tool_name": tool_name,
+                "parameters": parameters
+            }
+        )
+        return response.json()
+
+# Gebruik
+client = MCPClient("http://localhost:8000", "YOUR_TOKEN")
+result = client.execute_tool("analyze_ip", {"ip_address": "8.8.8.8"})
+print(result)
 ```
 
 ---
 
-## 🧪 Testen & Verificatie
+## 🧪 Testing & Verificatie
 
-### Test 1: MCP Server Geladen
+### Test 1: Health Check
+```bash
+curl http://localhost:8000/health
 ```
-What MCP servers are available?
-```
-**Verwacht:** "netmonitor-soc" in de lijst
+**Verwacht:** `{"status": "healthy", ...}`
 
-### Test 2: Dashboard Resource
+### Test 2: Authentication
+```bash
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+     http://localhost:8000/mcp/tools
 ```
-Show me the dashboard summary
-```
-**Verwacht:** Security statistieken (alerts, severity, top threats)
+**Verwacht:** JSON array met tools
 
-### Test 3: IP Analysis
+### Test 3: Tool Execution
+```bash
+curl -X POST http://localhost:8000/mcp/tools/execute \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"tool_name": "get_sensor_status", "parameters": {}}'
 ```
-Analyze IP 8.8.8.8
-```
-**Verwacht:** IP details, threat score, geolocation
+**Verwacht:** JSON met sensor status
 
-### Test 4: Sensor Status
+### Test 4: API Documentation
 ```
-Which sensors are online?
+http://localhost:8000/docs
 ```
-**Verwacht:** Lijst met sensors en hun status
-
-### Test 5: Whitelist Management
-```
-Show me all whitelist entries
-```
-**Verwacht:** Lijst met whitelisted IPs/CIDRs
-
-### Test 6: Configuration
-```
-What's the current port scan detection threshold?
-```
-**Verwacht:** Detection rule configuratie
+**Verwacht:** Swagger UI met alle endpoints
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Claude Desktop toont MCP server niet
+### Server start niet
 
-**Diagnose:**
-1. Check config file locatie:
-   - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-   - Linux: `~/.config/Claude/claude_desktop_config.json`
-
-2. Valideer JSON syntax:
-   ```bash
-   python3 -m json.tool ~/Library/Application\ Support/Claude/claude_desktop_config.json
-   ```
-
-3. Check MCP server logs:
-   ```bash
-   tail -f /tmp/mcp_netmonitor.log
-   ```
-
-**Oplossingen:**
-- Herstart Claude Desktop volledig (quit + reopen)
-- Check of pad naar `server.py` correct is
-- Verify database credentials
-
----
-
-### Database Connectie Errors
-
-**Test connectie:**
 ```bash
-PGPASSWORD='mcp_netmonitor_readonly_2024' \
-  psql -h localhost -U mcp_readonly -d netmonitor -c 'SELECT COUNT(*) FROM alerts;'
+# Check logs
+sudo journalctl -u netmonitor-mcp-http -n 50
+
+# Check database
+psql -h localhost -U netmonitor -d netmonitor -c "SELECT 1;"
+
+# Check port
+lsof -i :8000
 ```
 
-**Als dit WERKT maar MCP niet:**
-- PostgreSQL moet luisteren op juiste interface
-- Check `pg_hba.conf` voor host-based authentication
-- Firewall kan PostgreSQL port (5432) blokkeren
+### Token authenticatie faalt
 
-**Als dit NIET werkt:**
 ```bash
-# Check PostgreSQL status
-sudo systemctl status postgresql
+# Verify token bestaat
+python3 mcp_server/manage_tokens.py list
 
-# Check database user
-sudo -u postgres psql -c "\du mcp_readonly"
+# Check token details
+python3 mcp_server/manage_tokens.py show 1
 
-# Re-create user indien nodig
+# Test met verbose
+curl -v \
+    -H "Authorization: Bearer YOUR_TOKEN" \
+    http://localhost:8000/mcp/tools
+```
+
+### Dependencies ontbreken
+
+```bash
+# Re-run setup
 cd /opt/netmonitor
-sudo ./setup_mcp_user.sh
-```
-
----
-
-### Permission Errors
-
-**MCP server executable:**
-```bash
-chmod +x /opt/netmonitor/mcp_server/server.py
-```
-
-**Python dependencies:**
-
-**Met venv (aanbevolen):**
-```bash
-cd /opt/netmonitor/mcp_server
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -r mcp_server/requirements.txt
+
+# Of run setup opnieuw
+sudo ./mcp_server/setup_http_api.sh
 ```
 
-**Zonder venv:**
+### Database schema errors
+
 ```bash
-cd /opt/netmonitor/mcp_server
-pip3 install -r requirements.txt --user
+# Re-create schema
+cd /opt/netmonitor
+psql -U netmonitor -d netmonitor \
+     -f mcp_server/schema_api_tokens.sql
 ```
-
----
-
-### SSH Tunnel Problemen
-
-**Tunnel blijft niet verbonden:**
-
-Maak persistent tunnel script:
-```bash
-#!/bin/bash
-# ~/scripts/mcp-tunnel.sh
-
-while true; do
-    echo "Starting SSH tunnel..."
-    ssh -N -L 3000:localhost:3000 user@soc.poort.net \
-        -o ServerAliveInterval=60 \
-        -o ServerAliveCountMax=3 \
-        -o ExitOnForwardFailure=yes
-
-    echo "Tunnel disconnected, reconnecting in 5 seconds..."
-    sleep 5
-done
-```
-
-**Port al in gebruik:**
-```bash
-# Check wat poort gebruikt
-lsof -i :3000
-
-# Kill process
-kill $(lsof -t -i:3000)
-```
-
----
-
-### Network Mode: SSE Errors
-
-**"Connection refused" bij bridge:**
-- Check of MCP server draait op server (port 3000)
-- Test direct: `curl http://localhost:3000/health`
-- Check firewall: `sudo ufw status`
-
-**Bridge script werkt niet:**
-- Verify Python dependencies op CLIENT
-- Check bridge log output
-- Test SSE endpoint: `curl http://soc.poort.net:3000/sse`
-
----
-
-### Tools Werken Niet
-
-**"Unknown tool" error:**
-- MCP server mogelijk oude versie
-- Pull latest: `git pull origin main`
-- Restart Claude Desktop
-
-**"Permission denied" bij write operations:**
-- MCP server heeft read-only toegang by design
-- Write operations (config, whitelist, commands) gaan via dashboard API
-- Check of dashboard API draait: `curl http://localhost:8080/api/status`
 
 ---
 
 ## 🔒 Security Best Practices
 
-### 1. Database Access
-- MCP gebruikt `mcp_readonly` user (read-only)
-- Write operations gaan via authenticated dashboard API
-- Database credentials NIET in git committen
+### 1. Token Management
 
-### 2. Network Mode
-- **Altijd SSH tunnel gebruiken voor productie**
-- Direct SSE alleen binnen trusted network
-- Bind SSE server op `127.0.0.1` indien mogelijk
-- Gebruik firewall rules voor IP whitelisting
+✅ **DO:**
+- Gebruik unieke tokens per client
+- Stel expiration dates in
+- Revoke ongebruikte tokens
+- Monitor usage via stats
 
-### 3. Credentials Management
-- Store database password in environment vars
-- Gebruik `.env` files (niet in git)
-- Roteer passwords regelmatig
-- Gebruik sterke passwords (min. 16 chars)
+❌ **DON'T:**
+- Deel tokens tussen clients
+- Commit tokens naar git
+- Geef admin scope aan monitoring clients
 
-### 4. API Access
-- Dashboard API moet authenticated zijn
-- MCP server roept localhost API aan (trusted)
-- Externe API calls via HTTPS
+### 2. Network Security
 
----
+✅ **DO:**
+- Gebruik HTTPS in productie (nginx reverse proxy)
+- Beperk CORS origins
+- Gebruik firewall rules
+- Monitor failed auth attempts
 
-## 📈 Performance Tips
+❌ **DON'T:**
+- Expose direct op internet zonder HTTPS
+- Gebruik `CORS_ORIGINS=*` in productie
+- Disable rate limiting
 
-### Database Queries
-- MCP server gebruikt connection pooling
-- Read-only queries zijn geoptimaliseerd
-- Grote exports gebruiken streaming
+### 3. Production Deployment
 
-### Network Mode
-- SSH tunnel heeft lagere latency dan direct SSE
-- Gebruik compression voor grote datasets
-- Cache frequent queries in bridge
+Voor productie, gebruik een reverse proxy:
 
-### Sensor Management
-- Batch commands waar mogelijk
-- Monitor command queue (max 100 per sensor)
-- Gebruik heartbeat_interval voor health checks
+```nginx
+# /etc/nginx/sites-available/mcp-api
+
+server {
+    listen 443 ssl http2;
+    server_name api.yourdomain.com;
+
+    ssl_certificate /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
 
 ---
 
@@ -640,209 +431,86 @@ kill $(lsof -t -i:3000)
 
 ### MCP Server Update
 
-**Met venv (aanbevolen):**
 ```bash
 cd /opt/netmonitor
 git pull origin main
-cd mcp_server
+
+# Update dependencies
 source venv/bin/activate
-pip install -r requirements.txt --upgrade
-```
+pip install -r mcp_server/requirements.txt --upgrade
 
-**Zonder venv:**
-```bash
-cd /opt/netmonitor
-git pull origin main
-cd mcp_server
-pip3 install -r requirements.txt --upgrade
+# Restart service
+sudo systemctl restart netmonitor-mcp-http
 ```
-
-**Herstart MCP server:**
-- **Stdio mode:** Restart Claude Desktop
-- **SSE mode:** Restart server process
 
 ### Database Schema Updates
+
 Na NetMonitor updates:
 ```bash
-# Check of nieuwe tables/columns er zijn
-psql -U postgres -d netmonitor -c "\dt"
+# Check for schema changes
+psql -U netmonitor -d netmonitor -c "\dt mcp_*"
 
-# Herstart MCP server om nieuwe schema te laden
-```
-
-### Tool Additions
-Nieuwe tools worden automatisch gedetecteerd bij server restart. Check beschikbare tools:
-```
-List all available MCP tools
+# Apply updates if needed
+psql -U netmonitor -d netmonitor -f mcp_server/schema_api_tokens.sql
 ```
 
 ---
 
-## 🎯 Advanced Configuration
+## 📚 Meer Informatie
 
-### Custom Database Connection
+### Documentatie
+- **API Documentatie**: `../MCP_HTTP_API.md` (root directory)
+- **Quick Start**: `HTTP_API_QUICKSTART.md` (deze directory)
+- **Live API Docs**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
 
-**Met venv (aanbevolen):**
-```json
-{
-  "mcpServers": {
-    "netmonitor-soc": {
-      "command": "/opt/netmonitor/mcp_server/venv/bin/python",
-      "args": ["/opt/netmonitor/mcp_server/server.py"],
-      "env": {
-        "NETMONITOR_DB_HOST": "db.example.com",
-        "NETMONITOR_DB_PORT": "5433",
-        "NETMONITOR_DB_NAME": "custom_db",
-        "NETMONITOR_DB_USER": "custom_user",
-        "NETMONITOR_DB_PASSWORD": "secure_password",
-        "NETMONITOR_DB_SSLMODE": "require"
-      }
-    }
-  }
-}
+### Legacy STDIO/SSE
+
+⚠️ De oude STDIO/SSE implementatie is **verouderd** en gearchiveerd in:
+```
+mcp_server/legacy_stdio_sse/
 ```
 
-**Zonder venv:**
-```json
-{
-  "mcpServers": {
-    "netmonitor-soc": {
-      "command": "python3",
-      "args": ["/opt/netmonitor/mcp_server/server.py"],
-      "env": {
-        "NETMONITOR_DB_HOST": "db.example.com",
-        "NETMONITOR_DB_PORT": "5433",
-        "NETMONITOR_DB_NAME": "custom_db",
-        "NETMONITOR_DB_USER": "custom_user",
-        "NETMONITOR_DB_PASSWORD": "secure_password",
-        "NETMONITOR_DB_SSLMODE": "require"
-      }
-    }
-  }
-}
-```
-
-### SSE Server Tuning
-
-**Met venv (aanbevolen):**
-```bash
-cd /opt/netmonitor/mcp_server
-source venv/bin/activate
-
-# Start met custom configuratie
-python server.py \
-    --transport sse \
-    --host 127.0.0.1 \
-    --port 3000 \
-    --workers 4
-```
-
-**Zonder venv:**
-```bash
-cd /opt/netmonitor/mcp_server
-
-# Start met custom configuratie
-python3 server.py \
-    --transport sse \
-    --host 127.0.0.1 \
-    --port 3000 \
-    --workers 4
-```
-
-### Logging
-
-**Met venv:**
-```bash
-cd /opt/netmonitor/mcp_server
-source venv/bin/activate
-
-# Enable debug logging
-export NETMONITOR_LOG_LEVEL=DEBUG
-python server.py
-```
-
-**Zonder venv:**
-```bash
-cd /opt/netmonitor/mcp_server
-
-# Enable debug logging
-export NETMONITOR_LOG_LEVEL=DEBUG
-python3 server.py
-```
-
----
-
-## 📚 Zie Ook
-
-- **README.md** - Tool overzicht en use cases
-- **MCP_SETUP.md** - Scenario's en deployment opties (in parent directory)
-- **PRODUCTION.md** - Production deployment guide (in parent directory)
-- **DASHBOARD.md** - Web dashboard documentation (in parent directory)
+Gebruik de moderne HTTP API in plaats daarvan voor:
+- ✅ Betere beveiliging (tokens)
+- ✅ Multiple clients
+- ✅ Rate limiting
+- ✅ Audit logging
+- ✅ Permission control
 
 ---
 
 ## 🆘 Support
 
 **Bij problemen:**
-1. Check logs: `/tmp/mcp_netmonitor.log`
-2. Test database connectie
-3. Verify Claude Desktop config
-4. Test tools handmatig via API
 
-**Debug commands:**
+1. Check server logs: `sudo journalctl -u netmonitor-mcp-http -f`
+2. Check API health: `curl http://localhost:8000/health`
+3. Verify token: `python3 mcp_server/manage_tokens.py list`
+4. Test database: `psql -U netmonitor -d netmonitor -c "SELECT 1;"`
 
-**Met venv (aanbevolen):**
+**Debug mode:**
 ```bash
-# Test MCP server standalone
-cd /opt/netmonitor/mcp_server
+# Start server handmatig met debug logging
+cd /opt/netmonitor
 source venv/bin/activate
-export NETMONITOR_DB_HOST=localhost
-export NETMONITOR_DB_USER=mcp_readonly
-export NETMONITOR_DB_PASSWORD=mcp_netmonitor_readonly_2024
-export NETMONITOR_DB_NAME=netmonitor
-python server.py
-
-# Test database
-psql -U mcp_readonly -d netmonitor -h localhost -c "SELECT version();"
-
-# Test dashboard API
-curl http://localhost:8080/api/status
-curl http://localhost:8080/api/sensors
-```
-
-**Zonder venv:**
-```bash
-# Test MCP server standalone
-cd /opt/netmonitor/mcp_server
-export NETMONITOR_DB_HOST=localhost
-export NETMONITOR_DB_USER=mcp_readonly
-export NETMONITOR_DB_PASSWORD=mcp_netmonitor_readonly_2024
-export NETMONITOR_DB_NAME=netmonitor
-python3 server.py
-
-# Test database
-psql -U mcp_readonly -d netmonitor -h localhost -c "SELECT version();"
-
-# Test dashboard API
-curl http://localhost:8080/api/status
-curl http://localhost:8080/api/sensors
+LOG_LEVEL=DEBUG python3 mcp_server/http_server.py
 ```
 
 ---
 
-## ✨ Klaar voor gebruik!
+## ✨ Volgende Stappen
 
-Je hebt nu een volledig functionele AI-powered SOC met:
-- ✅ 23+ MCP tools
-- ✅ Real-time security data
-- ✅ Configuration management
-- ✅ Sensor control
-- ✅ Whitelist beheer
-- ✅ AI-powered analysis
+1. ✅ Installatie gedaan
+2. ✅ Server draait
+3. ✅ Token aangemaakt
 
-**Start met:**
-```
-Show me the current security situation and any critical threats
-```
+**Nu:**
 
-🎉 **Veel succes met je AI-enhanced Security Operations Center!**
+4. Test de API met cURL of Postman
+5. Bekijk documentatie op `/docs`
+6. Integreer in je AI client
+7. Setup production met nginx/HTTPS
+8. Monitor usage via token stats
+
+**Veel succes met de MCP HTTP API!** 🚀

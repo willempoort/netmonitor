@@ -57,11 +57,24 @@ Een krachtig netwerk monitoring platform voor Linux met **real-time web dashboar
   - Last seen timestamps
   - Location tracking
 
-- **MCP Server Integration** (Claude Desktop):
-  - AI-assisted sensor management via Claude
-  - Natural language config updates
-  - Sensor status queries
-  - Command execution via chat interface
+- **🤖 MCP HTTP API** - Modern AI Integration (Nieuw!):
+  - **Token-based authentication** - Veilige Bearer tokens per AI client
+  - **Permission scopes** - read_only, read_write, admin
+  - **Rate limiting** - Bescherming tegen misbruik
+  - **23+ AI tools** - Van monitoring tot configuratie
+  - **Auto-documentatie** - OpenAPI/Swagger docs
+  - **Multi-client support** - Meerdere AI's tegelijk
+  - AI-assisted sensor management via natuurlijke taal
+  - Volledige audit trail van alle AI acties
+
+  **Quick start:**
+  ```bash
+  cd /opt/netmonitor && sudo ./mcp_server/setup_http_api.sh
+  ```
+
+  **Documentatie:** [MCP_HTTP_API.md](MCP_HTTP_API.md) | API Docs: http://localhost:8000/docs
+
+  **⚠️ Belangrijke wijziging:** De oude STDIO/SSE MCP implementatie is vervangen door een moderne HTTP REST API met volledige token authenticatie. Legacy files zijn verplaatst naar `mcp_server/legacy_stdio_sse/`
 
 ### ⚡ Performance Tuning (Nieuw!)
 
