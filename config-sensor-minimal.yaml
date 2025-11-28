@@ -1,0 +1,89 @@
+# ============================================================================
+# MINIMAL SENSOR CONFIGURATION
+# ============================================================================
+# This is a minimal configuration file for REMOTE SENSORS only.
+#
+# Remote sensors connect to the SOC server and receive all detection
+# configuration (thresholds, rules, etc.) from the server automatically.
+#
+# You only need to configure:
+# 1. Connection settings to SOC server
+# 2. Local sensor identification
+# 3. Network interface to monitor
+#
+# For SOC server configuration, use config.yaml instead.
+# ============================================================================
+
+# ============================================================================
+# SENSOR IDENTIFICATION
+# ============================================================================
+sensor:
+  # Unique sensor ID (REQUIRED - must be unique across all sensors)
+  # Use a descriptive name: location-vlan-number (e.g., nano-dmz-01)
+  id: nano-sensor-01
+
+  # Optional: Sensor authentication token
+  # Generate via: python3 setup_sensor_auth.py
+  # Or leave empty to use the server in local mode (no authentication)
+  auth_token: ""
+
+  # Hostname (optional - auto-detected if empty)
+  hostname: ""
+
+  # Location description (optional)
+  location: "Office Network - VLAN 10"
+
+# ============================================================================
+# SOC SERVER CONNECTION
+# ============================================================================
+server:
+  # SOC server URL (REQUIRED for remote sensors)
+  url: https://soc.example.com
+
+  # Verify SSL certificate (set to false for self-signed certs in testing)
+  verify_ssl: true
+
+  # Sync intervals (seconds)
+  heartbeat_interval: 30        # How often to send heartbeat
+  config_sync_interval: 300     # How often to sync configuration (5 min)
+  metrics_interval: 60          # How often to send metrics (1 min)
+  alert_batch_interval: 60      # How often to upload alerts (1 min)
+
+# ============================================================================
+# LOCAL MONITORING
+# ============================================================================
+# Network interface to monitor (REQUIRED)
+# Examples: eth0, ens33, wlan0, or 'any' for all interfaces
+interface: eth0
+
+# Internal network ranges (for detecting lateral movement, exfiltration, etc.)
+# These are used locally for initial traffic classification
+internal_networks:
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 192.168.0.0/16
+
+# ============================================================================
+# LOCAL LOGGING (optional)
+# ============================================================================
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR
+  console: true
+  file: /var/log/netmonitor/sensor.log
+  syslog: false
+
+# ============================================================================
+# DETECTION CONFIGURATION
+# ============================================================================
+# NOTE: All detection thresholds and rules are managed centrally by the
+# SOC server and automatically synchronized to sensors.
+#
+# You do NOT need to configure thresholds here. The sensor will:
+# 1. Connect to the SOC server
+# 2. Download the latest configuration
+# 3. Apply it automatically
+# 4. Sync updates every 5 minutes (config_sync_interval)
+#
+# To modify detection settings, use the SOC server Web UI:
+# https://soc.example.com → Configuration tab
+# ============================================================================

@@ -37,6 +37,11 @@ class NetworkMonitor:
         self.config = load_config(config_file)
         self.running = False
 
+        # Check if self-monitoring is enabled
+        self.self_monitor_config = self.config.get('self_monitor', {})
+        self.self_monitor_enabled = self.self_monitor_config.get('enabled', True)
+        self.sensor_id = self.self_monitor_config.get('sensor_id', 'soc-server') if self.self_monitor_enabled else None
+
         # Setup logging
         self.setup_logging()
 
@@ -115,7 +120,8 @@ class NetworkMonitor:
             threat_feed_manager=self.threat_feeds,
             behavior_detector=self.behavior_detector,
             abuseipdb_client=self.abuseipdb,
-            db_manager=self.db  # Pass database for whitelist checks
+            db_manager=self.db,  # Pass database for whitelist checks
+            sensor_id=self.sensor_id  # Pass sensor_id for SOC server self-monitoring
         )
         self.alert_manager = AlertManager(self.config)
 
@@ -220,6 +226,9 @@ class NetworkMonitor:
                     # Save to database
                     if self.db:
                         try:
+                            # Add sensor_id if self-monitoring is enabled
+                            if self.sensor_id:
+                                threat['sensor_id'] = self.sensor_id
                             self.db.add_alert(threat)
                         except Exception as db_error:
                             self.logger.error(f"Error saving alert to database: {db_error}")
@@ -240,7 +249,41 @@ class NetworkMonitor:
 
     def start(self):
         """Start het monitoren van netwerkverkeer"""
-        interface = self.config['interface']
+        # Check if self-monitoring is disabled
+        if not self.self_monitor_enabled:
+            self.logger.info("Self-monitoring is DISABLED - SOC server will only receive alerts from remote sensors")
+
+            # Start dashboard only (no packet capture)
+            if self.dashboard:
+                self.dashboard.start()
+                self.logger.info(f"Dashboard beschikbaar op: http://{self.config['dashboard']['host']}:{self.config['dashboard']['port']}")
+
+            # Keep running (dashboard thread is daemon)
+            try:
+                signal.pause()  # Wait for interrupt
+            except KeyboardInterrupt:
+                self.logger.info("Shutting down...")
+            return
+
+        # Self-monitoring is enabled - register as sensor
+        if self.db and self.sensor_id:
+            try:
+                import socket
+                hostname = self.self_monitor_config.get('hostname') or socket.gethostname()
+                location = self.self_monitor_config.get('location', 'SOC Server')
+
+                self.db.register_sensor(
+                    sensor_id=self.sensor_id,
+                    hostname=hostname,
+                    location=location,
+                    status='active'
+                )
+                self.logger.info(f"SOC server registered as sensor: {self.sensor_id} ({hostname})")
+            except Exception as e:
+                self.logger.warning(f"Could not register SOC server as sensor: {e}")
+
+        # Get interface from self_monitor config, fallback to legacy 'interface' key
+        interface = self.self_monitor_config.get('interface', self.config.get('interface', 'lo'))
 
         self.logger.info(f"Starting network monitor op interface: {interface}")
         self.logger.info("Druk op Ctrl+C om te stoppen")

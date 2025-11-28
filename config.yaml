@@ -1,8 +1,34 @@
 # Network Monitor Configuration
 
-# Network interface to monitor (example: eth0, ens33, etc.)
-# Use 'any' to monitor all interfaces
-interface: lo
+# ============================================================================
+# SOC SERVER CONFIGURATION
+# ============================================================================
+# This section is for the SOC server itself (server-side monitoring)
+
+# Self-Monitoring Settings (SOC Server)
+self_monitor:
+  # Enable/disable local network monitoring on the SOC server
+  # Set to false if you only want to receive alerts from remote sensors
+  enabled: true
+
+  # Sensor ID for the SOC server (must be unique)
+  # This is how the SOC server will appear in the sensor list
+  sensor_id: soc-server
+
+  # Hostname and location (optional, auto-detected if not specified)
+  hostname: ""  # Leave empty for auto-detection
+  location: "SOC Server - Main Location"
+
+  # Network interface to monitor on the SOC server
+  # Use 'any' to monitor all interfaces, or specify: eth0, ens33, etc.
+  interface: lo
+
+# ============================================================================
+# DETECTION CONFIGURATION
+# ============================================================================
+# NOTE: For remote sensors, these settings are managed centrally via the
+# SOC server dashboard and pushed to sensors automatically.
+# Only the SOC server needs these detailed thresholds in config.yaml.
 
 # Internal network ranges (voor internal traffic monitoring)
 # Pas deze aan naar je eigen netwerk configuratie
