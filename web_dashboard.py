@@ -70,12 +70,20 @@ def init_dashboard(config_file='config.yaml'):
             logger_temp = logging.getLogger('NetMonitor.WebDashboard')
             logger_temp.info("SECRET_KEY loaded from config file")
 
-    # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
+    # Setup logging - use existing NetMonitor logger hierarchy
+    # Don't call basicConfig() as it may add duplicate handlers
     logger = logging.getLogger('NetMonitor.WebDashboard')
+
+    # Only configure if no handlers exist yet (prevents duplicates)
+    if not logger.handlers and not logging.getLogger('NetMonitor').handlers:
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+
+    # Prevent propagation to root logger to avoid duplicate messages
+    # (NetMonitor parent logger already handles output)
+    logger.propagate = True  # Keep propagation for parent NetMonitor logger
 
     # Initialize database
     db_config = config.get('database', {})
