@@ -221,6 +221,34 @@ class DatabaseManager:
                 ON sensor_configs(sensor_id, parameter_path);
             ''')
 
+            # Sensor authentication tokens table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS sensor_tokens (
+                    id SERIAL PRIMARY KEY,
+                    sensor_id TEXT NOT NULL,
+                    token_hash TEXT UNIQUE NOT NULL,
+                    token_name TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    last_used TIMESTAMPTZ,
+                    expires_at TIMESTAMPTZ,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    permissions JSONB DEFAULT '{"alerts": true, "metrics": true, "commands": false}'::jsonb,
+                    FOREIGN KEY (sensor_id) REFERENCES sensors(sensor_id) ON DELETE CASCADE
+                );
+            ''')
+
+            # Index for fast token lookups
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_sensor_tokens_hash
+                ON sensor_tokens(token_hash) WHERE is_active = TRUE;
+            ''')
+
+            # Index for sensor token management
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_sensor_tokens_sensor
+                ON sensor_tokens(sensor_id, is_active);
+            ''')
+
             conn.commit()
             self.logger.info("Database schema created")
 

@@ -30,11 +30,17 @@ thresholds:
     enabled: true
     min_suspicious_size: 1400  # Pakketten groter dan deze size zijn verdacht
 
-  # DNS tunneling detection
+  # DNS tunneling detection (enhanced met entropy en DGA detection)
   dns_tunnel:
     enabled: true
     query_length_threshold: 50  # DNS queries langer dan dit zijn verdacht
     queries_per_minute: 150     # Verhoogd voor netwerken met monitoring sensoren
+
+  # ICMP tunneling detection
+  icmp_tunnel:
+    enabled: true
+    size_threshold: 500      # ICMP payload >500 bytes is verdacht
+    rate_threshold: 10       # >10 large ICMP packets per minute
 
   # Beaconing detection - detecteert regelmatige callbacks naar C&C servers
   beaconing:
