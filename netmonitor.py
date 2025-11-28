@@ -349,8 +349,8 @@ class NetworkMonitor:
                 self.db.register_sensor(
                     sensor_id=self.sensor_id,
                     hostname=hostname,
-                    location=location,
-                    status='active'
+                    location=location
+                    # Note: status is automatically set to 'online' by register_sensor()
                 )
                 self.logger.info(f"SOC server registered as sensor: {self.sensor_id} ({hostname})")
             except Exception as e:
@@ -390,7 +390,6 @@ class NetworkMonitor:
         self.running = True
 
         # Start metrics broadcaster (update dashboard elk 5 seconden)
-        import threading
         def broadcast_metrics():
             while self.running:
                 if self.metrics and self.dashboard:
