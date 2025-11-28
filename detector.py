@@ -194,13 +194,15 @@ class ThreatDetector:
                 threats.append(threat)
 
         # HTTP/HTTPS anomaly detection
-        http_threats = self._detect_http_anomalies(packet)
-        threats.extend(http_threats)
+        if self.config['thresholds'].get('http_anomaly', {}).get('enabled', False):
+            http_threats = self._detect_http_anomalies(packet)
+            threats.extend(http_threats)
 
         # SMTP/FTP large transfer detection
-        threat = self._detect_smtp_ftp_transfer(packet)
-        if threat:
-            threats.append(threat)
+        if self.config['thresholds'].get('smtp_ftp_transfer', {}).get('enabled', False):
+            threat = self._detect_smtp_ftp_transfer(packet)
+            if threat:
+                threats.append(threat)
 
         # Behavior-based detection (beaconing, lateral movement, etc.)
         if self.behavior_detector:
@@ -340,8 +342,14 @@ class ThreatDetector:
         if self.content_analyzer:
             analysis = self.content_analyzer.analyze_dns_query(query)
 
+            # Get enhanced DNS thresholds from config
+            dns_enhanced_config = self.config['thresholds'].get('dns_enhanced', {})
+            dga_threshold = dns_enhanced_config.get('dga_threshold', 0.6)
+            entropy_threshold = dns_enhanced_config.get('entropy_threshold', 4.5)
+            encoding_detection = dns_enhanced_config.get('encoding_detection', True)
+
             # Check for DGA (Domain Generation Algorithm)
-            if analysis['dga_score'] > 0.6:
+            if analysis['dga_score'] > dga_threshold:
                 return {
                     'type': 'DNS_DGA_DETECTED',
                     'severity': 'HIGH',
@@ -354,7 +362,7 @@ class ThreatDetector:
                 }
 
             # Check for encoding in DNS query
-            if analysis['encoding']['encoded']:
+            if encoding_detection and analysis['encoding']['encoded']:
                 return {
                     'type': 'DNS_ENCODED_QUERY',
                     'severity': 'MEDIUM',
@@ -367,7 +375,7 @@ class ThreatDetector:
                 }
 
             # High entropy check
-            if analysis['entropy'] > 4.5:
+            if analysis['entropy'] > entropy_threshold:
                 return {
                     'type': 'DNS_HIGH_ENTROPY',
                     'severity': 'MEDIUM',
@@ -499,6 +507,13 @@ class ThreatDetector:
         if dst_port not in [80, 443, 8080, 8443]:
             return threats
 
+        # Get HTTP anomaly config
+        http_config = self.config['thresholds'].get('http_anomaly', {})
+        post_threshold = http_config.get('post_threshold', 50)
+        post_time_window = http_config.get('post_time_window', 300)
+        dlp_min_size = http_config.get('dlp_min_payload_size', 1024)
+        entropy_threshold = http_config.get('entropy_threshold', 6.5)
+
         # HTTP layer detection (only works for unencrypted HTTP)
         if packet.haslayer(HTTPRequest):
             try:
@@ -513,16 +528,16 @@ class ThreatDetector:
                 requests.append({'time': current_time, 'method': method, 'path': path})
 
                 # Detect excessive POST requests (possible data exfiltration)
-                cutoff_time = current_time - 300  # 5 minutes
+                cutoff_time = current_time - post_time_window
                 recent_posts = sum(1 for r in requests if r['time'] > cutoff_time and r['method'] == b'POST')
 
-                if recent_posts > 50:  # More than 50 POSTs in 5 minutes
+                if recent_posts > post_threshold:
                     threats.append({
                         'type': 'HTTP_EXCESSIVE_POSTS',
                         'severity': 'MEDIUM',
                         'source_ip': src_ip,
                         'destination_ip': ip_layer.dst,
-                        'description': f'Verdacht veel POST requests: {recent_posts} in 5 minuten',
+                        'description': f'Verdacht veel POST requests: {recent_posts} in {post_time_window//60} minuten',
                         'post_count': recent_posts,
                         'host': host
                     })
@@ -555,8 +570,8 @@ class ThreatDetector:
             try:
                 payload = packet[Raw].load
 
-                # Only analyze payloads > 1KB (skip small requests)
-                if len(payload) > 1024:
+                # Only analyze payloads above configured minimum size
+                if len(payload) > dlp_min_size:
                     analysis = self.content_analyzer.analyze_http_payload(payload)
 
                     # Check for sensitive data in HTTP
@@ -572,7 +587,7 @@ class ThreatDetector:
                         })
 
                     # Check for high entropy (encrypted/compressed data in plaintext HTTP)
-                    if dst_port == 80 and analysis['entropy'] > 6.5:  # Only for plain HTTP
+                    if dst_port == 80 and analysis['entropy'] > entropy_threshold:  # Only for plain HTTP
                         threats.append({
                             'type': 'HTTP_HIGH_ENTROPY_PAYLOAD',
                             'severity': 'MEDIUM',
@@ -606,6 +621,12 @@ class ThreatDetector:
         if dst_port not in monitored_ports:
             return None
 
+        # Get SMTP/FTP transfer config
+        smtp_ftp_config = self.config['thresholds'].get('smtp_ftp_transfer', {})
+        time_window = smtp_ftp_config.get('time_window', 300)
+        threshold_mb = smtp_ftp_config.get('size_threshold_mb', 50)
+        threshold_bytes = threshold_mb * 1024 * 1024
+
         # Track total bytes transferred
         if packet.haslayer(Raw):
             payload_size = len(packet[Raw].load)
@@ -620,10 +641,8 @@ class ThreatDetector:
             tracker['last_seen'] = current_time
 
             # Check if large transfer over a time window
-            time_window = 300  # 5 minutes
             if (current_time - tracker['first_seen']) < time_window:
                 # Still within window, check threshold
-                threshold_bytes = 50 * 1024 * 1024  # 50 MB
 
                 if tracker['total_bytes'] > threshold_bytes:
                     total_mb = tracker['total_bytes'] / (1024 * 1024)

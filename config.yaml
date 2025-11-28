@@ -42,6 +42,26 @@ thresholds:
     size_threshold: 500      # ICMP payload >500 bytes is verdacht
     rate_threshold: 10       # >10 large ICMP packets per minute
 
+  # HTTP/HTTPS anomaly detection
+  http_anomaly:
+    enabled: true
+    post_threshold: 50       # Alert bij meer dan X POST requests
+    post_time_window: 300    # Tijdvenster in seconden (5 min)
+    dlp_min_payload_size: 1024  # Minimale payload size voor DLP scanning (bytes)
+    entropy_threshold: 6.5   # Entropy threshold voor encrypted data in plaintext HTTP
+
+  # SMTP/FTP large transfer detection
+  smtp_ftp_transfer:
+    enabled: true
+    size_threshold_mb: 50    # Alert bij meer dan X MB overdracht
+    time_window: 300         # Tijdvenster in seconden (5 min)
+
+  # Enhanced DNS detection parameters
+  dns_enhanced:
+    dga_threshold: 0.6       # DGA score threshold (0-1, hoger = strikter)
+    entropy_threshold: 4.5   # Shannon entropy threshold voor DNS queries
+    encoding_detection: true # Detecteer Base64/Hex encoding in queries
+
   # Beaconing detection - detecteert regelmatige callbacks naar C&C servers
   beaconing:
     enabled: true

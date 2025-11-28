@@ -6,7 +6,7 @@ These are recommended values based on typical enterprise network environments
 # Best practice defaults for network monitoring
 BEST_PRACTICE_CONFIG = {
     # Detection Rules - Enabled by default for comprehensive threat coverage
-    "detection": {
+    "thresholds": {
         "port_scan": {
             "enabled": True,
             "ports_threshold": 10,      # Alert if >10 ports scanned
@@ -36,6 +36,23 @@ BEST_PRACTICE_CONFIG = {
             "enabled": True,
             "size_threshold": 500,      # ICMP payload >500 bytes
             "rate_threshold": 10        # >10 large ICMP packets per minute
+        },
+        "http_anomaly": {
+            "enabled": True,
+            "post_threshold": 50,       # Alert if >50 POST requests
+            "post_time_window": 300,    # Within 5 minutes
+            "dlp_min_payload_size": 1024,  # Only scan payloads >1KB
+            "entropy_threshold": 6.5    # High entropy threshold for plaintext HTTP
+        },
+        "smtp_ftp_transfer": {
+            "enabled": True,
+            "size_threshold_mb": 50,    # Alert if >50MB transferred
+            "time_window": 300          # Within 5 minutes
+        },
+        "dns_enhanced": {
+            "dga_threshold": 0.6,       # DGA score threshold (0-1)
+            "entropy_threshold": 4.5,   # Shannon entropy threshold
+            "encoding_detection": True   # Detect Base64/Hex encoding
         }
     },
 
@@ -107,29 +124,43 @@ BEST_PRACTICE_CONFIG = {
 
 # Parameter descriptions for dashboard UI
 PARAMETER_DESCRIPTIONS = {
-    "detection.port_scan.enabled": "Enable port scan detection",
-    "detection.port_scan.ports_threshold": "Number of ports that trigger a port scan alert",
-    "detection.port_scan.time_window": "Time window (seconds) for port scan detection",
+    "thresholds.port_scan.enabled": "Enable port scan detection",
+    "thresholds.port_scan.unique_ports": "Number of ports that trigger a port scan alert",
+    "thresholds.port_scan.time_window": "Time window (seconds) for port scan detection",
 
-    "detection.dns_tunnel.enabled": "Enable DNS tunneling detection",
-    "detection.dns_tunnel.query_length_threshold": "Domain name length that triggers DNS tunnel alert",
-    "detection.dns_tunnel.queries_per_minute": "DNS queries per minute that trigger rate alert",
+    "thresholds.dns_tunnel.enabled": "Enable DNS tunneling detection",
+    "thresholds.dns_tunnel.query_length_threshold": "Domain name length that triggers DNS tunnel alert",
+    "thresholds.dns_tunnel.queries_per_minute": "DNS queries per minute that trigger rate alert",
 
-    "detection.beaconing.enabled": "Enable C2 beaconing detection",
-    "detection.beaconing.interval_threshold": "Regular interval (seconds) that indicates beaconing",
-    "detection.beaconing.count_threshold": "Minimum connections to establish beaconing pattern",
+    "thresholds.beaconing.enabled": "Enable C2 beaconing detection",
+    "thresholds.beaconing.interval_threshold": "Regular interval (seconds) that indicates beaconing",
+    "thresholds.beaconing.min_connections": "Minimum connections to establish beaconing pattern",
 
-    "detection.data_exfiltration.enabled": "Enable data exfiltration detection",
-    "detection.data_exfiltration.upload_threshold_mb": "MB uploaded that triggers exfiltration alert",
-    "detection.data_exfiltration.time_window": "Time window (seconds) for exfiltration detection",
+    "thresholds.outbound_volume.enabled": "Enable data exfiltration detection",
+    "thresholds.outbound_volume.threshold_mb": "MB uploaded that triggers exfiltration alert",
+    "thresholds.outbound_volume.time_window": "Time window (seconds) for exfiltration detection",
 
-    "detection.brute_force.enabled": "Enable brute force detection",
-    "detection.brute_force.attempts_threshold": "Failed attempts that trigger brute force alert",
-    "detection.brute_force.time_window": "Time window (seconds) for brute force detection",
+    "thresholds.brute_force.enabled": "Enable brute force detection",
+    "thresholds.brute_force.attempts_threshold": "Failed attempts that trigger brute force alert",
+    "thresholds.brute_force.time_window": "Time window (seconds) for brute force detection",
 
-    "detection.icmp_tunnel.enabled": "Enable ICMP tunneling detection",
-    "detection.icmp_tunnel.size_threshold": "ICMP payload size (bytes) that triggers alert",
-    "detection.icmp_tunnel.rate_threshold": "Large ICMP packets per minute that trigger alert",
+    "thresholds.icmp_tunnel.enabled": "Enable ICMP tunneling detection",
+    "thresholds.icmp_tunnel.size_threshold": "ICMP payload size (bytes) that triggers alert",
+    "thresholds.icmp_tunnel.rate_threshold": "Large ICMP packets per minute that trigger alert",
+
+    "thresholds.http_anomaly.enabled": "Enable HTTP/HTTPS anomaly detection",
+    "thresholds.http_anomaly.post_threshold": "POST requests that trigger exfiltration alert",
+    "thresholds.http_anomaly.post_time_window": "Time window (seconds) for POST detection",
+    "thresholds.http_anomaly.dlp_min_payload_size": "Minimum payload size (bytes) for DLP scanning",
+    "thresholds.http_anomaly.entropy_threshold": "Entropy threshold for encrypted data in plaintext HTTP",
+
+    "thresholds.smtp_ftp_transfer.enabled": "Enable SMTP/FTP large transfer detection",
+    "thresholds.smtp_ftp_transfer.size_threshold_mb": "Transfer size (MB) that triggers alert",
+    "thresholds.smtp_ftp_transfer.time_window": "Time window (seconds) for transfer detection",
+
+    "thresholds.dns_enhanced.dga_threshold": "DGA score threshold for Domain Generation Algorithm detection (0-1)",
+    "thresholds.dns_enhanced.entropy_threshold": "Shannon entropy threshold for DNS queries",
+    "thresholds.dns_enhanced.encoding_detection": "Enable detection of Base64/Hex encoded DNS queries",
 
     "thresholds.bandwidth_warning_mbps": "Bandwidth utilization (Mbps) for warning alerts",
     "thresholds.bandwidth_critical_mbps": "Bandwidth utilization (Mbps) for critical alerts",
@@ -146,12 +177,15 @@ PARAMETER_DESCRIPTIONS = {
 # Categories for UI grouping
 PARAMETER_CATEGORIES = {
     "Detection Rules": [
-        "detection.port_scan",
-        "detection.dns_tunnel",
-        "detection.beaconing",
-        "detection.data_exfiltration",
-        "detection.brute_force",
-        "detection.icmp_tunnel"
+        "thresholds.port_scan",
+        "thresholds.dns_tunnel",
+        "thresholds.dns_enhanced",
+        "thresholds.beaconing",
+        "thresholds.outbound_volume",
+        "thresholds.brute_force",
+        "thresholds.icmp_tunnel",
+        "thresholds.http_anomaly",
+        "thresholds.smtp_ftp_transfer"
     ],
     "Thresholds": [
         "thresholds.packet_rate_warning",
