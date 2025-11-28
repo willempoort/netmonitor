@@ -6,6 +6,31 @@ Complete overview van alle geïmplementeerde detectie capabilities.
 
 NetMonitor ondersteunt nu **volledige protocol-analyse** met **content inspection**, **entropy analysis**, en **DLP capabilities**.
 
+## ✅ Configuration Management Status
+
+### Database Integration
+- ✅ **sensor_configs** tabel ondersteunt ALLE parameters
+- ✅ JSONB storage voor flexibele nested configuratie
+- ✅ Global en sensor-specific configs beide ondersteund
+- ✅ Automatische schema migratie bij eerste run
+
+### API Integration
+- ✅ **GET /api/config** - Haal huidige configuratie op
+- ✅ **PUT /api/config/parameter** - Update individuele parameter
+- ✅ **GET /api/config/defaults** - Haal best-practice defaults op
+- ✅ **POST /api/config/reset** - Reset naar defaults
+- ✅ Real-time synchronisatie naar sensors
+
+### Web UI Integration
+- ✅ **Dynamisch configuration management** - automatische rendering van alle parameters
+- ✅ **Categorie grouping** - Detection Rules, Thresholds, Alert Management, Performance
+- ✅ **Parameter descriptions** - tooltips voor elke configuratie
+- ✅ **Input type detection** - boolean toggles, number inputs, text fields
+- ✅ **Live preview** - default waarden zichtbaar tijdens editing
+- ✅ **Sensor-specific overrides** - global of per-sensor configuratie
+
+**Alle nieuwe detection features (HTTP, SMTP/FTP, DNS Enhanced) zijn volledig geïntegreerd en configureerbaar via zowel Web UI als API!**
+
 ---
 
 ## ✅ Geïmplementeerde Detectie Capabilities
@@ -332,26 +357,52 @@ Total: **13 nieuwe alert types**
 
 ## 🔧 **Configuration Examples**
 
-### Complete config.yaml:
+### Complete config.yaml (All Detection Features):
 ```yaml
 thresholds:
-  # DNS (enhanced)
+  # DNS tunneling detection (enhanced)
   dns_tunnel:
     enabled: true
     query_length_threshold: 50
     queries_per_minute: 150
 
-  # ICMP (new)
+  # Enhanced DNS detection parameters
+  dns_enhanced:
+    dga_threshold: 0.6       # DGA score threshold (0-1)
+    entropy_threshold: 4.5   # Shannon entropy threshold
+    encoding_detection: true # Detect Base64/Hex encoding
+
+  # ICMP tunneling detection
   icmp_tunnel:
     enabled: true
-    size_threshold: 500
-    rate_threshold: 10
+    size_threshold: 500      # ICMP payload >500 bytes
+    rate_threshold: 10       # >10 large packets per minute
 
-  # Existing thresholds...
+  # HTTP/HTTPS anomaly detection
+  http_anomaly:
+    enabled: true
+    post_threshold: 50       # Alert at >50 POST requests
+    post_time_window: 300    # Within 5 minutes
+    dlp_min_payload_size: 1024  # Minimum payload size for DLP (bytes)
+    entropy_threshold: 6.5   # Entropy threshold for plaintext HTTP
+
+  # SMTP/FTP large transfer detection
+  smtp_ftp_transfer:
+    enabled: true
+    size_threshold_mb: 50    # Alert at >50 MB transfer
+    time_window: 300         # Within 5 minutes
+
+  # Port scan detection
   port_scan:
     enabled: true
     unique_ports: 20
     time_window: 60
+
+  # Beaconing detection
+  beaconing:
+    enabled: true
+    min_connections: 5
+    max_jitter_percent: 20
 
 dashboard:
   enabled: true
@@ -359,6 +410,51 @@ dashboard:
   port: 8080
   # Generate with: python3 -c "import secrets; print(secrets.token_hex(32))"
   secret_key: "your-secret-key-here"
+```
+
+### Web UI Configuration:
+
+**All parameters zijn configureerbaar via de Web UI:**
+
+1. Ga naar het **Configuration** tabblad in het dashboard
+2. Selecteer **Detection Rules** categorie
+3. Parameters worden automatisch geladen en kunnen worden aangepast:
+   - **Port Scan** (enabled, unique_ports, time_window)
+   - **DNS Tunnel** (enabled, query_length_threshold, queries_per_minute)
+   - **DNS Enhanced** (dga_threshold, entropy_threshold, encoding_detection)
+   - **ICMP Tunnel** (enabled, size_threshold, rate_threshold)
+   - **HTTP Anomaly** (enabled, post_threshold, post_time_window, dlp_min_payload_size, entropy_threshold)
+   - **SMTP/FTP Transfer** (enabled, size_threshold_mb, time_window)
+   - **Beaconing** (enabled, min_connections, max_jitter_percent)
+
+4. Wijzigingen worden real-time opgeslagen in de database
+5. Sensors synchroniseren automatisch de nieuwe configuratie
+
+### API Configuration:
+
+**Via REST API parameters wijzigen:**
+
+```bash
+# Get current config
+curl -X GET https://soc.example.com/api/config
+
+# Update specific parameter
+curl -X PUT https://soc.example.com/api/config/parameter \
+  -H "Content-Type: application/json" \
+  -d '{
+    "parameter_path": "thresholds.http_anomaly.post_threshold",
+    "value": 75,
+    "scope": "global",
+    "updated_by": "admin"
+  }'
+
+# Get defaults
+curl -X GET https://soc.example.com/api/config/defaults
+
+# Reset to defaults
+curl -X POST https://soc.example.com/api/config/reset \
+  -H "Content-Type: application/json" \
+  -d '{"confirm": true}'
 ```
 
 ---
