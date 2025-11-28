@@ -8,6 +8,8 @@ import sys
 import signal
 import argparse
 import logging
+import threading
+import time
 from pathlib import Path
 
 try:
@@ -115,6 +117,13 @@ class NetworkMonitor:
                     self.logger.error(f"Fout bij initialiseren AbuseIPDB client: {e}")
 
         # Initialiseer detector en alert manager
+        # Load config from database if available (for SOC server self-monitoring)
+        if self.db and self.sensor_id:
+            try:
+                self._load_config_from_database()
+            except Exception as e:
+                self.logger.warning(f"Could not load config from database, using config.yaml: {e}")
+
         self.detector = ThreatDetector(
             self.config,
             threat_feed_manager=self.threat_feeds,
@@ -141,6 +150,71 @@ class NetworkMonitor:
         signal.signal(signal.SIGTERM, self.signal_handler)
 
         self.logger.info("Network Monitor geïnitialiseerd")
+
+    def _load_config_from_database(self):
+        """Load detection thresholds from database (for SOC server self-monitoring)"""
+        if not self.db or not self.sensor_id:
+            return
+
+        self.logger.info("Loading detection config from database...")
+
+        try:
+            # Get config for this sensor (or global if sensor-specific doesn't exist)
+            db_config = self.db.get_sensor_config(sensor_id=self.sensor_id)
+
+            if db_config:
+                # Merge database config with config.yaml (database takes precedence)
+                if 'thresholds' in db_config:
+                    self.logger.info(f"Loaded {len(db_config['thresholds'])} threshold configs from database")
+
+                    # Deep merge: database config overrides config.yaml
+                    if 'thresholds' not in self.config:
+                        self.config['thresholds'] = {}
+
+                    for category, settings in db_config['thresholds'].items():
+                        if category not in self.config['thresholds']:
+                            self.config['thresholds'][category] = {}
+
+                        # Merge settings (database overrides)
+                        self.config['thresholds'][category].update(settings)
+
+                    self.logger.info("Detection config merged from database (database takes precedence)")
+                else:
+                    self.logger.info("No threshold config in database, using config.yaml defaults")
+            else:
+                self.logger.info("No database config found, using config.yaml defaults")
+
+        except Exception as e:
+            self.logger.warning(f"Error loading config from database: {e}")
+            self.logger.info("Falling back to config.yaml")
+
+    def _sync_config_from_database(self):
+        """Periodically sync config from database (called during operation)"""
+        if not self.db or not self.sensor_id:
+            return
+
+        try:
+            self._load_config_from_database()
+
+            # Update detector's config reference (detector uses self.config internally)
+            # No need to recreate detector, just reload config
+            self.logger.debug("Config synced from database")
+
+        except Exception as e:
+            self.logger.error(f"Error syncing config from database: {e}")
+
+    def _config_sync_loop(self, interval):
+        """Background thread that periodically syncs config from database"""
+        self.logger.info(f"Starting config sync loop (every {interval}s)")
+
+        while self.running:
+            try:
+                time.sleep(interval)
+                if self.running:  # Check again after sleep
+                    self.logger.debug("Syncing config from database...")
+                    self._sync_config_from_database()
+            except Exception as e:
+                self.logger.error(f"Error in config sync loop: {e}")
 
     def setup_logging(self):
         """Setup logging configuratie"""
@@ -294,6 +368,18 @@ class NetworkMonitor:
             dashboard_host = self.config.get('dashboard', {}).get('host', '0.0.0.0')
             dashboard_port = self.config.get('dashboard', {}).get('port', 8080)
             self.logger.info(f"Dashboard beschikbaar op: http://{dashboard_host}:{dashboard_port}")
+
+        # Start config sync thread (if self-monitoring and database enabled)
+        if self.db and self.sensor_id:
+            config_sync_interval = 300  # 5 minutes (same as remote sensors)
+            self.config_sync_thread = threading.Thread(
+                target=self._config_sync_loop,
+                args=(config_sync_interval,),
+                daemon=True,
+                name="ConfigSync"
+            )
+            self.config_sync_thread.start()
+            self.logger.info(f"Config sync enabled (interval: {config_sync_interval}s)")
 
         # Check of we root privileges hebben
         if conf.L3socket == conf.L3socket6:
