@@ -24,6 +24,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config_loader import load_config
 from database import DatabaseManager
+from sensor_auth import SensorAuthManager
+from functools import wraps
 
 
 # Initialize Flask app
@@ -50,11 +52,12 @@ socketio = SocketIO(
 db = None
 config = None
 logger = None
+sensor_auth = None  # Sensor authentication manager
 
 
 def init_dashboard(config_file='config.yaml'):
     """Initialize dashboard components"""
-    global db, config, logger
+    global db, config, logger, sensor_auth
 
     # Load config
     config = load_config(config_file)
@@ -94,7 +97,60 @@ def init_dashboard(config_file='config.yaml'):
         logger.error(f"Unsupported database type: {db_type}")
         raise ValueError(f"Database type '{db_type}' not supported")
 
+    # Initialize sensor authentication manager
+    sensor_auth = SensorAuthManager(db)
+    logger.info("Sensor authentication manager initialized")
+
     logger.info("Web Dashboard geïnitialiseerd")
+
+
+# ==================== Authentication Decorators ====================
+
+def require_sensor_token(required_permission=None):
+    """
+    Decorator to require sensor token authentication
+
+    Usage:
+        @require_sensor_token()
+        @require_sensor_token('alerts')
+        @require_sensor_token('commands')
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            # Get token from Authorization header
+            auth_header = request.headers.get('Authorization', '')
+
+            if not auth_header.startswith('Bearer '):
+                logger.warning(f"Missing or invalid Authorization header from {request.remote_addr}")
+                return jsonify({
+                    'success': False,
+                    'error': 'Missing or invalid Authorization header. Use: Authorization: Bearer <token>'
+                }), 401
+
+            token = auth_header.replace('Bearer ', '').strip()
+
+            # Validate token
+            if not sensor_auth:
+                logger.error("Sensor auth manager not initialized")
+                return jsonify({'success': False, 'error': 'Authentication system not available'}), 500
+
+            sensor_details = sensor_auth.validate_token(token, required_permission)
+
+            if not sensor_details:
+                logger.warning(f"Invalid token attempted from {request.remote_addr}")
+                return jsonify({'success': False, 'error': 'Invalid or expired token'}), 403
+
+            # Add sensor details to Flask's g object for use in route
+            from flask import g
+            g.sensor_details = sensor_details
+
+            logger.info(f"Authenticated sensor: {sensor_details['sensor_id']} ({sensor_details['hostname']})")
+
+            return f(*args, **kwargs)
+
+        return decorated_function
+    return decorator
 
 
 # ==================== REST API Endpoints ====================

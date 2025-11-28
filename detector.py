@@ -12,6 +12,15 @@ import ipaddress
 
 from scapy.layers.inet import IP, TCP, UDP, ICMP
 from scapy.layers.dns import DNS, DNSQR
+from scapy.layers.http import HTTP, HTTPRequest, HTTPResponse
+from scapy.packet import Raw
+
+# Import content analysis module
+try:
+    from content_analysis import ContentAnalyzer, analyze_dns
+except ImportError:
+    ContentAnalyzer = None
+    analyze_dns = None
 
 
 class ThreatDetector:
@@ -38,9 +47,21 @@ class ThreatDetector:
         self.connection_tracker = defaultdict(lambda: deque(maxlen=1000))
         self.dns_tracker = defaultdict(lambda: deque(maxlen=100))
 
+        # New trackers for protocol-specific detection
+        self.icmp_tracker = defaultdict(lambda: deque(maxlen=100))  # ICMP packets
+        self.http_tracker = defaultdict(lambda: deque(maxlen=50))   # HTTP requests
+        self.smtp_ftp_tracker = defaultdict(lambda: {
+            'total_bytes': 0,
+            'first_seen': None,
+            'last_seen': None
+        })
+
         # Parsed whitelist/blacklist from config
         self.config_whitelist = self._parse_ip_list(config.get('whitelist', []))
         self.blacklist = self._parse_ip_list(config.get('blacklist', []))
+
+        # Initialize content analyzer if available
+        self.content_analyzer = ContentAnalyzer() if ContentAnalyzer else None
 
         self.logger.info("Threat Detector geïnitialiseerd")
 
@@ -160,11 +181,26 @@ class ThreatDetector:
             if threat:
                 threats.append(threat)
 
-        # DNS tunneling detection
+        # DNS tunneling detection (enhanced with content analysis)
         if self.config['thresholds']['dns_tunnel']['enabled']:
             threat = self._detect_dns_tunnel(packet)
             if threat:
                 threats.append(threat)
+
+        # ICMP tunneling detection
+        if self.config['thresholds'].get('icmp_tunnel', {}).get('enabled', False):
+            threat = self._detect_icmp_tunnel(packet)
+            if threat:
+                threats.append(threat)
+
+        # HTTP/HTTPS anomaly detection
+        http_threats = self._detect_http_anomalies(packet)
+        threats.extend(http_threats)
+
+        # SMTP/FTP large transfer detection
+        threat = self._detect_smtp_ftp_transfer(packet)
+        if threat:
+            threats.append(threat)
 
         # Behavior-based detection (beaconing, lateral movement, etc.)
         if self.behavior_detector:
@@ -288,7 +324,7 @@ class ThreatDetector:
         return None
 
     def _detect_dns_tunnel(self, packet):
-        """Detecteer mogelijke DNS tunneling"""
+        """Detecteer mogelijke DNS tunneling (enhanced met content analysis)"""
         if not packet.haslayer(DNS) or not packet.haslayer(DNSQR):
             return None
 
@@ -300,7 +336,49 @@ class ThreatDetector:
         ip_layer = packet[IP]
         src_ip = ip_layer.src
 
-        # Check query length
+        # Enhanced analysis with content analyzer
+        if self.content_analyzer:
+            analysis = self.content_analyzer.analyze_dns_query(query)
+
+            # Check for DGA (Domain Generation Algorithm)
+            if analysis['dga_score'] > 0.6:
+                return {
+                    'type': 'DNS_DGA_DETECTED',
+                    'severity': 'HIGH',
+                    'source_ip': src_ip,
+                    'destination_ip': ip_layer.dst,
+                    'description': f'Mogelijk DGA gedetecteerd: {", ".join(analysis["reasons"])}',
+                    'query': query[:100],
+                    'dga_score': analysis['dga_score'],
+                    'entropy': analysis['entropy']
+                }
+
+            # Check for encoding in DNS query
+            if analysis['encoding']['encoded']:
+                return {
+                    'type': 'DNS_ENCODED_QUERY',
+                    'severity': 'MEDIUM',
+                    'source_ip': src_ip,
+                    'destination_ip': ip_layer.dst,
+                    'description': f'Gecodeerde DNS query gedetecteerd: {analysis["encoding"]["type"]}',
+                    'query': query[:100],
+                    'encoding_type': analysis['encoding']['type'],
+                    'entropy': analysis['entropy']
+                }
+
+            # High entropy check
+            if analysis['entropy'] > 4.5:
+                return {
+                    'type': 'DNS_HIGH_ENTROPY',
+                    'severity': 'MEDIUM',
+                    'source_ip': src_ip,
+                    'destination_ip': ip_layer.dst,
+                    'description': f'DNS query met hoge entropie: {analysis["entropy"]:.2f}',
+                    'query': query[:100],
+                    'entropy': analysis['entropy']
+                }
+
+        # Check query length (legacy detection)
         query_length_threshold = self.config['thresholds']['dns_tunnel']['query_length_threshold']
         if len(query) > query_length_threshold:
             return {
@@ -309,7 +387,7 @@ class ThreatDetector:
                 'source_ip': src_ip,
                 'destination_ip': ip_layer.dst,
                 'description': f'Verdacht lange DNS query: {len(query)} karakters',
-                'query': query[:100]  # Limiteer voor logging
+                'query': query[:100]
             }
 
         # Track query rate
@@ -334,6 +412,253 @@ class ThreatDetector:
 
         return None
 
+    def _detect_icmp_tunnel(self, packet):
+        """Detecteer ICMP tunneling (grote payloads of hoge rate)"""
+        if not packet.haslayer(ICMP):
+            return None
+
+        icmp_layer = packet[ICMP]
+        ip_layer = packet[IP]
+        src_ip = ip_layer.src
+
+        # Check if ICMP Echo Request or Echo Reply
+        if icmp_layer.type not in [8, 0]:  # 8 = Echo Request, 0 = Echo Reply
+            return None
+
+        # Get ICMP payload size
+        payload_size = 0
+        if packet.haslayer(Raw):
+            payload_size = len(packet[Raw].load)
+
+        # Check for large ICMP payloads
+        size_threshold = self.config['thresholds'].get('icmp_tunnel', {}).get('size_threshold', 500)
+        if payload_size > size_threshold:
+            # Analyze payload for encoded data if content analyzer available
+            metadata = {'payload_size': payload_size}
+
+            if self.content_analyzer and packet.haslayer(Raw):
+                try:
+                    payload_text = packet[Raw].load.decode('utf-8', errors='ignore')
+                    entropy = self.content_analyzer.calculate_entropy(payload_text)
+                    encoding = self.content_analyzer.detect_encoding(payload_text[:500])
+
+                    metadata['entropy'] = entropy
+                    if encoding['encoded']:
+                        metadata['encoding'] = encoding['type']
+
+                except Exception:
+                    pass
+
+            return {
+                'type': 'ICMP_LARGE_PAYLOAD',
+                'severity': 'MEDIUM',
+                'source_ip': src_ip,
+                'destination_ip': ip_layer.dst,
+                'description': f'Grote ICMP payload gedetecteerd: {payload_size} bytes',
+                'payload_size': payload_size,
+                'metadata': json.dumps(metadata)
+            }
+
+        # Track ICMP packet rate
+        if payload_size > size_threshold / 2:  # Track packets > half threshold
+            current_time = time.time()
+            packets = self.icmp_tracker[src_ip]
+            packets.append({'time': current_time, 'size': payload_size})
+
+            # Count large ICMP packets in last minute
+            cutoff_time = current_time - 60
+            recent_large_packets = sum(1 for p in packets if p['time'] > cutoff_time)
+
+            rate_threshold = self.config['thresholds'].get('icmp_tunnel', {}).get('rate_threshold', 10)
+            if recent_large_packets > rate_threshold:
+                return {
+                    'type': 'ICMP_TUNNEL_HIGH_RATE',
+                    'severity': 'HIGH',
+                    'source_ip': src_ip,
+                    'destination_ip': ip_layer.dst,
+                    'description': f'Hoog aantal grote ICMP packets: {recent_large_packets} per minuut',
+                    'packet_count': recent_large_packets,
+                    'avg_size': sum(p['size'] for p in packets if p['time'] > cutoff_time) / recent_large_packets
+                }
+
+        return None
+
+    def _detect_http_anomalies(self, packet):
+        """Detecteer HTTP/HTTPS anomalieën"""
+        threats = []
+
+        if not packet.haslayer(TCP):
+            return threats
+
+        tcp_layer = packet[TCP]
+        ip_layer = packet[IP]
+        src_ip = ip_layer.src
+        dst_port = tcp_layer.dport
+
+        # Check for HTTP/HTTPS ports
+        if dst_port not in [80, 443, 8080, 8443]:
+            return threats
+
+        # HTTP layer detection (only works for unencrypted HTTP)
+        if packet.haslayer(HTTPRequest):
+            try:
+                http_layer = packet[HTTPRequest]
+                method = http_layer.Method.decode('utf-8', errors='ignore') if http_layer.Method else 'UNKNOWN'
+                path = http_layer.Path.decode('utf-8', errors='ignore') if http_layer.Path else '/'
+                host = http_layer.Host.decode('utf-8', errors='ignore') if http_layer.Host else 'unknown'
+
+                # Track HTTP request rate
+                current_time = time.time()
+                requests = self.http_tracker[src_ip]
+                requests.append({'time': current_time, 'method': method, 'path': path})
+
+                # Detect excessive POST requests (possible data exfiltration)
+                cutoff_time = current_time - 300  # 5 minutes
+                recent_posts = sum(1 for r in requests if r['time'] > cutoff_time and r['method'] == b'POST')
+
+                if recent_posts > 50:  # More than 50 POSTs in 5 minutes
+                    threats.append({
+                        'type': 'HTTP_EXCESSIVE_POSTS',
+                        'severity': 'MEDIUM',
+                        'source_ip': src_ip,
+                        'destination_ip': ip_layer.dst,
+                        'description': f'Verdacht veel POST requests: {recent_posts} in 5 minuten',
+                        'post_count': recent_posts,
+                        'host': host
+                    })
+
+                # Check for suspicious user agents
+                user_agent = None
+                if hasattr(http_layer, 'User_Agent') and http_layer.User_Agent:
+                    user_agent = http_layer.User_Agent.decode('utf-8', errors='ignore')
+
+                    # Detect suspicious patterns in User-Agent
+                    suspicious_ua_patterns = ['python', 'curl', 'wget', 'scanner', 'bot', 'sqlmap', 'nikto']
+                    for pattern in suspicious_ua_patterns:
+                        if pattern.lower() in user_agent.lower():
+                            threats.append({
+                                'type': 'HTTP_SUSPICIOUS_USER_AGENT',
+                                'severity': 'LOW',
+                                'source_ip': src_ip,
+                                'destination_ip': ip_layer.dst,
+                                'description': f'Verdachte User-Agent gedetecteerd: {pattern}',
+                                'user_agent': user_agent[:100],
+                                'pattern': pattern
+                            })
+                            break
+
+            except Exception as e:
+                self.logger.debug(f"Error parsing HTTP request: {e}")
+
+        # Analyze HTTP payload (POST data, etc.)
+        if packet.haslayer(Raw) and self.content_analyzer:
+            try:
+                payload = packet[Raw].load
+
+                # Only analyze payloads > 1KB (skip small requests)
+                if len(payload) > 1024:
+                    analysis = self.content_analyzer.analyze_http_payload(payload)
+
+                    # Check for sensitive data in HTTP
+                    if analysis['dlp_findings']:
+                        threats.append({
+                            'type': 'HTTP_SENSITIVE_DATA',
+                            'severity': 'CRITICAL',
+                            'source_ip': src_ip,
+                            'destination_ip': ip_layer.dst,
+                            'description': f'Gevoelige data in HTTP verkeer: {", ".join([f["type"] for f in analysis["dlp_findings"]])}',
+                            'findings': [f['type'] for f in analysis['dlp_findings']],
+                            'payload_size': len(payload)
+                        })
+
+                    # Check for high entropy (encrypted/compressed data in plaintext HTTP)
+                    if dst_port == 80 and analysis['entropy'] > 6.5:  # Only for plain HTTP
+                        threats.append({
+                            'type': 'HTTP_HIGH_ENTROPY_PAYLOAD',
+                            'severity': 'MEDIUM',
+                            'source_ip': src_ip,
+                            'destination_ip': ip_layer.dst,
+                            'description': f'Mogelijk versleutelde data in onversleuteld HTTP: entropie {analysis["entropy"]:.2f}',
+                            'entropy': analysis['entropy'],
+                            'payload_size': len(payload)
+                        })
+
+            except Exception as e:
+                self.logger.debug(f"Error analyzing HTTP payload: {e}")
+
+        return threats
+
+    def _detect_smtp_ftp_transfer(self, packet):
+        """Detecteer grote bestandsoverdrachten via SMTP/FTP"""
+        if not packet.haslayer(TCP):
+            return None
+
+        tcp_layer = packet[TCP]
+        ip_layer = packet[IP]
+        src_ip = ip_layer.src
+        dst_port = tcp_layer.dport
+
+        # Check for SMTP/FTP ports
+        # SMTP: 25 (plain), 587 (submission), 465 (SMTPS)
+        # FTP: 21 (control), 20 (data), 989/990 (FTPS)
+        monitored_ports = [20, 21, 25, 465, 587, 989, 990]
+
+        if dst_port not in monitored_ports:
+            return None
+
+        # Track total bytes transferred
+        if packet.haslayer(Raw):
+            payload_size = len(packet[Raw].load)
+
+            tracker = self.smtp_ftp_tracker[f"{src_ip}:{dst_port}"]
+            current_time = time.time()
+
+            if not tracker['first_seen']:
+                tracker['first_seen'] = current_time
+
+            tracker['total_bytes'] += payload_size
+            tracker['last_seen'] = current_time
+
+            # Check if large transfer over a time window
+            time_window = 300  # 5 minutes
+            if (current_time - tracker['first_seen']) < time_window:
+                # Still within window, check threshold
+                threshold_bytes = 50 * 1024 * 1024  # 50 MB
+
+                if tracker['total_bytes'] > threshold_bytes:
+                    total_mb = tracker['total_bytes'] / (1024 * 1024)
+                    duration = current_time - tracker['first_seen']
+
+                    # Determine protocol
+                    if dst_port in [25, 465, 587]:
+                        protocol = 'SMTP'
+                        alert_type = 'SMTP_LARGE_ATTACHMENT'
+                    else:
+                        protocol = 'FTP'
+                        alert_type = 'FTP_LARGE_TRANSFER'
+
+                    # Reset tracker to avoid duplicate alerts
+                    tracker['total_bytes'] = 0
+                    tracker['first_seen'] = current_time
+
+                    return {
+                        'type': alert_type,
+                        'severity': 'MEDIUM',
+                        'source_ip': src_ip,
+                        'destination_ip': ip_layer.dst,
+                        'description': f'Grote {protocol} overdracht gedetecteerd: {total_mb:.2f} MB in {duration:.0f}s',
+                        'total_mb': total_mb,
+                        'duration_seconds': duration,
+                        'protocol': protocol,
+                        'port': dst_port
+                    }
+            else:
+                # Window expired, reset
+                tracker['total_bytes'] = payload_size
+                tracker['first_seen'] = current_time
+
+        return None
+
     def cleanup_old_data(self):
         """Cleanup oude tracking data (call periodiek)"""
         current_time = time.time()
@@ -344,5 +669,12 @@ class ThreatDetector:
             if tracker['last_seen'] and \
                (current_time - tracker['last_seen']) > 300:  # 5 minuten
                 del self.port_scan_tracker[ip]
+
+        # Cleanup SMTP/FTP tracker
+        for key in list(self.smtp_ftp_tracker.keys()):
+            tracker = self.smtp_ftp_tracker[key]
+            if tracker['last_seen'] and \
+               (current_time - tracker['last_seen']) > 600:  # 10 minuten
+                del self.smtp_ftp_tracker[key]
 
         self.logger.debug("Oude tracking data opgeschoond")
