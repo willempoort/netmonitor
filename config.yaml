@@ -30,6 +30,10 @@ self_monitor:
 # SOC server dashboard and pushed to sensors automatically.
 # Only the SOC server needs these detailed thresholds in config.yaml.
 
+# Network interface to monitor (legacy/backward compatibility)
+# When self_monitor.enabled=true, this is overridden by self_monitor.interface
+interface: lo
+
 # Internal network ranges (voor internal traffic monitoring)
 # Pas deze aan naar je eigen netwerk configuratie
 internal_networks:
