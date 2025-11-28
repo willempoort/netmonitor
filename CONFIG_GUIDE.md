@@ -14,10 +14,27 @@ NetMonitor heeft **twee configuratie modes**:
 ### Doel
 Volledige configuratie voor de SOC server inclusief:
 - Self-monitoring toggle (optioneel lokaal monitoren)
-- Detection thresholds (centraal beheerd, gepusht naar sensors)
+- Detection thresholds (**default values**, database overrides runtime)
 - Dashboard instellingen
 - Database connectie
 - Threat intelligence feeds
+
+### ⚡ Runtime Configuration (NEW!)
+
+**SOC Server laadt nu ook thresholds uit database:**
+
+```
+Startup Flow:
+1. Load config.yaml (connection settings, defaults)
+2. Connect to database
+3. Load thresholds from database → OVERRIDES config.yaml
+4. Sync from database every 5 minutes (runtime updates!)
+```
+
+**Voordelen:**
+- ✅ **Runtime updates** - Wijzig thresholds via Web UI zonder restart
+- ✅ **Consistent** - SOC server + sensors gebruiken BEIDE database config
+- ✅ **Fallback** - config.yaml als backup als database unavailable
 
 ### Self-Monitoring Instellingen
 
@@ -52,10 +69,12 @@ self_monitor:
 
 ### Gedrag per Mode
 
-| Mode | Dashboard | Packet Capture | Sensor List | Alert Source |
-|------|-----------|----------------|-------------|--------------|
-| **enabled: true** | ✅ Running | ✅ Active | ✅ "soc-server" visible | SOC + Sensors |
-| **enabled: false** | ✅ Running | ❌ Disabled | ❌ SOC not visible | Sensors only |
+| Mode | Dashboard | Packet Capture | Sensor List | Config Source | Alert Source |
+|------|-----------|----------------|-------------|---------------|--------------|
+| **enabled: true** | ✅ Running | ✅ Active | ✅ "soc-server" visible | **Database + config.yaml** | SOC + Sensors |
+| **enabled: false** | ✅ Running | ❌ Disabled | ❌ SOC not visible | config.yaml only | Sensors only |
+
+**Note:** When `enabled: true`, SOC server loads thresholds from **database** (with config.yaml as fallback). This means Web UI changes apply **immediately** without restart!
 
 ---
 
@@ -127,7 +146,38 @@ Remote sensors:
 1. Login to SOC Dashboard: `https://soc.example.com`
 2. Navigate to: **Configuration** tab
 3. Modify parameters in: **Detection Rules**
-4. Changes are **automatically pushed** to all sensors within 5 minutes
+4. Changes are **automatically pushed** to:
+   - ✅ **Remote sensors** - within 5 minutes (config_sync_interval)
+   - ✅ **SOC server itself** - within 5 minutes (if self-monitoring enabled)
+
+### 🚀 Runtime Configuration Updates (NEW!)
+
+**SOC Server now loads config from database:**
+
+```yaml
+# config.yaml (SOC Server)
+self_monitor:
+  enabled: true  # ← Database config loading ENABLED
+
+thresholds:
+  port_scan:
+    enabled: true
+    unique_ports: 20  # ← DEFAULT value (database overrides)
+```
+
+**Behavior:**
+1. **Startup**: Loads config.yaml defaults
+2. **Database Merge**: Loads thresholds from database → **overrides** config.yaml
+3. **Runtime Sync**: Re-syncs from database every 5 minutes
+4. **Web UI Changes**: Apply to SOC server **without restart**!
+
+**Example:**
+```bash
+# Change threshold via Web UI
+# Before: port_scan.unique_ports = 20 (from config.yaml)
+# After:  port_scan.unique_ports = 15 (from database)
+# Effect: SOC server picks up change within 5 minutes (no restart!)
+```
 
 ### Global vs Sensor-Specific Config
 
@@ -176,21 +226,21 @@ curl -X PUT https://soc.example.com/api/config/parameter \
 ```yaml
 # FULL configuration for SOC server
 self_monitor:           # ✅ Self-monitoring toggle
-  enabled: true
+  enabled: true         # ← ENABLES database config loading!
   sensor_id: soc-server
   interface: lo
 
-thresholds:             # ✅ Detection config (pushed to sensors)
-  port_scan: ...
-  dns_tunnel: ...
-  http_anomaly: ...
+thresholds:             # ⚠️ DEFAULT values (database overrides!)
+  port_scan: ...        # Used as fallback if database unavailable
+  dns_tunnel: ...       # Database values take precedence
+  http_anomaly: ...     # Changes via Web UI override these
 
 dashboard:              # ✅ Web dashboard
   enabled: true
   host: 0.0.0.0
   port: 8080
 
-database:               # ✅ PostgreSQL + TimescaleDB
+database:               # ✅ PostgreSQL + TimescaleDB (REQUIRED for runtime config)
   type: postgresql
   postgresql: ...
 
@@ -199,6 +249,7 @@ threat_feeds:           # ✅ Threat intelligence
   feeds: [...]
 
 # 182 lines total
+# NOTE: When self_monitor.enabled=true, thresholds loaded from DATABASE
 ```
 
 ### Remote Sensor (`config-sensor-minimal.yaml`)
