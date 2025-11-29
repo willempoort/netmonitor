@@ -332,11 +332,18 @@ class NetworkMonitor:
                 self.dashboard.start()
                 self.logger.info(f"Dashboard beschikbaar op: http://{self.config['dashboard']['host']}:{self.config['dashboard']['port']}")
 
-            # Keep running (dashboard thread is daemon)
+            # Keep main thread alive (dashboard thread is daemon)
+            # Use Event.wait() instead of signal.pause() for systemd compatibility
+            self.logger.info("Dashboard-only mode active. Press Ctrl+C to stop.")
+            self.running = True
             try:
-                signal.pause()  # Wait for interrupt
+                shutdown_event = threading.Event()
+                # Wait indefinitely until interrupted
+                while self.running:
+                    shutdown_event.wait(timeout=1)  # Wake up every second to check self.running
             except KeyboardInterrupt:
                 self.logger.info("Shutting down...")
+                self.running = False
             return
 
         # Self-monitoring is enabled - register as sensor
