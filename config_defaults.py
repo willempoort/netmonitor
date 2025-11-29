@@ -9,7 +9,7 @@ BEST_PRACTICE_CONFIG = {
     "thresholds": {
         "port_scan": {
             "enabled": True,
-            "ports_threshold": 10,      # Alert if >10 ports scanned
+            "unique_ports": 10,         # Alert if >10 ports scanned
             "time_window": 60           # Within 60 seconds
         },
         "dns_tunnel": {
@@ -20,11 +20,11 @@ BEST_PRACTICE_CONFIG = {
         "beaconing": {
             "enabled": True,
             "interval_threshold": 5,    # Regular intervals (C2 beacon detection)
-            "count_threshold": 10       # Minimum connections to detect pattern
+            "min_connections": 10       # Minimum connections to detect pattern
         },
-        "data_exfiltration": {
+        "outbound_volume": {
             "enabled": True,
-            "upload_threshold_mb": 100, # Alert if >100MB uploaded in window
+            "threshold_mb": 100,        # Alert if >100MB uploaded in window
             "time_window": 300          # 5 minute window
         },
         "brute_force": {
@@ -53,11 +53,8 @@ BEST_PRACTICE_CONFIG = {
             "dga_threshold": 0.6,       # DGA score threshold (0-1)
             "entropy_threshold": 4.5,   # Shannon entropy threshold
             "encoding_detection": True   # Detect Base64/Hex encoding
-        }
-    },
-
-    # Thresholds - Conservative defaults for production environments
-    "thresholds": {
+        },
+        # Performance thresholds
         "packet_rate_warning": 10000,   # Packets/sec warning threshold
         "packet_rate_critical": 50000,  # Packets/sec critical threshold
         "connection_rate_warning": 1000,
