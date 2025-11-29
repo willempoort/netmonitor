@@ -326,6 +326,15 @@ def api_get_sensors():
     """Get all registered sensors"""
     try:
         sensors = db.get_sensors()
+
+        # Filter out SOC server if self-monitoring is disabled
+        self_monitor_config = config.get('self_monitor', {})
+        self_monitor_enabled = self_monitor_config.get('enabled', True)
+
+        if not self_monitor_enabled:
+            # Exclude sensors with 'soc-server' in their sensor_id
+            sensors = [s for s in sensors if 'soc-server' not in s.get('sensor_id', '').lower()]
+
         return jsonify({
             'success': True,
             'data': sensors,
