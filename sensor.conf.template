@@ -1,0 +1,64 @@
+# ============================================
+# NetMonitor Sensor Configuration Template
+# ============================================
+#
+# This is a simplified configuration for remote sensors.
+# All detection settings are managed centrally on the SOC server.
+#
+# Setup Instructions:
+# 1. Copy this file to: sensor.conf
+# 2. Update the values below
+# 3. Run: sudo systemctl restart netmonitor
+#
+# ============================================
+
+# Network interface to monitor
+# Examples: eth0, eth1, ens33, wlan0
+# Use 'all' to monitor all interfaces
+INTERFACE=eth0
+
+# SOC Server URL (REQUIRED)
+# The URL of your central SOC server dashboard
+# Format: http://hostname:port or https://hostname:port
+SOC_SERVER_URL=http://soc.example.com:8080
+
+# Unique Sensor ID (REQUIRED)
+# Must be unique across all sensors in your network
+# Use descriptive names: location-vlan-number
+# Examples: office-vlan10-01, dmz-edge-02, datacenter-prod-01
+SENSOR_ID=nano-vlan10-01
+
+# Sensor Location Description (REQUIRED)
+# Human-readable description of where this sensor is deployed
+# This appears in the SOC dashboard sensor list
+SENSOR_LOCATION=Building A - VLAN 10 - Production Network
+
+# Authentication Secret Key (OPTIONAL but recommended)
+# Used for secure sensor-to-server communication
+# Generate with: openssl rand -hex 32
+# Leave empty if SOC server doesn't require authentication
+SENSOR_SECRET_KEY=
+
+# ============================================
+# Advanced Settings (optional)
+# ============================================
+
+# Internal networks (comma-separated CIDR ranges)
+# Used to classify traffic as internal vs external
+# Default: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+INTERNAL_NETWORKS=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+
+# Heartbeat interval (seconds)
+# How often to send status updates to SOC server
+# Default: 30
+HEARTBEAT_INTERVAL=30
+
+# Config sync interval (seconds)
+# How often to fetch updated detection settings from SOC server
+# Default: 300 (5 minutes)
+CONFIG_SYNC_INTERVAL=300
+
+# Enable SSL verification (true/false)
+# Set to false only for testing with self-signed certificates
+# Default: true
+SSL_VERIFY=true
