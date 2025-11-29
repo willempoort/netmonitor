@@ -410,6 +410,42 @@ class NetworkMonitor:
         metrics_thread = threading.Thread(target=broadcast_metrics, daemon=True)
         metrics_thread.start()
 
+        # Start periodic metrics save to database (for SOC server sensor)
+        def save_sensor_metrics_periodically():
+            """Save SOC server metrics to database every 60 seconds"""
+            while self.running:
+                threading.Event().wait(60)  # Wait 60 seconds
+                if self.running and self.metrics and self.db and self.sensor_id:
+                    try:
+                        # Get current metrics
+                        dashboard_metrics = self.metrics.get_dashboard_metrics()
+                        system_stats = dashboard_metrics.get('system', {})
+                        traffic_stats = dashboard_metrics.get('traffic', {})
+
+                        # Calculate bandwidth in Mbps
+                        bandwidth_mbps = traffic_stats.get('bandwidth_mbps', 0)
+
+                        # Get network interface
+                        interface_name = self.self_monitor_config.get('interface',
+                                                                       self.config.get('interface', 'lo'))
+
+                        # Save to database
+                        self.db.save_sensor_metrics(
+                            sensor_id=self.sensor_id,
+                            cpu_percent=system_stats.get('cpu_percent'),
+                            memory_percent=system_stats.get('memory_percent'),
+                            packets_captured=traffic_stats.get('total_packets'),
+                            alerts_sent=traffic_stats.get('alerts'),
+                            network_interface=interface_name,
+                            bandwidth_mbps=bandwidth_mbps
+                        )
+                        self.logger.debug(f"Saved SOC server metrics: {traffic_stats.get('total_packets', 0)} packets, {bandwidth_mbps:.2f} Mbps")
+                    except Exception as e:
+                        self.logger.error(f"Error saving SOC server metrics: {e}")
+
+        metrics_save_thread = threading.Thread(target=save_sensor_metrics_periodically, daemon=True, name="MetricsSave")
+        metrics_save_thread.start()
+
         try:
             # Start packet sniffing
             # store=0 betekent packets niet in memory houden (belangrijk voor lange runs)

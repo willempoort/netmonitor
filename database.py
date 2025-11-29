@@ -1015,7 +1015,12 @@ class DatabaseManager:
                     ORDER BY timestamp DESC
                     LIMIT 1
                 ) sm ON true
-                ORDER BY s.hostname
+                ORDER BY
+                    CASE
+                        WHEN s.sensor_id LIKE '%soc-server%' THEN 0
+                        ELSE 1
+                    END,
+                    s.hostname
             ''')
 
             sensors = [dict(row) for row in cursor.fetchall()]
