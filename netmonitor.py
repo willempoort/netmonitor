@@ -321,21 +321,102 @@ class NetworkMonitor:
         except Exception as e:
             self.logger.error(f"Error processing packet: {e}", exc_info=True)
 
+    def get_dashboard_metrics(self) -> dict:
+        """
+        Get metrics for dashboard display
+        - When self_monitor=true: Use local MetricsCollector
+        - When self_monitor=false: Aggregate from database
+        - CPU/Memory: Always from SOC server itself
+        """
+        import psutil
+        from datetime import datetime
+
+        # Get system stats (always from SOC server)
+        try:
+            cpu_percent = psutil.cpu_percent(interval=0.1)
+            memory = psutil.virtual_memory()
+            system_stats = {
+                'cpu_percent': cpu_percent,
+                'memory_percent': memory.percent,
+                'memory_used_gb': round(memory.used / (1024**3), 2),
+                'memory_total_gb': round(memory.total / (1024**3), 2)
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting system stats: {e}")
+            system_stats = {
+                'cpu_percent': 0,
+                'memory_percent': 0,
+                'memory_used_gb': 0,
+                'memory_total_gb': 0
+            }
+
+        # Get traffic stats
+        if self.self_monitor_enabled and self.metrics:
+            # Self-monitoring mode: use local metrics
+            metrics_data = self.metrics.get_dashboard_metrics()
+            traffic_stats = metrics_data.get('traffic', {})
+            top_talkers = metrics_data.get('top_talkers', [])
+        else:
+            # Management-only mode: aggregate from database
+            if self.db:
+                agg_metrics = self.db.get_aggregated_metrics()
+                traffic_stats = {
+                    'packets_per_second': agg_metrics.get('packets_per_sec', 0),
+                    'total_packets': agg_metrics.get('total_packets', 0),
+                    'bandwidth_mbps': agg_metrics.get('bandwidth_mbps', 0),
+                    'alerts': agg_metrics.get('alerts_per_min', 0)
+                }
+                top_talkers = []
+            else:
+                traffic_stats = {
+                    'packets_per_second': 0,
+                    'total_packets': 0,
+                    'bandwidth_mbps': 0,
+                    'alerts': 0
+                }
+                top_talkers = []
+
+        return {
+            'traffic': traffic_stats,
+            'system': system_stats,
+            'top_talkers': top_talkers,
+            'timestamp': datetime.now().isoformat()
+        }
+
     def start(self):
         """Start het monitoren van netwerkverkeer"""
+        self.running = True
+
+        # Start dashboard server (always, regardless of self-monitoring mode)
+        if self.dashboard:
+            self.dashboard.start()
+            dashboard_host = self.config.get('dashboard', {}).get('host', '0.0.0.0')
+            dashboard_port = self.config.get('dashboard', {}).get('port', 8080)
+            self.logger.info(f"Dashboard beschikbaar op: http://{dashboard_host}:{dashboard_port}")
+
+        # Start metrics broadcaster (ALWAYS - works in both modes)
+        def broadcast_metrics():
+            """Broadcast metrics to dashboard every 5 seconds"""
+            while self.running:
+                if self.dashboard:
+                    try:
+                        metrics_data = self.get_dashboard_metrics()
+                        self.dashboard.broadcast_metrics(metrics_data)
+                    except Exception as e:
+                        self.logger.error(f"Error broadcasting metrics: {e}")
+                threading.Event().wait(5)  # 5 seconds
+
+        metrics_thread = threading.Thread(target=broadcast_metrics, daemon=True, name="MetricsBroadcast")
+        metrics_thread.start()
+        self.logger.info("Dashboard metrics broadcaster started")
+
         # Check if self-monitoring is disabled
         if not self.self_monitor_enabled:
             self.logger.info("Self-monitoring is DISABLED - SOC server will only receive alerts from remote sensors")
-
-            # Start dashboard only (no packet capture)
-            if self.dashboard:
-                self.dashboard.start()
-                self.logger.info(f"Dashboard beschikbaar op: http://{self.config['dashboard']['host']}:{self.config['dashboard']['port']}")
+            self.logger.info("Dashboard-only mode active. Press Ctrl+C to stop.")
 
             # Keep main thread alive (dashboard thread is daemon)
             # Use Event.wait() instead of signal.pause() for systemd compatibility
-            self.logger.info("Dashboard-only mode active. Press Ctrl+C to stop.")
-            self.running = True
             try:
                 shutdown_event = threading.Event()
                 # Wait indefinitely until interrupted
@@ -369,13 +450,6 @@ class NetworkMonitor:
         self.logger.info(f"Starting network monitor op interface: {interface}")
         self.logger.info("Druk op Ctrl+C om te stoppen")
 
-        # Start dashboard server
-        if self.dashboard:
-            self.dashboard.start()
-            dashboard_host = self.config.get('dashboard', {}).get('host', '0.0.0.0')
-            dashboard_port = self.config.get('dashboard', {}).get('port', 8080)
-            self.logger.info(f"Dashboard beschikbaar op: http://{dashboard_host}:{dashboard_port}")
-
         # Start config sync thread (if self-monitoring and database enabled)
         if self.db and self.sensor_id:
             config_sync_interval = 300  # 5 minutes (same as remote sensors)
@@ -393,22 +467,6 @@ class NetworkMonitor:
             self.logger.warning(
                 "Mogelijk onvoldoende privileges. Run als root voor volledige functionaliteit."
             )
-
-        self.running = True
-
-        # Start metrics broadcaster (update dashboard elk 5 seconden)
-        def broadcast_metrics():
-            while self.running:
-                if self.metrics and self.dashboard:
-                    try:
-                        metrics_data = self.metrics.get_dashboard_metrics()
-                        self.dashboard.broadcast_metrics(metrics_data)
-                    except Exception as e:
-                        self.logger.error(f"Error broadcasting metrics: {e}")
-                threading.Event().wait(5)  # 5 seconden
-
-        metrics_thread = threading.Thread(target=broadcast_metrics, daemon=True)
-        metrics_thread.start()
 
         # Start periodic metrics save to database (for SOC server sensor)
         def save_sensor_metrics_periodically():

@@ -1127,6 +1127,104 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
+    def get_aggregated_metrics(self) -> Dict:
+        """
+        Get aggregated metrics from all sensors for dashboard
+        Used when SOC server is in management-only mode (self_monitor.enabled=false)
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            # Get latest metrics from all sensors (last 2 minutes)
+            cursor.execute('''
+                SELECT
+                    sensor_id,
+                    packets_captured,
+                    alerts_sent,
+                    bandwidth_mbps,
+                    timestamp
+                FROM sensor_metrics
+                WHERE timestamp > NOW() - INTERVAL '2 minutes'
+                ORDER BY timestamp DESC
+            ''')
+
+            recent_metrics = cursor.fetchall()
+
+            # Calculate packets/sec from deltas
+            # Group by sensor_id and get last 2 records for each
+            sensor_packets = {}
+            sensor_bandwidth = {}
+
+            for metric in recent_metrics:
+                sid = metric['sensor_id']
+                if sid not in sensor_packets:
+                    sensor_packets[sid] = []
+                    sensor_bandwidth[sid] = metric['bandwidth_mbps'] or 0
+                sensor_packets[sid].append({
+                    'packets': metric['packets_captured'] or 0,
+                    'timestamp': metric['timestamp']
+                })
+
+            # Calculate total packets/sec
+            total_packets_per_sec = 0
+            total_bandwidth = sum(sensor_bandwidth.values())
+
+            for sid, metrics_list in sensor_packets.items():
+                if len(metrics_list) >= 2:
+                    # Sort by timestamp
+                    sorted_metrics = sorted(metrics_list, key=lambda x: x['timestamp'])
+                    latest = sorted_metrics[-1]
+                    previous = sorted_metrics[-2]
+
+                    # Calculate delta
+                    packet_delta = latest['packets'] - previous['packets']
+                    time_delta = (latest['timestamp'] - previous['timestamp']).total_seconds()
+
+                    if time_delta > 0:
+                        packets_per_sec = packet_delta / time_delta
+                        total_packets_per_sec += packets_per_sec
+
+            # Get alerts in last minute
+            cursor.execute('''
+                SELECT COUNT(*) as count
+                FROM alerts
+                WHERE timestamp > NOW() - INTERVAL '1 minute'
+            ''')
+            alerts_last_minute = cursor.fetchone()['count']
+
+            # Get total packets from all sensors (last 5 minutes for smoother display)
+            cursor.execute('''
+                SELECT COALESCE(SUM(packets_captured), 0) as total_packets
+                FROM (
+                    SELECT DISTINCT ON (sensor_id) packets_captured
+                    FROM sensor_metrics
+                    WHERE timestamp > NOW() - INTERVAL '5 minutes'
+                    ORDER BY sensor_id, timestamp DESC
+                ) latest_per_sensor
+            ''')
+            total_packets = cursor.fetchone()['total_packets']
+
+            return {
+                'packets_per_sec': round(total_packets_per_sec, 1),
+                'alerts_per_min': alerts_last_minute,
+                'total_packets': total_packets,
+                'bandwidth_mbps': round(total_bandwidth, 2),
+                'sensor_count': len(sensor_packets)
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error getting aggregated metrics: {e}")
+            return {
+                'packets_per_sec': 0,
+                'alerts_per_min': 0,
+                'total_packets': 0,
+                'bandwidth_mbps': 0,
+                'sensor_count': 0
+            }
+        finally:
+            self._return_connection(conn)
+
     def insert_alert_from_sensor(self, sensor_id: str, severity: str, threat_type: str,
                                  source_ip: str = None, destination_ip: str = None,
                                  description: str = None, metadata: Dict = None,
