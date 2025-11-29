@@ -1132,6 +1132,8 @@ class DatabaseManager:
         Get aggregated metrics from all sensors for dashboard
         Used when SOC server is in management-only mode (self_monitor.enabled=false)
         """
+        from decimal import Decimal
+
         conn = self._get_connection()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -1160,9 +1162,16 @@ class DatabaseManager:
                 sid = metric['sensor_id']
                 if sid not in sensor_packets:
                     sensor_packets[sid] = []
-                    sensor_bandwidth[sid] = metric['bandwidth_mbps'] or 0
+                    # Convert Decimal to float for JSON serialization
+                    bw = metric['bandwidth_mbps']
+                    sensor_bandwidth[sid] = float(bw) if isinstance(bw, Decimal) else (bw or 0)
+
+                # Convert packets_captured to int
+                packets = metric['packets_captured']
+                packets = int(packets) if isinstance(packets, Decimal) else (packets or 0)
+
                 sensor_packets[sid].append({
-                    'packets': metric['packets_captured'] or 0,
+                    'packets': packets,
                     'timestamp': metric['timestamp']
                 })
 
@@ -1191,7 +1200,8 @@ class DatabaseManager:
                 FROM alerts
                 WHERE timestamp > NOW() - INTERVAL '1 minute'
             ''')
-            alerts_last_minute = cursor.fetchone()['count']
+            alerts_result = cursor.fetchone()['count']
+            alerts_last_minute = int(alerts_result) if isinstance(alerts_result, Decimal) else alerts_result
 
             # Get total packets from all sensors (last 5 minutes for smoother display)
             cursor.execute('''
@@ -1203,13 +1213,14 @@ class DatabaseManager:
                     ORDER BY sensor_id, timestamp DESC
                 ) latest_per_sensor
             ''')
-            total_packets = cursor.fetchone()['total_packets']
+            total_packets_result = cursor.fetchone()['total_packets']
+            total_packets = int(total_packets_result) if isinstance(total_packets_result, Decimal) else total_packets_result
 
             return {
-                'packets_per_sec': round(total_packets_per_sec, 1),
-                'alerts_per_min': alerts_last_minute,
-                'total_packets': total_packets,
-                'bandwidth_mbps': round(total_bandwidth, 2),
+                'packets_per_sec': round(float(total_packets_per_sec), 1),
+                'alerts_per_min': int(alerts_last_minute),
+                'total_packets': int(total_packets),
+                'bandwidth_mbps': round(float(total_bandwidth), 2),
                 'sensor_count': len(sensor_packets)
             }
 
