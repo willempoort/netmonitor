@@ -152,11 +152,32 @@ function loadConfigParameters() {
 }
 
 function renderConfigByCategory(config) {
-    // Render Detection Rules
-    renderCategoryParams('detection-rules', config.detection || {}, 'detection');
+    // Render Detection Rules (from thresholds section, using PARAMETER_CATEGORIES)
+    const detectionRulesParams = {};
+    if (configCategories && configCategories['Detection Rules']) {
+        configCategories['Detection Rules'].forEach(paramPath => {
+            const parts = paramPath.split('.');
+            if (parts[0] === 'thresholds' && config.thresholds && config.thresholds[parts[1]]) {
+                detectionRulesParams[parts[1]] = config.thresholds[parts[1]];
+            }
+        });
+    }
+    renderCategoryParams('detection-rules', detectionRulesParams, 'thresholds');
 
-    // Render Thresholds
-    renderCategoryParams('thresholds', config.thresholds || {}, 'thresholds');
+    // Render Thresholds (performance thresholds only)
+    const performanceThresholds = {};
+    if (configCategories && configCategories['Thresholds']) {
+        configCategories['Thresholds'].forEach(paramPath => {
+            const parts = paramPath.split('.');
+            if (parts[0] === 'thresholds' && config.thresholds) {
+                const key = parts.slice(1).join('.');
+                if (key && config.thresholds[key] !== undefined) {
+                    performanceThresholds[key] = config.thresholds[key];
+                }
+            }
+        });
+    }
+    renderCategoryParams('thresholds', performanceThresholds, 'thresholds');
 
     // Render Alert Management
     renderCategoryParams('alerts-config', config.alerts || {}, 'alerts');
