@@ -33,7 +33,7 @@ Dit gebruikt **stdio transport** (lokaal proces).
 
 ## ⚠️ BELANGRIJK: Paths in deze Documentatie
 
-In de voorbeelden hieronder gebruik ik `/home/user/netmonitor` als voorbeeld pad.
+In de voorbeelden hieronder gebruik ik `/opt/netmonitor` als voorbeeld pad.
 
 **Vervang dit met jouw eigen NetMonitor installatie pad!**
 
@@ -83,7 +83,7 @@ nano ~/.config/Claude/claude_desktop_config.json
     "netmonitor-soc": {
       "command": "python3",
       "args": [
-        "/home/user/netmonitor/mcp_server/server.py"
+        "/opt/netmonitor/mcp_server/server.py"
       ],
       "env": {
         "NETMONITOR_DB_HOST": "localhost",
@@ -184,7 +184,7 @@ sudo netstat -tlnp | grep 5432
 #### Stap 1: Installeer de service
 
 ```bash
-cd /home/user/netmonitor
+cd /opt/netmonitor
 chmod +x install_mcp_service.sh
 sudo ./install_mcp_service.sh
 ```
@@ -286,7 +286,7 @@ sudo journalctl -u netmonitor-mcp -n 50
 
 3. Test handmatig:
 ```bash
-cd /home/user/netmonitor/mcp_server
+cd /opt/netmonitor/mcp_server
 export NETMONITOR_DB_HOST=localhost
 export NETMONITOR_DB_USER=mcp_readonly
 export NETMONITOR_DB_PASSWORD=mcp_netmonitor_readonly_2024
@@ -304,7 +304,7 @@ pip3 list | grep psycopg2
 
 Herinstalleer indien nodig:
 ```bash
-cd /home/user/netmonitor/mcp_server
+cd /opt/netmonitor/mcp_server
 pip3 install -r requirements.txt --user
 ```
 
@@ -347,7 +347,7 @@ Als je later naar always-on wilt:
 
 1. **Installeer de service:**
 ```bash
-sudo /home/user/netmonitor/install_mcp_service.sh
+sudo /opt/netmonitor/install_mcp_service.sh
 ```
 
 2. **Claude Desktop blijft werken!**
@@ -410,7 +410,7 @@ PGPASSWORD='mcp_netmonitor_readonly_2024' \
 pip3 list | grep -E 'mcp|psycopg2'
 
 # MCP server handmatig
-cd /home/user/netmonitor/mcp_server
+cd /opt/netmonitor/mcp_server
 python3 server.py
 ```
 

@@ -11,7 +11,7 @@ Dit vereist **SSE/HTTP transport** over het netwerk.
 
 ## ⚠️ BELANGRIJK: Paths in deze Documentatie
 
-In de voorbeelden hieronder gebruik ik `/home/user/netmonitor` als voorbeeld pad.
+In de voorbeelden hieronder gebruik ik `/opt/netmonitor` als voorbeeld pad.
 
 **Vervang dit met jouw eigen NetMonitor installatie pad!**
 
@@ -304,7 +304,7 @@ PGPASSWORD='mcp_netmonitor_readonly_2024' \
 
 **Oplossing:**
 ```bash
-cd /home/user/netmonitor/mcp_server
+cd /opt/netmonitor/mcp_server
 pip3 install starlette uvicorn sse-starlette --user
 ```
 

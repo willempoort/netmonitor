@@ -5,10 +5,20 @@
 # This is a simplified configuration for remote sensors.
 # All detection settings are managed centrally on the SOC server.
 #
+# Installation Directory: /opt/netmonitor
+#
 # Setup Instructions:
-# 1. Copy this file to: sensor.conf
+# 1. Run as root: sudo ./setup_sensor.sh
+# 2. The script will:
+#    - Copy files to /opt/netmonitor
+#    - Create Python venv
+#    - Generate this config interactively
+#    - Install and start systemd service
+#
+# Manual Setup (not recommended):
+# 1. Copy this file to: /opt/netmonitor/sensor.conf
 # 2. Update the values below
-# 3. Run: sudo systemctl restart netmonitor
+# 3. Run: sudo systemctl restart netmonitor-sensor
 #
 # ============================================
 
