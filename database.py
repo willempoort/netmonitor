@@ -959,6 +959,27 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
+    def deregister_sensor(self, sensor_id: str) -> bool:
+        """Remove a sensor from the database (for self-monitor disable)"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            # Delete sensor and all related data
+            cursor.execute('DELETE FROM sensor_metrics WHERE sensor_id = %s', (sensor_id,))
+            cursor.execute('DELETE FROM sensors WHERE sensor_id = %s', (sensor_id,))
+
+            conn.commit()
+            self.logger.info(f"Sensor deregistered: {sensor_id}")
+            return True
+
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error deregistering sensor: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
     def update_sensor_heartbeat(self, sensor_id: str) -> bool:
         """Update sensor last_seen timestamp"""
         conn = self._get_connection()

@@ -415,6 +415,14 @@ class NetworkMonitor:
             self.logger.info("Self-monitoring is DISABLED - SOC server will only receive alerts from remote sensors")
             self.logger.info("Dashboard-only mode active. Press Ctrl+C to stop.")
 
+            # Deregister SOC server as sensor if it was previously registered
+            if self.db and self.sensor_id:
+                try:
+                    self.db.deregister_sensor(self.sensor_id)
+                    self.logger.info(f"SOC server deregistered as sensor: {self.sensor_id}")
+                except Exception as e:
+                    self.logger.warning(f"Could not deregister SOC server as sensor: {e}")
+
             # Keep main thread alive (dashboard thread is daemon)
             # Use Event.wait() instead of signal.pause() for systemd compatibility
             try:
