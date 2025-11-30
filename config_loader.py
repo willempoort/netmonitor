@@ -126,6 +126,28 @@ def _build_sensor_config(conf_dict):
                 'connections_per_second': 100,
                 'time_window': 10
             },
+            'packet_size': {
+                'enabled': True,
+                'min_suspicious_size': 1400,
+                'max_normal_size': 1500
+            },
+            'icmp_tunnel': {
+                'enabled': False,
+                'payload_size_threshold': 64,
+                'frequency_threshold': 10
+            },
+            'http_anomaly': {
+                'enabled': False,
+                'post_threshold': 50,
+                'post_time_window': 300,
+                'dlp_min_payload_size': 1024,
+                'entropy_threshold': 6.5
+            },
+            'smtp_ftp_transfer': {
+                'enabled': False,
+                'size_threshold_mb': 50,
+                'time_window': 300
+            },
         },
 
         # Database disabled for sensors (only SOC server has database)
