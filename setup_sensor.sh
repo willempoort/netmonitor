@@ -274,7 +274,6 @@ SyslogIdentifier=netmonitor-sensor
 NoNewPrivileges=false
 PrivateTmp=true
 ProtectSystem=strict
-ProtectHome=true
 ReadWritePaths=/var/log/netmonitor
 CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
 

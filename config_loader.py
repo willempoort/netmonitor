@@ -121,6 +121,11 @@ def _build_sensor_config(conf_dict):
                 'outbound_volume': 104857600,
                 'time_window': 300
             },
+            'connection_flood': {
+                'enabled': True,
+                'connections_per_second': 100,
+                'time_window': 10
+            },
         },
 
         # Database disabled for sensors (only SOC server has database)
