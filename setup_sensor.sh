@@ -150,11 +150,11 @@ echo "   Example: http://soc.example.com:8080"
 prompt_with_default "   SOC Server URL" "" SOC_SERVER_URL
 echo ""
 
-# Sensor ID
+# Sensor ID (optional field)
 echo "3. Sensor ID (Optional - uses hostname if not specified)"
 echo "   Leave empty to auto-use system hostname"
 echo "   Or specify: location-vlan-number (e.g., office-vlan10-01)"
-prompt_with_default "   Sensor ID" "" SENSOR_ID
+read -p "   Sensor ID [press Enter to use hostname]: " SENSOR_ID
 
 if [ -z "$SENSOR_ID" ]; then
     SENSOR_ID=$(hostname)
