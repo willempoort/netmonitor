@@ -32,11 +32,12 @@ INTERFACE=eth0
 # Format: http://hostname:port or https://hostname:port
 SOC_SERVER_URL=http://soc.example.com:8080
 
-# Unique Sensor ID (REQUIRED)
+# Unique Sensor ID (OPTIONAL)
+# If not specified, the system hostname will be used
 # Must be unique across all sensors in your network
 # Use descriptive names: location-vlan-number
 # Examples: office-vlan10-01, dmz-edge-02, datacenter-prod-01
-SENSOR_ID=nano-vlan10-01
+SENSOR_ID=
 
 # Sensor Location Description (REQUIRED)
 # Human-readable description of where this sensor is deployed

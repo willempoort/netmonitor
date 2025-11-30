@@ -12,30 +12,57 @@ BEST_PRACTICE_CONFIG = {
             "unique_ports": 10,         # Alert if >10 ports scanned
             "time_window": 60           # Within 60 seconds
         },
+        "connection_flood": {
+            "enabled": True,
+            "connections_per_second": 100,  # Alert if >100 connections/second
+            "time_window": 10           # Within 10 seconds
+        },
+        "packet_size": {
+            "enabled": True,
+            "min_suspicious_size": 1400,    # Packets >1400 bytes suspicious
+            "max_normal_size": 1500         # Max normal packet size
+        },
         "dns_tunnel": {
             "enabled": True,
             "query_length_threshold": 50,   # Suspiciously long domain names
             "queries_per_minute": 150       # High DNS query rate (for networks with monitoring sensors)
         },
+        "dns_enhanced": {
+            "dga_threshold": 0.6,       # DGA score threshold (0-1)
+            "entropy_threshold": 4.5,   # Shannon entropy threshold
+            "encoding_detection": True   # Detect Base64/Hex encoding
+        },
         "beaconing": {
             "enabled": True,
-            "interval_threshold": 5,    # Regular intervals (C2 beacon detection)
-            "min_connections": 10       # Minimum connections to detect pattern
+            "min_connections": 5,       # Minimum connections to detect pattern
+            "max_jitter_percent": 20    # Max timing jitter in beacon intervals
         },
         "outbound_volume": {
             "enabled": True,
             "threshold_mb": 100,        # Alert if >100MB uploaded in window
             "time_window": 300          # 5 minute window
         },
+        "lateral_movement": {
+            "enabled": True,
+            "unique_targets": 5,        # Number of internal IPs scanned
+            "time_window": 300          # Within 5 minutes
+        },
         "brute_force": {
             "enabled": True,
             "attempts_threshold": 5,    # Failed login attempts
             "time_window": 300          # Within 5 minutes
         },
+        "protocol_mismatch": {
+            "enabled": True,
+            "detect_http_non_standard": True,   # HTTP on non-standard ports
+            "detect_ssh_non_standard": True,    # SSH on non-standard ports
+            "detect_dns_non_standard": True,    # DNS on non-standard ports
+            "detect_ftp_non_standard": True     # FTP on non-standard ports
+        },
         "icmp_tunnel": {
             "enabled": True,
-            "size_threshold": 500,      # ICMP payload >500 bytes
-            "rate_threshold": 10        # >10 large ICMP packets per minute
+            "payload_size_threshold": 500,  # ICMP payload >500 bytes
+            "frequency_threshold": 10       # >10 large ICMP packets per minute
         },
         "http_anomaly": {
             "enabled": True,
@@ -48,11 +75,6 @@ BEST_PRACTICE_CONFIG = {
             "enabled": True,
             "size_threshold_mb": 50,    # Alert if >50MB transferred
             "time_window": 300          # Within 5 minutes
-        },
-        "dns_enhanced": {
-            "dga_threshold": 0.6,       # DGA score threshold (0-1)
-            "entropy_threshold": 4.5,   # Shannon entropy threshold
-            "encoding_detection": True   # Detect Base64/Hex encoding
         },
         # Performance thresholds
         "packet_rate_warning": 10000,   # Packets/sec warning threshold
@@ -125,25 +147,47 @@ PARAMETER_DESCRIPTIONS = {
     "thresholds.port_scan.unique_ports": "Number of ports that trigger a port scan alert",
     "thresholds.port_scan.time_window": "Time window (seconds) for port scan detection",
 
+    "thresholds.connection_flood.enabled": "Enable connection flood detection (SYN floods)",
+    "thresholds.connection_flood.connections_per_second": "Connections per second that trigger alert",
+    "thresholds.connection_flood.time_window": "Time window (seconds) for connection flood detection",
+
+    "thresholds.packet_size.enabled": "Enable unusual packet size detection",
+    "thresholds.packet_size.min_suspicious_size": "Packet size (bytes) that is considered suspicious",
+    "thresholds.packet_size.max_normal_size": "Maximum normal packet size (bytes)",
+
     "thresholds.dns_tunnel.enabled": "Enable DNS tunneling detection",
     "thresholds.dns_tunnel.query_length_threshold": "Domain name length that triggers DNS tunnel alert",
     "thresholds.dns_tunnel.queries_per_minute": "DNS queries per minute that trigger rate alert",
 
+    "thresholds.dns_enhanced.dga_threshold": "DGA score threshold for Domain Generation Algorithm detection (0-1)",
+    "thresholds.dns_enhanced.entropy_threshold": "Shannon entropy threshold for DNS queries",
+    "thresholds.dns_enhanced.encoding_detection": "Enable detection of Base64/Hex encoded DNS queries",
+
     "thresholds.beaconing.enabled": "Enable C2 beaconing detection",
-    "thresholds.beaconing.interval_threshold": "Regular interval (seconds) that indicates beaconing",
     "thresholds.beaconing.min_connections": "Minimum connections to establish beaconing pattern",
+    "thresholds.beaconing.max_jitter_percent": "Maximum jitter percentage in beacon intervals",
 
     "thresholds.outbound_volume.enabled": "Enable data exfiltration detection",
     "thresholds.outbound_volume.threshold_mb": "MB uploaded that triggers exfiltration alert",
     "thresholds.outbound_volume.time_window": "Time window (seconds) for exfiltration detection",
 
+    "thresholds.lateral_movement.enabled": "Enable lateral movement detection",
+    "thresholds.lateral_movement.unique_targets": "Number of internal IPs scanned that triggers alert",
+    "thresholds.lateral_movement.time_window": "Time window (seconds) for lateral movement detection",
+
     "thresholds.brute_force.enabled": "Enable brute force detection",
     "thresholds.brute_force.attempts_threshold": "Failed attempts that trigger brute force alert",
     "thresholds.brute_force.time_window": "Time window (seconds) for brute force detection",
 
+    "thresholds.protocol_mismatch.enabled": "Enable protocol mismatch detection",
+    "thresholds.protocol_mismatch.detect_http_non_standard": "Detect HTTP on non-standard ports",
+    "thresholds.protocol_mismatch.detect_ssh_non_standard": "Detect SSH on non-standard ports",
+    "thresholds.protocol_mismatch.detect_dns_non_standard": "Detect DNS on non-standard ports",
+    "thresholds.protocol_mismatch.detect_ftp_non_standard": "Detect FTP on non-standard ports",
+
     "thresholds.icmp_tunnel.enabled": "Enable ICMP tunneling detection",
-    "thresholds.icmp_tunnel.size_threshold": "ICMP payload size (bytes) that triggers alert",
-    "thresholds.icmp_tunnel.rate_threshold": "Large ICMP packets per minute that trigger alert",
+    "thresholds.icmp_tunnel.payload_size_threshold": "ICMP payload size (bytes) that triggers alert",
+    "thresholds.icmp_tunnel.frequency_threshold": "Large ICMP packets per minute that trigger alert",
 
     "thresholds.http_anomaly.enabled": "Enable HTTP/HTTPS anomaly detection",
     "thresholds.http_anomaly.post_threshold": "POST requests that trigger exfiltration alert",
@@ -154,10 +198,6 @@ PARAMETER_DESCRIPTIONS = {
     "thresholds.smtp_ftp_transfer.enabled": "Enable SMTP/FTP large transfer detection",
     "thresholds.smtp_ftp_transfer.size_threshold_mb": "Transfer size (MB) that triggers alert",
     "thresholds.smtp_ftp_transfer.time_window": "Time window (seconds) for transfer detection",
-
-    "thresholds.dns_enhanced.dga_threshold": "DGA score threshold for Domain Generation Algorithm detection (0-1)",
-    "thresholds.dns_enhanced.entropy_threshold": "Shannon entropy threshold for DNS queries",
-    "thresholds.dns_enhanced.encoding_detection": "Enable detection of Base64/Hex encoded DNS queries",
 
     "thresholds.bandwidth_warning_mbps": "Bandwidth utilization (Mbps) for warning alerts",
     "thresholds.bandwidth_critical_mbps": "Bandwidth utilization (Mbps) for critical alerts",
@@ -175,11 +215,15 @@ PARAMETER_DESCRIPTIONS = {
 PARAMETER_CATEGORIES = {
     "Detection Rules": [
         "thresholds.port_scan",
+        "thresholds.connection_flood",
+        "thresholds.packet_size",
         "thresholds.dns_tunnel",
         "thresholds.dns_enhanced",
         "thresholds.beaconing",
         "thresholds.outbound_volume",
+        "thresholds.lateral_movement",
         "thresholds.brute_force",
+        "thresholds.protocol_mismatch",
         "thresholds.icmp_tunnel",
         "thresholds.http_anomaly",
         "thresholds.smtp_ftp_transfer"

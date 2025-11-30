@@ -109,16 +109,10 @@ class SensorClient:
         self._register_sensor()
 
     def _generate_sensor_id(self):
-        """Generate unique sensor ID from hostname and MAC address"""
+        """Generate sensor ID from hostname if not specified"""
         hostname = socket.gethostname()
-        # Try to get MAC address of first non-loopback interface
-        try:
-            import uuid
-            mac = ':'.join(['{:02x}'.format((uuid.getnode() >> elements) & 0xff)
-                           for elements in range(0, 2*6, 2)][::-1])
-            return f"{hostname}-{mac[:8]}"
-        except:
-            return f"{hostname}-{int(time.time())}"
+        self.logger.info(f"SENSOR_ID not specified, using hostname: {hostname}")
+        return hostname
 
     def _setup_logging(self):
         """Setup logging with fallback to console-only if file logging fails"""
