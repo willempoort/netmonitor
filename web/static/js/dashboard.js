@@ -1486,9 +1486,68 @@ function updateSensorsTable(sensors) {
                 </span>
             </td>
             <td><small>${lastSeen}</small></td>
+            <td>
+                <button class="btn btn-sm btn-outline-danger delete-sensor-btn" data-sensor-id="${sensor.sensor_id}" data-sensor-name="${sensor.hostname}" title="Delete sensor">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>
         `;
 
         tbody.appendChild(row);
+    });
+
+    // Add event listeners to delete buttons
+    document.querySelectorAll('.delete-sensor-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const sensorId = this.getAttribute('data-sensor-id');
+            const sensorName = this.getAttribute('data-sensor-name');
+            deleteSensor(sensorId, sensorName);
+        });
+    });
+}
+
+function deleteSensor(sensorId, sensorName) {
+    // Confirmation dialog
+    const confirmed = confirm(
+        `Are you sure you want to delete sensor "${sensorName}" (${sensorId})?\n\n` +
+        `This will permanently remove:\n` +
+        `• All sensor metrics\n` +
+        `• All sensor alerts\n` +
+        `• Sensor registration\n\n` +
+        `This action cannot be undone!`
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    // Show loading state
+    console.log(`[SENSORS] Deleting sensor: ${sensorId}`);
+
+    // Call DELETE API
+    fetch(`/api/sensors/${encodeURIComponent(sensorId)}`, {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log(`[SENSORS] Sensor deleted successfully: ${sensorId}`);
+            // Show success message (you can use a toast notification library here)
+            alert(`Sensor "${sensorName}" deleted successfully`);
+            // Reload sensors list
+            loadSensors();
+        } else {
+            console.error('[SENSORS] Delete failed:', data.error);
+            alert(`Failed to delete sensor: ${data.error || 'Unknown error'}`);
+        }
+    })
+    .catch(error => {
+        console.error('[SENSORS] Delete error:', error);
+        alert(`Error deleting sensor: ${error.message}`);
     });
 }
 
