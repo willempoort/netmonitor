@@ -616,47 +616,38 @@ class SensorClient:
                     }
                 else:
                     try:
-                        # Service runs as root, so no sudo needed
-                        # Use temporary file for safe atomic write
-                        import tempfile
-                        import subprocess
+                        # Service runs as root - use Python file operations
+                        import shutil
                         from datetime import datetime
 
                         backup_file = f'{config_file}.backup.{datetime.now().strftime("%Y%m%d_%H%M%S")}'
 
-                        # Write new config to temporary file
-                        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.conf') as tmp:
-                            tmp.write(new_config)
-                            tmp_path = tmp.name
-
                         try:
-                            # Backup existing config (no sudo needed - service runs as root)
+                            # Backup existing config using Python (clearer errors than subprocess)
                             if os.path.exists(config_file):
-                                backup_cmd = f'cp {config_file} {backup_file}'
-                                subprocess.run(backup_cmd, shell=True, check=True, capture_output=True, text=True)
+                                shutil.copy2(config_file, backup_file)
                                 self.logger.info(f"Config backed up to: {backup_file}")
 
-                            # Copy temp file to actual config location
-                            copy_cmd = f'cp {tmp_path} {config_file}'
-                            subprocess.run(copy_cmd, shell=True, check=True, capture_output=True, text=True)
+                            # Write new config directly (no temp file needed - atomic write as root)
+                            with open(config_file, 'w') as f:
+                                f.write(new_config)
 
                             # Set proper permissions
-                            chmod_cmd = f'chmod 644 {config_file}'
-                            subprocess.run(chmod_cmd, shell=True, check=True, capture_output=True, text=True)
+                            os.chmod(config_file, 0o644)
 
                             self.logger.info(f"Config file updated: {len(new_config)} bytes")
 
-                        finally:
-                            # Clean up temporary file
-                            if os.path.exists(tmp_path):
-                                os.unlink(tmp_path)
+                        except Exception as e:
+                            # Better error reporting with full exception details
+                            error_msg = f"File operation failed: {type(e).__name__}: {str(e)}"
+                            self.logger.error(error_msg)
+                            raise Exception(error_msg)
 
                         result = {
                             'success': True,
                             'message': f'Config updated successfully. Backup: {backup_file}. Service will restart in 5 seconds.',
                             'backup_file': backup_file
                         }
-                        self.logger.info(f"Config file updated: {len(new_config)} bytes")
 
                         # Update status before restarting
                         requests.put(
