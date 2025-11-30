@@ -254,8 +254,12 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=$INSTALL_DIR
+
+# Load environment variables from sensor.conf
 EnvironmentFile=$CONF_FILE
-ExecStart=$VENV_DIR/bin/python3 $INSTALL_DIR/netmonitor.py -c $CONF_FILE
+
+# Use sensor_client.py for remote sensors (not netmonitor.py which is for SOC server)
+ExecStart=$VENV_DIR/bin/python3 $INSTALL_DIR/sensor_client.py -c $CONF_FILE
 
 # Restart policy
 Restart=always

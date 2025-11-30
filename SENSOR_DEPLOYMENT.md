@@ -6,8 +6,15 @@ This guide explains how to deploy NetMonitor sensors using the simplified config
 
 NetMonitor supports two deployment modes:
 
-1. **SOC Server Mode**: Full configuration with dashboard, database, and management features (`config.yaml`)
-2. **Sensor Mode**: Minimal configuration with only connection settings (`sensor.conf`)
+1. **SOC Server Mode**: Full configuration with dashboard, database, and management features
+   - Script: `netmonitor.py`
+   - Config: `config.yaml`
+   - Purpose: Central SOC management server
+
+2. **Sensor Mode**: Minimal configuration with only connection settings
+   - Script: `sensor_client.py` ⭐
+   - Config: `sensor.conf`
+   - Purpose: Remote network sensors
 
 This guide covers **Sensor Mode** deployment.
 
