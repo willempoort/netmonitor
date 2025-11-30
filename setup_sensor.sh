@@ -151,9 +151,15 @@ prompt_with_default "   SOC Server URL" "" SOC_SERVER_URL
 echo ""
 
 # Sensor ID
-echo "3. Unique Sensor ID"
-echo "   Use format: location-vlan-number (e.g., office-vlan10-01)"
+echo "3. Sensor ID (Optional - uses hostname if not specified)"
+echo "   Leave empty to auto-use system hostname"
+echo "   Or specify: location-vlan-number (e.g., office-vlan10-01)"
 prompt_with_default "   Sensor ID" "" SENSOR_ID
+
+if [ -z "$SENSOR_ID" ]; then
+    SENSOR_ID=$(hostname)
+    echo "   → Using hostname as sensor ID: $SENSOR_ID"
+fi
 echo ""
 
 # Sensor Location
@@ -204,7 +210,7 @@ INTERFACE=$INTERFACE
 # SOC Server URL (REQUIRED)
 SOC_SERVER_URL=$SOC_SERVER_URL
 
-# Unique Sensor ID (REQUIRED)
+# Unique Sensor ID (Auto-generated from hostname if empty)
 SENSOR_ID=$SENSOR_ID
 
 # Sensor Location Description (REQUIRED)

@@ -375,6 +375,39 @@ def api_register_sensor():
         logger.error(f"Error registering sensor: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/sensors/<sensor_id>', methods=['DELETE'])
+def api_delete_sensor(sensor_id):
+    """Delete a sensor and all its data"""
+    try:
+        # Prevent deletion of SOC server itself
+        self_monitor_config = config.get('self_monitor', {})
+        soc_sensor_id = self_monitor_config.get('sensor_id', 'soc-server')
+
+        if sensor_id == soc_sensor_id:
+            return jsonify({
+                'success': False,
+                'error': 'Cannot delete SOC server sensor'
+            }), 400
+
+        # Delete sensor using existing deregister_sensor method
+        success = db.deregister_sensor(sensor_id)
+
+        if success:
+            logger.info(f"Sensor deleted via dashboard: {sensor_id}")
+            return jsonify({
+                'success': True,
+                'message': f'Sensor {sensor_id} deleted successfully'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to delete sensor'
+            }), 500
+
+    except Exception as e:
+        logger.error(f"Error deleting sensor {sensor_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/sensors/<sensor_id>/heartbeat', methods=['POST'])
 def api_sensor_heartbeat(sensor_id):
     """Update sensor heartbeat"""
