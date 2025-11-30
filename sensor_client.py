@@ -620,23 +620,44 @@ class SensorClient:
                         import shutil
                         from datetime import datetime
 
-                        backup_file = f'{config_file}.backup.{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+                        # Use /tmp for backups (always writable, even if /opt/netmonitor is read-only)
+                        backup_dir = '/tmp/netmonitor-backups'
+                        os.makedirs(backup_dir, exist_ok=True)
+
+                        backup_filename = f'sensor.conf.backup.{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+                        backup_file = os.path.join(backup_dir, backup_filename)
 
                         try:
-                            # Backup existing config using Python (clearer errors than subprocess)
+                            # Backup existing config to /tmp (writable even in containers)
                             if os.path.exists(config_file):
                                 shutil.copy2(config_file, backup_file)
                                 self.logger.info(f"Config backed up to: {backup_file}")
 
-                            # Write new config directly (no temp file needed - atomic write as root)
+                            # Write new config directly
+                            # This might fail if /opt/netmonitor is read-only mounted
                             with open(config_file, 'w') as f:
                                 f.write(new_config)
 
-                            # Set proper permissions
-                            os.chmod(config_file, 0o644)
+                            # Set proper permissions (if writable)
+                            try:
+                                os.chmod(config_file, 0o644)
+                            except OSError:
+                                pass  # Ignore permission errors on read-only filesystem
 
                             self.logger.info(f"Config file updated: {len(new_config)} bytes")
 
+                        except OSError as e:
+                            if e.errno == 30:  # Read-only filesystem
+                                error_msg = (
+                                    f"Cannot update config: /opt/netmonitor is read-only filesystem. "
+                                    f"This usually happens in Docker containers with read-only mounts. "
+                                    f"Backup saved to: {backup_file}. "
+                                    f"To fix: mount /opt/netmonitor as writable or use environment variables."
+                                )
+                            else:
+                                error_msg = f"File operation failed: {type(e).__name__}: {str(e)}"
+                            self.logger.error(error_msg)
+                            raise Exception(error_msg)
                         except Exception as e:
                             # Better error reporting with full exception details
                             error_msg = f"File operation failed: {type(e).__name__}: {str(e)}"
