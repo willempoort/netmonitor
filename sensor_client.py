@@ -310,9 +310,33 @@ class SensorClient:
         try:
             # Get sensor information
             hostname = socket.gethostname()
+
+            # Get IP address from the monitoring interface (not loopback)
+            ip_address = None
             try:
-                ip_address = socket.gethostbyname(hostname)
-            except:
+                interface = self.config.get('interface', 'eth0')
+                net_addrs = psutil.net_if_addrs()
+
+                if interface in net_addrs:
+                    # Get IPv4 address from the monitoring interface
+                    for addr in net_addrs[interface]:
+                        if addr.family == socket.AF_INET:  # IPv4
+                            ip_address = addr.address
+                            break
+
+                # Fallback: try to get any non-loopback IP
+                if not ip_address:
+                    for iface, addrs in net_addrs.items():
+                        if iface.startswith('lo'):  # Skip loopback
+                            continue
+                        for addr in addrs:
+                            if addr.family == socket.AF_INET:
+                                ip_address = addr.address
+                                break
+                        if ip_address:
+                            break
+            except Exception as e:
+                self.logger.warning(f"Could not detect IP address: {e}")
                 ip_address = None
 
             # Get version
@@ -592,18 +616,39 @@ class SensorClient:
                     }
                 else:
                     try:
-                        # Backup existing config
-                        import shutil
+                        # Use temporary file and sudo to avoid permission issues
+                        import tempfile
+                        import subprocess
                         from datetime import datetime
+
                         backup_file = f'{config_file}.backup.{datetime.now().strftime("%Y%m%d_%H%M%S")}'
 
-                        if os.path.exists(config_file):
-                            shutil.copy2(config_file, backup_file)
-                            self.logger.info(f"Config backed up to: {backup_file}")
+                        # Write new config to temporary file
+                        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.conf') as tmp:
+                            tmp.write(new_config)
+                            tmp_path = tmp.name
 
-                        # Write new config
-                        with open(config_file, 'w') as f:
-                            f.write(new_config)
+                        try:
+                            # Backup existing config using sudo
+                            if os.path.exists(config_file):
+                                backup_cmd = f'sudo cp {config_file} {backup_file}'
+                                subprocess.run(backup_cmd, shell=True, check=True, capture_output=True, text=True)
+                                self.logger.info(f"Config backed up to: {backup_file}")
+
+                            # Copy temp file to actual config location using sudo
+                            copy_cmd = f'sudo cp {tmp_path} {config_file}'
+                            subprocess.run(copy_cmd, shell=True, check=True, capture_output=True, text=True)
+
+                            # Set proper permissions
+                            chmod_cmd = f'sudo chmod 644 {config_file}'
+                            subprocess.run(chmod_cmd, shell=True, check=True, capture_output=True, text=True)
+
+                            self.logger.info(f"Config file updated: {len(new_config)} bytes")
+
+                        finally:
+                            # Clean up temporary file
+                            if os.path.exists(tmp_path):
+                                os.unlink(tmp_path)
 
                         result = {
                             'success': True,
