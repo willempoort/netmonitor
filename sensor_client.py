@@ -556,6 +556,80 @@ class SensorClient:
                         'message': f'Update failed: {str(e)}'
                     }
 
+            elif command_type == 'get_config':
+                # Read sensor.conf file and return contents
+                config_file = '/opt/netmonitor/sensor.conf'
+                try:
+                    if os.path.exists(config_file):
+                        with open(config_file, 'r') as f:
+                            config_content = f.read()
+                        result = {
+                            'success': True,
+                            'message': 'Config file read successfully',
+                            'config_content': config_content
+                        }
+                        self.logger.info(f"Config file read: {len(config_content)} bytes")
+                    else:
+                        result = {
+                            'success': False,
+                            'message': f'Config file not found: {config_file}'
+                        }
+                except Exception as e:
+                    result = {
+                        'success': False,
+                        'message': f'Failed to read config: {str(e)}'
+                    }
+
+            elif command_type == 'update_sensor_config':
+                # Write new sensor.conf and restart service
+                config_file = '/opt/netmonitor/sensor.conf'
+                new_config = parameters.get('config_content', '')
+
+                if not new_config:
+                    result = {
+                        'success': False,
+                        'message': 'No config content provided'
+                    }
+                else:
+                    try:
+                        # Backup existing config
+                        import shutil
+                        from datetime import datetime
+                        backup_file = f'{config_file}.backup.{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+
+                        if os.path.exists(config_file):
+                            shutil.copy2(config_file, backup_file)
+                            self.logger.info(f"Config backed up to: {backup_file}")
+
+                        # Write new config
+                        with open(config_file, 'w') as f:
+                            f.write(new_config)
+
+                        result = {
+                            'success': True,
+                            'message': f'Config updated successfully. Backup: {backup_file}. Service will restart in 5 seconds.',
+                            'backup_file': backup_file
+                        }
+                        self.logger.info(f"Config file updated: {len(new_config)} bytes")
+
+                        # Update status before restarting
+                        requests.put(
+                            f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
+                            json={'status': 'completed', 'result': result},
+                            timeout=10
+                        )
+
+                        # Schedule service restart
+                        import subprocess
+                        subprocess.Popen(['bash', '-c', 'sleep 5 && systemctl restart netmonitor-sensor'])
+                        return
+
+                    except Exception as e:
+                        result = {
+                            'success': False,
+                            'message': f'Failed to update config: {str(e)}'
+                        }
+
             # Report result
             requests.put(
                 f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
