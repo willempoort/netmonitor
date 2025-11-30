@@ -105,22 +105,6 @@ def _build_sensor_config(conf_dict):
                 'unique_ports': 20,
                 'time_window': 60
             },
-            'brute_force': {
-                'enabled': True,
-                'failed_attempts': 5,
-                'time_window': 300
-            },
-            'dns_tunnel': {
-                'enabled': True,
-                'subdomain_length': 50,
-                'query_count': 10,
-                'time_window': 60
-            },
-            'data_exfiltration': {
-                'enabled': True,
-                'outbound_volume': 104857600,
-                'time_window': 300
-            },
             'connection_flood': {
                 'enabled': True,
                 'connections_per_second': 100,
@@ -130,6 +114,12 @@ def _build_sensor_config(conf_dict):
                 'enabled': True,
                 'min_suspicious_size': 1400,
                 'max_normal_size': 1500
+            },
+            'dns_tunnel': {
+                'enabled': True,
+                'subdomain_length': 50,
+                'query_count': 10,
+                'time_window': 60
             },
             'icmp_tunnel': {
                 'enabled': False,
@@ -146,6 +136,26 @@ def _build_sensor_config(conf_dict):
             'smtp_ftp_transfer': {
                 'enabled': False,
                 'size_threshold_mb': 50,
+                'time_window': 300
+            },
+            'dns_enhanced': {
+                'dga_threshold': 0.6,
+                'entropy_threshold': 4.5,
+                'encoding_detection': True
+            },
+            'beaconing': {
+                'enabled': True,
+                'min_connections': 5,
+                'max_jitter_percent': 20
+            },
+            'outbound_volume': {
+                'enabled': True,
+                'threshold_mb': 100,
+                'time_window': 300
+            },
+            'lateral_movement': {
+                'enabled': True,
+                'unique_targets': 5,
                 'time_window': 300
             },
         },
