@@ -1487,16 +1487,51 @@ function updateSensorsTable(sensors) {
             </td>
             <td><small>${lastSeen}</small></td>
             <td>
-                <button class="btn btn-sm btn-outline-danger delete-sensor-btn" data-sensor-id="${sensor.sensor_id}" data-sensor-name="${sensor.hostname}" title="Delete sensor">
-                    <i class="bi bi-trash"></i>
-                </button>
+                <div class="btn-group btn-group-sm" role="group">
+                    <button class="btn btn-outline-primary update-sensor-btn"
+                            data-sensor-id="${sensor.sensor_id}"
+                            data-sensor-name="${sensor.hostname}"
+                            title="Update sensor software">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                    <button class="btn btn-outline-warning reboot-sensor-btn"
+                            data-sensor-id="${sensor.sensor_id}"
+                            data-sensor-name="${sensor.hostname}"
+                            title="Reboot sensor">
+                        <i class="bi bi-power"></i>
+                    </button>
+                    <button class="btn btn-outline-danger delete-sensor-btn"
+                            data-sensor-id="${sensor.sensor_id}"
+                            data-sensor-name="${sensor.hostname}"
+                            title="Delete sensor">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
             </td>
         `;
 
         tbody.appendChild(row);
     });
 
-    // Add event listeners to delete buttons
+    // Add event listeners to action buttons
+    document.querySelectorAll('.update-sensor-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const sensorId = this.getAttribute('data-sensor-id');
+            const sensorName = this.getAttribute('data-sensor-name');
+            updateSensor(sensorId, sensorName);
+        });
+    });
+
+    document.querySelectorAll('.reboot-sensor-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const sensorId = this.getAttribute('data-sensor-id');
+            const sensorName = this.getAttribute('data-sensor-name');
+            rebootSensor(sensorId, sensorName);
+        });
+    });
+
     document.querySelectorAll('.delete-sensor-btn').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.preventDefault();
@@ -1504,6 +1539,135 @@ function updateSensorsTable(sensors) {
             const sensorName = this.getAttribute('data-sensor-name');
             deleteSensor(sensorId, sensorName);
         });
+    });
+}
+
+function updateSensor(sensorId, sensorName) {
+    // Ask for optional branch parameter
+    const branch = prompt(
+        `Update sensor "${sensorName}" (${sensorId})\n\n` +
+        `Enter git branch name (leave empty for current branch):`,
+        ''
+    );
+
+    // User cancelled
+    if (branch === null) {
+        return;
+    }
+
+    // Confirm update
+    const branchText = branch ? ` to branch "${branch}"` : '';
+    const confirmed = confirm(
+        `Are you sure you want to update sensor "${sensorName}"${branchText}?\n\n` +
+        `This will:\n` +
+        `• Execute git pull${branch ? ' on branch ' + branch : ''}\n` +
+        `• Restart the sensor service\n` +
+        `• Sensor will be offline for ~10-30 seconds\n\n` +
+        `Continue?`
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    console.log(`[SENSORS] Sending update command to sensor: ${sensorId}`);
+
+    // Create command via API
+    const parameters = branch ? { branch: branch } : {};
+
+    fetch(`/api/sensors/${encodeURIComponent(sensorId)}/commands`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            command_type: 'update',
+            parameters: parameters
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log(`[SENSORS] Update command queued: ${sensorId}`);
+            alert(
+                `Update command sent to sensor "${sensorName}"!\n\n` +
+                `The sensor will:\n` +
+                `1. Pull latest code from git${branch ? ' (branch: ' + branch + ')' : ''}\n` +
+                `2. Restart automatically\n` +
+                `3. Reconnect within ~30 seconds\n\n` +
+                `Command ID: ${data.command_id}`
+            );
+        } else {
+            console.error('[SENSORS] Update command failed:', data.error);
+            alert(`Failed to send update command: ${data.error || 'Unknown error'}`);
+        }
+    })
+    .catch(error => {
+        console.error('[SENSORS] Update command error:', error);
+        alert(`Error sending update command: ${error.message}`);
+    });
+}
+
+function rebootSensor(sensorId, sensorName) {
+    // Confirmation dialog
+    const confirmed = confirm(
+        `Are you sure you want to REBOOT sensor "${sensorName}" (${sensorId})?\n\n` +
+        `This will:\n` +
+        `• Execute "shutdown -r now" on the sensor\n` +
+        `• Reboot the entire system\n` +
+        `• Sensor will be offline for 1-5 minutes\n\n` +
+        `⚠️  WARNING: This reboots the physical/virtual machine!\n\n` +
+        `Continue with reboot?`
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    // Double confirmation for safety
+    const doubleCheck = prompt(
+        `⚠️  FINAL CONFIRMATION ⚠️\n\n` +
+        `Type the sensor name to confirm reboot:\n` +
+        `"${sensorName}"`,
+        ''
+    );
+
+    if (doubleCheck !== sensorName) {
+        alert('Reboot cancelled: sensor name did not match');
+        return;
+    }
+
+    console.log(`[SENSORS] Sending reboot command to sensor: ${sensorId}`);
+
+    // Create command via API
+    fetch(`/api/sensors/${encodeURIComponent(sensorId)}/commands`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            command_type: 'reboot',
+            parameters: {}
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log(`[SENSORS] Reboot command queued: ${sensorId}`);
+            alert(
+                `Reboot command sent to sensor "${sensorName}"!\n\n` +
+                `The system will reboot in 5 seconds.\n` +
+                `Expected downtime: 1-5 minutes\n\n` +
+                `Command ID: ${data.command_id}`
+            );
+        } else {
+            console.error('[SENSORS] Reboot command failed:', data.error);
+            alert(`Failed to send reboot command: ${data.error || 'Unknown error'}`);
+        }
+    })
+    .catch(error => {
+        console.error('[SENSORS] Reboot command error:', error);
+        alert(`Error sending reboot command: ${error.message}`);
     });
 }
 

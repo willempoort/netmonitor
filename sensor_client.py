@@ -475,6 +475,87 @@ class SensorClient:
                 }
                 self.logger.info(f"Whitelist manually updated via command")
 
+            elif command_type == 'reboot':
+                # Reboot the sensor system
+                result = {
+                    'success': True,
+                    'message': 'System will reboot in 5 seconds'
+                }
+                self.logger.warning("REBOOT command received - system will reboot in 5 seconds")
+                # Update status before rebooting
+                requests.put(
+                    f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
+                    json={'status': 'completed', 'result': result},
+                    timeout=10
+                )
+                # Schedule reboot
+                import subprocess
+                subprocess.Popen(['bash', '-c', 'sleep 5 && shutdown -r now'])
+                return
+
+            elif command_type == 'update':
+                # Update sensor software from git
+                import subprocess
+                branch = parameters.get('branch', '')  # Optional branch parameter
+
+                self.logger.info(f"UPDATE command received - updating from git{f' (branch: {branch})' if branch else ''}")
+
+                try:
+                    # Change to installation directory
+                    install_dir = '/opt/netmonitor'
+
+                    # Build git pull command
+                    if branch:
+                        git_cmd = f'cd {install_dir} && git fetch origin && git checkout {branch} && git pull origin {branch}'
+                    else:
+                        git_cmd = f'cd {install_dir} && git pull'
+
+                    # Execute git pull
+                    git_result = subprocess.run(
+                        git_cmd,
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+
+                    if git_result.returncode == 0:
+                        result = {
+                            'success': True,
+                            'message': f'Git pull successful. Sensor will restart in 5 seconds.',
+                            'git_output': git_result.stdout
+                        }
+                        self.logger.info(f"Git pull successful: {git_result.stdout}")
+
+                        # Update status before restarting
+                        requests.put(
+                            f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
+                            json={'status': 'completed', 'result': result},
+                            timeout=10
+                        )
+
+                        # Schedule service restart
+                        subprocess.Popen(['bash', '-c', 'sleep 5 && systemctl restart netmonitor-sensor'])
+                        return
+                    else:
+                        result = {
+                            'success': False,
+                            'message': f'Git pull failed: {git_result.stderr}',
+                            'git_output': git_result.stderr
+                        }
+                        self.logger.error(f"Git pull failed: {git_result.stderr}")
+
+                except subprocess.TimeoutExpired:
+                    result = {
+                        'success': False,
+                        'message': 'Git pull timed out after 30 seconds'
+                    }
+                except Exception as e:
+                    result = {
+                        'success': False,
+                        'message': f'Update failed: {str(e)}'
+                    }
+
             # Report result
             requests.put(
                 f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
