@@ -110,6 +110,20 @@ thresholds:
     unique_targets: 5         # Aantal unieke internal IPs
     time_window: 300          # Tijdvenster in seconden
 
+  # Brute force detection - detecteert herhaalde login pogingen
+  brute_force:
+    enabled: true
+    attempts_threshold: 5     # Aantal pogingen dat als verdacht wordt gezien
+    time_window: 300          # Tijdvenster in seconden (5 min)
+
+  # Protocol mismatch detection - detecteert protocollen op ongebruikelijke poorten
+  protocol_mismatch:
+    enabled: true
+    detect_http_non_standard: true   # HTTP verkeer op niet-standaard poorten
+    detect_ssh_non_standard: true    # SSH verkeer op andere poorten dan 22
+    detect_dns_non_standard: true    # DNS verkeer op andere poorten dan 53
+    detect_ftp_non_standard: true    # FTP verkeer op andere poorten dan 20/21
+
 # Blacklisted IPs (known malicious IPs)
 blacklist:
   - 192.0.2.0/24  # Example RFC5737 test network

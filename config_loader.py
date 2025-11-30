@@ -158,6 +158,18 @@ def _build_sensor_config(conf_dict):
                 'unique_targets': 5,
                 'time_window': 300
             },
+            'brute_force': {
+                'enabled': True,
+                'attempts_threshold': 5,
+                'time_window': 300
+            },
+            'protocol_mismatch': {
+                'enabled': True,
+                'detect_http_non_standard': True,
+                'detect_ssh_non_standard': True,
+                'detect_dns_non_standard': True,
+                'detect_ftp_non_standard': True
+            },
         },
 
         # Database disabled for sensors (only SOC server has database)

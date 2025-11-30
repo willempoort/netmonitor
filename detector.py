@@ -56,6 +56,14 @@ class ThreatDetector:
             'last_seen': None
         })
 
+        # Brute force detection tracker
+        # Track: (src_ip, dst_ip, dst_port) -> [(timestamp), ...]
+        self.brute_force_tracker = defaultdict(lambda: deque(maxlen=100))
+
+        # Protocol mismatch detection tracker
+        # Track suspicious protocols on non-standard ports
+        self.protocol_mismatch_tracker = defaultdict(lambda: deque(maxlen=50))
+
         # Parsed whitelist/blacklist from config
         self.config_whitelist = self._parse_ip_list(config.get('whitelist', []))
         self.blacklist = self._parse_ip_list(config.get('blacklist', []))
@@ -203,6 +211,17 @@ class ThreatDetector:
             threat = self._detect_smtp_ftp_transfer(packet)
             if threat:
                 threats.append(threat)
+
+        # Brute force detection
+        if self.config['thresholds'].get('brute_force', {}).get('enabled', True):
+            threat = self._detect_brute_force(packet)
+            if threat:
+                threats.append(threat)
+
+        # Protocol mismatch detection
+        if self.config['thresholds'].get('protocol_mismatch', {}).get('enabled', True):
+            protocol_threats = self._detect_protocol_mismatch(packet)
+            threats.extend(protocol_threats)
 
         # Behavior-based detection (beaconing, lateral movement, etc.)
         if self.behavior_detector:
@@ -678,6 +697,178 @@ class ThreatDetector:
 
         return None
 
+    def _detect_brute_force(self, packet):
+        """
+        Detecteer brute force aanvallen op authenticatie services
+
+        Detecteert herhaalde connection attempts naar:
+        - SSH (22), Telnet (23), FTP (21), RDP (3389)
+        - HTTP Auth (80, 443, 8080), SMB (445), MySQL (3306), PostgreSQL (5432)
+        """
+        if not packet.haslayer(TCP):
+            return None
+
+        tcp_layer = packet[TCP]
+        ip_layer = packet[IP]
+        src_ip = ip_layer.src
+        dst_ip = ip_layer.dst
+        dst_port = tcp_layer.dport
+
+        # Authentication service ports
+        auth_ports = {
+            21: 'FTP',
+            22: 'SSH',
+            23: 'Telnet',
+            80: 'HTTP',
+            443: 'HTTPS',
+            445: 'SMB',
+            3306: 'MySQL',
+            3389: 'RDP',
+            5432: 'PostgreSQL',
+            5900: 'VNC',
+            8080: 'HTTP-Alt'
+        }
+
+        if dst_port not in auth_ports:
+            return None
+
+        # Only track SYN packets (connection attempts)
+        if not (tcp_layer.flags & 0x02):  # SYN flag
+            return None
+
+        brute_force_config = self.config['thresholds'].get('brute_force', {})
+        if not brute_force_config.get('enabled', True):
+            return None
+
+        attempts_threshold = brute_force_config.get('attempts_threshold', 5)
+        time_window = brute_force_config.get('time_window', 300)
+
+        # Track connection attempts
+        current_time = time.time()
+        tracker_key = (src_ip, dst_ip, dst_port)
+        attempts = self.brute_force_tracker[tracker_key]
+        attempts.append(current_time)
+
+        # Count attempts in time window
+        cutoff_time = current_time - time_window
+        recent_attempts = sum(1 for ts in attempts if ts > cutoff_time)
+
+        if recent_attempts >= attempts_threshold:
+            protocol = auth_ports[dst_port]
+
+            return {
+                'type': 'BRUTE_FORCE_ATTEMPT',
+                'severity': 'HIGH',
+                'source_ip': src_ip,
+                'destination_ip': dst_ip,
+                'destination_port': dst_port,
+                'description': f'Mogelijke brute force aanval op {protocol}: {recent_attempts} pogingen in {time_window//60} minuten',
+                'attempts': recent_attempts,
+                'protocol': protocol,
+                'time_window': time_window,
+                'metadata': json.dumps({
+                    'attempts': recent_attempts,
+                    'protocol': protocol,
+                    'port': dst_port
+                })
+            }
+
+        return None
+
+    def _detect_protocol_mismatch(self, packet):
+        """
+        Detecteer protocol verkeer op ongebruikelijke poorten
+
+        Voorbeelden:
+        - HTTP verkeer op niet-standaard poorten
+        - SSH verkeer op andere poorten dan 22
+        - DNS verkeer op andere poorten dan 53
+        """
+        threats = []
+
+        if not packet.haslayer(TCP):
+            return threats
+
+        tcp_layer = packet[TCP]
+        ip_layer = packet[IP]
+        src_ip = ip_layer.src
+        dst_ip = ip_layer.dst
+        dst_port = tcp_layer.dport
+        src_port = tcp_layer.sport
+
+        # HTTP/HTTPS detection on non-standard ports
+        if packet.haslayer(HTTPRequest):
+            standard_http_ports = {80, 443, 8080, 8443}
+            if dst_port not in standard_http_ports:
+                threats.append({
+                    'type': 'HTTP_NON_STANDARD_PORT',
+                    'severity': 'MEDIUM',
+                    'source_ip': src_ip,
+                    'destination_ip': dst_ip,
+                    'destination_port': dst_port,
+                    'description': f'HTTP verkeer gedetecteerd op ongebruikelijke poort: {dst_port}',
+                    'expected_ports': list(standard_http_ports),
+                    'actual_port': dst_port
+                })
+
+        # SSH pattern detection (based on packet characteristics)
+        # SSH typically has specific patterns in initial handshake
+        if packet.haslayer(Raw) and dst_port != 22:
+            try:
+                payload = packet[Raw].load
+                # SSH banner starts with "SSH-"
+                if payload.startswith(b'SSH-'):
+                    threats.append({
+                        'type': 'SSH_NON_STANDARD_PORT',
+                        'severity': 'MEDIUM',
+                        'source_ip': src_ip,
+                        'destination_ip': dst_ip,
+                        'destination_port': dst_port,
+                        'description': f'SSH verkeer gedetecteerd op ongebruikelijke poort: {dst_port}',
+                        'expected_port': 22,
+                        'actual_port': dst_port
+                    })
+            except Exception:
+                pass
+
+        # Check for DNS traffic on non-standard ports
+        if packet.haslayer(DNS):
+            if packet.haslayer(UDP):
+                udp_layer = packet[UDP]
+                if udp_layer.dport != 53 and udp_layer.sport != 53:
+                    threats.append({
+                        'type': 'DNS_NON_STANDARD_PORT',
+                        'severity': 'HIGH',
+                        'source_ip': src_ip,
+                        'destination_ip': dst_ip,
+                        'destination_port': udp_layer.dport,
+                        'description': f'DNS verkeer gedetecteerd op ongebruikelijke poort: {udp_layer.dport} (mogelijk DNS tunneling)',
+                        'expected_port': 53,
+                        'actual_port': udp_layer.dport
+                    })
+
+        # Check for FTP on non-standard ports
+        if packet.haslayer(Raw):
+            try:
+                payload = packet[Raw].load
+                # FTP commands (USER, PASS, etc.)
+                if any(payload.startswith(cmd) for cmd in [b'USER ', b'PASS ', b'220 ', b'331 ']):
+                    if dst_port not in {20, 21} and src_port not in {20, 21}:
+                        threats.append({
+                            'type': 'FTP_NON_STANDARD_PORT',
+                            'severity': 'MEDIUM',
+                            'source_ip': src_ip,
+                            'destination_ip': dst_ip,
+                            'destination_port': dst_port,
+                            'description': f'FTP verkeer gedetecteerd op ongebruikelijke poort: {dst_port}',
+                            'expected_ports': [20, 21],
+                            'actual_port': dst_port
+                        })
+            except Exception:
+                pass
+
+        return threats
+
     def cleanup_old_data(self):
         """Cleanup oude tracking data (call periodiek)"""
         current_time = time.time()
@@ -695,5 +886,16 @@ class ThreatDetector:
             if tracker['last_seen'] and \
                (current_time - tracker['last_seen']) > 600:  # 10 minuten
                 del self.smtp_ftp_tracker[key]
+
+        # Cleanup brute force tracker (keep last 10 minutes of attempts)
+        for key in list(self.brute_force_tracker.keys()):
+            attempts = self.brute_force_tracker[key]
+            cutoff_time = current_time - 600  # 10 minutes
+            # Remove old attempts
+            while attempts and attempts[0] < cutoff_time:
+                attempts.popleft()
+            # Remove empty trackers
+            if not attempts:
+                del self.brute_force_tracker[key]
 
         self.logger.debug("Oude tracking data opgeschoond")

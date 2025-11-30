@@ -87,29 +87,100 @@ Alle sync intervals configureerbaar via dashboard:
 
 **Voor snellere updates**: Zet config_sync_interval op 60s voor updates binnen 1 minuut!
 
-## Detection Features
+## 🛡️ Complete Detection Capabilities
 
-### 🎯 Threat Intelligence (Nieuw!)
+### 🎯 Threat Intelligence & Reputation
 
-- **C&C Server Detectie**: Automatische detectie van communicatie met bekende Command & Control servers (Emotet, TrickBot, etc.)
-- **Malware Download Detectie**: Detecteert downloads van bekende malware distributie sites
-- **Auto-updating Threat Feeds**: Automatisch uurlijkse updates van abuse.ch feeds (FeodoTracker, URLhaus, ThreatFox)
-- **AbuseIPDB Integratie**: Optionele real-time IP reputation lookups (1000/dag gratis)
+| Feature | Status | Beschrijving |
+|---------|--------|--------------|
+| **C&C Server Detection** | ✅ | Automatische detectie van communicatie met bekende Command & Control servers |
+| **Malware Download Detection** | ✅ | Detecteert downloads van bekende malware distributie sites |
+| **Threat Feed Integration** | ✅ | FeodoTracker, URLhaus, ThreatFox, SSL Blacklist (auto-update elk uur) |
+| **AbuseIPDB Integration** | ✅ | Real-time IP reputation lookups (1000/dag gratis tier) |
+| **IP Blacklist/Whitelist** | ✅ | Configureerbare IP lijsten via dashboard |
 
-### 🔍 Behavior-Based Detectie (Nieuw!)
+### 🔍 DNS Anomaly Detection
 
-- **Beaconing Detection**: Detecteert regelmatige callbacks naar externe servers (botnet behavior)
-- **Outbound Traffic Volume**: Monitort data exfiltration (abnormaal hoge upload volumes)
-- **Lateral Movement**: Detecteert interne machines die andere internal IPs scannen (SMB, RDP, SSH)
-- **Internal Network Awareness**: Onderscheidt internal vs external verkeer
+| Feature | Status | Beschrijving |
+|---------|--------|--------------|
+| **Long Queries** | ✅ | Detecteert verdacht lange DNS queries (>50 chars) |
+| **High Query Rate** | ✅ | Abnormaal hoge DNS query frequentie (>150/min) |
+| **DGA Detection** | ✅ | Domain Generation Algorithm detection met score threshold |
+| **Subdomain Entropy** | ✅ | Shannon entropy analysis voor random subdomains |
+| **Encoding Detection** | ✅ | Base64/Hex encoded data in DNS queries |
+| **DNS on Non-Standard Port** | ✅ | DNS verkeer op andere poorten dan 53 (tunneling indicator) |
 
-### 📊 Signature-Based Detectie
+### 🧊 ICMP Anomaly Detection
 
-- **Port Scanning Detectie**: Detecteert wanneer een host systematisch meerdere poorten scant
-- **Connection Flooding**: Detecteert abnormaal hoge aantallen connecties in korte tijd
-- **DNS Tunneling**: Detecteert verdachte DNS queries (lange queries, hoge query rates)
-- **Ongewone Packet Sizes**: Detecteert abnormaal grote packets (mogelijk data exfiltration)
-- **IP Blacklist/Whitelist**: Configureerbare IP lijsten
+| Feature | Status | Beschrijving |
+|---------|--------|--------------|
+| **Large Payloads** | ✅ | Echo Requests met grote payloads (>500 bytes) |
+| **High Rate Detection** | ✅ | Abnormaal veel grote ICMP packets (>10/min) |
+| **Payload Entropy** | ✅ | Entropy analysis van ICMP payload voor tunneling |
+| **Encoding Detection** | ✅ | Detecteert encoded data in ICMP payloads |
+
+### 🌐 HTTP/HTTPS Anomaly Detection
+
+| Feature | Status | Beschrijving |
+|---------|--------|--------------|
+| **Excessive POST Requests** | ✅ | Data exfiltration via POST (>50 posts/5min) |
+| **Suspicious User-Agents** | ✅ | Detecteert tools: python, curl, wget, sqlmap, nikto |
+| **DLP Inspection** | ✅ | Credit cards, emails, SSN, API keys, private keys, AWS keys, JWT |
+| **High Entropy Payloads** | ✅ | Encrypted data in plaintext HTTP (entropy >6.5) |
+| **HTTP on Non-Standard Port** | ✅ | HTTP verkeer op ongebruikelijke poorten |
+
+### 📧 SMTP/FTP Detection
+
+| Feature | Status | Beschrijving |
+|---------|--------|--------------|
+| **Large Email Attachments** | ✅ | SMTP transfers >50 MB/5min |
+| **Large FTP Transfers** | ✅ | FTP transfers >50 MB/5min |
+| **FTP on Non-Standard Port** | ✅ | FTP verkeer op andere poorten dan 20/21 |
+
+### 🔐 Authentication & Brute Force
+
+| Feature | Status | Beschrijving |
+|---------|--------|--------------|
+| **Brute Force Detection** | ✅ | Herhaalde login pogingen (SSH, RDP, FTP, Telnet, MySQL, PostgreSQL, VNC) |
+| **SSH on Non-Standard Port** | ✅ | SSH verkeer op andere poorten dan 22 (backdoor indicator) |
+| **Failed Login Tracking** | ✅ | Threshold: 5 attempts / 5 minuten (configureerbaar) |
+
+### 🎭 Behavior-Based Detection
+
+| Feature | Status | Beschrijving |
+|---------|--------|--------------|
+| **Beaconing Detection** | ✅ | C2 callbacks met regelmatige intervals (>70% consistentie) |
+| **Outbound Volume Anomalies** | ✅ | Data exfiltration (>100 MB/5min threshold) |
+| **Lateral Movement** | ✅ | Interne scanning (SMB/RDP/SSH/WinRM poorten) |
+| **Port Scanning** | ✅ | Systematisch scannen (>20 unieke poorten/min) |
+| **Connection Floods** | ✅ | SYN floods (>100 connections/sec) |
+| **Unusual Packet Sizes** | ✅ | Abnormaal grote packets (>1400 bytes) |
+
+### 🔬 Content Analysis
+
+| Feature | Status | Beschrijving |
+|---------|--------|--------------|
+| **Entropy Checks** | ✅ | Shannon entropy calculation voor encrypted/compressed data |
+| **DLP Inspection** | ✅ | 7+ gevoelige data patterns (credit cards, SSN, API keys, etc.) |
+| **Payload Analysis** | ✅ | Deep packet inspection voor HTTP/ICMP |
+| **Encoding Detection** | ✅ | Base64 en Hexadecimal encoding detection |
+
+### 🚫 Protocol Mismatch Detection
+
+| Feature | Status | Beschrijving |
+|---------|--------|--------------|
+| **HTTP Non-Standard Port** | ✅ | HTTP op andere poorten dan 80, 443, 8080, 8443 |
+| **SSH Non-Standard Port** | ✅ | SSH op andere poorten dan 22 |
+| **DNS Non-Standard Port** | ✅ | DNS op andere poorten dan 53 |
+| **FTP Non-Standard Port** | ✅ | FTP op andere poorten dan 20/21 |
+
+### ❌ Niet Geïmplementeerd (Future Roadmap)
+
+| Feature | Status | Reden |
+|---------|--------|-------|
+| **Machine Learning** | ❌ | Alles is rule-based, geen ML anomaly detection |
+| **Behavioral Baselining** | ❌ | Geen unsupervised learning voor normale patronen |
+| **TLS/SSL Inspection** | ❌ | Encrypted traffic analysis beperkt tot metadata |
 
 ### Algemene Features
 

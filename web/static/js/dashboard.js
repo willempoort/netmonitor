@@ -71,6 +71,41 @@ const THREAT_INFO = {
         icon: 'bi-arrows-move',
         color: '#dc3545'
     },
+    'BRUTE_FORCE_ATTEMPT': {
+        name: 'Brute Force Attack',
+        description: 'Herhaalde login pogingen op authenticatie services (SSH, RDP, FTP, etc.).',
+        impact: 'HOOG - Aanvaller probeert in te breken via wachtwoord gissen. Mogelijk compromittering.',
+        icon: 'bi-key',
+        color: '#dc3545'
+    },
+    'HTTP_NON_STANDARD_PORT': {
+        name: 'HTTP on Non-Standard Port',
+        description: 'HTTP verkeer gedetecteerd op ongebruikelijke poort - mogelijke verberging van malware traffic.',
+        impact: 'MEDIUM - Mogelijk bypassing van security controls, verborgen communicatie.',
+        icon: 'bi-globe',
+        color: '#ffc107'
+    },
+    'SSH_NON_STANDARD_PORT': {
+        name: 'SSH on Non-Standard Port',
+        description: 'SSH verkeer op andere poort dan 22 - mogelijk backdoor of verborgen toegang.',
+        impact: 'MEDIUM - Mogelijk ongeautoriseerde remote access, backdoor.',
+        icon: 'bi-terminal',
+        color: '#ffc107'
+    },
+    'DNS_NON_STANDARD_PORT': {
+        name: 'DNS on Non-Standard Port',
+        description: 'DNS verkeer op andere poort dan 53 - sterke indicator voor DNS tunneling.',
+        impact: 'HOOG - Mogelijk DNS tunneling voor C&C communicatie of data exfiltratie.',
+        icon: 'bi-diagram-2',
+        color: '#fd7e14'
+    },
+    'FTP_NON_STANDARD_PORT': {
+        name: 'FTP on Non-Standard Port',
+        description: 'FTP verkeer op ongebruikelijke poort - mogelijke verborgen data transfer.',
+        impact: 'MEDIUM - Mogelijk ongeautoriseerde data transfers.',
+        icon: 'bi-file-earmark-arrow-up',
+        color: '#ffc107'
+    },
     'ABUSEIPDB_HIGH_SCORE': {
         name: 'AbuseIPDB High Score',
         description: 'IP adres met hoge abuse score op AbuseIPDB - gerapporteerd door meerdere bronnen.',
