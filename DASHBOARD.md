@@ -281,7 +281,7 @@ db.cleanup_old_data(days=30)
 
 ### Kleuren Aanpassen
 
-Edit `/home/user/netmonitor/web/static/css/dashboard.css`:
+Edit `/opt/netmonitor/web/static/css/dashboard.css`:
 
 ```css
 /* Verander severity kleuren */
@@ -296,7 +296,7 @@ Edit `/home/user/netmonitor/web/static/css/dashboard.css`:
 
 ### Chart Update Interval
 
-Edit `/home/user/netmonitor/web/static/js/dashboard.js`:
+Edit `/opt/netmonitor/web/static/js/dashboard.js`:
 
 ```javascript
 // Auto-refresh data every 30 seconds

@@ -25,7 +25,7 @@ TimescaleDB:     1 query (aggregates) = 50ms ✅
 ### Optie 1: Automatisch (Aanbevolen)
 
 ```bash
-cd /home/user/netmonitor
+cd /opt/netmonitor
 sudo ./setup_database.sh
 ```
 
