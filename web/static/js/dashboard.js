@@ -1503,11 +1503,12 @@ function updateSensorsTable(sensors) {
                             title="Reboot sensor">
                         <i class="bi bi-power"></i>
                     </button>
-                    <button class="btn btn-outline-info edit-config-btn"
+                    <button class="btn btn-outline-info edit-settings-btn"
                             data-sensor-id="${sensor.sensor_id}"
                             data-sensor-name="${sensor.hostname}"
-                            title="Edit sensor.conf">
-                        <i class="bi bi-gear"></i>
+                            data-sensor-location="${sensor.location || ''}"
+                            title="Edit sensor settings">
+                        <i class="bi bi-sliders"></i>
                     </button>
                     <button class="btn btn-outline-danger delete-sensor-btn"
                             data-sensor-id="${sensor.sensor_id}"
@@ -1541,12 +1542,13 @@ function updateSensorsTable(sensors) {
         });
     });
 
-    document.querySelectorAll('.edit-config-btn').forEach(btn => {
+    document.querySelectorAll('.edit-settings-btn').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.preventDefault();
             const sensorId = this.getAttribute('data-sensor-id');
             const sensorName = this.getAttribute('data-sensor-name');
-            editSensorConfig(sensorId, sensorName);
+            const sensorLocation = this.getAttribute('data-sensor-location');
+            editSensorSettings(sensorId, sensorName, sensorLocation);
         });
     });
 
@@ -1689,217 +1691,61 @@ function rebootSensor(sensorId, sensorName) {
     });
 }
 
-function editSensorConfig(sensorId, sensorName) {
-    console.log(`[SENSORS] Fetching config for sensor: ${sensorId}`);
+function editSensorSettings(sensorId, sensorName, currentLocation) {
+    // Simple settings editor using centralized config (no file editing!)
+    console.log(`[SENSORS] Opening settings for sensor: ${sensorId}`);
 
-    // Show loading message
-    const loadingMsg = `Fetching sensor.conf from "${sensorName}"...\n\nThis may take up to 30 seconds (sensor polls every 30s).\n\nPlease wait...`;
+    const location = prompt(
+        `Edit sensor location for "${sensorName}" (${sensorId})\n\n` +
+        `Current location: ${currentLocation || 'Not set'}\n\n` +
+        `Enter new location (or leave empty to keep current):`,
+        currentLocation || ''
+    );
 
-    // Create get_config command
-    fetch(`/api/sensors/${encodeURIComponent(sensorId)}/commands`, {
-        method: 'POST',
+    // User cancelled
+    if (location === null) {
+        return;
+    }
+
+    // Save to centralized config database
+    console.log(`[SENSORS] Saving location for sensor ${sensorId}: ${location}`);
+
+    fetch(`/api/config/parameter`, {
+        method: 'PUT',
         headers: {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            command_type: 'get_config',
-            parameters: {}
+            parameter_path: 'sensor.location',
+            value: location,
+            sensor_id: sensorId,
+            scope: 'sensor',
+            description: `Location for sensor ${sensorId}`,
+            updated_by: 'dashboard'
         })
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            const commandId = data.command_id;
-            console.log(`[SENSORS] Get config command queued: ${commandId}`);
-
-            // Show modal with loading state
-            showConfigEditorModal(sensorId, sensorName, commandId);
+            console.log(`[SENSORS] Location updated successfully`);
+            alert(
+                `Sensor location updated!\n\n` +
+                `New location: ${location}\n\n` +
+                `The sensor will pick up this change automatically within 5 minutes.\n` +
+                `To apply immediately, restart the sensor.`
+            );
+            // Reload sensors list to show new location
+            loadSensors();
         } else {
-            console.error('[SENSORS] Get config command failed:', data.error);
-            alert(`Failed to fetch config: ${data.error || 'Unknown error'}`);
+            console.error('[SENSORS] Update failed:', data.error);
+            alert(`Failed to update location: ${data.error || 'Unknown error'}`);
         }
     })
     .catch(error => {
-        console.error('[SENSORS] Get config command error:', error);
-        alert(`Error fetching config: ${error.message}`);
+        console.error('[SENSORS] Update error:', error);
+        alert(`Error updating location: ${error.message}`);
     });
 }
-
-function showConfigEditorModal(sensorId, sensorName, commandId) {
-    // Check if modal already exists
-    let modal = document.getElementById('configEditorModal');
-    if (!modal) {
-        // Create modal if it doesn't exist
-        const modalHTML = `
-            <div class="modal fade" id="configEditorModal" tabindex="-1">
-                <div class="modal-dialog modal-lg">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h5 class="modal-title">Edit sensor.conf</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                        </div>
-                        <div class="modal-body">
-                            <div id="configEditorLoading" class="text-center py-5">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Loading...</span>
-                                </div>
-                                <p class="mt-3">Fetching configuration from sensor...</p>
-                                <small class="text-muted">This may take up to 30 seconds</small>
-                            </div>
-                            <div id="configEditorContent" style="display: none;">
-                                <p class="text-muted mb-2">
-                                    <strong>Sensor:</strong> <span id="configEditorSensorName"></span>
-                                    (<span id="configEditorSensorId"></span>)
-                                </p>
-                                <textarea class="form-control font-monospace" id="configEditorTextarea"
-                                          rows="20" style="font-size: 12px;"></textarea>
-                                <div class="alert alert-warning mt-3 mb-0">
-                                    <i class="bi bi-exclamation-triangle"></i>
-                                    <strong>Warning:</strong> Saving will automatically restart the sensor service after 5 seconds.
-                                    A backup will be created automatically.
-                                </div>
-                            </div>
-                            <div id="configEditorError" class="alert alert-danger" style="display: none;"></div>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                            <button type="button" class="btn btn-primary" id="saveConfigBtn" style="display: none;">
-                                Save & Restart Sensor
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-        modal = document.getElementById('configEditorModal');
-    }
-
-    // Store current sensor info
-    modal.dataset.sensorId = sensorId;
-    modal.dataset.sensorName = sensorName;
-    modal.dataset.commandId = commandId;
-
-    // Reset modal state
-    document.getElementById('configEditorLoading').style.display = 'block';
-    document.getElementById('configEditorContent').style.display = 'none';
-    document.getElementById('configEditorError').style.display = 'none';
-    document.getElementById('saveConfigBtn').style.display = 'none';
-
-    // Show modal
-    const bsModal = new bootstrap.Modal(modal);
-    bsModal.show();
-
-    // Poll for command completion
-    pollCommandResult(sensorId, commandId, (result) => {
-        if (result.success && result.config_content) {
-            // Show config editor
-            document.getElementById('configEditorLoading').style.display = 'none';
-            document.getElementById('configEditorContent').style.display = 'block';
-            document.getElementById('configEditorSensorName').textContent = sensorName;
-            document.getElementById('configEditorSensorId').textContent = sensorId;
-            document.getElementById('configEditorTextarea').value = result.config_content;
-            document.getElementById('saveConfigBtn').style.display = 'inline-block';
-        } else {
-            // Show error
-            document.getElementById('configEditorLoading').style.display = 'none';
-            document.getElementById('configEditorError').style.display = 'block';
-            document.getElementById('configEditorError').textContent =
-                `Failed to fetch config: ${result.message || 'Unknown error'}`;
-        }
-    });
-}
-
-function pollCommandResult(sensorId, commandId, callback, maxAttempts = 60) {
-    let attempts = 0;
-
-    const pollInterval = setInterval(() => {
-        attempts++;
-
-        fetch(`/api/sensors/${encodeURIComponent(sensorId)}/commands/history?limit=1`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.success && data.commands && data.commands.length > 0) {
-                    const command = data.commands.find(cmd => cmd.id === commandId);
-
-                    if (command && command.status === 'completed') {
-                        clearInterval(pollInterval);
-                        callback(command.result || {});
-                    } else if (command && command.status === 'failed') {
-                        clearInterval(pollInterval);
-                        callback({ success: false, message: 'Command failed' });
-                    }
-                }
-
-                // Timeout after maxAttempts * 2 seconds
-                if (attempts >= maxAttempts) {
-                    clearInterval(pollInterval);
-                    callback({ success: false, message: 'Timeout waiting for sensor response' });
-                }
-            })
-            .catch(error => {
-                console.error('[SENSORS] Error polling command:', error);
-            });
-    }, 2000); // Poll every 2 seconds
-}
-
-// Add event listener for save button (delegated event)
-document.addEventListener('click', function(e) {
-    if (e.target && e.target.id === 'saveConfigBtn') {
-        const modal = document.getElementById('configEditorModal');
-        const sensorId = modal.dataset.sensorId;
-        const sensorName = modal.dataset.sensorName;
-        const newConfig = document.getElementById('configEditorTextarea').value;
-
-        const confirmed = confirm(
-            `Save changes to sensor.conf for "${sensorName}"?\n\n` +
-            `This will:\n` +
-            `• Create a backup of the current config\n` +
-            `• Write the new configuration\n` +
-            `• Restart the sensor service in 5 seconds\n\n` +
-            `Continue?`
-        );
-
-        if (!confirmed) {
-            return;
-        }
-
-        // Send update_sensor_config command
-        fetch(`/api/sensors/${encodeURIComponent(sensorId)}/commands`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                command_type: 'update_sensor_config',
-                parameters: {
-                    config_content: newConfig
-                }
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert(
-                    `Configuration update command sent!\n\n` +
-                    `The sensor will:\n` +
-                    `1. Backup current config\n` +
-                    `2. Write new configuration\n` +
-                    `3. Restart service in 5 seconds\n\n` +
-                    `Command ID: ${data.command_id}`
-                );
-
-                // Close modal
-                bootstrap.Modal.getInstance(modal).hide();
-            } else {
-                alert(`Failed to send update command: ${data.error || 'Unknown error'}`);
-            }
-        })
-        .catch(error => {
-            alert(`Error sending update command: ${error.message}`);
-        });
-    }
-});
 
 function deleteSensor(sensorId, sensorName) {
     // Confirmation dialog
