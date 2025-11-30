@@ -633,16 +633,21 @@ class SensorClient:
                                 shutil.copy2(config_file, backup_file)
                                 self.logger.info(f"Config backed up to: {backup_file}")
 
-                            # Write new config directly
-                            # This might fail if /opt/netmonitor is read-only mounted
-                            with open(config_file, 'w') as f:
+                            # Use atomic write with rename (more reliable than direct overwrite)
+                            # Write to temp file first, then atomic rename
+                            temp_config = config_file + '.new'
+
+                            with open(temp_config, 'w') as f:
                                 f.write(new_config)
 
-                            # Set proper permissions (if writable)
+                            # Atomic rename - replaces old file with new one
+                            os.rename(temp_config, config_file)
+
+                            # Set proper permissions (match original 600 permissions)
                             try:
-                                os.chmod(config_file, 0o644)
+                                os.chmod(config_file, 0o600)
                             except OSError:
-                                pass  # Ignore permission errors on read-only filesystem
+                                pass  # Ignore permission errors
 
                             self.logger.info(f"Config file updated: {len(new_config)} bytes")
 
