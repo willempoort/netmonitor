@@ -53,9 +53,24 @@ class SensorClient:
             batch_interval: Seconds between alert batch uploads
         """
         self.config = load_config(config_file)
-        self.server_url = server_url or os.environ.get('SOC_SERVER_URL')
-        self.sensor_id = sensor_id or os.environ.get('SENSOR_ID') or self._generate_sensor_id()
-        self.location = location or os.environ.get('SENSOR_LOCATION', 'Unknown')
+
+        # Priority: CLI parameter > Environment variable > Config file
+        self.server_url = (
+            server_url or
+            os.environ.get('SOC_SERVER_URL') or
+            self.config.get('server', {}).get('url')
+        )
+        self.sensor_id = (
+            sensor_id or
+            os.environ.get('SENSOR_ID') or
+            self.config.get('sensor', {}).get('id') or
+            self._generate_sensor_id()
+        )
+        self.location = (
+            location or
+            os.environ.get('SENSOR_LOCATION') or
+            self.config.get('sensor', {}).get('location', 'Unknown')
+        )
         self.batch_interval = batch_interval
         self.running = False
 
