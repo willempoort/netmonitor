@@ -47,32 +47,23 @@ def main():
     print("[2] Checking database whitelist (GLOBAL):")
     print()
 
-    # Get global whitelist from database
+    # Get global whitelist from database (scope='global')
     try:
-        conn = db.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT id, ip_address, description, created_at
-            FROM whitelist
-            WHERE sensor_id IS NULL
-            ORDER BY created_at DESC
-        """)
-
-        global_entries = cursor.fetchall()
+        global_entries = db.get_whitelist(scope='global')
 
         if global_entries:
             print(f"✓ Database has {len(global_entries)} GLOBAL whitelist entries:")
-            for entry_id, ip, desc, created in global_entries:
-                print(f"  - {ip:20s} | {desc or 'No description':40s} | ID: {entry_id}")
+            for entry in global_entries:
+                ip = entry.get('ip_cidr', 'N/A')
+                desc = entry.get('description', 'No description')
+                entry_id = entry.get('id', 'N/A')
+                print(f"  - {ip:20s} | {desc:40s} | ID: {entry_id}")
         else:
             print("⚠️  Database has NO global whitelist entries")
 
-        cursor.close()
-        conn.close()
-
     except Exception as e:
         print(f"✗ Error querying global whitelist: {e}")
+        global_entries = []
 
     print()
     print("=" * 70)
@@ -81,30 +72,25 @@ def main():
 
     # Get sensor-specific whitelist from database
     try:
-        conn = db.get_connection()
-        cursor = conn.cursor()
+        # Get all whitelist entries for this sensor (includes global + sensor-specific)
+        all_entries = db.get_whitelist(sensor_id=sensor_id)
 
-        cursor.execute("""
-            SELECT id, ip_address, description, created_at
-            FROM whitelist
-            WHERE sensor_id = %s
-            ORDER BY created_at DESC
-        """, (sensor_id,))
-
-        sensor_entries = cursor.fetchall()
+        # Filter to only sensor-specific (not global)
+        sensor_entries = [e for e in all_entries if e.get('scope') == 'sensor']
 
         if sensor_entries:
             print(f"✓ Database has {len(sensor_entries)} sensor-specific whitelist entries:")
-            for entry_id, ip, desc, created in sensor_entries:
-                print(f"  - {ip:20s} | {desc or 'No description':40s} | ID: {entry_id}")
+            for entry in sensor_entries:
+                ip = entry.get('ip_cidr', 'N/A')
+                desc = entry.get('description', 'No description')
+                entry_id = entry.get('id', 'N/A')
+                print(f"  - {ip:20s} | {desc:40s} | ID: {entry_id}")
         else:
             print(f"⚠️  Database has NO sensor-specific whitelist entries for '{sensor_id}'")
 
-        cursor.close()
-        conn.close()
-
     except Exception as e:
         print(f"✗ Error querying sensor whitelist: {e}")
+        sensor_entries = []
 
     print()
     print("=" * 70)
@@ -116,16 +102,26 @@ def main():
 
     # Add IPs from config
     if config_whitelist:
-        test_ips.append(config_whitelist[0])
+        # Extract first IP (without CIDR if present)
+        first_ip = config_whitelist[0].split('/')[0]
+        test_ips.append(first_ip)
 
     # Add IPs from database
     if global_entries:
-        test_ips.append(global_entries[0][1])
+        first_global_ip = global_entries[0].get('ip_cidr', '').split('/')[0]
+        if first_global_ip:
+            test_ips.append(first_global_ip)
+
     if sensor_entries:
-        test_ips.append(sensor_entries[0][1])
+        first_sensor_ip = sensor_entries[0].get('ip_cidr', '').split('/')[0]
+        if first_sensor_ip:
+            test_ips.append(first_sensor_ip)
 
     # Add a non-whitelisted IP
     test_ips.append("8.8.8.8")
+
+    # Remove duplicates
+    test_ips = list(dict.fromkeys(test_ips))
 
     for test_ip in test_ips:
         try:
@@ -163,10 +159,11 @@ def main():
         print("✓ Whitelist is configured")
         print()
         print("If you're still getting alerts for whitelisted IPs:")
-        print("1. Check that the IP is exactly correct (including subnet mask)")
-        print("2. Restart netmonitor service to reload config")
-        print("3. Check logs with: journalctl -u netmonitor -f | grep -i whitelist")
+        print("1. Verify the EXACT IP (use test above)")
+        print("2. Check if IP is in CIDR range")
+        print("3. Restart netmonitor: sudo systemctl restart netmonitor")
         print("4. Enable debug logging in config.yaml: logging.level = DEBUG")
+        print("5. Check logs: journalctl -u netmonitor -f | grep -i whitelist")
 
 if __name__ == '__main__':
     main()
