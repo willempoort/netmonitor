@@ -249,6 +249,80 @@ class DatabaseManager:
                 ON sensor_tokens(sensor_id, is_active);
             ''')
 
+            # Web users table with 2FA support
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS web_users (
+                    id SERIAL PRIMARY KEY,
+                    username VARCHAR(50) UNIQUE NOT NULL,
+                    password_hash VARCHAR(255) NOT NULL,
+                    email VARCHAR(255) UNIQUE,
+                    role VARCHAR(20) DEFAULT 'operator',
+                    totp_secret VARCHAR(32),
+                    totp_enabled BOOLEAN DEFAULT FALSE,
+                    backup_codes TEXT[],
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    last_login TIMESTAMPTZ,
+                    failed_login_attempts INTEGER DEFAULT 0,
+                    locked_until TIMESTAMPTZ,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    created_by VARCHAR(50),
+                    CONSTRAINT valid_role CHECK (role IN ('admin', 'operator', 'viewer'))
+                );
+            ''')
+
+            # Web user audit log
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS web_user_audit (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES web_users(id),
+                    username VARCHAR(50),
+                    event_type VARCHAR(50) NOT NULL,
+                    ip_address INET,
+                    user_agent TEXT,
+                    details JSONB,
+                    timestamp TIMESTAMPTZ DEFAULT NOW()
+                );
+            ''')
+
+            # Web sessions table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS web_sessions (
+                    id VARCHAR(255) PRIMARY KEY,
+                    user_id INTEGER REFERENCES web_users(id),
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    last_activity TIMESTAMPTZ DEFAULT NOW(),
+                    ip_address INET,
+                    user_agent TEXT,
+                    expires_at TIMESTAMPTZ
+                );
+            ''')
+
+            # Indexes for web authentication
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_web_users_username
+                ON web_users(username) WHERE is_active = TRUE;
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_web_users_email
+                ON web_users(email) WHERE is_active = TRUE;
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_web_user_audit_user
+                ON web_user_audit(user_id, timestamp DESC);
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_web_user_audit_event
+                ON web_user_audit(event_type, timestamp DESC);
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_web_sessions_user
+                ON web_sessions(user_id, last_activity DESC);
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_web_sessions_expires
+                ON web_sessions(expires_at);
+            ''')
+
             conn.commit()
             self.logger.info("Database schema created")
 

@@ -17,8 +17,9 @@ Last Updated: December 2024
 6. [Configuration Management](#configuration-management)
 7. [MCP Server](#mcp-server)
 8. [Maintenance & Troubleshooting](#maintenance--troubleshooting)
-9. [Security Best Practices](#security-best-practices)
-10. [Advanced Topics](#advanced-topics)
+9. [Web Dashboard Authentication & User Management](#web-dashboard-authentication--user-management)
+10. [Security Best Practices](#security-best-practices)
+11. [Advanced Topics](#advanced-topics)
 
 ---
 
@@ -985,6 +986,241 @@ sudo -u postgres psql netmonitor < netmonitor_backup.sql
 sudo systemctl start netmonitor-soc
 sudo systemctl start netmonitor-mcp-http
 ```
+
+---
+
+## Web Dashboard Authentication & User Management
+
+NetMonitor v2.0+ includes comprehensive user authentication with multi-factor authentication (2FA) support.
+
+### Initial Admin Setup
+
+After installing the SOC server, create the first administrator account:
+
+```bash
+python3 setup_admin_user.py
+```
+
+The script will prompt you for:
+- **Username** (minimum 3 characters)
+- **Email** (optional but recommended for recovery)
+- **Password** (minimum 12 characters, must include uppercase, lowercase, and digits)
+- **2FA** (optional but strongly recommended)
+
+**Example:**
+```
+NetMonitor - Admin User Setup
+=====================================
+
+[1/4] Connecting to database...
+✓ Database connected
+
+[2/4] Initializing authentication manager...
+✓ Auth manager ready
+
+[3/4] Enter administrator details
+--------------------------------------
+Username: admin
+Email (optional): admin@example.com
+Password: ****************
+Confirm password: ****************
+
+Enable 2FA now? (y/N): y
+
+Summary:
+  Username: admin
+  Email:    admin@example.com
+  Role:     admin
+  2FA:      Enabled
+--------------------------------------
+
+Create this admin user? (y/N): y
+
+✓ Admin user created successfully!
+```
+
+### Accessing the Dashboard
+
+1. **Start the dashboard server:**
+   ```bash
+   python3 web_dashboard.py
+   ```
+
+2. **Open your browser:**
+   ```
+   http://localhost:8181/
+   ```
+
+3. **Log in with your credentials**
+
+### User Roles
+
+NetMonitor supports three role levels:
+
+| Role | Permissions |
+|------|-------------|
+| **Admin** | Full access - User management, all configuration, sensor management |
+| **Operator** | Sensor & alert management, configuration changes, acknowledge alerts |
+| **Viewer** | Read-only access - View dashboard, alerts, and metrics only |
+
+### Creating Additional Users
+
+Administrators can create additional users via the dashboard:
+
+1. **Access User Management:**
+   - Click on your username in the top-right
+   - Select "User Management" (admin only)
+
+2. **Create New User:**
+   - Click "Create New User"
+   - Fill in details:
+     - Username (required)
+     - Email (optional)
+     - Password (min 12 chars, required)
+     - Role (admin/operator/viewer)
+     - Enable 2FA (checkbox)
+
+3. **Share credentials securely with the new user**
+
+### Two-Factor Authentication (2FA)
+
+2FA adds an extra security layer using time-based one-time passwords (TOTP).
+
+#### Setting Up 2FA
+
+1. **Access 2FA settings:**
+   - Click your username → "Two-Factor Auth"
+
+2. **Enable 2FA:**
+   - Click "Enable 2FA"
+   - Scan the QR code with an authenticator app:
+     - **Google Authenticator** (iOS/Android)
+     - **Microsoft Authenticator** (iOS/Android)
+     - **Authy** (iOS/Android/Desktop)
+     - **1Password** (with TOTP support)
+
+3. **Save backup codes:**
+   - 10 one-time recovery codes are generated
+   - **CRITICAL**: Store these in a safe place!
+   - Use if you lose access to your authenticator
+
+#### Logging In with 2FA
+
+1. Enter username and password
+2. Enter the 6-digit code from your authenticator app
+3. Or use a backup code if needed
+
+#### Disabling 2FA
+
+Administrators can disable 2FA for any user if they lose access to their authenticator:
+
+1. Go to User Management
+2. Contact the user to verify their identity
+3. Access the user's 2FA settings
+4. Click "Disable 2FA"
+
+### Password Management
+
+#### Password Requirements
+
+- Minimum 12 characters
+- Must contain:
+  - At least one uppercase letter
+  - At least one lowercase letter
+  - At least one digit
+- No common passwords or patterns
+
+#### Changing Password
+
+Users can change their own password:
+
+1. Click username → "Profile Settings"
+2. Enter current password
+3. Enter new password (min 12 chars)
+4. Click "Change Password"
+
+#### Password Security Features
+
+- **Argon2id hashing** - Industry-leading password security
+- **Account lockout** - 5 failed attempts = 15 minute lockout
+- **Rate limiting** - Max 5 login attempts per 15 minutes
+- **No password recovery** - Admins must create new users
+
+### Session Management
+
+#### Session Security
+
+- **Session timeout**: 30 minutes of inactivity
+- **Secure cookies**: HTTP-only, SameSite=Lax
+- **Session protection**: Strong (IP + user-agent validation)
+- **One device policy**: Optional (can be enabled in production)
+
+#### Logout
+
+Always logout when finished:
+- Click username → "Logout"
+- Or close browser (session expires in 30 minutes)
+
+### Security Audit Log
+
+All authentication events are logged in `web_user_audit` table:
+
+**Logged events:**
+- Login success/failure
+- 2FA verification success/failure
+- Password changes
+- User creation/deactivation
+- 2FA enabled/disabled
+- Account lockouts
+- Rate limit violations
+
+**Query audit log:**
+```sql
+SELECT
+    username,
+    event_type,
+    ip_address,
+    timestamp,
+    details
+FROM web_user_audit
+ORDER BY timestamp DESC
+LIMIT 100;
+```
+
+### Deactivating Users
+
+Administrators can deactivate user accounts:
+
+1. Go to User Management
+2. Find the user
+3. Click "Deactivate"
+4. User can no longer log in
+
+**Note**: Deactivation is permanent. To restore access, create a new account.
+
+### Production Security Checklist
+
+Before deploying to production:
+
+- [ ] Set strong `FLASK_SECRET_KEY` environment variable
+- [ ] Enable HTTPS (see Production section)
+- [ ] Set `SESSION_COOKIE_SECURE = True` in web_dashboard.py
+- [ ] Enforce 2FA for all admin accounts
+- [ ] Use complex passwords (12+ characters)
+- [ ] Review and configure session timeout
+- [ ] Restrict dashboard access via firewall
+- [ ] Enable database SSL connections
+- [ ] Monitor audit logs regularly
+- [ ] Back up user database
+- [ ] Document admin credentials securely
+
+### API Authentication
+
+**Sensor API endpoints** (heartbeat, metrics, alerts) use token-based authentication (see Sensor Deployment section).
+
+**Dashboard API endpoints** require web session authentication (login required).
+
+**MCP API endpoints** use separate token authentication (see MCP Server section).
 
 ---
 
