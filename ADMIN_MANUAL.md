@@ -357,6 +357,55 @@ Each sensor can be individually configured via the web dashboard with the follow
 7. Dashboard shows updated sensor metadata
 ```
 
+#### SOC Server Self-Monitoring Config Sync
+
+**The SOC server itself can also monitor its local network traffic!**
+
+If `self_monitor.enabled: true` in `config.yaml`, the SOC server acts as both:
+- **Server**: Receiving alerts from remote sensors
+- **Sensor**: Monitoring its own network interface
+
+**Automatic Config Reload (No Restart Required):**
+
+When self-monitoring is enabled:
+1. SOC server registers itself with sensor ID `soc-server` (configurable)
+2. Loads initial configuration from `config.yaml` at startup
+3. Merges with database configuration (database takes precedence)
+4. **Background thread syncs config every 5 minutes**
+5. Configuration changes apply immediately without restart
+
+**How It Works:**
+```
+1. Admin edits detection thresholds in dashboard
+2. Changes are saved to database
+3. Within 5 minutes:
+   - SOC server background thread runs
+   - Fetches updated config from database
+   - Deep merges with existing config (database overrides yaml)
+   - Detector immediately uses new thresholds
+   - Logs: "✓ Config updated from database: 3 parameter(s) changed"
+4. New detection rules active immediately
+```
+
+**Log Output Examples:**
+```
+INFO - SOC server self-monitoring enabled as sensor: soc-server
+INFO - Config sync enabled (checking every 300s)
+INFO - ✓ Config updated from database: 3 parameter(s) changed
+INFO -   Updated categories: port_scan, connection_flood
+```
+
+**Configuration Priority (Highest to Lowest):**
+1. **Database sensor-specific** (for sensor ID `soc-server`)
+2. **Database global** (applies to all sensors)
+3. **config.yaml** (fallback/defaults)
+
+**Benefits:**
+- No need to restart SOC server after config changes
+- Consistent config management across all sensors (including SOC server)
+- Changes tested on SOC server before deploying to remote sensors
+- Full audit trail of all configuration changes
+
 ### Whitelist Management
 
 **Dashboard → Whitelist Management**
