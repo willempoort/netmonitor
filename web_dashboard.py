@@ -210,6 +210,51 @@ def require_sensor_token(required_permission=None):
     return decorator
 
 
+def require_sensor_token_or_login():
+    """
+    Decorator that accepts either sensor token authentication OR Flask-Login session
+    Used for endpoints that sensors AND web users need to access (like /api/config)
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            # Check for sensor token first
+            auth_header = request.headers.get('Authorization', '')
+
+            if auth_header.startswith('Bearer '):
+                # Sensor token authentication
+                token = auth_header.replace('Bearer ', '').strip()
+
+                if sensor_auth:
+                    sensor_details = sensor_auth.validate_token(token, None)
+
+                    if sensor_details:
+                        # Valid sensor token - add to g object
+                        from flask import g
+                        g.sensor_details = sensor_details
+                        g.auth_method = 'sensor_token'
+                        logger.debug(f"API access via sensor token: {sensor_details['sensor_id']}")
+                        return f(*args, **kwargs)
+
+            # Check for Flask-Login session
+            if current_user.is_authenticated:
+                # Valid web user session
+                from flask import g
+                g.auth_method = 'web_session'
+                logger.debug(f"API access via web session: {current_user.username}")
+                return f(*args, **kwargs)
+
+            # No valid authentication
+            logger.warning(f"Unauthorized API access attempt from {request.remote_addr}")
+            return jsonify({
+                'success': False,
+                'error': 'Authentication required (sensor token or web login)'
+            }), 401
+
+        return decorated_function
+    return decorator
+
+
 # ==================== Authentication Routes ====================
 
 @app.route('/login')
@@ -910,7 +955,7 @@ def api_get_command_history(sensor_id):
 # ==================== Whitelist Management Endpoints ====================
 
 @app.route('/api/whitelist', methods=['GET'])
-@login_required
+@require_sensor_token_or_login()
 def api_get_whitelist():
     """Get whitelist entries"""
     try:
@@ -973,7 +1018,7 @@ def api_delete_whitelist(entry_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/whitelist/check/<ip_address>', methods=['GET'])
-@login_required
+@require_sensor_token_or_login()
 def api_check_whitelist(ip_address):
     """Check if IP is whitelisted"""
     try:
@@ -992,7 +1037,7 @@ def api_check_whitelist(ip_address):
 # ==================== Configuration Management Endpoints ====================
 
 @app.route('/api/config', methods=['GET'])
-@login_required
+@require_sensor_token_or_login()
 def api_get_config():
     """Get configuration for a sensor (merged defaults + global + sensor-specific)"""
     try:
