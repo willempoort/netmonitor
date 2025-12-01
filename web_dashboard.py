@@ -40,9 +40,11 @@ app = Flask(__name__,
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'dev-key-CHANGE-ME-IN-PRODUCTION')
 
 # Session configuration for security
+app.config['SESSION_COOKIE_NAME'] = 'netmonitor_session'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['PERMANENT_SESSION_LIFETIME'] = 1800  # 30 minutes
+app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 60 minutes (increased from 30)
+app.config['SESSION_REFRESH_EACH_REQUEST'] = True  # Refresh session on each request
 # app.config['SESSION_COOKIE_SECURE'] = True  # Enable in production with HTTPS
 
 CORS(app)
@@ -51,7 +53,7 @@ CORS(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login_page'
-login_manager.session_protection = 'strong'
+login_manager.session_protection = 'basic'  # Changed from 'strong' to prevent premature session invalidation
 
 # Initialize SocketIO with eventlet for production
 socketio = SocketIO(
@@ -295,7 +297,7 @@ def api_login():
             return jsonify({'success': True, 'require_2fa': True})
         else:
             # No 2FA - log in directly
-            login_user(user, remember=False)
+            login_user(user, remember=True)  # Remember user to keep session alive
             logger.info(f"User logged in: {username}")
             return jsonify({'success': True, 'user': user.to_dict()})
 
@@ -334,7 +336,7 @@ def api_verify_2fa():
             user_agent=request.headers.get('User-Agent'),
             is_backup_code=use_backup
         ):
-            login_user(user, remember=False)
+            login_user(user, remember=True)  # Remember user to keep session alive
             session.pop('pending_2fa_user_id', None)
             logger.info(f"User logged in with 2FA: {user.username}")
             return jsonify({'success': True, 'user': user.to_dict()})
