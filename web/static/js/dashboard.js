@@ -1709,6 +1709,12 @@ async function editSensorSettings(sensorId, sensorName, currentLocation) {
         if (result.success) {
             const config = result.config;
 
+            // Populate location (override currentLocation if set in config)
+            const configLocation = config.sensor?.location;
+            if (configLocation) {
+                document.getElementById('edit-sensor-location').value = configLocation;
+            }
+
             // Populate internal networks
             const internalNetworks = config.internal_networks || [];
             document.getElementById('edit-internal-networks').value = Array.isArray(internalNetworks)

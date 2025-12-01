@@ -1010,7 +1010,7 @@ class DatabaseManager:
                     s.sensor_id,
                     s.hostname,
                     COALESCE(
-                        (SELECT parameter_value::text
+                        (SELECT parameter_value#>>'{}'
                          FROM sensor_configs
                          WHERE sensor_id = s.sensor_id
                          AND parameter_path = 'sensor.location'
@@ -1080,7 +1080,7 @@ class DatabaseManager:
                     s.sensor_id,
                     s.hostname,
                     COALESCE(
-                        (SELECT parameter_value::text
+                        (SELECT parameter_value#>>'{}'
                          FROM sensor_configs
                          WHERE sensor_id = s.sensor_id
                          AND parameter_path = 'sensor.location'
@@ -1610,7 +1610,6 @@ class DatabaseManager:
             rows = cursor.fetchall()
 
             # Build config dict from parameter paths
-            import json
             config = {}
             for row in rows:
                 path_parts = row['parameter_path'].split('.')
@@ -1622,14 +1621,8 @@ class DatabaseManager:
                         current[part] = {}
                     current = current[part]
 
-                # Set the value (JSONB is already parsed by psycopg2)
+                # Set the value (JSONB is already parsed by psycopg2 - no need to parse again)
                 value = row['parameter_value']
-                if isinstance(value, str):
-                    # If it's a string, try to parse as JSON
-                    try:
-                        value = json.loads(value)
-                    except:
-                        pass  # Keep as string if not valid JSON
                 current[path_parts[-1]] = value
 
             return config
