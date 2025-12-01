@@ -54,6 +54,10 @@ class SensorClient:
         """
         self.config = load_config(config_file)
 
+        # Setup logging first (before anything that might need to log)
+        self._setup_logging()
+        self.logger = logging.getLogger('NetMonitor.Sensor')
+
         # Priority: CLI parameter > Environment variable > Config file
         self.server_url = (
             server_url or
@@ -87,10 +91,6 @@ class SensorClient:
 
         # Alert buffer for batching
         self.alert_buffer = deque(maxlen=10000)  # Max 10k alerts in buffer
-
-        # Setup logging
-        self._setup_logging()
-        self.logger = logging.getLogger('NetMonitor.Sensor')
 
         # Validate configuration
         if not self.server_url:
