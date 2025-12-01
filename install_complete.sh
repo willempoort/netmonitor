@@ -1,8 +1,8 @@
 #!/bin/bash
 #
 # NetMonitor SOC - Complete Installation Script
-# Version: 2.0.0
-# Installs: PostgreSQL, TimescaleDB, NetMonitor, Sensors, MCP API, Nginx
+# Version: 2.1.0
+# Installs: PostgreSQL, TimescaleDB, NetMonitor, Web Auth, MCP API, Nginx
 #
 # Usage: sudo ./install_complete.sh
 #
@@ -291,7 +291,7 @@ download_threat_feeds() {
         return
     fi
 
-    print_header "STAP 7/10: Threat Feeds Downloaden"
+    print_header "STAP 7/11: Threat Feeds Downloaden"
 
     cd $INSTALL_DIR
     source venv/bin/activate
@@ -300,12 +300,33 @@ download_threat_feeds() {
     print_success "Threat feeds gedownload"
 }
 
+setup_admin_user() {
+    if [[ ! $INSTALL_CORE =~ ^[Yy]$ ]]; then
+        return
+    fi
+
+    print_header "STAP 8/11: Admin User Setup"
+
+    cd $INSTALL_DIR
+    source venv/bin/activate
+
+    print_info "Nu wordt de eerste admin user aangemaakt voor het web dashboard"
+    print_info "Deze user heeft volledige toegang tot de dashboard"
+    echo
+
+    # Run setup_admin_user.py interactively (not in background)
+    python3 setup_admin_user.py
+
+    echo
+    print_success "Admin user aangemaakt"
+}
+
 setup_systemd_services() {
     if [[ ! $INSTALL_CORE =~ ^[Yy]$ ]]; then
         return
     fi
 
-    print_header "STAP 8/10: Systemd Services Setup"
+    print_header "STAP 9/11: Systemd Services Setup"
 
     cd $INSTALL_DIR
 
@@ -342,7 +363,7 @@ setup_mcp_api() {
         return
     fi
 
-    print_header "STAP 9/10: MCP HTTP API Server Setup"
+    print_header "STAP 10/11: MCP HTTP API Server Setup"
 
     cd $INSTALL_DIR
     source venv/bin/activate
@@ -373,7 +394,7 @@ setup_nginx() {
         return
     fi
 
-    print_header "STAP 10/10: Nginx Reverse Proxy Setup"
+    print_header "STAP 11/11: Nginx Reverse Proxy Setup"
 
     cd $INSTALL_DIR
 
@@ -419,7 +440,8 @@ print_summary() {
 
     if [[ $INSTALL_CORE =~ ^[Yy]$ ]]; then
         echo -e "${BLUE}NetMonitor SOC Dashboard:${NC}"
-        echo "  Local:  http://localhost:8080"
+        echo "  Local:  http://localhost:8181"
+        echo "  Note:   Login required (use admin credentials created during setup)"
         if [ ! -z "$DOMAIN_NAME" ]; then
             echo "  Public: https://$DOMAIN_NAME (after SSL setup)"
         fi
@@ -470,25 +492,34 @@ print_summary() {
     echo
     echo -e "${YELLOW}Volgende Stappen:${NC}"
     echo
-    echo "1. Open Dashboard:"
-    echo "   http://localhost:8080"
+    echo "1. Login naar Dashboard:"
+    echo "   URL: http://localhost:8181"
+    echo "   User de admin credentials die je zojuist hebt aangemaakt"
     echo
-    echo "2. Genereer Sensor Token (voor remote sensors):"
+    echo "2. Enable 2FA (aanbevolen):"
+    echo "   - Login naar dashboard"
+    echo "   - User menu (rechtsboven) → Two-Factor Auth"
+    echo "   - Scan QR code met authenticator app"
+    echo
+    echo "3. Genereer Sensor Token (voor remote sensors):"
     echo "   cd $INSTALL_DIR"
     echo "   source venv/bin/activate"
     echo "   python3 setup_sensor_auth.py"
     echo
-    echo "3. Configureer Whitelist (in config.yaml):"
-    echo "   nano $INSTALL_DIR/config.yaml"
+    echo "4. Configureer Sensors via Dashboard:"
+    echo "   - Navigate naar Sensors tab"
+    echo "   - Click 'Edit sensor settings' voor elke sensor"
+    echo "   - Stel location en internal networks in"
     echo
-    echo "4. Check Logs:"
+    echo "5. Check Logs:"
     echo "   sudo journalctl -u netmonitor -f"
     echo
-    echo "5. View Documentation:"
-    echo "   cat $INSTALL_DIR/COMPLETE_INSTALLATION.md"
+    echo "6. View Documentation:"
+    echo "   - Admin Manual:  $INSTALL_DIR/ADMIN_MANUAL.md"
+    echo "   - User Manual:   $INSTALL_DIR/USER_MANUAL.md"
     echo
     if [ ! -z "$DOMAIN_NAME" ]; then
-        echo "6. Setup SSL Certificate:"
+        echo "7. Setup SSL Certificate:"
         echo "   sudo certbot --nginx -d $DOMAIN_NAME"
         echo
     fi
@@ -503,8 +534,8 @@ main() {
     clear
 
     print_header "NetMonitor SOC - Complete Installation"
-    echo "Versie: 2.0.0"
-    echo "Dit script installeert ALLES automatisch"
+    echo "Versie: 2.1.0"
+    echo "Dit script installeert ALLES automatisch inclusief web authenticatie"
     echo
 
     check_root
@@ -538,6 +569,7 @@ main() {
     configure_netmonitor
     init_database_schema
     download_threat_feeds
+    setup_admin_user
     setup_systemd_services
     setup_mcp_api
     setup_nginx
