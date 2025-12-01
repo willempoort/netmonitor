@@ -45,8 +45,8 @@ def _build_sensor_config(conf_dict):
     Build full sensor configuration from minimal .conf file
     Only connection settings are in .conf, all detection settings come from SOC server
     """
-    # Required fields validation
-    required = ['INTERFACE', 'SOC_SERVER_URL', 'SENSOR_ID', 'SENSOR_LOCATION']
+    # Required fields validation (SENSOR_ID and SENSOR_LOCATION are optional)
+    required = ['INTERFACE', 'SOC_SERVER_URL']
     for field in required:
         if field not in conf_dict or not conf_dict[field]:
             raise ValueError(f"Required field missing in sensor.conf: {field}")
@@ -77,15 +77,19 @@ def _build_sensor_config(conf_dict):
 
         # Sensor mode configuration
         'sensor': {
-            'id': conf_dict['SENSOR_ID'],
+            'id': conf_dict.get('SENSOR_ID'),  # Optional - will use hostname if not set
             'auth_token': conf_dict.get('SENSOR_SECRET_KEY', ''),
-            'location': conf_dict['SENSOR_LOCATION'],
+            'location': conf_dict.get('SENSOR_LOCATION', 'Unknown'),  # Optional with default
         },
 
         # Server connection
         'server': {
             'url': conf_dict['SOC_SERVER_URL'],
             'verify_ssl': ssl_verify,
+        },
+
+        # Performance settings
+        'performance': {
             'heartbeat_interval': heartbeat_interval,
             'config_sync_interval': config_sync_interval,
         },
