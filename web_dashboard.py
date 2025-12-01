@@ -15,9 +15,10 @@ from datetime import datetime
 import eventlet
 eventlet.monkey_patch()
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, session, g, redirect, url_for
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 
 # Add current dir to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -25,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from config_loader import load_config
 from database import DatabaseManager
 from sensor_auth import SensorAuthManager
+from web_auth import WebAuthManager, WebUser
 from functools import wraps
 
 
@@ -37,7 +39,19 @@ app = Flask(__name__,
 # SECURITY: Set FLASK_SECRET_KEY environment variable in production!
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'dev-key-CHANGE-ME-IN-PRODUCTION')
 
+# Session configuration for security
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = 1800  # 30 minutes
+# app.config['SESSION_COOKIE_SECURE'] = True  # Enable in production with HTTPS
+
 CORS(app)
+
+# Initialize Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login_page'
+login_manager.session_protection = 'strong'
 
 # Initialize SocketIO with eventlet for production
 socketio = SocketIO(
@@ -53,11 +67,12 @@ db = None
 config = None
 logger = None
 sensor_auth = None  # Sensor authentication manager
+web_auth = None  # Web user authentication manager
 
 
 def init_dashboard(config_file='config.yaml'):
     """Initialize dashboard components"""
-    global db, config, logger, sensor_auth
+    global db, config, logger, sensor_auth, web_auth
 
     # Load config
     config = load_config(config_file)
@@ -109,10 +124,44 @@ def init_dashboard(config_file='config.yaml'):
     sensor_auth = SensorAuthManager(db)
     logger.info("Sensor authentication manager initialized")
 
+    # Initialize web authentication manager
+    web_auth = WebAuthManager(db)
+    logger.info("Web authentication manager initialized")
+
     logger.info("Web Dashboard geïnitialiseerd")
 
 
+# ==================== Flask-Login User Loader ====================
+
+@login_manager.user_loader
+def load_user(user_id):
+    """User loader for Flask-Login"""
+    if web_auth:
+        return web_auth.get_user_by_id(int(user_id))
+    return None
+
+
 # ==================== Authentication Decorators ====================
+
+def require_role(*roles):
+    """
+    Decorator to require specific user role(s)
+
+    Usage:
+        @require_role('admin')
+        @require_role('admin', 'operator')
+    """
+    def decorator(f):
+        @wraps(f)
+        @login_required
+        def decorated_function(*args, **kwargs):
+            if current_user.role not in roles and current_user.role != 'admin':
+                logger.warning(f"Unauthorized access attempt by {current_user.username} (role: {current_user.role})")
+                return jsonify({'success': False, 'error': 'Insufficient permissions'}), 403
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
 
 def require_sensor_token(required_permission=None):
     """
@@ -161,23 +210,265 @@ def require_sensor_token(required_permission=None):
     return decorator
 
 
+# ==================== Authentication Routes ====================
+
+@app.route('/login')
+def login_page():
+    """Login page"""
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+    return render_template('login.html')
+
+
+@app.route('/api/auth/login', methods=['POST'])
+def api_login():
+    """Login API - step 1: username/password authentication"""
+    try:
+        data = request.json
+        username = data.get('username')
+        password = data.get('password')
+
+        if not username or not password:
+            return jsonify({'success': False, 'error': 'Username and password required'}), 400
+
+        # Authenticate user
+        user = web_auth.authenticate(
+            username,
+            password,
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get('User-Agent')
+        )
+
+        if not user:
+            return jsonify({'success': False, 'error': 'Invalid credentials or account locked'}), 401
+
+        # Check if 2FA is enabled
+        if user.totp_enabled:
+            # 2FA required - don't log in yet
+            session['pending_2fa_user_id'] = user.id
+            logger.info(f"Password verified for {username}, awaiting 2FA")
+            return jsonify({'success': True, 'require_2fa': True})
+        else:
+            # No 2FA - log in directly
+            login_user(user, remember=False)
+            logger.info(f"User logged in: {username}")
+            return jsonify({'success': True, 'user': user.to_dict()})
+
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/auth/verify-2fa', methods=['POST'])
+def api_verify_2fa():
+    """Login API - step 2: 2FA verification"""
+    try:
+        data = request.json
+        code = data.get('code')
+        use_backup = data.get('use_backup_code', False)
+
+        if not code:
+            return jsonify({'success': False, 'error': '2FA code required'}), 400
+
+        user_id = session.get('pending_2fa_user_id')
+
+        if not user_id:
+            return jsonify({'success': False, 'error': 'No pending 2FA verification'}), 400
+
+        user = web_auth.get_user_by_id(user_id)
+
+        if not user:
+            session.pop('pending_2fa_user_id', None)
+            return jsonify({'success': False, 'error': 'Invalid session'}), 400
+
+        # Verify 2FA code
+        if web_auth.verify_2fa(
+            user,
+            code,
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get('User-Agent'),
+            is_backup_code=use_backup
+        ):
+            login_user(user, remember=False)
+            session.pop('pending_2fa_user_id', None)
+            logger.info(f"User logged in with 2FA: {user.username}")
+            return jsonify({'success': True, 'user': user.to_dict()})
+        else:
+            return jsonify({'success': False, 'error': 'Invalid 2FA code'}), 401
+
+    except Exception as e:
+        logger.error(f"2FA verification error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/auth/logout', methods=['POST'])
+@login_required
+def api_logout():
+    """Logout API"""
+    try:
+        username = current_user.username
+        web_auth.audit_log(current_user.id, 'logout', request.remote_addr, username)
+        logout_user()
+        logger.info(f"User logged out: {username}")
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Logout error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/auth/current-user', methods=['GET'])
+@login_required
+def api_current_user():
+    """Get current logged-in user info"""
+    return jsonify({'success': True, 'user': current_user.to_dict()})
+
+
+@app.route('/api/auth/setup-2fa', methods=['POST'])
+@login_required
+def api_setup_2fa():
+    """Setup 2FA for current user"""
+    try:
+        result = web_auth.setup_2fa(current_user.id, app_name="NetMonitor SOC")
+
+        if result:
+            logger.info(f"2FA setup initiated for user: {current_user.username}")
+            return jsonify({'success': True, **result})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to setup 2FA'}), 500
+
+    except Exception as e:
+        logger.error(f"2FA setup error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/auth/disable-2fa', methods=['POST'])
+@login_required
+def api_disable_2fa():
+    """Disable 2FA for current user"""
+    try:
+        if web_auth.disable_2fa(current_user.id):
+            logger.info(f"2FA disabled for user: {current_user.username}")
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to disable 2FA'}), 500
+
+    except Exception as e:
+        logger.error(f"2FA disable error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/auth/change-password', methods=['POST'])
+@login_required
+def api_change_password():
+    """Change password for current user"""
+    try:
+        data = request.json
+        old_password = data.get('old_password')
+        new_password = data.get('new_password')
+
+        if not old_password or not new_password:
+            return jsonify({'success': False, 'error': 'Old and new password required'}), 400
+
+        if web_auth.change_password(current_user.id, old_password, new_password):
+            logger.info(f"Password changed for user: {current_user.username}")
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to change password (incorrect old password or weak new password)'}), 400
+
+    except Exception as e:
+        logger.error(f"Password change error: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+# ==================== User Management Routes (Admin only) ====================
+
+@app.route('/api/users', methods=['GET'])
+@require_role('admin')
+def api_list_users():
+    """List all users (admin only)"""
+    try:
+        include_inactive = request.args.get('include_inactive', 'false').lower() == 'true'
+        users = web_auth.list_users(include_inactive=include_inactive)
+        return jsonify({'success': True, 'users': users})
+    except Exception as e:
+        logger.error(f"Error listing users: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/users', methods=['POST'])
+@require_role('admin')
+def api_create_user():
+    """Create new user (admin only)"""
+    try:
+        data = request.json
+        username = data.get('username')
+        password = data.get('password')
+        email = data.get('email')
+        role = data.get('role', 'operator')
+        enable_2fa = data.get('enable_2fa', False)
+
+        if not username or not password:
+            return jsonify({'success': False, 'error': 'Username and password required'}), 400
+
+        user = web_auth.create_user(
+            username=username,
+            password=password,
+            email=email,
+            role=role,
+            created_by=current_user.username,
+            enable_2fa=enable_2fa
+        )
+
+        if user:
+            logger.info(f"User created: {username} by {current_user.username}")
+            return jsonify({'success': True, 'user': user.to_dict()})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to create user (username exists or invalid data)'}), 400
+
+    except Exception as e:
+        logger.error(f"Error creating user: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/users/<int:user_id>', methods=['DELETE'])
+@require_role('admin')
+def api_deactivate_user(user_id):
+    """Deactivate user (admin only)"""
+    try:
+        # Prevent self-deactivation
+        if user_id == current_user.id:
+            return jsonify({'success': False, 'error': 'Cannot deactivate your own account'}), 400
+
+        if web_auth.deactivate_user(user_id, deactivated_by=current_user.username):
+            logger.info(f"User deactivated: ID {user_id} by {current_user.username}")
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to deactivate user'}), 500
+
+    except Exception as e:
+        logger.error(f"Error deactivating user: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
 # ==================== REST API Endpoints ====================
 
 @app.route('/')
+@login_required
 def index():
     """Main dashboard page"""
-    return render_template('dashboard.html')
+    return render_template('dashboard.html', user=current_user)
 
 @app.route('/api/status')
 def api_status():
-    """API status endpoint"""
+    """API status endpoint (public)"""
     return jsonify({
         'status': 'online',
         'timestamp': datetime.now().isoformat(),
-        'version': '1.0.0'
+        'version': '2.0.0'
     })
 
 @app.route('/api/dashboard')
+@login_required
 def api_dashboard():
     """Get all dashboard data"""
     try:
@@ -192,6 +483,7 @@ def api_dashboard():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/alerts')
+@login_required
 def api_alerts():
     """Get recent alerts"""
     try:
@@ -210,6 +502,7 @@ def api_alerts():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/alerts/stats')
+@login_required
 def api_alert_stats():
     """Get alert statistics"""
     try:
@@ -225,6 +518,7 @@ def api_alert_stats():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/alerts/<int:alert_id>/acknowledge', methods=['POST'])
+@require_role('admin', 'operator')
 def api_acknowledge_alert(alert_id):
     """Acknowledge an alert"""
     try:
@@ -243,6 +537,7 @@ def api_acknowledge_alert(alert_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/traffic/history')
+@login_required
 def api_traffic_history():
     """Get traffic history"""
     try:
@@ -258,6 +553,7 @@ def api_traffic_history():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/top-talkers')
+@login_required
 def api_top_talkers():
     """Get top talkers"""
     try:
@@ -322,6 +618,7 @@ def api_threat_details(threat_type):
 # ==================== Sensor API Endpoints ====================
 
 @app.route('/api/sensors', methods=['GET'])
+@login_required
 def api_get_sensors():
     """Get all registered sensors"""
     try:
@@ -376,6 +673,7 @@ def api_register_sensor():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/sensors/<sensor_id>', methods=['DELETE'])
+@require_role('admin', 'operator')
 def api_delete_sensor(sensor_id):
     """Delete a sensor and all its data"""
     try:
@@ -612,6 +910,7 @@ def api_get_command_history(sensor_id):
 # ==================== Whitelist Management Endpoints ====================
 
 @app.route('/api/whitelist', methods=['GET'])
+@login_required
 def api_get_whitelist():
     """Get whitelist entries"""
     try:
@@ -624,6 +923,7 @@ def api_get_whitelist():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/whitelist', methods=['POST'])
+@require_role('admin', 'operator')
 def api_add_whitelist():
     """Add whitelist entry"""
     try:
@@ -659,6 +959,7 @@ def api_add_whitelist():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/whitelist/<int:entry_id>', methods=['DELETE'])
+@require_role('admin', 'operator')
 def api_delete_whitelist(entry_id):
     """Delete whitelist entry"""
     try:
@@ -672,6 +973,7 @@ def api_delete_whitelist(entry_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/whitelist/check/<ip_address>', methods=['GET'])
+@login_required
 def api_check_whitelist(ip_address):
     """Check if IP is whitelisted"""
     try:
@@ -690,6 +992,7 @@ def api_check_whitelist(ip_address):
 # ==================== Configuration Management Endpoints ====================
 
 @app.route('/api/config', methods=['GET'])
+@login_required
 def api_get_config():
     """Get configuration for a sensor (merged defaults + global + sensor-specific)"""
     try:
@@ -725,6 +1028,7 @@ def api_get_config():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/config/parameters', methods=['GET'])
+@login_required
 def api_get_config_parameters():
     """Get all configuration parameters with metadata"""
     try:
@@ -736,6 +1040,7 @@ def api_get_config_parameters():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/config/parameter', methods=['PUT'])
+@require_role('admin', 'operator')
 def api_set_config_parameter():
     """Set a configuration parameter (global or per-sensor)"""
     try:
@@ -782,6 +1087,7 @@ def api_set_config_parameter():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/config/parameter', methods=['DELETE'])
+@require_role('admin', 'operator')
 def api_delete_config_parameter():
     """Delete a configuration parameter"""
     try:
@@ -803,6 +1109,7 @@ def api_delete_config_parameter():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/config/defaults', methods=['GET'])
+@login_required
 def api_get_config_defaults():
     """Get best practice default configuration"""
     try:
@@ -819,6 +1126,7 @@ def api_get_config_defaults():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/config/reset', methods=['POST'])
+@require_role('admin')
 def api_reset_config():
     """Reset configuration to best practice defaults"""
     try:

@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetMonitor SOC - Login</title>
+
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .login-container {
+            max-width: 450px;
+            width: 100%;
+            padding: 2rem;
+        }
+
+        .login-card {
+            background: rgba(30, 30, 46, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(10px);
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .login-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .login-header p {
+            color: #adb5bd;
+            font-size: 0.95rem;
+        }
+
+        .form-floating {
+            margin-bottom: 1rem;
+        }
+
+        .form-control {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        .form-control:focus {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: #0d6efd;
+            color: #fff;
+            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        }
+
+        .form-floating label {
+            color: #adb5bd;
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 0.75rem;
+            font-weight: 600;
+            font-size: 1rem;
+            background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
+            border: none;
+            border-radius: 0.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(13, 110, 253, 0.4);
+        }
+
+        .btn-login:active {
+            transform: translateY(0);
+        }
+
+        .btn-login:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .alert {
+            border-radius: 0.5rem;
+            border: none;
+        }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            text-align: center;
+            margin: 1.5rem 0;
+            color: #6c757d;
+        }
+
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .divider span {
+            padding: 0 1rem;
+            font-size: 0.85rem;
+        }
+
+        .security-badge {
+            text-align: center;
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            color: #6c757d;
+            font-size: 0.85rem;
+        }
+
+        .security-badge i {
+            color: #198754;
+            margin-right: 0.25rem;
+        }
+
+        .logo-container {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .logo-icon {
+            font-size: 4rem;
+            background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        #two-factor-section {
+            display: none;
+        }
+
+        .code-input {
+            font-size: 1.5rem;
+            text-align: center;
+            letter-spacing: 0.5rem;
+            font-weight: 600;
+        }
+
+        .backup-code-link {
+            text-align: center;
+            margin-top: 1rem;
+        }
+
+        .backup-code-link a {
+            color: #0dcaf0;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+
+        .backup-code-link a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card p-4">
+            <!-- Logo -->
+            <div class="logo-container">
+                <i class="bi bi-shield-check logo-icon"></i>
+            </div>
+
+            <!-- Header -->
+            <div class="login-header">
+                <h1>NetMonitor SOC</h1>
+                <p>Security Operations Center</p>
+            </div>
+
+            <!-- Alert Messages -->
+            <div id="alert-container"></div>
+
+            <!-- Login Form -->
+            <form id="login-form">
+                <div class="form-floating">
+                    <input type="text" class="form-control" id="username" placeholder="Username" required autofocus>
+                    <label for="username">
+                        <i class="bi bi-person"></i> Username
+                    </label>
+                </div>
+
+                <div class="form-floating">
+                    <input type="password" class="form-control" id="password" placeholder="Password" required>
+                    <label for="password">
+                        <i class="bi bi-lock"></i> Password
+                    </label>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-login" id="login-btn">
+                    <i class="bi bi-box-arrow-in-right"></i> Sign In
+                </button>
+            </form>
+
+            <!-- 2FA Section (hidden by default) -->
+            <div id="two-factor-section">
+                <div class="divider">
+                    <span>TWO-FACTOR AUTHENTICATION</span>
+                </div>
+
+                <form id="2fa-form">
+                    <div class="form-floating">
+                        <input type="text" class="form-control code-input" id="2fa-code" placeholder="000000"
+                               pattern="[0-9A-Za-z]{6,8}" maxlength="8" required autofocus>
+                        <label for="2fa-code">
+                            <i class="bi bi-shield-lock"></i> 6-Digit Code
+                        </label>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-login" id="2fa-btn">
+                        <i class="bi bi-check-circle"></i> Verify
+                    </button>
+
+                    <div class="backup-code-link">
+                        <a href="#" id="use-backup-code">Use backup code instead</a>
+                    </div>
+                </form>
+
+                <button class="btn btn-secondary w-100 mt-3" id="back-to-login">
+                    <i class="bi bi-arrow-left"></i> Back to Login
+                </button>
+            </div>
+
+            <!-- Security Badge -->
+            <div class="security-badge">
+                <i class="bi bi-shield-check"></i>
+                Secured with 256-bit encryption
+            </div>
+        </div>
+
+        <!-- Version Info -->
+        <div class="text-center mt-3">
+            <small class="text-muted">NetMonitor v2.0 | &copy; 2025</small>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Login Script -->
+    <script>
+        let useBackupCode = false;
+
+        // Show alert message
+        function showAlert(message, type = 'danger') {
+            const alertHtml = `
+                <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                    <i class="bi bi-${type === 'danger' ? 'exclamation-triangle' : 'check-circle'}"></i>
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+            document.getElementById('alert-container').innerHTML = alertHtml;
+        }
+
+        // Login form submission
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const loginBtn = document.getElementById('login-btn');
+
+            if (!username || !password) {
+                showAlert('Please enter both username and password');
+                return;
+            }
+
+            // Disable button and show loading
+            loginBtn.disabled = true;
+            loginBtn.innerHTML = '<i class="bi bi-hourglass-split spinner-border spinner-border-sm"></i> Signing in...';
+
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    if (result.require_2fa) {
+                        // Show 2FA form
+                        document.getElementById('login-form').style.display = 'none';
+                        document.getElementById('two-factor-section').style.display = 'block';
+                        document.getElementById('2fa-code').focus();
+                        showAlert('Password verified. Please enter your 2FA code.', 'info');
+                    } else {
+                        // Login successful
+                        showAlert('Login successful! Redirecting...', 'success');
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 1000);
+                    }
+                } else {
+                    showAlert(result.error || 'Invalid credentials');
+                }
+            } catch (error) {
+                showAlert('Connection error. Please try again.');
+                console.error('Login error:', error);
+            } finally {
+                loginBtn.disabled = false;
+                loginBtn.innerHTML = '<i class="bi bi-box-arrow-in-right"></i> Sign In';
+            }
+        });
+
+        // 2FA form submission
+        document.getElementById('2fa-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const code = document.getElementById('2fa-code').value.trim();
+            const btn = document.getElementById('2fa-btn');
+
+            if (!code) {
+                showAlert('Please enter your 2FA code');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="bi bi-hourglass-split spinner-border spinner-border-sm"></i> Verifying...';
+
+            try {
+                const response = await fetch('/api/auth/verify-2fa', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        code: code,
+                        use_backup_code: useBackupCode
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showAlert('2FA verified! Redirecting...', 'success');
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 1000);
+                } else {
+                    showAlert(result.error || 'Invalid 2FA code');
+                    document.getElementById('2fa-code').value = '';
+                    document.getElementById('2fa-code').focus();
+                }
+            } catch (error) {
+                showAlert('Connection error. Please try again.');
+                console.error('2FA error:', error);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-check-circle"></i> Verify';
+            }
+        });
+
+        // Back to login button
+        document.getElementById('back-to-login').addEventListener('click', () => {
+            document.getElementById('two-factor-section').style.display = 'none';
+            document.getElementById('login-form').style.display = 'block';
+            document.getElementById('password').value = '';
+            document.getElementById('2fa-code').value = '';
+            document.getElementById('username').focus();
+            useBackupCode = false;
+            document.getElementById('alert-container').innerHTML = '';
+        });
+
+        // Use backup code link
+        document.getElementById('use-backup-code').addEventListener('click', (e) => {
+            e.preventDefault();
+            useBackupCode = !useBackupCode;
+
+            if (useBackupCode) {
+                document.getElementById('2fa-code').placeholder = 'XXXXXXXX';
+                document.getElementById('2fa-code').setAttribute('maxlength', '10');
+                document.querySelector('label[for="2fa-code"]').innerHTML =
+                    '<i class="bi bi-key"></i> Backup Code';
+                e.target.textContent = 'Use authenticator code instead';
+            } else {
+                document.getElementById('2fa-code').placeholder = '000000';
+                document.getElementById('2fa-code').setAttribute('maxlength', '6');
+                document.querySelector('label[for="2fa-code"]').innerHTML =
+                    '<i class="bi bi-shield-lock"></i> 6-Digit Code';
+                e.target.textContent = 'Use backup code instead';
+            }
+
+            document.getElementById('2fa-code').value = '';
+            document.getElementById('2fa-code').focus();
+        });
+
+        // Auto-uppercase for backup codes
+        document.getElementById('2fa-code').addEventListener('input', (e) => {
+            if (useBackupCode) {
+                e.target.value = e.target.value.toUpperCase();
+            }
+        });
+    </script>
+</body>
+</html>

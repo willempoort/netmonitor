@@ -23,11 +23,53 @@ Last Updated: December 2024
 
 ## Getting Started
 
+### Logging In
+
+NetMonitor v2.0+ requires authentication to access the dashboard.
+
+**URL:** `http://your-soc-server:8181/`
+
+1. **Enter your credentials:**
+   - Username (provided by your administrator)
+   - Password (minimum 12 characters)
+
+2. **Two-Factor Authentication** (if enabled):
+   - After entering username/password, you'll be prompted for a 6-digit code
+   - Open your authenticator app (Google Authenticator, Microsoft Authenticator, Authy, etc.)
+   - Enter the 6-digit code shown for "NetMonitor SOC"
+   - Or use a backup code if you've lost access to your authenticator
+
+3. **Access granted:**
+   - You'll be redirected to the main dashboard
+   - Your session will remain active for 30 minutes of inactivity
+
+**First-Time Login:**
+If this is your first time logging in, consider:
+- Setting up Two-Factor Authentication for enhanced security (User menu → "Two-Factor Auth")
+- Changing your temporary password (User menu → "Profile Settings")
+
+### Account Types
+
+Your permissions depend on your role:
+
+| Role | What You Can Do |
+|------|-----------------|
+| **Viewer** | View dashboard, alerts, sensors, and metrics (read-only) |
+| **Operator** | Everything Viewer can do + manage sensors, acknowledge alerts, edit configurations |
+| **Admin** | Everything + user management, create/delete users, system configuration |
+
+### User Menu
+
+In the top-right corner, you'll find your username with a dropdown menu:
+
+- **Profile Settings** - View your account details and change password
+- **Two-Factor Auth** - Enable/disable 2FA for your account
+- **User Management** (admin only) - Create and manage user accounts
+- **Logout** - End your session
+
 ### Accessing the Dashboard
 
-**URL:** `http://your-soc-server:8080`
-
-The dashboard opens automatically to the main monitoring view with:
+After logging in, the dashboard opens automatically to the main monitoring view with:
 - Real-time alert feed
 - Traffic visualizations
 - System metrics
@@ -685,6 +727,36 @@ sudo ./setup_sensor.sh
 - ❌ Copy sensor.conf between different sensors (each needs unique ID)
 - ❌ Change multiple sensor settings simultaneously without testing
 - ❌ Forget to define internal networks (critical for accurate detection)
+
+### Account Security
+
+**Do:**
+- ✅ Enable Two-Factor Authentication (2FA) for your account
+- ✅ Use a strong, unique password (12+ characters)
+- ✅ Save your 2FA backup codes in a safe place
+- ✅ Log out when you're done (User menu → Logout)
+- ✅ Change your password if you suspect it's compromised
+- ✅ Keep your authenticator app updated
+- ✅ Report suspicious activity to your administrator
+
+**Don't:**
+- ❌ Share your password with anyone
+- ❌ Use the same password for multiple accounts
+- ❌ Leave your session logged in on shared computers
+- ❌ Disable 2FA without admin approval
+- ❌ Screenshot or write down your password
+- ❌ Use simple passwords like "Password123"
+- ❌ Lose your 2FA backup codes (you'll be locked out!)
+
+**If You Lose Access:**
+- Contact your administrator immediately
+- They can reset your 2FA (after verifying your identity)
+- You'll need to set up 2FA again with a new QR code
+
+**Session Security:**
+- Your session expires after 30 minutes of inactivity
+- Always log out on shared computers
+- If you see unusual activity in your account, report it immediately
 
 ---
 
