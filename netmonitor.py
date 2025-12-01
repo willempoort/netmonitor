@@ -119,6 +119,7 @@ class NetworkMonitor:
         # Initialiseer detector en alert manager
         # Load config from database if available (for SOC server self-monitoring)
         if self.db and self.sensor_id:
+            self.logger.info(f"SOC server self-monitoring enabled as sensor: {self.sensor_id}")
             try:
                 self._load_config_from_database()
             except Exception as e:
@@ -151,38 +152,72 @@ class NetworkMonitor:
 
         self.logger.info("Network Monitor geïnitialiseerd")
 
+    def _deep_merge_config(self, base: dict, override: dict) -> dict:
+        """Deep merge two config dicts (override takes precedence), in-place on base"""
+        for key, value in override.items():
+            if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+                # Recursive merge for nested dicts
+                self._deep_merge_config(base[key], value)
+            else:
+                # Direct override for non-dict values or new keys
+                base[key] = value
+        return base
+
+    def _count_config_differences(self, old_config: dict, new_config: dict, prefix='') -> int:
+        """Count number of changed parameters between two configs"""
+        changes = 0
+        for key, value in new_config.items():
+            full_key = f"{prefix}.{key}" if prefix else key
+            if isinstance(value, dict):
+                if key in old_config and isinstance(old_config[key], dict):
+                    changes += self._count_config_differences(old_config[key], value, full_key)
+                else:
+                    # Entire section is new
+                    changes += self._count_dict_params(value)
+            else:
+                if key not in old_config or old_config[key] != value:
+                    changes += 1
+        return changes
+
+    def _count_dict_params(self, d: dict) -> int:
+        """Count total number of leaf parameters in a dict"""
+        count = 0
+        for value in d.values():
+            if isinstance(value, dict):
+                count += self._count_dict_params(value)
+            else:
+                count += 1
+        return count
+
     def _load_config_from_database(self):
         """Load detection thresholds from database (for SOC server self-monitoring)"""
         if not self.db or not self.sensor_id:
             return
 
-        self.logger.info("Loading detection config from database...")
+        self.logger.debug("Loading detection config from database...")
 
         try:
             # Get config for this sensor (or global if sensor-specific doesn't exist)
             db_config = self.db.get_sensor_config(sensor_id=self.sensor_id)
 
             if db_config:
-                # Merge database config with config.yaml (database takes precedence)
-                if 'thresholds' in db_config:
-                    self.logger.info(f"Loaded {len(db_config['thresholds'])} threshold configs from database")
+                # Count changes before merge
+                changes = self._count_config_differences(self.config, db_config)
 
-                    # Deep merge: database config overrides config.yaml
-                    if 'thresholds' not in self.config:
-                        self.config['thresholds'] = {}
+                # Deep merge database config with config.yaml (database takes precedence)
+                self._deep_merge_config(self.config, db_config)
 
-                    for category, settings in db_config['thresholds'].items():
-                        if category not in self.config['thresholds']:
-                            self.config['thresholds'][category] = {}
+                if changes > 0:
+                    self.logger.info(f"✓ Config updated from database: {changes} parameter(s) changed")
 
-                        # Merge settings (database overrides)
-                        self.config['thresholds'][category].update(settings)
-
-                    self.logger.info("Detection config merged from database (database takes precedence)")
+                    # Log specific threshold changes if any
+                    if 'thresholds' in db_config:
+                        categories = ', '.join(db_config['thresholds'].keys())
+                        self.logger.info(f"  Updated categories: {categories}")
                 else:
-                    self.logger.info("No threshold config in database, using config.yaml defaults")
+                    self.logger.debug("Config synced from database (no changes)")
             else:
-                self.logger.info("No database config found, using config.yaml defaults")
+                self.logger.debug("No database config found, using config.yaml defaults")
 
         except Exception as e:
             self.logger.warning(f"Error loading config from database: {e}")
@@ -194,24 +229,24 @@ class NetworkMonitor:
             return
 
         try:
+            # Load and merge config from database
+            # This updates self.config in-place, which detector uses by reference
             self._load_config_from_database()
 
-            # Update detector's config reference (detector uses self.config internally)
-            # No need to recreate detector, just reload config
-            self.logger.debug("Config synced from database")
+            # Detector uses self.config directly, so changes are immediately active
+            # No need to recreate detector or manually update detector.config
 
         except Exception as e:
             self.logger.error(f"Error syncing config from database: {e}")
 
     def _config_sync_loop(self, interval):
         """Background thread that periodically syncs config from database"""
-        self.logger.info(f"Starting config sync loop (every {interval}s)")
+        self.logger.info(f"Config sync enabled (checking every {interval}s)")
 
         while self.running:
             try:
                 time.sleep(interval)
                 if self.running:  # Check again after sleep
-                    self.logger.debug("Syncing config from database...")
                     self._sync_config_from_database()
             except Exception as e:
                 self.logger.error(f"Error in config sync loop: {e}")
@@ -468,7 +503,6 @@ class NetworkMonitor:
                 name="ConfigSync"
             )
             self.config_sync_thread.start()
-            self.logger.info(f"Config sync enabled (interval: {config_sync_interval}s)")
 
         # Check of we root privileges hebben
         if conf.L3socket == conf.L3socket6:
