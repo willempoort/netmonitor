@@ -162,10 +162,16 @@ if [ -z "$SENSOR_ID" ]; then
 fi
 echo ""
 
-# Sensor Location
-echo "4. Sensor Location Description"
-echo "   Example: Building A - VLAN 10 - Production Network"
-prompt_with_default "   Location" "" SENSOR_LOCATION
+# Sensor Location (optional - can be set via SOC dashboard)
+echo "4. Sensor Location Description (Optional)"
+echo "   Leave empty to set later via SOC dashboard"
+echo "   Or specify: Building A - VLAN 10 - Production Network"
+read -p "   Location [press Enter to skip]: " SENSOR_LOCATION
+
+if [ -z "$SENSOR_LOCATION" ]; then
+    SENSOR_LOCATION="Unknown"
+    echo "   → Location not set (can be configured via dashboard)"
+fi
 echo ""
 
 # Authentication (optional)

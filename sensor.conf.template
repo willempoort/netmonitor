@@ -1,30 +1,24 @@
 # ============================================
-# NetMonitor Sensor Configuration Template
+# NetMonitor Sensor Configuration
 # ============================================
 #
-# This is a simplified configuration for remote sensors.
-# All detection settings are managed centrally on the SOC server.
+# MINIMAL LOCAL CONFIGURATION
+# Only connection settings are stored locally.
+# All other configuration is managed centrally via SOC Dashboard.
 #
-# Installation Directory: /opt/netmonitor
-#
-# Setup Instructions:
-# 1. Run as root: sudo ./setup_sensor.sh
-# 2. The script will:
-#    - Copy files to /opt/netmonitor
-#    - Create Python venv
-#    - Generate this config interactively
-#    - Install and start systemd service
-#
-# Manual Setup (not recommended):
-# 1. Copy this file to: /opt/netmonitor/sensor.conf
-# 2. Update the values below
-# 3. Run: sudo systemctl restart netmonitor-sensor
+# Installation: Run ./setup_sensor.sh (recommended)
+# Manual: Copy to /opt/netmonitor/sensor.conf and edit
 #
 # ============================================
 
-# Network interface to monitor
-# Examples: eth0, eth1, ens33, wlan0
-# Use 'all' to monitor all interfaces
+# ============================================
+# Required Connection Settings
+# ============================================
+
+# Network Interface (REQUIRED)
+# Which network interface to monitor for packets
+# Examples: eth0, eth1, ens33, wlan0, enp0s3
+# Comma-separated for multiple: eth0,eth1
 INTERFACE=eth0
 
 # SOC Server URL (REQUIRED)
@@ -32,44 +26,45 @@ INTERFACE=eth0
 # Format: http://hostname:port or https://hostname:port
 SOC_SERVER_URL=http://soc.example.com:8080
 
-# Unique Sensor ID (OPTIONAL)
-# If not specified, the system hostname will be used
-# Must be unique across all sensors in your network
-# Use descriptive names: location-vlan-number
-# Examples: office-vlan10-01, dmz-edge-02, datacenter-prod-01
-SENSOR_ID=
+# SSL Certificate Verification (OPTIONAL)
+# Set to false only for testing with self-signed certificates
+# Default: true
+SSL_VERIFY=true
 
-# Sensor Location Description (REQUIRED)
-# Human-readable description of where this sensor is deployed
-# This appears in the SOC dashboard sensor list
-SENSOR_LOCATION=Building A - VLAN 10 - Production Network
-
-# Authentication Secret Key (OPTIONAL but recommended)
-# Used for secure sensor-to-server communication
+# Authentication Secret Key (OPTIONAL)
+# For secure sensor-to-server communication
 # Generate with: openssl rand -hex 32
 # Leave empty if SOC server doesn't require authentication
 SENSOR_SECRET_KEY=
 
 # ============================================
-# Advanced Settings (optional)
+# All Other Settings From SOC Server
 # ============================================
-
-# Internal networks (comma-separated CIDR ranges)
-# Used to classify traffic as internal vs external
-# Default: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
-INTERNAL_NETWORKS=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
-
-# Heartbeat interval (seconds)
-# How often to send status updates to SOC server
-# Default: 30
-HEARTBEAT_INTERVAL=30
-
-# Config sync interval (seconds)
-# How often to fetch updated detection settings from SOC server
-# Default: 300 (5 minutes)
-CONFIG_SYNC_INTERVAL=300
-
-# Enable SSL verification (true/false)
-# Set to false only for testing with self-signed certificates
-# Default: true
-SSL_VERIFY=true
+#
+# The following are managed centrally via SOC Dashboard
+# and automatically synced to sensors:
+#
+# SENSOR IDENTITY (for dashboard display):
+#   - SENSOR_ID (auto-generated from hostname if not set)
+#   - SENSOR_LOCATION (set via dashboard)
+#
+# PERFORMANCE SETTINGS:
+#   - HEARTBEAT_INTERVAL (default: 30 seconds)
+#   - CONFIG_SYNC_INTERVAL (default: 300 seconds)
+#
+# NETWORK CONFIGURATION:
+#   - INTERNAL_NETWORKS (CIDR ranges)
+#   - Whitelist / Allowlist
+#
+# DETECTION SETTINGS:
+#   - All detection rules (13 rules)
+#   - All thresholds
+#   - Alert sensitivity
+#   - Batch intervals
+#
+# Edit these via: SOC Dashboard → Configuration Management
+#
+# Sensors sync automatically every 5 minutes (configurable).
+# Force immediate sync: systemctl restart netmonitor-sensor
+#
+# ============================================
