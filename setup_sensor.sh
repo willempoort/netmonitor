@@ -150,32 +150,8 @@ echo "   Example: http://soc.example.com:8080"
 prompt_with_default "   SOC Server URL" "" SOC_SERVER_URL
 echo ""
 
-# Sensor ID (optional field)
-echo "3. Sensor ID (Optional - uses hostname if not specified)"
-echo "   Leave empty to auto-use system hostname"
-echo "   Or specify: location-vlan-number (e.g., office-vlan10-01)"
-read -p "   Sensor ID [press Enter to use hostname]: " SENSOR_ID
-
-if [ -z "$SENSOR_ID" ]; then
-    SENSOR_ID=$(hostname)
-    echo "   → Using hostname as sensor ID: $SENSOR_ID"
-fi
-echo ""
-
-# Sensor Location (optional - can be set via SOC dashboard)
-echo "4. Sensor Location Description (Optional)"
-echo "   Leave empty to set later via SOC dashboard"
-echo "   Or specify: Building A - VLAN 10 - Production Network"
-read -p "   Location [press Enter to skip]: " SENSOR_LOCATION
-
-if [ -z "$SENSOR_LOCATION" ]; then
-    SENSOR_LOCATION="Unknown"
-    echo "   → Location not set (can be configured via dashboard)"
-fi
-echo ""
-
 # Authentication (optional)
-echo "5. Authentication Secret Key (optional)"
+echo "3. Authentication Secret Key (optional)"
 echo "   Leave empty if not using authentication"
 echo "   Generate random key? [y/N]"
 read -p "   " -n 1 -r
@@ -188,16 +164,9 @@ else
 fi
 echo ""
 
-# Advanced settings
-echo "6. Advanced Settings (press Enter for defaults)"
-prompt_with_default "   Heartbeat interval (seconds)" "30" HEARTBEAT_INTERVAL
-prompt_with_default "   Config sync interval (seconds)" "300" CONFIG_SYNC_INTERVAL
+# SSL Verification
+echo "4. SSL Certificate Verification"
 prompt_with_default "   SSL verification (true/false)" "true" SSL_VERIFY
-echo ""
-
-# Internal networks
-echo "7. Internal Networks (comma-separated CIDR)"
-prompt_with_default "   Internal networks" "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16" INTERNAL_NETWORKS
 echo ""
 
 # Generate configuration file
@@ -209,37 +178,64 @@ cat > "$CONF_FILE" <<EOF
 # Generated: $(date)
 # Installation: $INSTALL_DIR
 # ============================================
+#
+# MINIMAL LOCAL CONFIGURATION
+# Only connection settings are stored locally.
+# All other configuration is managed centrally via SOC Dashboard.
+#
+# ============================================
 
-# Network interface to monitor
+# ============================================
+# Required Connection Settings
+# ============================================
+
+# Network Interface (REQUIRED)
+# Which network interface to monitor for packets
 INTERFACE=$INTERFACE
 
 # SOC Server URL (REQUIRED)
+# The URL of your central SOC server dashboard
 SOC_SERVER_URL=$SOC_SERVER_URL
 
-# Unique Sensor ID (Auto-generated from hostname if empty)
-SENSOR_ID=$SENSOR_ID
-
-# Sensor Location Description (REQUIRED)
-SENSOR_LOCATION=$SENSOR_LOCATION
+# SSL Certificate Verification (OPTIONAL)
+# Set to false only for testing with self-signed certificates
+SSL_VERIFY=$SSL_VERIFY
 
 # Authentication Secret Key (OPTIONAL)
+# For secure sensor-to-server communication
 SENSOR_SECRET_KEY=$SENSOR_SECRET_KEY
 
 # ============================================
-# Advanced Settings
+# All Other Settings From SOC Server
 # ============================================
-
-# Internal networks (comma-separated CIDR ranges)
-INTERNAL_NETWORKS=$INTERNAL_NETWORKS
-
-# Heartbeat interval (seconds)
-HEARTBEAT_INTERVAL=$HEARTBEAT_INTERVAL
-
-# Config sync interval (seconds)
-CONFIG_SYNC_INTERVAL=$CONFIG_SYNC_INTERVAL
-
-# Enable SSL verification (true/false)
-SSL_VERIFY=$SSL_VERIFY
+#
+# The following are managed centrally via SOC Dashboard
+# and automatically synced to sensors:
+#
+# SENSOR IDENTITY (for dashboard display):
+#   - SENSOR_ID (auto-generated from hostname if not set)
+#   - SENSOR_LOCATION (set via dashboard)
+#
+# PERFORMANCE SETTINGS:
+#   - HEARTBEAT_INTERVAL (default: 30 seconds)
+#   - CONFIG_SYNC_INTERVAL (default: 300 seconds)
+#
+# NETWORK CONFIGURATION:
+#   - INTERNAL_NETWORKS (CIDR ranges)
+#   - Whitelist / Allowlist
+#
+# DETECTION SETTINGS:
+#   - All detection rules (13 rules)
+#   - All thresholds
+#   - Alert sensitivity
+#   - Batch intervals
+#
+# Edit these via: SOC Dashboard → Configuration Management
+#
+# Sensors sync automatically every 5 minutes (configurable).
+# Force immediate sync: systemctl restart netmonitor-sensor
+#
+# ============================================
 EOF
 
 chmod 600 "$CONF_FILE"  # Restrict access (contains potential secrets)
@@ -340,9 +336,14 @@ echo ""
 echo "Sensor Configuration:"
 echo "  Interface:        $INTERFACE"
 echo "  SOC Server:       $SOC_SERVER_URL"
-echo "  Sensor ID:        $SENSOR_ID"
-echo "  Location:         $SENSOR_LOCATION"
+echo "  SSL Verify:       $SSL_VERIFY"
 echo "  Auth Key:         $([ -n "$SENSOR_SECRET_KEY" ] && echo "Configured" || echo "Not configured")"
+echo ""
+echo "Additional configuration (managed via SOC Dashboard):"
+echo "  • Sensor ID & Location"
+echo "  • Internal Networks"
+echo "  • Detection Rules & Thresholds"
+echo "  • Performance Settings"
 echo "============================================"
 echo ""
 echo "Useful Commands:"
