@@ -469,7 +469,31 @@ function saveParameter(path) {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(payload)
     })
-    .then(response => response.json())
+    .then(response => {
+        // Check if response is OK before trying to parse JSON
+        if (!response.ok) {
+            // If unauthorized, redirect to login
+            if (response.status === 401) {
+                showToast('Error', 'Session expired. Please login again.', 'warning');
+                setTimeout(() => window.location.href = '/login', 2000);
+                throw new Error('Unauthorized');
+            }
+            // If forbidden, show permission error
+            if (response.status === 403) {
+                throw new Error('Insufficient permissions to modify configuration');
+            }
+            // Try to get error message from response
+            return response.text().then(text => {
+                try {
+                    const data = JSON.parse(text);
+                    throw new Error(data.error || `Server error: ${response.status}`);
+                } catch (e) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+            });
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.success) {
             showToast('Success', `Parameter ${path} updated successfully`, 'success');
