@@ -102,15 +102,17 @@ class ThreatDetector:
         """Check if IP is whitelisted (config OR database)"""
         # First check config whitelist (fast, in-memory)
         if self._is_in_list(ip_str, self.config_whitelist):
+            self.logger.debug(f"IP {ip_str} whitelisted via config")
             return True
 
         # Then check database whitelist (if available)
         if self.db_manager:
             try:
                 if self.db_manager.check_ip_whitelisted(ip_str, sensor_id=self.sensor_id):
+                    self.logger.debug(f"IP {ip_str} whitelisted via database (sensor_id={self.sensor_id})")
                     return True
             except Exception as e:
-                self.logger.warning(f"Error checking database whitelist: {e}")
+                self.logger.warning(f"Error checking database whitelist for {ip_str}: {e}")
 
         return False
 

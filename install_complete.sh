@@ -440,7 +440,7 @@ print_summary() {
 
     if [[ $INSTALL_CORE =~ ^[Yy]$ ]]; then
         echo -e "${BLUE}NetMonitor SOC Dashboard:${NC}"
-        echo "  Local:  http://localhost:8181"
+        echo "  Local:  http://localhost:8080"
         echo "  Note:   Login required (use admin credentials created during setup)"
         if [ ! -z "$DOMAIN_NAME" ]; then
             echo "  Public: https://$DOMAIN_NAME (after SSL setup)"
@@ -493,7 +493,7 @@ print_summary() {
     echo -e "${YELLOW}Volgende Stappen:${NC}"
     echo
     echo "1. Login naar Dashboard:"
-    echo "   URL: http://localhost:8181"
+    echo "   URL: http://localhost:8080"
     echo "   User de admin credentials die je zojuist hebt aangemaakt"
     echo
     echo "2. Enable 2FA (aanbevolen):"
