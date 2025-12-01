@@ -2,8 +2,8 @@
 
 **SOC Operator Guide for Daily Operations**
 
-Version: 2.0
-Last Updated: November 2024
+Version: 2.1
+Last Updated: December 2024
 
 ---
 
@@ -15,8 +15,9 @@ Last Updated: November 2024
 4. [Managing Sensors](#managing-sensors)
 5. [Configuration](#configuration)
 6. [Whitelist Management](#whitelist-management)
-7. [Common Tasks](#common-tasks)
-8. [Best Practices](#best-practices)
+7. [AI Integration (MCP Server)](#ai-integration-mcp-server)
+8. [Common Tasks](#common-tasks)
+9. [Best Practices](#best-practices)
 
 ---
 
@@ -240,6 +241,68 @@ Permanently removes sensor
 - Use when decommissioning
 ```
 
+### Managing Sensor Settings
+
+**Advanced Sensor Configuration:**
+
+Each sensor can be configured with detailed settings via the dashboard. Click the Settings icon (sliders 🎚️) next to any sensor to access the sensor settings modal.
+
+**Available Settings:**
+
+1. **Sensor Location**
+   - Physical location or network segment description
+   - Examples: "Office VLAN 10", "DMZ Gateway", "Branch Office Amsterdam"
+   - Helps identify which part of your network the sensor monitors
+   - Shows in dashboard for quick reference
+
+2. **Internal Networks**
+   - Define your internal network CIDR ranges
+   - One range per line
+   - Examples:
+     ```
+     10.0.0.0/8
+     172.16.0.0/12
+     192.168.0.0/16
+     ```
+   - Used for detection logic (internal vs external traffic)
+   - Helps identify lateral movement and internal scanning
+
+3. **Heartbeat Interval**
+   - How often the sensor sends heartbeat signals to SOC
+   - Range: 10-300 seconds
+   - Default: 30 seconds
+   - Lower = faster offline detection, higher network overhead
+   - Higher = less network traffic, slower offline detection
+
+4. **Config Sync Interval**
+   - How often sensor checks for configuration updates
+   - Range: 60-3600 seconds (1 minute to 1 hour)
+   - Default: 300 seconds (5 minutes)
+   - Lower = faster config updates, more database queries
+   - Higher = less overhead, slower config propagation
+
+**How to Configure:**
+
+1. Navigate to **Sensors Tab**
+2. Click the **Settings** icon (🎚️) next to the sensor
+3. Sensor settings modal opens
+4. Edit the desired settings:
+   - Update location description
+   - Add/modify internal network ranges
+   - Adjust heartbeat interval
+   - Adjust config sync interval
+5. Click **"Save Settings"**
+6. Settings are saved to central database
+7. Sensor automatically picks up changes within the sync interval
+8. For immediate application: use the Update or Reboot button
+
+**Important Notes:**
+- All settings are stored centrally in the SOC database
+- Sensors automatically synchronize settings at their configured interval
+- No need to manually edit sensor.conf files
+- Changes apply to the specific sensor only (not global)
+- Always test settings changes on one sensor before rolling out to all
+
 ### Monitoring Sensor Health
 
 **Green Status**: Sensor is healthy
@@ -261,6 +324,44 @@ Permanently removes sensor
 ---
 
 ## Configuration
+
+### Centralized Configuration Management
+
+**Modern Approach:**
+
+NetMonitor SOC uses a centralized configuration system. All sensor settings (except basic connection parameters) are managed through the dashboard and synchronized automatically.
+
+**Sensor-Side Configuration (sensor.conf):**
+
+Sensors only need minimal local configuration:
+```ini
+INTERFACE=eth0
+SOC_SERVER_URL=http://soc.example.com:8080
+SSL_VERIFY=true
+SENSOR_SECRET_KEY=optional-secret-key
+```
+
+**Centrally Managed Settings:**
+- Sensor location and description
+- Internal network ranges (CIDR)
+- Detection rule thresholds
+- Heartbeat and sync intervals
+- Alert severity levels
+- Custom detection parameters
+
+**How It Works:**
+1. Configure settings via dashboard (Sensors → Settings or Configuration tab)
+2. Settings stored in SOC database
+3. Sensors poll for updates at configured sync interval (default: 5 minutes)
+4. Sensors automatically apply new settings
+5. No manual file editing required on sensor systems
+
+**Benefits:**
+- Consistent configuration across all sensors
+- Easy bulk updates
+- Version control and audit trail
+- No need to SSH into sensor systems
+- Per-sensor customization when needed
 
 ### Detection Rules
 
@@ -380,6 +481,59 @@ Sensor: office-vlan10-01
 
 ---
 
+## AI Integration (MCP Server)
+
+### Overview
+
+NetMonitor SOC includes an MCP (Model Context Protocol) server that enables AI assistants like Claude to monitor and interact with your SOC platform through a modern HTTP API.
+
+**What is MCP?**
+
+MCP is a standardized protocol that allows AI assistants to access external systems securely. The NetMonitor MCP server exposes your SOC data and operations to AI tools while maintaining security and access control.
+
+**What Can AI Do?**
+
+- **Threat Analysis**: "Claude, analyze the last 24 hours of critical alerts and identify patterns"
+- **Incident Response**: "What are the top 3 priority incidents I should handle first?"
+- **Security Queries**: "Show me all port scan alerts from external sources this week"
+- **Operational Insights**: "Which sensors have performance issues?"
+- **Custom Reports**: "Generate a summary of all brute force attempts by source country"
+
+**For SOC Operators:**
+
+You typically don't need to interact with the MCP server directly - it's designed for administrators who want to integrate AI capabilities. However, if you're interested in using an AI assistant to help monitor your SOC:
+
+1. Ask your administrator to create a **read_only** API token for you
+2. Connect Claude or another AI assistant using the token
+3. Ask questions in natural language about your security posture
+4. Get AI-powered analysis and recommendations
+
+**Example Workflow:**
+
+```
+You: "Claude, show me the sensors that are offline"
+Claude: *queries MCP server*
+        "Currently 2 sensors are offline:
+        - office-vlan10-01 (last seen 15 minutes ago)
+        - branch-dmz-03 (last seen 2 hours ago)"
+
+You: "Analyze the recent DDoS alerts"
+Claude: *retrieves and analyzes alerts*
+        "I found 5 DDoS alerts in the past 6 hours, all targeting
+        10.0.0.50. Pattern suggests volumetric attack.
+        Recommendation: Enable rate limiting and contact ISP."
+```
+
+**Security Note:**
+
+All MCP access is authenticated and logged. Your administrator controls what permissions each token has (read-only vs full access). AI assistants can only see data you have access to.
+
+**Learn More:**
+
+If you want to set up AI integration, refer to the [ADMIN_MANUAL.md](ADMIN_MANUAL.md) MCP Server section or contact your administrator.
+
+---
+
 ## Common Tasks
 
 ### Investigating a Port Scan Alert
@@ -433,6 +587,8 @@ sudo ./setup_sensor.sh
 **4. Configure:**
 - Click Settings button
 - Set location
+- Configure internal networks
+- Adjust heartbeat/sync intervals if needed
 - Adjust sensor-specific config if needed
 
 ### Tuning Detection Rules
@@ -510,6 +666,25 @@ sudo ./setup_sensor.sh
 - ❌ Ignore offline sensors
 - ❌ Mix sensor versions significantly
 - ❌ Overload sensors with traffic
+
+### Sensor Configuration
+
+**Do:**
+- ✅ Use dashboard to adjust sensor settings (not manual sensor.conf editing)
+- ✅ Always configure location and internal networks via dashboard
+- ✅ Test configuration changes on one sensor first before rolling out to all
+- ✅ Monitor sensor status after config changes
+- ✅ Document why you made specific configuration choices
+- ✅ Use appropriate heartbeat intervals (default 30s is good for most)
+- ✅ Keep config sync interval at default (300s) unless you have specific needs
+
+**Don't:**
+- ❌ Manually edit sensor.conf files on sensor systems (except initial setup)
+- ❌ Set heartbeat interval too low (< 15s causes unnecessary overhead)
+- ❌ Set config sync interval too high (> 600s delays important updates)
+- ❌ Copy sensor.conf between different sensors (each needs unique ID)
+- ❌ Change multiple sensor settings simultaneously without testing
+- ❌ Forget to define internal networks (critical for accurate detection)
 
 ---
 
@@ -639,5 +814,5 @@ sudo ./setup_sensor.sh
 
 ---
 
-*Last updated: November 2024*
-*NetMonitor SOC v2.0 - Stay Vigilant, Stay Secure*
+*Last updated: December 2024*
+*NetMonitor SOC v2.1 - Stay Vigilant, Stay Secure*
