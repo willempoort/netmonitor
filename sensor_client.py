@@ -221,6 +221,13 @@ class SensorClient:
                     # Update detector's config
                     self.detector.config = merged_config
 
+                    # Update sensor location if changed
+                    new_location = merged_config.get('sensor', {}).get('location')
+                    if new_location and new_location != self.location:
+                        old_location = self.location
+                        self.location = new_location
+                        self.logger.info(f"✓ Location updated: {old_location} → {new_location}")
+
                     # Log what changed
                     changes = self._count_config_differences(self.config, server_config)
                     if changes > 0:

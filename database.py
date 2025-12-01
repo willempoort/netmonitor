@@ -1009,7 +1009,14 @@ class DatabaseManager:
                 SELECT
                     s.sensor_id,
                     s.hostname,
-                    s.location,
+                    COALESCE(
+                        (SELECT parameter_value::text
+                         FROM sensor_configs
+                         WHERE sensor_id = s.sensor_id
+                         AND parameter_path = 'sensor.location'
+                         LIMIT 1),
+                        s.location
+                    ) as location,
                     s.ip_address::text as ip_address,
                     s.version,
                     s.status,
@@ -1070,17 +1077,24 @@ class DatabaseManager:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             cursor.execute('''
                 SELECT
-                    sensor_id,
-                    hostname,
-                    location,
-                    ip_address::text as ip_address,
-                    version,
-                    status,
-                    registered_at,
-                    last_seen,
-                    config
-                FROM sensors
-                WHERE sensor_id = %s
+                    s.sensor_id,
+                    s.hostname,
+                    COALESCE(
+                        (SELECT parameter_value::text
+                         FROM sensor_configs
+                         WHERE sensor_id = s.sensor_id
+                         AND parameter_path = 'sensor.location'
+                         LIMIT 1),
+                        s.location
+                    ) as location,
+                    s.ip_address::text as ip_address,
+                    s.version,
+                    s.status,
+                    s.registered_at,
+                    s.last_seen,
+                    s.config
+                FROM sensors s
+                WHERE s.sensor_id = %s
             ''', (sensor_id,))
 
             result = cursor.fetchone()
