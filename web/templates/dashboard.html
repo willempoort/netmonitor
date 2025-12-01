@@ -937,16 +937,51 @@
     <!-- Bootstrap JS must load first (no defer) for dropdown and modal functionality -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
-    <!-- Initialize Bootstrap dropdowns after load -->
+    <!-- Initialize Bootstrap dropdowns after everything is loaded -->
     <script>
-        // Ensure Bootstrap is fully loaded and initialize dropdowns
-        document.addEventListener('DOMContentLoaded', function() {
-            // Initialize all dropdowns explicitly
-            var dropdownElementList = [].slice.call(document.querySelectorAll('[data-bs-toggle="dropdown"]'));
-            var dropdownList = dropdownElementList.map(function (dropdownToggleEl) {
-                return new bootstrap.Dropdown(dropdownToggleEl);
+        // Wait for both DOM and window load
+        function initializeDropdowns() {
+            console.log('[DROPDOWN] Initializing Bootstrap dropdowns...');
+
+            // Find all dropdown toggles
+            var dropdownElements = document.querySelectorAll('[data-bs-toggle="dropdown"]');
+            console.log('[DROPDOWN] Found dropdown elements:', dropdownElements.length);
+
+            if (dropdownElements.length === 0) {
+                console.warn('[DROPDOWN] No dropdown elements found!');
+                return;
+            }
+
+            // Initialize each dropdown
+            dropdownElements.forEach(function(element) {
+                try {
+                    // Check if already initialized
+                    var dropdown = bootstrap.Dropdown.getInstance(element);
+                    if (!dropdown) {
+                        dropdown = new bootstrap.Dropdown(element);
+                        console.log('[DROPDOWN] Initialized:', element.id || element.className);
+                    } else {
+                        console.log('[DROPDOWN] Already initialized:', element.id || element.className);
+                    }
+                } catch (e) {
+                    console.error('[DROPDOWN] Error initializing dropdown:', e);
+                }
             });
-            console.log('Bootstrap dropdowns initialized:', dropdownList.length);
+
+            console.log('[DROPDOWN] Initialization complete');
+        }
+
+        // Initialize when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeDropdowns);
+        } else {
+            // DOM already loaded
+            initializeDropdowns();
+        }
+
+        // Re-initialize after loading overlay is hidden (to ensure it's clickable)
+        window.addEventListener('load', function() {
+            setTimeout(initializeDropdowns, 500);
         });
     </script>
 
