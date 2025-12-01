@@ -1569,23 +1569,24 @@ class DatabaseManager:
             cursor = conn.cursor()
 
             # Check both global and sensor-specific whitelists
+            # Use >>= operator: "does CIDR contain or equal IP?"
             if sensor_id:
                 cursor.execute('''
                     SELECT COUNT(*) FROM ip_whitelists
-                    WHERE %s << ip_cidr
+                    WHERE ip_cidr >>= inet %s
                       AND (scope = 'global' OR (scope = 'sensor' AND sensor_id = %s))
                 ''', (ip_address, sensor_id))
             else:
                 cursor.execute('''
                     SELECT COUNT(*) FROM ip_whitelists
-                    WHERE %s << ip_cidr AND scope = 'global'
+                    WHERE ip_cidr >>= inet %s AND scope = 'global'
                 ''', (ip_address,))
 
             count = cursor.fetchone()[0]
             return count > 0
 
         except Exception as e:
-            self.logger.error(f"Error checking whitelist: {e}")
+            self.logger.error(f"Error checking whitelist for {ip_address}: {e}")
             return False
         finally:
             self._return_connection(conn)
