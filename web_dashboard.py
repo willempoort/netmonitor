@@ -370,6 +370,22 @@ def api_current_user():
     return jsonify({'success': True, 'user': current_user.to_dict()})
 
 
+@app.route('/api/auth/session-debug', methods=['GET'])
+def api_session_debug():
+    """Debug endpoint to check session status (NO AUTH REQUIRED)"""
+    from flask import session as flask_session
+
+    debug_info = {
+        'cookies_received': dict(request.cookies),
+        'session_keys': list(flask_session.keys()),
+        'is_authenticated': current_user.is_authenticated if hasattr(current_user, 'is_authenticated') else False,
+        'user_id': current_user.id if current_user.is_authenticated else None,
+        'username': current_user.username if current_user.is_authenticated else None,
+    }
+
+    return jsonify(debug_info)
+
+
 @app.route('/api/auth/setup-2fa', methods=['POST'])
 @login_required
 def api_setup_2fa():
