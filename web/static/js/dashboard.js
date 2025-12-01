@@ -1691,61 +1691,147 @@ function rebootSensor(sensorId, sensorName) {
     });
 }
 
-function editSensorSettings(sensorId, sensorName, currentLocation) {
-    // Simple settings editor using centralized config (no file editing!)
+async function editSensorSettings(sensorId, sensorName, currentLocation) {
+    // Advanced settings editor using modal and centralized config
     console.log(`[SENSORS] Opening settings for sensor: ${sensorId}`);
 
-    const location = prompt(
-        `Edit sensor location for "${sensorName}" (${sensorId})\n\n` +
-        `Current location: ${currentLocation || 'Not set'}\n\n` +
-        `Enter new location (or leave empty to keep current):`,
-        currentLocation || ''
-    );
+    // Populate modal with sensor info
+    document.getElementById('edit-sensor-id').value = sensorId;
+    document.getElementById('edit-sensor-name').textContent = sensorName;
+    document.getElementById('edit-sensor-id-display').textContent = sensorId;
+    document.getElementById('edit-sensor-location').value = currentLocation || '';
 
-    // User cancelled
-    if (location === null) {
-        return;
+    // Fetch current settings from config
+    try {
+        const response = await fetch(`/api/config?sensor_id=${encodeURIComponent(sensorId)}&include_defaults=true`);
+        const result = await response.json();
+
+        if (result.success) {
+            const config = result.config;
+
+            // Populate internal networks
+            const internalNetworks = config.internal_networks || [];
+            document.getElementById('edit-internal-networks').value = Array.isArray(internalNetworks)
+                ? internalNetworks.join('\n')
+                : '';
+
+            // Populate intervals
+            const heartbeatInterval = config.performance?.heartbeat_interval || 30;
+            const configSyncInterval = config.performance?.config_sync_interval || 300;
+
+            document.getElementById('edit-heartbeat-interval').value = heartbeatInterval;
+            document.getElementById('edit-config-sync-interval').value = configSyncInterval;
+        }
+    } catch (error) {
+        console.error('[SENSORS] Error loading current settings:', error);
     }
 
-    // Save to centralized config database
-    console.log(`[SENSORS] Saving location for sensor ${sensorId}: ${location}`);
-
-    fetch(`/api/config/parameter`, {
-        method: 'PUT',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            parameter_path: 'sensor.location',
-            value: location,
-            sensor_id: sensorId,
-            scope: 'sensor',
-            description: `Location for sensor ${sensorId}`,
-            updated_by: 'dashboard'
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            console.log(`[SENSORS] Location updated successfully`);
-            alert(
-                `Sensor location updated!\n\n` +
-                `New location: ${location}\n\n` +
-                `The sensor will pick up this change automatically within 5 minutes.\n` +
-                `To apply immediately, restart the sensor.`
-            );
-            // Reload sensors list to show new location
-            loadSensors();
-        } else {
-            console.error('[SENSORS] Update failed:', data.error);
-            alert(`Failed to update location: ${data.error || 'Unknown error'}`);
-        }
-    })
-    .catch(error => {
-        console.error('[SENSORS] Update error:', error);
-        alert(`Error updating location: ${error.message}`);
-    });
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('editSensorModal'));
+    modal.show();
 }
+
+// Save sensor settings handler
+document.addEventListener('DOMContentLoaded', function() {
+    const saveBtn = document.getElementById('save-sensor-settings-btn');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', async function() {
+            const sensorId = document.getElementById('edit-sensor-id').value;
+            const location = document.getElementById('edit-sensor-location').value;
+            const internalNetworks = document.getElementById('edit-internal-networks').value
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => line.length > 0);
+            const heartbeatInterval = parseInt(document.getElementById('edit-heartbeat-interval').value);
+            const configSyncInterval = parseInt(document.getElementById('edit-config-sync-interval').value);
+
+            console.log(`[SENSORS] Saving settings for sensor ${sensorId}`);
+
+            // Disable button during save
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Saving...';
+
+            try {
+                // Save each setting
+                const updates = [
+                    {
+                        parameter_path: 'sensor.location',
+                        value: location,
+                        description: `Location for sensor ${sensorId}`
+                    },
+                    {
+                        parameter_path: 'internal_networks',
+                        value: internalNetworks,
+                        description: `Internal networks for sensor ${sensorId}`
+                    },
+                    {
+                        parameter_path: 'performance.heartbeat_interval',
+                        value: heartbeatInterval,
+                        description: `Heartbeat interval for sensor ${sensorId}`
+                    },
+                    {
+                        parameter_path: 'performance.config_sync_interval',
+                        value: configSyncInterval,
+                        description: `Config sync interval for sensor ${sensorId}`
+                    }
+                ];
+
+                let successCount = 0;
+                for (const update of updates) {
+                    const response = await fetch('/api/config/parameter', {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            parameter_path: update.parameter_path,
+                            value: update.value,
+                            sensor_id: sensorId,
+                            scope: 'sensor',
+                            description: update.description,
+                            updated_by: 'dashboard'
+                        })
+                    });
+
+                    const result = await response.json();
+                    if (result.success) {
+                        successCount++;
+                    } else {
+                        console.error(`[SENSORS] Failed to update ${update.parameter_path}:`, result.error);
+                    }
+                }
+
+                // Show success message
+                if (successCount === updates.length) {
+                    console.log(`[SENSORS] All settings updated successfully`);
+                    alert(
+                        `Sensor settings updated successfully!\n\n` +
+                        `Updated settings:\n` +
+                        `• Location: ${location}\n` +
+                        `• Internal Networks: ${internalNetworks.length} network(s)\n` +
+                        `• Heartbeat Interval: ${heartbeatInterval}s\n` +
+                        `• Config Sync Interval: ${configSyncInterval}s\n\n` +
+                        `The sensor will pick up these changes automatically.\n` +
+                        `To apply immediately, restart the sensor.`
+                    );
+
+                    // Close modal and reload sensors
+                    bootstrap.Modal.getInstance(document.getElementById('editSensorModal')).hide();
+                    loadSensors();
+                } else {
+                    alert(`Warning: Only ${successCount} of ${updates.length} settings were updated successfully.`);
+                }
+            } catch (error) {
+                console.error('[SENSORS] Error saving settings:', error);
+                alert(`Error saving settings: ${error.message}`);
+            } finally {
+                // Re-enable button
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="bi bi-save"></i> Save Settings';
+            }
+        });
+    }
+});
 
 function deleteSensor(sensorId, sensorName) {
     // Confirmation dialog

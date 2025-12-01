@@ -661,6 +661,83 @@
         </div>
     </div>
 
+    <!-- Edit Sensor Settings Modal -->
+    <div class="modal fade" id="editSensorModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content bg-dark text-light">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">
+                        <i class="bi bi-sliders"></i>
+                        Edit Sensor Settings
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="edit-sensor-id">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="bi bi-hdd-network"></i> Sensor Information
+                        </label>
+                        <div class="alert alert-secondary">
+                            <strong id="edit-sensor-name"></strong><br>
+                            <small class="text-muted" id="edit-sensor-id-display"></small>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="edit-sensor-location" class="form-label">
+                            <i class="bi bi-geo-alt"></i> Sensor Location
+                        </label>
+                        <input type="text" class="form-control bg-secondary text-light border-secondary"
+                               id="edit-sensor-location" placeholder="e.g., Building A - VLAN 10">
+                        <small class="form-text text-muted">Physical location or network segment description</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="edit-internal-networks" class="form-label">
+                            <i class="bi bi-diagram-3"></i> Internal Networks (CIDR)
+                        </label>
+                        <textarea class="form-control bg-secondary text-light border-secondary"
+                                  id="edit-internal-networks" rows="3"
+                                  placeholder="10.0.0.0/8&#10;172.16.0.0/12&#10;192.168.0.0/16"></textarea>
+                        <small class="form-text text-muted">One network per line (e.g., 192.168.1.0/24)</small>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="edit-heartbeat-interval" class="form-label">
+                                <i class="bi bi-heartbeat"></i> Heartbeat Interval (seconds)
+                            </label>
+                            <input type="number" class="form-control bg-secondary text-light border-secondary"
+                                   id="edit-heartbeat-interval" min="10" max="300" value="30">
+                            <small class="form-text text-muted">How often sensor sends heartbeat (default: 30s)</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="edit-config-sync-interval" class="form-label">
+                                <i class="bi bi-arrow-repeat"></i> Config Sync Interval (seconds)
+                            </label>
+                            <input type="number" class="form-control bg-secondary text-light border-secondary"
+                                   id="edit-config-sync-interval" min="60" max="3600" value="300">
+                            <small class="form-text text-muted">How often sensor syncs config (default: 300s)</small>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>Note:</strong> Changes will be picked up automatically within the configured sync interval.
+                        To apply immediately, restart the sensor.
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="save-sensor-settings-btn">
+                        <i class="bi bi-save"></i> Save Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast Notifications Container -->
     <div class="toast-container" id="toast-container"></div>
 
