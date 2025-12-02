@@ -1,8 +1,11 @@
-# NOTE: This is a TEMPLATE file. Do not use directly!
-# Use install_services.sh which will generate the correct service file
-# with the actual paths for your installation.
+################################################################################
+# ⚠️  WARNING: THIS IS A TEMPLATE FILE - DO NOT COPY DIRECTLY TO /etc/systemd/system/
+################################################################################
 #
-# Example paths shown below - will be replaced by install script:
+# See netmonitor.service for installation instructions.
+# The install_complete.sh script will generate this file with correct paths.
+#
+################################################################################
 
 [Unit]
 Description=Network Monitor - Threat Feed Update
@@ -12,8 +15,8 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 User=root
-WorkingDirectory=/path/to/netmonitor
-ExecStart=/path/to/netmonitor/venv/bin/python3 /path/to/netmonitor/update_feeds.py
+WorkingDirectory=__INSTALL_DIR__
+ExecStart=__INSTALL_DIR__/venv/bin/python3 __INSTALL_DIR__/update_feeds.py
 StandardOutput=journal
 StandardError=journal
 

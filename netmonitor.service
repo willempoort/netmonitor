@@ -1,8 +1,23 @@
-# NOTE: This is a TEMPLATE file. Do not use directly!
-# Use install_services.sh which will generate the correct service file
-# with the actual paths for your installation.
+################################################################################
+# ⚠️  WARNING: THIS IS A TEMPLATE FILE - DO NOT COPY DIRECTLY TO /etc/systemd/system/
+################################################################################
 #
-# Example paths shown below - will be replaced by install script:
+# This template file contains placeholder paths (__INSTALL_DIR__) that will
+# NOT WORK if copied as-is. The installation script will generate the actual
+# service file with correct paths automatically.
+#
+# CORRECT INSTALLATION:
+#   Run: sudo bash install_complete.sh
+#   Or:  sudo bash install_services.sh
+#
+# These scripts will:
+#   1. Auto-detect installation directory (usually /opt/netmonitor)
+#   2. Generate service file with correct paths
+#   3. Install to /etc/systemd/system/
+#   4. Enable and start the service
+#
+# DO NOT manually copy this file!
+################################################################################
 
 [Unit]
 Description=Network Monitor - Verdacht Verkeer Detectie
@@ -11,8 +26,8 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/path/to/netmonitor
-ExecStart=/path/to/netmonitor/venv/bin/python3 /path/to/netmonitor/netmonitor.py
+WorkingDirectory=__INSTALL_DIR__
+ExecStart=__INSTALL_DIR__/venv/bin/python3 __INSTALL_DIR__/netmonitor.py
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal

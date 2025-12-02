@@ -413,14 +413,58 @@ setup_systemd_services() {
 
     cd $INSTALL_DIR
 
-    # Copy service files
-    cp netmonitor.service /etc/systemd/system/
-    cp netmonitor-feed-update.service /etc/systemd/system/
+    # Generate service files with correct paths (not templates!)
+    print_info "Generating service files with installation paths..."
+
+    # 1. Main NetMonitor service
+    cat > /etc/systemd/system/netmonitor.service <<EOF
+[Unit]
+Description=Network Monitor - Verdacht Verkeer Detectie
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=${INSTALL_DIR}
+ExecStart=${INSTALL_DIR}/venv/bin/python3 ${INSTALL_DIR}/netmonitor.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # 2. Feed Update service
+    cat > /etc/systemd/system/netmonitor-feed-update.service <<EOF
+[Unit]
+Description=Network Monitor - Threat Feed Update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=${INSTALL_DIR}
+ExecStart=${INSTALL_DIR}/venv/bin/python3 ${INSTALL_DIR}/update_feeds.py
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # 3. Copy timer (no paths to replace)
     cp netmonitor-feed-update.timer /etc/systemd/system/
 
     # Reload systemd
     systemctl daemon-reload
-    print_success "Service files gekopieerd"
+    print_success "Service files gegenereerd met correcte paths"
 
     # Enable and start services
     systemctl enable netmonitor >> $LOG_FILE 2>&1
