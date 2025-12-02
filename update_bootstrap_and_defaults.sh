@@ -50,8 +50,8 @@ curl -sL https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js -o we
 echo "  → Socket.IO..."
 curl -sL https://cdn.socket.io/4.6.0/socket.io.min.js -o web/static/js/socket.io.min.js
 
-# Fix Bootstrap Icons font paths
-sed -i 's|https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/fonts/|/static/fonts/|g' web/static/css/bootstrap-icons.css
+# Fix Bootstrap Icons font paths (use absolute path from web root)
+sed -i 's|https://cdn.jsdelivr.net/npm/bootstrap-icons@[^/]*/font/fonts/|/static/fonts/|g' web/static/css/bootstrap-icons.css
 
 echo -e "${GREEN}✓ Bootstrap assets gedownload${NC}"
 echo
