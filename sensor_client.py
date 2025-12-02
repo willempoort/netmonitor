@@ -62,7 +62,17 @@ def load_sensor_config(config_file):
 
 def _load_bash_config(config_file):
     """Load bash-style configuration (KEY=value format)"""
-    config = {}
+    # Start with minimal defaults for detector
+    config = {
+        'thresholds': {},  # Will be filled by SOC server
+        'whitelist': [],
+        'blacklist': [],
+        'internal_networks': [
+            '10.0.0.0/8',
+            '172.16.0.0/12',
+            '192.168.0.0/16'
+        ]
+    }
 
     with open(config_file, 'r') as f:
         for line in f:
@@ -864,7 +874,9 @@ class SensorClient:
                     self.alert_buffer.append(alert)
 
         except Exception as e:
+            import traceback
             self.logger.error(f"Error processing packet: {e}")
+            self.logger.debug(traceback.format_exc())
 
     def start(self):
         """Start sensor client"""
