@@ -28,6 +28,82 @@ from threat_feeds import ThreatFeedManager
 from behavior_detector import BehaviorDetector
 from abuseipdb_client import AbuseIPDBClient
 
+
+def load_sensor_config(config_file):
+    """
+    Load sensor configuration from either YAML or bash-style .conf file
+
+    Supports both formats:
+    - YAML: sensor.yaml (full config)
+    - Bash: sensor.conf (KEY=value format, minimal config)
+    """
+    if not os.path.exists(config_file):
+        return {}
+
+    # Try to detect format by reading first non-comment line
+    with open(config_file, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            # If line has KEY=value format, it's bash-style
+            if '=' in line and not line.startswith(' ') and ':' not in line:
+                return _load_bash_config(config_file)
+            # Otherwise assume YAML
+            break
+
+    # Try YAML first
+    try:
+        return load_config(config_file)
+    except:
+        # Fallback to bash-style
+        return _load_bash_config(config_file)
+
+
+def _load_bash_config(config_file):
+    """Load bash-style configuration (KEY=value format)"""
+    config = {}
+
+    with open(config_file, 'r') as f:
+        for line in f:
+            line = line.strip()
+            # Skip comments and empty lines
+            if not line or line.startswith('#'):
+                continue
+
+            # Parse KEY=value
+            if '=' in line:
+                key, value = line.split('=', 1)
+                key = key.strip()
+                value = value.strip()
+
+                # Remove quotes if present
+                if value.startswith('"') and value.endswith('"'):
+                    value = value[1:-1]
+                elif value.startswith("'") and value.endswith("'"):
+                    value = value[1:-1]
+
+                # Convert to nested dict structure expected by sensor_client
+                if key == 'INTERFACE':
+                    config['interface'] = value
+                elif key == 'SOC_SERVER_URL':
+                    config.setdefault('server', {})['url'] = value
+                elif key == 'SENSOR_ID':
+                    config.setdefault('sensor', {})['id'] = value
+                elif key == 'SENSOR_LOCATION':
+                    config.setdefault('sensor', {})['location'] = value
+                elif key == 'SENSOR_TOKEN':
+                    if value:  # Only set if not empty
+                        config.setdefault('server', {})['token'] = value
+                elif key == 'SSL_VERIFY':
+                    config.setdefault('server', {})['ssl_verify'] = value.lower() in ('true', 'yes', '1')
+                elif key == 'SENSOR_WHITELIST':
+                    # Comma-separated list of IPs/CIDRs to whitelist
+                    if value:
+                        config['whitelist'] = [ip.strip() for ip in value.split(',')]
+
+    return config
+
 # Try scapy import
 try:
     from scapy.all import sniff, conf
@@ -52,7 +128,7 @@ class SensorClient:
             location: Sensor location description
             batch_interval: Seconds between alert batch uploads
         """
-        self.config = load_config(config_file)
+        self.config = load_sensor_config(config_file)
 
         # Setup logging first (before anything that might need to log)
         self._setup_logging()

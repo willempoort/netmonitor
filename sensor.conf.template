@@ -31,11 +31,18 @@ SOC_SERVER_URL=http://soc.example.com:8080
 # Default: true
 SSL_VERIFY=true
 
-# Authentication Secret Key (OPTIONAL)
+# Authentication Token (OPTIONAL)
 # For secure sensor-to-server communication
-# Generate with: openssl rand -hex 32
+# Generate on SOC server with: python3 setup_sensor_auth.py
 # Leave empty if SOC server doesn't require authentication
-SENSOR_SECRET_KEY=
+SENSOR_TOKEN=
+
+# Local Whitelist (OPTIONAL)
+# Comma-separated list of IPs/CIDRs to never alert on
+# Recommended: Add your SOC server IP to prevent false positives
+# Example: SENSOR_WHITELIST=10.100.0.100/32,192.168.1.1/32
+# Note: Server whitelist is also synced automatically
+SENSOR_WHITELIST=
 
 # ============================================
 # All Other Settings From SOC Server
