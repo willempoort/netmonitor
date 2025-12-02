@@ -47,6 +47,10 @@ app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 60 minutes (increased from 30
 app.config['SESSION_REFRESH_EACH_REQUEST'] = True  # Refresh session on each request
 # app.config['SESSION_COOKIE_SECURE'] = True  # Enable in production with HTTPS
 
+# URL routing: Accept both /api/sensors and /api/sensors/
+# This makes the app work with or without nginx reverse proxy
+app.url_map.strict_slashes = False
+
 CORS(app)
 
 # Initialize Flask-Login
