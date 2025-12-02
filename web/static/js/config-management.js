@@ -94,7 +94,7 @@ function loadConfigDefaults() {
 }
 
 function loadSensorsForConfig() {
-    fetch('/api/sensors')
+    fetch('/api/sensors/')
         .then(response => response.json())
         .then(data => {
             if (data.success && data.data) {
@@ -687,7 +687,7 @@ if (document.readyState === 'loading') {
 
 // Populate sensor selects for config
 function populateConfigSensorSelects() {
-    fetch('/api/sensors')
+    fetch('/api/sensors/')
         .then(response => response.json())
         .then(data => {
             if (data.success && data.sensors) {

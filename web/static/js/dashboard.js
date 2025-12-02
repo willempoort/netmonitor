@@ -1390,7 +1390,7 @@ function playAlertSound(severity) {
 
 async function loadSensors() {
     try {
-        const response = await fetch('/api/sensors');
+        const response = await fetch('/api/sensors/');
         const result = await response.json();
 
         if (result.success) {
@@ -1891,7 +1891,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // ==================== Sensor Command Center ====================
 
 function populateCommandSensorSelects() {
-    fetch('/api/sensors')
+    fetch('/api/sensors/')
         .then(response => response.json())
         .then(data => {
             if (data.success && data.data) {

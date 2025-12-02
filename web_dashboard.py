@@ -680,7 +680,7 @@ def api_threat_details(threat_type):
 
 # ==================== Sensor API Endpoints ====================
 
-@app.route('/api/sensors', methods=['GET'])
+@app.route('/api/sensors/', methods=['GET'])
 @login_required
 def api_get_sensors():
     """Get all registered sensors"""
