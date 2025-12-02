@@ -10,6 +10,8 @@
     <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
     <!-- Bootstrap Icons (Local) -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.css') }}">
+    <!-- Bootstrap Icons Fallback (Unicode symbols) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons-fallback.css') }}">
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
 
@@ -91,46 +93,12 @@
                 </span>
                 <span class="text-muted me-3" id="current-time"></span>
 
-                <!-- User Menu -->
-                <div class="dropdown">
-                    <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" id="userMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="bi bi-person-circle"></i>
-                        <span id="user-display-name">{{ user.username if user else 'User' }}</span>
-                        <span class="badge bg-primary ms-1" id="user-role-badge">{{ user.role if user else 'operator' }}</span>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark" aria-labelledby="userMenuButton">
-                        <li>
-                            <h6 class="dropdown-header">
-                                <i class="bi bi-person"></i> {{ user.username if user else 'User' }}
-                            </h6>
-                        </li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li>
-                            <a class="dropdown-item" href="#" onclick="showUserProfile(); return false;">
-                                <i class="bi bi-person-gear"></i> Profile Settings
-                            </a>
-                        </li>
-                        <li>
-                            <a class="dropdown-item" href="#" onclick="show2FASetup(); return false;">
-                                <i class="bi bi-shield-lock"></i> Two-Factor Auth
-                            </a>
-                        </li>
-                        {% if user and user.role == 'admin' %}
-                        <li><hr class="dropdown-divider"></li>
-                        <li>
-                            <a class="dropdown-item" href="#" onclick="showUserManagement(); return false;">
-                                <i class="bi bi-people"></i> User Management
-                            </a>
-                        </li>
-                        {% endif %}
-                        <li><hr class="dropdown-divider"></li>
-                        <li>
-                            <a class="dropdown-item text-danger" href="#" onclick="logout(); return false;">
-                                <i class="bi bi-box-arrow-right"></i> Logout
-                            </a>
-                        </li>
-                    </ul>
-                </div>
+                <!-- User Menu Button -->
+                <button class="btn btn-outline-light btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#userMenuModal">
+                    <i class="bi bi-person-circle"></i>
+                    <span id="user-display-name">{{ user.username if user else 'User' }}</span>
+                    <span class="badge bg-primary ms-1" id="user-role-badge">{{ user.role if user else 'operator' }}</span>
+                </button>
             </div>
         </div>
     </nav>
@@ -947,6 +915,44 @@
                     <button type="button" class="btn btn-primary" onclick="createUser()">
                         <i class="bi bi-save"></i> Create User
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Menu Modal -->
+    <div class="modal fade" id="userMenuModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content bg-dark text-light">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">
+                        <i class="bi bi-person-circle"></i> {{ user.username if user else 'User' }}
+                        <span class="badge bg-primary ms-2">{{ user.role if user else 'operator' }}</span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-light text-start" onclick="showUserProfile(); bootstrap.Modal.getInstance(document.getElementById('userMenuModal')).hide();">
+                            <i class="bi bi-person-gear"></i> Profile Settings
+                        </button>
+
+                        <button class="btn btn-outline-light text-start" onclick="show2FASetup(); bootstrap.Modal.getInstance(document.getElementById('userMenuModal')).hide();">
+                            <i class="bi bi-shield-lock"></i> Two-Factor Authentication
+                        </button>
+
+                        {% if user and user.role == 'admin' %}
+                        <hr class="border-secondary my-2">
+                        <button class="btn btn-outline-light text-start" onclick="showUserManagement(); bootstrap.Modal.getInstance(document.getElementById('userMenuModal')).hide();">
+                            <i class="bi bi-people"></i> User Management
+                        </button>
+                        {% endif %}
+
+                        <hr class="border-secondary my-2">
+                        <button class="btn btn-outline-danger text-start" onclick="logout(); bootstrap.Modal.getInstance(document.getElementById('userMenuModal')).hide();">
+                            <i class="bi bi-box-arrow-right"></i> Logout
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

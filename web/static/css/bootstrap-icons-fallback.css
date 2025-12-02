@@ -1,0 +1,50 @@
+/* Bootstrap Icons Fallback - Unicode symbols */
+.bi::before {
+    display: inline-block;
+    font-style: normal;
+    font-variant: normal;
+    text-rendering: auto;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Common icons with Unicode fallbacks */
+.bi-person-circle::before { content: "👤"; }
+.bi-person-gear::before { content: "⚙️"; }
+.bi-shield-lock::before { content: "🔒"; }
+.bi-people::before { content: "👥"; }
+.bi-box-arrow-right::before { content: "🚪"; }
+.bi-wifi::before { content: "📡"; }
+.bi-exclamation-triangle::before { content: "⚠️"; }
+.bi-exclamation-circle::before { content: "⚠️"; }
+.bi-check-circle::before { content: "✅"; }
+.bi-x-circle::before { content: "❌"; }
+.bi-info-circle::before { content: "ℹ️"; }
+.bi-gear::before { content: "⚙️"; }
+.bi-save::before { content: "💾"; }
+.bi-trash::before { content: "🗑️"; }
+.bi-pencil::before { content: "✏️"; }
+.bi-eye::before { content: "👁️"; }
+.bi-download::before { content: "⬇️"; }
+.bi-upload::before { content: "⬆️"; }
+.bi-refresh::before { content: "🔄"; }
+.bi-search::before { content: "🔍"; }
+.bi-filter::before { content: "🔽"; }
+.bi-sort::before { content: "⇅"; }
+.bi-calendar::before { content: "📅"; }
+.bi-clock::before { content: "🕐"; }
+.bi-bell::before { content: "🔔"; }
+.bi-envelope::before { content: "✉️"; }
+.bi-house::before { content: "🏠"; }
+.bi-server::before { content: "🖥️"; }
+.bi-hdd::before { content: "💿"; }
+.bi-cpu::before { content: "⚡"; }
+.bi-activity::before { content: "📊"; }
+.bi-graph-up::before { content: "📈"; }
+.bi-graph-down::before { content: "📉"; }
+.bi-shield::before { content: "🛡️"; }
+.bi-bug::before { content: "🐛"; }
+.bi-key::before { content: "🔑"; }
+.bi-lock::before { content: "🔒"; }
+.bi-unlock::before { content: "🔓"; }
+.bi-person-plus::before { content: "➕"; }
+.bi-person-x::before { content: "❌"; }
