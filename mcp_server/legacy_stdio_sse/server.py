@@ -57,6 +57,15 @@ from database_client import MCPDatabaseClient
 from geoip_helper import get_country_for_ip, is_private_ip
 from ollama_client import OllamaClient
 
+# Try to load .env file
+try:
+    from env_loader import get_db_config, load_env_into_environ
+    # Load .env into os.environ for easy access
+    load_env_into_environ()
+    _env_available = True
+except ImportError:
+    _env_available = False
+
 
 # Setup logging
 logging.basicConfig(
@@ -97,7 +106,8 @@ class NetMonitorMCPServer:
             port = int(os.environ.get('NETMONITOR_DB_PORT', '5432'))
             database = os.environ.get('NETMONITOR_DB_NAME', 'netmonitor')
             user = os.environ.get('NETMONITOR_DB_USER', 'mcp_readonly')
-            password = os.environ.get('NETMONITOR_DB_PASSWORD', 'mcp_netmonitor_readonly_2024')
+            # Support both NETMONITOR_DB_PASSWORD and DB_PASSWORD (.env uses DB_PASSWORD)
+            password = os.environ.get('NETMONITOR_DB_PASSWORD', os.environ.get('DB_PASSWORD', 'mcp_netmonitor_readonly_2024'))
 
             self.db = MCPDatabaseClient(
                 host=host,
@@ -1737,12 +1747,15 @@ class NetMonitorMCPServer:
             from database import DatabaseManager
 
             # Create DB connection with main credentials (not readonly)
-            host = os.environ.get('NETMONITOR_DB_HOST', 'localhost')
+            # Support both NETMONITOR_DB_* and DB_* env variables (.env uses DB_*)
+            host = os.environ.get('NETMONITOR_DB_HOST', os.environ.get('DB_HOST', 'localhost'))
+            password = os.environ.get('NETMONITOR_DB_PASSWORD', os.environ.get('DB_PASSWORD', 'netmonitor'))
+
             db_main = DatabaseManager(
                 host=host,
                 database='netmonitor',
                 user='netmonitor',
-                password='netmonitor'
+                password=password
             )
 
             sensors = db_main.get_sensors()
@@ -1793,12 +1806,15 @@ class NetMonitorMCPServer:
             sys.path.insert(0, str(Path(__file__).parent.parent))
             from database import DatabaseManager
 
-            host = os.environ.get('NETMONITOR_DB_HOST', 'localhost')
+            # Support both NETMONITOR_DB_* and DB_* env variables (.env uses DB_*)
+            host = os.environ.get('NETMONITOR_DB_HOST', os.environ.get('DB_HOST', 'localhost'))
+            password = os.environ.get('NETMONITOR_DB_PASSWORD', os.environ.get('DB_PASSWORD', 'netmonitor'))
+
             db_main = DatabaseManager(
                 host=host,
                 database='netmonitor',
                 user='netmonitor',
-                password='netmonitor'
+                password=password
             )
 
             sensor = db_main.get_sensor_by_id(sensor_id)
@@ -1841,12 +1857,15 @@ class NetMonitorMCPServer:
             sys.path.insert(0, str(Path(__file__).parent.parent))
             from database import DatabaseManager
 
-            host = os.environ.get('NETMONITOR_DB_HOST', 'localhost')
+            # Support both NETMONITOR_DB_* and DB_* env variables (.env uses DB_*)
+            host = os.environ.get('NETMONITOR_DB_HOST', os.environ.get('DB_HOST', 'localhost'))
+            password = os.environ.get('NETMONITOR_DB_PASSWORD', os.environ.get('DB_PASSWORD', 'netmonitor'))
+
             db_main = DatabaseManager(
                 host=host,
                 database='netmonitor',
                 user='netmonitor',
-                password='netmonitor'
+                password=password
             )
 
             # Verify sensor exists
@@ -1958,12 +1977,15 @@ class NetMonitorMCPServer:
             sys.path.insert(0, str(Path(__file__).parent.parent))
             from database import DatabaseManager
 
-            host = os.environ.get('NETMONITOR_DB_HOST', 'localhost')
+            # Support both NETMONITOR_DB_* and DB_* env variables (.env uses DB_*)
+            host = os.environ.get('NETMONITOR_DB_HOST', os.environ.get('DB_HOST', 'localhost'))
+            password = os.environ.get('NETMONITOR_DB_PASSWORD', os.environ.get('DB_PASSWORD', 'netmonitor'))
+
             db_main = DatabaseManager(
                 host=host,
                 database='netmonitor',
                 user='netmonitor',
-                password='netmonitor'
+                password=password
             )
 
             commands = db_main.get_sensor_command_history(sensor_id, limit=limit)
@@ -2009,12 +2031,15 @@ class NetMonitorMCPServer:
             from database import DatabaseManager
             from datetime import timedelta
 
-            host = os.environ.get('NETMONITOR_DB_HOST', 'localhost')
+            # Support both NETMONITOR_DB_* and DB_* env variables (.env uses DB_*)
+            host = os.environ.get('NETMONITOR_DB_HOST', os.environ.get('DB_HOST', 'localhost'))
+            password = os.environ.get('NETMONITOR_DB_PASSWORD', os.environ.get('DB_PASSWORD', 'netmonitor'))
+
             db_main = DatabaseManager(
                 host=host,
                 database='netmonitor',
                 user='netmonitor',
-                password='netmonitor'
+                password=password
             )
 
             # Get all sensors

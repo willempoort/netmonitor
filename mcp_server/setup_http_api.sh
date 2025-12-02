@@ -27,12 +27,31 @@ fi
 
 echo ""
 
-# Load database credentials from environment or config
-DB_HOST="${NETMONITOR_DB_HOST:-localhost}"
-DB_PORT="${NETMONITOR_DB_PORT:-5432}"
-DB_NAME="${NETMONITOR_DB_NAME:-netmonitor}"
-DB_USER="${NETMONITOR_DB_USER:-netmonitor}"
-DB_PASSWORD="${NETMONITOR_DB_PASSWORD:-netmonitor}"
+# Function to load .env file
+load_env() {
+    local env_file="$NETMONITOR_DIR/.env"
+    if [ -f "$env_file" ]; then
+        echo "Loading credentials from .env..."
+        export $(grep -v '^#' "$env_file" | grep -v '^$' | xargs)
+        return 0
+    fi
+    return 1
+}
+
+# Try to load .env file
+if load_env; then
+    echo "✓ Loaded configuration from .env"
+else
+    echo "ℹ️  No .env file found, using environment variables or defaults"
+fi
+echo ""
+
+# Load database credentials from .env, environment, or defaults
+DB_HOST="${DB_HOST:-${NETMONITOR_DB_HOST:-localhost}}"
+DB_PORT="${DB_PORT:-${NETMONITOR_DB_PORT:-5432}}"
+DB_NAME="${DB_NAME:-${NETMONITOR_DB_NAME:-netmonitor}}"
+DB_USER="${DB_USER:-${NETMONITOR_DB_USER:-netmonitor}}"
+DB_PASSWORD="${DB_PASSWORD:-${NETMONITOR_DB_PASSWORD:-netmonitor}}"
 
 echo "Database configuration:"
 echo "  Host:     $DB_HOST"
