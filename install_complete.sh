@@ -339,8 +339,11 @@ download_bootstrap_assets() {
     }
 
     # Fix Bootstrap Icons CSS paths naar lokale fonts (use absolute path from web root)
-    # Change: https://cdn.jsdelivr.net/.../fonts/file.woff2 -> /static/fonts/file.woff2
+    # Change CDN URLs: https://cdn.jsdelivr.net/.../fonts/file.woff2 -> /static/fonts/file.woff2
     sed -i 's|https://cdn.jsdelivr.net/npm/bootstrap-icons@[^/]*/font/fonts/|/static/fonts/|g' web/static/css/bootstrap-icons.css
+    # Change relative paths: ./fonts/ -> /static/fonts/ (crucial fix for icon display)
+    sed -i 's|url("./fonts/bootstrap-icons|url("/static/fonts/bootstrap-icons|g' web/static/css/bootstrap-icons.css
+    sed -i "s|url('./fonts/bootstrap-icons|url('/static/fonts/bootstrap-icons|g" web/static/css/bootstrap-icons.css
 
     print_success "Bootstrap assets lokaal gedownload"
 }

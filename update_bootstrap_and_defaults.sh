@@ -56,7 +56,11 @@ echo "  → Socket.IO..."
 curl -sL https://cdn.socket.io/4.6.0/socket.io.min.js -o web/static/js/socket.io.min.js
 
 # Fix Bootstrap Icons font paths (use absolute path from web root)
+# Change CDN URLs
 sed -i 's|https://cdn.jsdelivr.net/npm/bootstrap-icons@[^/]*/font/fonts/|/static/fonts/|g' web/static/css/bootstrap-icons.css
+# Change relative paths: ./fonts/ -> /static/fonts/ (crucial fix for icon display)
+sed -i 's|url("./fonts/bootstrap-icons|url("/static/fonts/bootstrap-icons|g' web/static/css/bootstrap-icons.css
+sed -i "s|url('./fonts/bootstrap-icons|url('/static/fonts/bootstrap-icons|g" web/static/css/bootstrap-icons.css
 
 echo -e "${GREEN}✓ Bootstrap assets gedownload${NC}"
 echo
