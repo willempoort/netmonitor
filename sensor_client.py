@@ -78,6 +78,13 @@ class SensorClient:
         self.batch_interval = batch_interval
         self.running = False
 
+        # Authentication token
+        self.token = (
+            os.environ.get('SENSOR_TOKEN') or
+            self.config.get('server', {}).get('token') or
+            self.config.get('sensor', {}).get('token')
+        )
+
         # Statistics
         self.packets_captured = 0
         self.alerts_sent = 0
@@ -113,6 +120,13 @@ class SensorClient:
         hostname = socket.gethostname()
         self.logger.info(f"SENSOR_ID not specified, using hostname: {hostname}")
         return hostname
+
+    def _get_headers(self):
+        """Get HTTP headers with authentication token if available"""
+        headers = {'Content-Type': 'application/json'}
+        if self.token:
+            headers['Authorization'] = f'Bearer {self.token}'
+        return headers
 
     def _setup_logging(self):
         """Setup logging with fallback to console-only if file logging fails"""
@@ -198,6 +212,7 @@ class SensorClient:
         try:
             response = requests.get(
                 f"{self.server_url}/api/config",
+                headers=self._get_headers(),
                 params={
                     'sensor_id': self.sensor_id,
                     'include_defaults': 'false'  # Sensors use local config as base
@@ -280,6 +295,7 @@ class SensorClient:
         try:
             response = requests.get(
                 f"{self.server_url}/api/whitelist",
+                headers=self._get_headers(),
                 params={'sensor_id': self.sensor_id},
                 timeout=10
             )
@@ -351,6 +367,7 @@ class SensorClient:
 
             response = requests.post(
                 f"{self.server_url}/api/sensors/register",
+                headers=self._get_headers(),
                 json={
                     'sensor_id': self.sensor_id,
                     'hostname': hostname,
@@ -379,6 +396,7 @@ class SensorClient:
         try:
             response = requests.post(
                 f"{self.server_url}/api/sensors/{self.sensor_id}/heartbeat",
+                headers=self._get_headers(),
                 timeout=5
             )
             return response.status_code == 200
@@ -390,6 +408,7 @@ class SensorClient:
         try:
             response = requests.get(
                 f"{self.server_url}/api/sensors/{self.sensor_id}/commands",
+                headers=self._get_headers(),
                 timeout=10
             )
 
@@ -641,6 +660,7 @@ class SensorClient:
 
             response = requests.post(
                 f"{self.server_url}/api/sensors/{self.sensor_id}/metrics",
+                headers=self._get_headers(),
                 json={
                     'cpu_percent': cpu_percent,
                     'memory_percent': memory.percent,
@@ -667,6 +687,7 @@ class SensorClient:
         try:
             response = requests.post(
                 f"{self.server_url}/api/sensors/{self.sensor_id}/alerts",
+                headers=self._get_headers(),
                 json={'alerts': [alert]},
                 timeout=10
             )
@@ -700,6 +721,7 @@ class SensorClient:
         try:
             response = requests.post(
                 f"{self.server_url}/api/sensors/{self.sensor_id}/alerts",
+                headers=self._get_headers(),
                 json={'alerts': alerts},
                 timeout=30
             )
