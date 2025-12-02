@@ -51,6 +51,24 @@ class BehaviorDetector:
 
         self.logger.info("Behavior Detector geïnitialiseerd")
 
+    def _get_threshold(self, *keys, default=None):
+        """
+        Safely get a threshold value from config with fallback to default.
+        Usage: self._get_threshold('beaconing', 'min_connections', default=10)
+        """
+        try:
+            value = self.config['thresholds']
+            for key in keys:
+                value = value[key]
+            return value
+        except (KeyError, TypeError):
+            if default is not None:
+                return default
+            # Log warning if no default provided
+            key_path = '.'.join(keys)
+            self.logger.warning(f"Config key 'thresholds.{key_path}' not found and no default provided")
+            return None
+
     def _parse_internal_networks(self):
         """Parse internal network ranges"""
         networks = []
@@ -105,19 +123,19 @@ class BehaviorDetector:
             return threats
 
         # Beaconing detection
-        if self.config['thresholds']['beaconing']['enabled']:
+        if self._get_threshold('beaconing', 'enabled', default=True):
             threat = self._detect_beaconing(packet)
             if threat:
                 threats.append(threat)
 
         # Outbound traffic volume
-        if self.config['thresholds']['outbound_volume']['enabled']:
+        if self._get_threshold('outbound_volume', 'enabled', default=True):
             threat = self._track_outbound_volume(packet)
             if threat:
                 threats.append(threat)
 
         # Lateral movement
-        if self.config['thresholds']['lateral_movement']['enabled']:
+        if self._get_threshold('lateral_movement', 'enabled', default=True):
             threat = self._detect_lateral_movement(packet)
             if threat:
                 threats.append(threat)
@@ -158,7 +176,7 @@ class BehaviorDetector:
         connections.append((current_time, dst_ip, dst_port))
 
         # Analyseer alleen als we genoeg data hebben
-        min_connections = self.config['thresholds']['beaconing']['min_connections']
+        min_connections = self._get_threshold('beaconing', 'min_connections', default=10)
         if len(connections) < min_connections:
             return None
 
@@ -180,7 +198,7 @@ class BehaviorDetector:
 
         # Check consistentie: zijn intervallen ongeveer gelijk?
         avg_interval = sum(intervals) / len(intervals)
-        max_jitter = self.config['thresholds']['beaconing']['max_jitter_percent'] / 100.0
+        max_jitter = self._get_threshold('beaconing', 'max_jitter_percent', default=20) / 100.0
 
         # Count hoeveel intervallen binnen jitter range zitten
         consistent_intervals = sum(1 for interval in intervals
@@ -243,12 +261,12 @@ class BehaviorDetector:
         tracker['dest_ips'][dst_ip] += packet_size
 
         # Reset window als tijd verstreken is
-        time_window = self.config['thresholds']['outbound_volume']['time_window']
+        time_window = self._get_threshold('outbound_volume', 'time_window', default=300)
         if current_time - tracker['last_reset'] >= time_window:
             total_bytes = tracker['total_bytes']
             total_mb = total_bytes / (1024 * 1024)
 
-            threshold_mb = self.config['thresholds']['outbound_volume']['threshold_mb']
+            threshold_mb = self._get_threshold('outbound_volume', 'threshold_mb', default=100)
 
             # Check threshold
             if total_mb > threshold_mb:
@@ -332,13 +350,13 @@ class BehaviorDetector:
         tracker['protocols'][lateral_ports[dst_port]] += 1
 
         # Check thresholds
-        time_window = self.config['thresholds']['lateral_movement']['time_window']
+        time_window = self._get_threshold('lateral_movement', 'time_window', default=300)
         if current_time - tracker['first_seen'] > time_window:
             # Reset
             scanned_count = len(tracker['scanned_ips'])
             protocols = dict(tracker['protocols'])
 
-            threshold = self.config['thresholds']['lateral_movement']['unique_targets']
+            threshold = self._get_threshold('lateral_movement', 'unique_targets', default=5)
 
             if scanned_count >= threshold:
                 # Alert
