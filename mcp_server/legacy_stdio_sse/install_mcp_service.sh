@@ -68,6 +68,19 @@ fi
 echo "Using Python from venv: ${VENV_PYTHON}"
 echo ""
 
+# Load credentials from .env if available
+ENV_FILE="${SCRIPT_DIR}/.env"
+if [ -f "$ENV_FILE" ]; then
+    echo "Loading database credentials from .env..."
+    source <(grep -v '^#' "$ENV_FILE" | grep -v '^$' | sed 's/^/export /')
+    DB_PASSWORD="${DB_PASSWORD:-mcp_netmonitor_readonly_2024}"
+    echo "✓ Loaded credentials from .env"
+else
+    echo "ℹ️  No .env file found, using default readonly credentials"
+    DB_PASSWORD="mcp_netmonitor_readonly_2024"
+fi
+echo ""
+
 echo "Step 1: Generating service file with correct paths..."
 cat > /etc/systemd/system/netmonitor-mcp.service <<EOF
 [Unit]
@@ -83,7 +96,7 @@ Environment="NETMONITOR_DB_HOST=localhost"
 Environment="NETMONITOR_DB_PORT=5432"
 Environment="NETMONITOR_DB_NAME=netmonitor"
 Environment="NETMONITOR_DB_USER=mcp_readonly"
-Environment="NETMONITOR_DB_PASSWORD=mcp_netmonitor_readonly_2024"
+Environment="NETMONITOR_DB_PASSWORD=${DB_PASSWORD}"
 ExecStart=${VENV_PYTHON} ${MCP_SERVER_DIR}/server.py --transport sse --host 0.0.0.0 --port 3000
 Restart=always
 RestartSec=10

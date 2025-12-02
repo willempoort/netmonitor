@@ -17,14 +17,30 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from token_auth import TokenAuthManager
 
+# Try to load .env file
+try:
+    from env_loader import get_db_config
+    _env_available = True
+except ImportError:
+    _env_available = False
+
 
 def create_token_manager():
     """Create token manager instance"""
-    host = os.environ.get('NETMONITOR_DB_HOST', 'localhost')
-    port = int(os.environ.get('NETMONITOR_DB_PORT', '5432'))
-    database = os.environ.get('NETMONITOR_DB_NAME', 'netmonitor')
-    user = os.environ.get('NETMONITOR_DB_USER', 'netmonitor')
-    password = os.environ.get('NETMONITOR_DB_PASSWORD', 'netmonitor')
+    # Try to get config from .env first
+    if _env_available:
+        try:
+            db_config = get_db_config()
+            return TokenAuthManager(db_config)
+        except Exception:
+            pass  # Fall through to environment variables
+
+    # Fall back to environment variables
+    host = os.environ.get('NETMONITOR_DB_HOST', os.environ.get('DB_HOST', 'localhost'))
+    port = int(os.environ.get('NETMONITOR_DB_PORT', os.environ.get('DB_PORT', '5432')))
+    database = os.environ.get('NETMONITOR_DB_NAME', os.environ.get('DB_NAME', 'netmonitor'))
+    user = os.environ.get('NETMONITOR_DB_USER', os.environ.get('DB_USER', 'netmonitor'))
+    password = os.environ.get('NETMONITOR_DB_PASSWORD', os.environ.get('DB_PASSWORD', 'netmonitor'))
 
     return TokenAuthManager({
         'host': host,

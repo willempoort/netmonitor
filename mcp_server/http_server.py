@@ -30,6 +30,15 @@ from geoip_helper import get_country_for_ip, is_private_ip
 from ollama_client import OllamaClient
 from token_auth import TokenAuthManager, verify_token
 
+# Try to load .env file
+try:
+    from env_loader import get_db_config, load_env_into_environ
+    # Load .env into os.environ for easy access
+    load_env_into_environ()
+    _env_available = True
+except ImportError:
+    _env_available = False
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -114,11 +123,12 @@ class MCPHTTPServer:
     def _init_database(self):
         """Initialize database connection"""
         try:
-            host = os.environ.get('NETMONITOR_DB_HOST', 'localhost')
-            port = int(os.environ.get('NETMONITOR_DB_PORT', '5432'))
-            database = os.environ.get('NETMONITOR_DB_NAME', 'netmonitor')
-            user = os.environ.get('NETMONITOR_DB_USER', 'mcp_readonly')
-            password = os.environ.get('NETMONITOR_DB_PASSWORD', 'mcp_netmonitor_readonly_2024')
+            # Support both NETMONITOR_DB_* and DB_* env variables (.env uses DB_*)
+            host = os.environ.get('NETMONITOR_DB_HOST', os.environ.get('DB_HOST', 'localhost'))
+            port = int(os.environ.get('NETMONITOR_DB_PORT', os.environ.get('DB_PORT', '5432')))
+            database = os.environ.get('NETMONITOR_DB_NAME', os.environ.get('DB_NAME', 'netmonitor'))
+            user = os.environ.get('NETMONITOR_DB_USER', os.environ.get('DB_USER', 'mcp_readonly'))
+            password = os.environ.get('NETMONITOR_DB_PASSWORD', os.environ.get('DB_PASSWORD', 'mcp_netmonitor_readonly_2024'))
 
             self.db = MCPDatabaseClient(
                 host=host,
@@ -154,11 +164,12 @@ class MCPHTTPServer:
     def _init_token_manager(self):
         """Initialize token authentication manager"""
         try:
-            host = os.environ.get('NETMONITOR_DB_HOST', 'localhost')
-            port = int(os.environ.get('NETMONITOR_DB_PORT', '5432'))
-            database = os.environ.get('NETMONITOR_DB_NAME', 'netmonitor')
-            user = os.environ.get('NETMONITOR_DB_USER', 'mcp_readonly')
-            password = os.environ.get('NETMONITOR_DB_PASSWORD', 'mcp_netmonitor_readonly_2024')
+            # Support both NETMONITOR_DB_* and DB_* env variables (.env uses DB_*)
+            host = os.environ.get('NETMONITOR_DB_HOST', os.environ.get('DB_HOST', 'localhost'))
+            port = int(os.environ.get('NETMONITOR_DB_PORT', os.environ.get('DB_PORT', '5432')))
+            database = os.environ.get('NETMONITOR_DB_NAME', os.environ.get('DB_NAME', 'netmonitor'))
+            user = os.environ.get('NETMONITOR_DB_USER', os.environ.get('DB_USER', 'mcp_readonly'))
+            password = os.environ.get('NETMONITOR_DB_PASSWORD', os.environ.get('DB_PASSWORD', 'mcp_netmonitor_readonly_2024'))
 
             self.token_manager = TokenAuthManager({
                 'host': host,
@@ -565,13 +576,16 @@ class MCPHTTPServer:
             from database import DatabaseManager
 
             # Create DB connection with main credentials
-            host = os.environ.get('NETMONITOR_DB_HOST', 'localhost')
-            password = os.environ.get('NETMONITOR_DB_PASSWORD', 'netmonitor')
+            # Support both NETMONITOR_DB_* and DB_* env variables (.env uses DB_*)
+            host = os.environ.get('NETMONITOR_DB_HOST', os.environ.get('DB_HOST', 'localhost'))
+            database = os.environ.get('NETMONITOR_DB_NAME', os.environ.get('DB_NAME', 'netmonitor'))
+            user = os.environ.get('NETMONITOR_DB_USER', os.environ.get('DB_USER', 'netmonitor'))
+            password = os.environ.get('NETMONITOR_DB_PASSWORD', os.environ.get('DB_PASSWORD', 'netmonitor'))
 
             db_main = DatabaseManager(
                 host=host,
-                database='netmonitor',
-                user='netmonitor',
+                database=database,
+                user=user,
                 password=password
             )
 
