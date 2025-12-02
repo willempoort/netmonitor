@@ -488,9 +488,22 @@ class NetworkMonitor:
                 self.logger.warning(f"Could not register SOC server as sensor: {e}")
 
         # Get interface from self_monitor config, fallback to legacy 'interface' key
-        interface = self.self_monitor_config.get('interface', self.config.get('interface', 'lo'))
+        interface_config = self.self_monitor_config.get('interface', self.config.get('interface', 'lo'))
 
-        self.logger.info(f"Starting network monitor op interface: {interface}")
+        # Parse interface configuration (support comma-separated list)
+        if interface_config == 'any' or interface_config is None:
+            interface = None  # Listen on all interfaces
+            self.interface_display = "all interfaces"
+        elif isinstance(interface_config, str) and ',' in interface_config:
+            # Multiple interfaces: "ens33, ens34, ens35" -> ["ens33", "ens34", "ens35"]
+            interface = [iface.strip() for iface in interface_config.split(',')]
+            self.interface_display = ', '.join(interface)
+        else:
+            # Single interface
+            interface = interface_config
+            self.interface_display = interface_config
+
+        self.logger.info(f"Starting network monitor op interface: {self.interface_display}")
         self.logger.info("Druk op Ctrl+C om te stoppen")
 
         # Start config sync thread (if self-monitoring and database enabled)
@@ -525,18 +538,14 @@ class NetworkMonitor:
                         # Calculate bandwidth in Mbps
                         bandwidth_mbps = traffic_stats.get('bandwidth_mbps', 0)
 
-                        # Get network interface
-                        interface_name = self.self_monitor_config.get('interface',
-                                                                       self.config.get('interface', 'lo'))
-
-                        # Save to database
+                        # Save to database (use interface_display for human-readable format)
                         self.db.save_sensor_metrics(
                             sensor_id=self.sensor_id,
                             cpu_percent=system_stats.get('cpu_percent'),
                             memory_percent=system_stats.get('memory_percent'),
                             packets_captured=traffic_stats.get('total_packets'),
                             alerts_sent=traffic_stats.get('alerts'),
-                            network_interface=interface_name,
+                            network_interface=self.interface_display,
                             bandwidth_mbps=bandwidth_mbps
                         )
                         self.logger.debug(f"Saved SOC server metrics: {traffic_stats.get('total_packets', 0)} packets, {bandwidth_mbps:.2f} Mbps")
@@ -549,8 +558,9 @@ class NetworkMonitor:
         try:
             # Start packet sniffing
             # store=0 betekent packets niet in memory houden (belangrijk voor lange runs)
+            # iface can be: None (all), "eth0" (single), or ["eth0", "eth1"] (multiple)
             sniff(
-                iface=interface if interface != 'any' else None,
+                iface=interface,
                 prn=self.packet_callback,
                 store=0,
                 filter="ip"  # Alleen IP packets
