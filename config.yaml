@@ -21,9 +21,12 @@ self_monitor:
   hostname: ""  # Leave empty for auto-detection
   location: "SOC Server - Main Location"
 
-  # Network interface to monitor on the SOC server
-  # Use 'any' to monitor all interfaces, or specify: eth0, ens33, etc.
-  # IMPORTANT: Default 'lo' only monitors loopback - change to eth0/ens33 for real traffic!
+  # Network interface(s) to monitor on the SOC server
+  # Options:
+  #   - Single interface: eth0, ens33, etc.
+  #   - Multiple interfaces: ens33, ens34, ens35 (comma-separated)
+  #   - All interfaces: any
+  # IMPORTANT: Default 'lo' only monitors loopback - change for real traffic!
   interface: lo
 
 # ============================================================================
