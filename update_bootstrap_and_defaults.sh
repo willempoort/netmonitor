@@ -34,8 +34,13 @@ mkdir -p web/static/css web/static/js web/static/fonts
 echo "  → Bootstrap CSS..."
 curl -sL https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css -o web/static/css/bootstrap.min.css
 
-echo "  → Bootstrap JS..."
+echo "  → Bootstrap JS (bundle with Popper)..."
+# Download and verify it contains Popper
 curl -sL https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js -o web/static/js/bootstrap.bundle.min.js
+# Verify download
+if ! grep -q "Popper" web/static/js/bootstrap.bundle.min.js; then
+    echo "  ⚠ Warning: Downloaded Bootstrap JS might not include Popper"
+fi
 
 echo "  → Bootstrap Icons CSS..."
 curl -sL https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css -o web/static/css/bootstrap-icons.css
