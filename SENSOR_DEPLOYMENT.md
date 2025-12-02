@@ -1,122 +1,166 @@
 # NetMonitor Sensor Deployment Guide
 
-This guide explains how to deploy NetMonitor sensors using the simplified configuration format.
+Complete handleiding voor het opzetten van gedistribueerde netwerk monitoring met remote sensors.
 
-## Overview
+## 📋 Overzicht
 
-NetMonitor supports two deployment modes:
+Remote sensors stellen je in staat om meerdere netwerk segmenten te monitoren zonder dat al het verkeer naar één centraal punt hoeft te worden gestuurd via switch mirror ports.
 
-1. **SOC Server Mode**: Full configuration with dashboard, database, and management features
-   - Script: `netmonitor.py`
-   - Config: `config.yaml`
-   - Purpose: Central SOC management server
-
-2. **Sensor Mode**: Minimal configuration with only connection settings
-   - Script: `sensor_client.py` ⭐
-   - Config: `sensor.conf`
-   - Purpose: Remote network sensors
-
-This guide covers **Sensor Mode** deployment.
-
-## Architecture
+### Architectuur
 
 ```
-┌─────────────────┐
-│   SOC Server    │
-│  (config.yaml)  │
-│                 │
-│ ┌─────────────┐ │
-│ │  Dashboard  │ │
-│ │  Database   │ │
-│ │  Detection  │ │
-│ │  Settings   │ │
-│ └─────────────┘ │
-└────────┬────────┘
-         │ HTTP/HTTPS
-         │
-    ┌────┴────┬────────────┬────────────┐
-    │         │            │            │
-┌───▼───┐ ┌──▼────┐   ┌───▼───┐   ┌───▼───┐
-│Sensor │ │Sensor │   │Sensor │   │Sensor │
-│  #1   │ │  #2   │   │  #3   │   │  #4   │
-│(.conf)│ │(.conf)│   │(.conf)│   │(.conf)│
-└───────┘ └───────┘   └───────┘   └───────┘
+┌─────────────────────────────────────────────────────────┐
+│                  Central SOC Server                      │
+│  ┌────────────────────────────────────────────────┐     │
+│  │  - PostgreSQL + TimescaleDB                    │     │
+│  │  - Web Dashboard (port 8080)                   │     │
+│  │  - API Endpoints voor sensors                  │     │
+│  │  - Centralized configuration management        │     │
+│  └────────────────────────────────────────────────┘     │
+└──────────────────────────▲──────────────────────────────┘
+                           │ HTTPS + Token Auth
+           ┌───────────────┼───────────────┐
+           │               │               │
+     ┌─────┴────┐    ┌─────┴────┐    ┌────┴─────┐
+     │ Sensor 1 │    │ Sensor 2 │    │ Sensor 3 │
+     │ Nano Pi  │    │ Nano Pi  │    │ Nano Pi  │
+     │ VLAN 10  │    │ VLAN 20  │    │   DMZ    │
+     └──────────┘    └──────────┘    └──────────┘
 ```
 
 **Key Principles:**
-- **Sensors**: Monitor network traffic, send alerts to SOC server
-- **SOC Server**: Centralized management, configuration, and dashboard
+- **Sensors**: Monitor network traffic, send alerts to SOC server (gebruik `sensor.conf`)
+- **SOC Server**: Centralized management, configuration, and dashboard (gebruik `config.yaml`)
 - **Configuration**: Detection settings managed centrally, sensors only need connection info
+- **Authentication**: Token-based authentication voor veilige communicatie
+
+### Voordelen
+
+✅ **Schaalbaarheid** - Monitor meerdere network segmenten tegelijk
+✅ **Geen mirror port bottleneck** - Elke sensor monitort lokaal
+✅ **Cost-effective** - Nano Pi ~€35 vs dure managed switches
+✅ **Flexible deployment** - Plaats sensors waar nodig
+✅ **Lokale processing** - Detectie gebeurt op sensor
+✅ **Centrale configuratie** - Alle settings via SOC dashboard
+✅ **Token authenticatie** - Veilige sensor-server communicatie
 
 ---
 
-## Quick Start
+## 🛠️ Hardware Requirements
 
-### Prerequisites
+### Aanbevolen: Nano Pi
 
-On each sensor machine:
-```bash
-# Install Python 3.8+
-sudo apt-get update
-sudo apt-get install -y python3 python3-pip
+**Nano Pi R2S** (~€35-45) ⭐ **Recommended**
+- CPU: RK3328 Quad-core ARM Cortex-A53
+- RAM: 1GB DDR4
+- Network: 2x Gigabit Ethernet
+- OS: Ubuntu/Armbian
+- **Perfect voor 90% van use cases**
 
-# Install system dependencies
-sudo apt-get install -y tcpdump libpcap-dev
+**Nano Pi R4S** (~€60-70) - Voor drukke netwerken
+- CPU: RK3399 Hexa-core
+- RAM: 4GB LPDDR4
+- Network: 2x Gigabit Ethernet
+- **Voor high-traffic environments (>500 Mbps)**
+
+### Alternatieven
+
+- **Raspberry Pi 4** (2GB+) - Goed, maar iets duurder
+- **Rock Pi** - Vergelijkbaar met Nano Pi
+- **Oude PC/laptop** - Werkt ook, meer power verbruik
+
+### Netwerk Setup
+
+Twee opties:
+
+**1. Inline deployment** (Aanbevolen voor Nano Pi R2S/R4S)
+```
+Internet ──→ [eth0] Nano Pi [eth1] ──→ Internal Network
+              └─ Mirror/analyze traffic
 ```
 
-### Installation
+**2. Mirror port** (Voor single ethernet devices)
+```
+Switch (SPAN/Mirror Port) ──→ Nano Pi
+```
 
-1. **Clone repository on sensor**:
+---
+
+## 📦 Software Installatie
+
+### Stap 1: Prepare Nano Pi
+
 ```bash
+# 1. Flash Armbian/Ubuntu op SD card
+#    Download: https://www.armbian.com/nanopi-r2s/
+
+# 2. Boot en login (default: root/1234)
+
+# 3. Update system
+apt update && apt upgrade -y
+
+# 4. Install dependencies
+apt install -y python3 python3-pip python3-venv git tcpdump libpcap-dev
+```
+
+### Stap 2: Clone Repository
+
+```bash
+# Clone netmonitor repository
 cd /opt
-sudo git clone https://github.com/your-org/netmonitor.git
+git clone https://github.com/yourusername/netmonitor.git
 cd netmonitor
 ```
 
-2. **Install Python dependencies**:
+### Stap 3: Install Python Dependencies
+
 ```bash
-sudo pip3 install -r requirements.txt
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install requirements
+pip install -r requirements.txt
 ```
 
-3. **Run interactive setup**:
+### Stap 4: Generate Sensor Token
+
+**Op de SOC Server:**
+
+```bash
+cd /opt/netmonitor
+source venv/bin/activate
+python3 setup_sensor_auth.py
+```
+
+Volg de prompts:
+```
+Sensor ID (e.g., nano-vlan10-01): nano-office-dmz-01
+Token name (optional): DMZ Sensor Main Token
+Expires in days (leave empty for no expiration): <Enter>
+Allow remote commands? (y/N): N
+```
+
+Output:
+```
+TOKEN: abcd1234efgh5678ijkl9012mnop3456qrst7890uvwx
+```
+
+**⚠️ SAVE THIS TOKEN - IT WILL NOT BE SHOWN AGAIN!**
+
+### Stap 5: Configure Sensor
+
+**Optie A: Interactive setup (Recommended)**
+
 ```bash
 ./setup_sensor.sh
 ```
 
-The script will prompt for:
-- Network interface to monitor
-- SOC server URL
-- Unique sensor ID
-- Location description
-- Optional authentication key
-
-4. **Verify configuration**:
-```bash
-cat sensor.conf
-```
-
-5. **Install systemd service**:
-```bash
-sudo cp netmonitor.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable netmonitor
-sudo systemctl start netmonitor
-```
-
-6. **Check status**:
-```bash
-sudo systemctl status netmonitor
-sudo journalctl -u netmonitor -f
-```
-
----
-
-## Manual Configuration
-
-If you prefer manual configuration, copy the template:
+**Optie B: Manual configuration**
 
 ```bash
 cp sensor.conf.template sensor.conf
+nano sensor.conf
 ```
 
 Edit `sensor.conf`:
@@ -126,16 +170,16 @@ Edit `sensor.conf`:
 INTERFACE=eth0
 
 # SOC Server URL (REQUIRED)
-SOC_SERVER_URL=http://soc.example.com:8080
+SOC_SERVER_URL=https://soc.example.com:8080
 
 # Unique Sensor ID (REQUIRED)
-SENSOR_ID=nano-office-vlan10-01
+SENSOR_ID=nano-office-dmz-01
 
 # Sensor Location Description (REQUIRED)
-SENSOR_LOCATION=Main Office - VLAN 10 - Production Network
+SENSOR_LOCATION=Main Office - DMZ - Edge Network
 
-# Authentication Secret Key (OPTIONAL)
-SENSOR_SECRET_KEY=your_secret_key_here
+# Authentication Token (REQUIRED for production)
+SENSOR_TOKEN=abcd1234efgh5678ijkl9012mnop3456qrst7890uvwx
 
 # Internal networks (comma-separated CIDR ranges)
 INTERNAL_NETWORKS=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
@@ -150,119 +194,81 @@ CONFIG_SYNC_INTERVAL=300
 SSL_VERIFY=true
 ```
 
----
-
-## Configuration Fields
-
-### Required Fields
-
-| Field | Description | Example |
-|-------|-------------|---------|
-| `INTERFACE` | Network interface to monitor | `eth0`, `ens33`, `wlan0` |
-| `SOC_SERVER_URL` | URL of SOC server dashboard | `http://soc.example.com:8080` |
-| `SENSOR_ID` | Unique identifier for this sensor | `nano-office-01` |
-| `SENSOR_LOCATION` | Human-readable location | `Building A - VLAN 10` |
-
-### Optional Fields
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| `SENSOR_SECRET_KEY` | *(empty)* | Authentication token for secure communication |
-| `INTERNAL_NETWORKS` | `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16` | Internal network ranges |
-| `HEARTBEAT_INTERVAL` | `30` | Status update frequency (seconds) |
-| `CONFIG_SYNC_INTERVAL` | `300` | Configuration fetch frequency (seconds) |
-| `SSL_VERIFY` | `true` | Verify SSL certificates |
-
----
-
-## Deployment Scenarios
-
-### Scenario 1: Office Network Monitoring
-
-Deploy sensors on network segments:
-
-**DMZ Sensor** (`sensor.conf`):
-```bash
-INTERFACE=eth1
-SOC_SERVER_URL=http://soc.internal.example.com:8080
-SENSOR_ID=nano-dmz-edge-01
-SENSOR_LOCATION=DMZ - Edge Network - Public Servers
-SENSOR_SECRET_KEY=abc123...
-```
-
-**Internal Office Sensor** (`sensor.conf`):
-```bash
-INTERFACE=eth0
-SOC_SERVER_URL=http://soc.internal.example.com:8080
-SENSOR_ID=nano-office-vlan10-01
-SENSOR_LOCATION=Main Office - VLAN 10 - Workstations
-SENSOR_SECRET_KEY=def456...
-```
-
-**Production Server Sensor** (`sensor.conf`):
-```bash
-INTERFACE=eth0
-SOC_SERVER_URL=http://soc.internal.example.com:8080
-SENSOR_ID=nano-datacenter-prod-01
-SENSOR_LOCATION=Datacenter - Production VLAN
-SENSOR_SECRET_KEY=ghi789...
-```
-
-### Scenario 2: Remote Site Monitoring
-
-Deploy sensors at remote locations connecting to central SOC:
+### Stap 6: Test Configuration
 
 ```bash
-INTERFACE=eth0
-SOC_SERVER_URL=https://soc.company.com:8443
-SENSOR_ID=nano-branch-amsterdam-01
-SENSOR_LOCATION=Amsterdam Branch Office - Main Network
-SSL_VERIFY=true
-SENSOR_SECRET_KEY=remote_site_key_123
+# Test sensor in foreground (Ctrl+C to stop)
+sudo python3 sensor_client.py -c sensor.conf
+
+# Check for errors in output
+# Should see: "Registered sensor..." and "Config synced from server..."
 ```
+
+### Stap 7: Install Systemd Service
+
+```bash
+# Copy service file
+sudo cp netmonitor-sensor.service /etc/systemd/system/
+
+# Reload systemd
+sudo systemctl daemon-reload
+
+# Enable and start
+sudo systemctl enable netmonitor-sensor
+sudo systemctl start netmonitor-sensor
+
+# Check status
+sudo systemctl status netmonitor-sensor
+```
+
+### Stap 8: Verify in Dashboard
+
+1. Open SOC dashboard: `https://soc.example.com:8080`
+2. Login
+3. Navigate to **Sensors** → **Remote Sensors**
+4. Verify sensor appears in list with status "Online"
 
 ---
 
-## Authentication Setup
+## 🔐 Authentication & Security
 
-### Generate Authentication Key
+### Token Management
 
-On SOC server:
+**Generate new token:**
 ```bash
 cd /opt/netmonitor
 python3 setup_sensor_auth.py
-
-# Follow prompts to generate sensor token
 ```
 
-On sensor:
+**List existing tokens:**
 ```bash
-# Add generated token to sensor.conf
-SENSOR_SECRET_KEY=generated_token_from_soc_server
+python3 -c "from sensor_auth import SensorAuthManager; from database import DatabaseManager; from config_loader import load_config; config=load_config('config.yaml'); db=DatabaseManager(**config['database']['postgresql']); auth=SensorAuthManager(db); tokens=auth.list_tokens(); print('\n'.join([f'{t[\"sensor_id\"]}: {t[\"token_name\"]}' for t in tokens]))"
 ```
 
-### Disable Authentication (Testing Only)
-
-For testing without authentication:
+**Revoke token:**
 ```bash
-# Leave empty in sensor.conf
-SENSOR_SECRET_KEY=
-
-# On SOC server config.yaml, set:
-sensor_auth:
-  enabled: false
+# Via database
+psql -U netmonitor -d netmonitor
+DELETE FROM sensor_tokens WHERE sensor_id = 'nano-office-dmz-01';
 ```
 
-⚠️ **Not recommended for production!**
+### Security Best Practices
+
+1. **Always use HTTPS** for production deployments
+2. **Use unique tokens** per sensor
+3. **Set token expiration** for high-security environments
+4. **Rotate tokens** periodically (every 90 days)
+5. **Monitor failed auth** attempts in SOC logs
+6. **Firewall sensor** to only communicate with SOC server
 
 ---
 
-## Configuration Management
+## 📊 Configuration Management
 
 ### How Detection Settings Work
 
 1. **Sensor startup**: Loads minimal `sensor.conf` (connection info only)
-2. **Initial sync**: Fetches detection thresholds from SOC server
+2. **Initial sync**: Fetches detection thresholds from SOC server database
 3. **Periodic sync**: Updates configuration every 5 minutes (configurable)
 4. **Dashboard changes**: SOC admin updates thresholds via web UI
 5. **Auto-propagation**: All sensors receive new settings within 5 minutes
@@ -290,19 +296,84 @@ CONFIG_SYNC_INTERVAL=60  # Sync every minute
 
 ---
 
-## Monitoring & Troubleshooting
+## 🚀 Deployment Scenarios
+
+### Scenario 1: Multi-VLAN Office Network
+
+**DMZ Sensor** (`sensor.conf`):
+```bash
+INTERFACE=eth1
+SOC_SERVER_URL=https://soc.internal.example.com:8443
+SENSOR_ID=nano-dmz-edge-01
+SENSOR_LOCATION=DMZ - Edge Network - Public Servers
+SENSOR_TOKEN=abc123_dmz_token
+SSL_VERIFY=true
+```
+
+**Internal Office Sensor** (`sensor.conf`):
+```bash
+INTERFACE=eth0
+SOC_SERVER_URL=https://soc.internal.example.com:8443
+SENSOR_ID=nano-office-vlan10-01
+SENSOR_LOCATION=Main Office - VLAN 10 - Workstations
+SENSOR_TOKEN=def456_office_token
+SSL_VERIFY=true
+```
+
+**Production Server Sensor** (`sensor.conf`):
+```bash
+INTERFACE=eth0
+SOC_SERVER_URL=https://soc.internal.example.com:8443
+SENSOR_ID=nano-datacenter-prod-01
+SENSOR_LOCATION=Datacenter - Production VLAN
+SENSOR_TOKEN=ghi789_prod_token
+SSL_VERIFY=true
+```
+
+### Scenario 2: Remote Branch Offices
+
+**Remote Site Sensor**:
+```bash
+INTERFACE=eth0
+SOC_SERVER_URL=https://soc.company.com:8443
+SENSOR_ID=nano-branch-amsterdam-01
+SENSOR_LOCATION=Amsterdam Branch Office - Main Network
+SENSOR_TOKEN=jkl012_amsterdam_token
+SSL_VERIFY=true
+HEARTBEAT_INTERVAL=60  # More frequent for remote sites
+```
+
+### Scenario 3: Guest WiFi Monitoring
+
+**Guest Network Sensor**:
+```bash
+INTERFACE=wlan0
+SOC_SERVER_URL=https://soc.internal.example.com:8443
+SENSOR_ID=nano-wifi-guest-01
+SENSOR_LOCATION=Building A - Guest WiFi Network
+SENSOR_TOKEN=mno345_guest_token
+SSL_VERIFY=true
+INTERNAL_NETWORKS=10.50.0.0/24  # Guest network only
+```
+
+---
+
+## 🔧 Monitoring & Troubleshooting
 
 ### Check Sensor Status
 
 ```bash
 # Service status
-sudo systemctl status netmonitor
+sudo systemctl status netmonitor-sensor
 
 # Live logs
-sudo journalctl -u netmonitor -f
+sudo journalctl -u netmonitor-sensor -f
 
 # Recent errors
-sudo journalctl -u netmonitor --since "10 minutes ago" -p err
+sudo journalctl -u netmonitor-sensor --since "10 minutes ago" -p err
+
+# Config sync status
+sudo journalctl -u netmonitor-sensor | grep -i "config sync"
 ```
 
 ### Common Issues
@@ -315,84 +386,217 @@ sudo journalctl -u netmonitor --since "10 minutes ago" -p err
 **Diagnosis:**
 ```bash
 # Check connectivity
-curl -v http://soc.example.com:8080/api/sensors
+curl -v https://soc.example.com:8443/api/sensors
 
 # Check logs for registration errors
-sudo journalctl -u netmonitor | grep -i "register\|connection"
+sudo journalctl -u netmonitor-sensor | grep -i "register\|connection\|token"
 ```
 
-**Solution:**
-- Verify `SOC_SERVER_URL` is correct
-- Check firewall allows outbound HTTP/HTTPS
-- Verify sensor authentication key (if enabled)
+**Solutions:**
+- ✓ Verify `SOC_SERVER_URL` is correct (check HTTPS vs HTTP)
+- ✓ Check firewall allows outbound HTTPS (port 8443)
+- ✓ Verify `SENSOR_TOKEN` is correct and not expired
+- ✓ Check SOC server is running: `sudo systemctl status netmonitor`
 
-#### 2. Configuration not syncing from SOC
+#### 2. Authentication failures
+
+**Symptoms:**
+```
+ERROR - Authentication failed: Invalid token
+```
+
+**Solutions:**
+```bash
+# 1. Generate new token on SOC server
+cd /opt/netmonitor
+python3 setup_sensor_auth.py
+
+# 2. Update sensor.conf with new token
+nano /opt/netmonitor/sensor.conf
+# Update SENSOR_TOKEN=...
+
+# 3. Restart sensor
+sudo systemctl restart netmonitor-sensor
+```
+
+#### 3. Configuration not syncing from SOC
 
 **Symptoms:**
 - Sensor uses outdated detection thresholds
+- No "Config synced" messages in logs
 
 **Diagnosis:**
 ```bash
 # Check config sync logs
-sudo journalctl -u netmonitor | grep -i "config sync\|database"
+sudo journalctl -u netmonitor-sensor | grep -i "config"
+
+# Check API accessibility
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  https://soc.example.com:8443/api/config
 ```
 
-**Solution:**
-- Verify `CONFIG_SYNC_INTERVAL` setting
-- Check SOC server API is accessible
-- Restart sensor: `sudo systemctl restart netmonitor`
+**Solutions:**
+- ✓ Verify `CONFIG_SYNC_INTERVAL` is set (default: 300s)
+- ✓ Check token has correct permissions
+- ✓ Verify database has default config loaded (run `init_database_defaults.py` on SOC server)
+- ✓ Restart sensor: `sudo systemctl restart netmonitor-sensor`
 
-#### 3. Permission errors (packet capture)
+#### 4. Permission errors (packet capture)
 
 **Symptoms:**
 ```
 PermissionError: Operation not permitted
 ```
 
-**Solution:**
+**Solutions:**
 ```bash
-# Run as root (required for packet capture)
-sudo systemctl start netmonitor
+# Ensure service runs as root
+sudo systemctl edit netmonitor-sensor
 
-# Or give capabilities to Python
-sudo setcap cap_net_raw,cap_net_admin+eip $(which python3)
-```
-
----
-
-## Systemd Service Configuration
-
-Edit `/etc/systemd/system/netmonitor.service`:
-
-```ini
-[Unit]
-Description=NetMonitor Security Sensor
-After=network.target
-
+# Add:
 [Service]
-Type=simple
 User=root
-WorkingDirectory=/opt/netmonitor
-ExecStart=/usr/bin/python3 /opt/netmonitor/netmonitor.py -c sensor.conf
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
 
-# Security hardening
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/var/log/netmonitor
+# Reload and restart
+sudo systemctl daemon-reload
+sudo systemctl restart netmonitor-sensor
+```
 
-[Install]
-WantedBy=multi-user.target
+#### 5. High CPU/Memory usage
+
+**Symptoms:**
+- Nano Pi becomes slow or unresponsive
+- CPU at 100%
+
+**Diagnosis:**
+```bash
+# Check resource usage
+top
+htop
+
+# Check packet rate
+sudo tcpdump -i eth0 -nn -q | pv -l > /dev/null
+```
+
+**Solutions:**
+- ✓ Reduce detection frequency in SOC dashboard
+- ✓ Disable unused detection modules
+- ✓ Upgrade to Nano Pi R4S for high-traffic networks
+- ✓ Use packet sampling (monitor every Nth packet)
+
+---
+
+## 📐 Sensor Naming Convention
+
+Use descriptive, hierarchical sensor IDs:
+
+```
+{device}-{location}-{network}-{number}
+
+Examples:
+- nano-hq-dmz-edge-01
+- nano-branch-nyc-office-01
+- nano-dc-prod-db-01
+- nano-wifi-guest-01
+- rpi-home-lab-monitor-01
+```
+
+**Benefits:**
+- Easy to identify in dashboard
+- Logical grouping by location
+- Scalable naming scheme
+
+---
+
+## 🎯 Network Placement Best Practices
+
+**Optimal sensor placement:**
+
+1. **Edge/DMZ** (Priority: HIGH)
+   - Monitor external threats
+   - Place: Between firewall and public-facing servers
+
+2. **VLAN boundaries** (Priority: HIGH)
+   - Monitor inter-VLAN traffic
+   - Place: At VLAN routing points
+
+3. **Critical servers** (Priority: MEDIUM)
+   - Database servers
+   - File servers
+   - Application servers
+
+4. **User networks** (Priority: MEDIUM)
+   - Office workstations
+   - Developer networks
+
+5. **Guest networks** (Priority: LOW)
+   - Visitor WiFi
+   - IoT devices
+
+---
+
+## 🔄 Migration from config.yaml to sensor.conf
+
+If you have an existing sensor using `config.yaml`:
+
+### Step 1: Backup
+
+```bash
+cp config.yaml config.yaml.backup
+```
+
+### Step 2: Generate Token on SOC Server
+
+```bash
+cd /opt/netmonitor
+python3 setup_sensor_auth.py
+# Save the generated token
+```
+
+### Step 3: Create sensor.conf
+
+```bash
+./setup_sensor.sh
+# OR manually create from template
+cp sensor.conf.template sensor.conf
+```
+
+Extract these values from old `config.yaml`:
+- `interface` → `INTERFACE`
+- `self_monitor.sensor_id` → `SENSOR_ID`
+- `self_monitor.location` → `SENSOR_LOCATION`
+- SOC server URL (new field)
+- Token from Step 2 (new field)
+
+### Step 4: Update Service
+
+```bash
+# Edit service file to use sensor_client.py
+sudo nano /etc/systemd/system/netmonitor-sensor.service
+
+# Change ExecStart to:
+ExecStart=/opt/netmonitor/venv/bin/python3 /opt/netmonitor/sensor_client.py -c /opt/netmonitor/sensor.conf
+
+# Reload and restart
+sudo systemctl daemon-reload
+sudo systemctl restart netmonitor-sensor
+```
+
+### Step 5: Verify
+
+```bash
+# Check logs
+sudo journalctl -u netmonitor-sensor -f
+
+# Verify in SOC dashboard
+# Should see sensor in "Remote Sensors" list
 ```
 
 ---
 
-## Comparison: sensor.conf vs config.yaml
+## 📋 Configuration Reference
+
+### sensor.conf vs config.yaml
 
 | Feature | sensor.conf (Sensor) | config.yaml (SOC Server) |
 |---------|---------------------|--------------------------|
@@ -403,80 +607,93 @@ WantedBy=multi-user.target
 | **Dashboard** | ❌ | ✅ Web UI on port 8080 |
 | **Threat feeds** | ❌ | ✅ Multiple sources |
 | **GeoIP** | ❌ | ✅ MaxMind GeoLite2 |
-| **Self-monitoring** | ❌ | ✅ (optional) |
+| **Authentication** | ✅ Token-based | ✅ Manages tokens |
 | **Use case** | Remote sensors | Central SOC server |
 
----
+### sensor.conf Fields Reference
 
-## Best Practices
+#### Required Fields
 
-### Sensor Naming Convention
+| Field | Description | Example |
+|-------|-------------|---------|
+| `INTERFACE` | Network interface to monitor | `eth0`, `ens33`, `wlan0` |
+| `SOC_SERVER_URL` | URL of SOC server dashboard | `https://soc.example.com:8443` |
+| `SENSOR_ID` | Unique identifier for this sensor | `nano-office-01` |
+| `SENSOR_LOCATION` | Human-readable location | `Building A - VLAN 10` |
+| `SENSOR_TOKEN` | Authentication token from SOC server | `abc123...` |
 
-Use descriptive, hierarchical sensor IDs:
-```
-{location}-{network}-{purpose}-{number}
+#### Optional Fields
 
-Examples:
-- nano-hq-dmz-edge-01
-- nano-branch-nyc-office-01
-- nano-dc-prod-db-01
-- nano-wifi-guest-01
-```
-
-### Network Placement
-
-**Optimal sensor placement:**
-1. **Edge/DMZ**: Monitor external threats
-2. **VLAN boundaries**: Monitor inter-VLAN traffic
-3. **Critical servers**: Database, file servers
-4. **User networks**: Office workstations
-5. **Guest networks**: Visitor WiFi
-
-### Security Hardening
-
-1. **Use authentication**: Always set `SENSOR_SECRET_KEY`
-2. **Enable SSL**: Use HTTPS for SOC server
-3. **Limit sensor access**: Firewall rules to SOC server only
-4. **Regular updates**: Keep NetMonitor updated
-5. **Monitor sensors**: Alert if sensor goes offline
+| Field | Default | Description |
+|-------|---------|-------------|
+| `INTERNAL_NETWORKS` | RFC1918 ranges | Internal network CIDRs (comma-separated) |
+| `HEARTBEAT_INTERVAL` | `30` | Status update frequency (seconds) |
+| `CONFIG_SYNC_INTERVAL` | `300` | Configuration fetch frequency (seconds) |
+| `SSL_VERIFY` | `true` | Verify SSL certificates |
 
 ---
 
-## Migration from config.yaml to sensor.conf
+## 🆘 Support & Resources
 
-If you have an existing `config.yaml` sensor deployment:
-
-1. **Backup existing config**:
+**Logs:**
 ```bash
-cp config.yaml config.yaml.backup
+sudo journalctl -u netmonitor-sensor -f
 ```
 
-2. **Run migration helper** (if available):
+**SOC Dashboard:**
+- Sensors status: `/sensors`
+- Configuration: `/config`
+- Alerts: `/alerts`
+
+**Common Commands:**
 ```bash
-./migrate_to_sensor_conf.sh config.yaml
+# Restart sensor
+sudo systemctl restart netmonitor-sensor
+
+# View sensor config
+cat /opt/netmonitor/sensor.conf
+
+# Test connectivity
+curl -v https://soc.example.com:8443/api/sensors
+
+# Check sensor status in database (on SOC server)
+psql -U netmonitor -d netmonitor -c "SELECT sensor_id, status, last_seen FROM sensors;"
 ```
 
-3. **Or manually create sensor.conf**:
+**Documentation:**
+- `README.md` - Project overview
+- `AUTHENTICATION.md` - Detailed authentication setup
+- `CONFIG.md` - Configuration options
+
+---
+
+## 🔖 Quick Reference Card
+
+**Sensor Setup (5 minutes):**
+
 ```bash
+# 1. On SOC Server: Generate token
+python3 setup_sensor_auth.py
+
+# 2. On Sensor: Setup
+cd /opt/netmonitor
 ./setup_sensor.sh
-# Enter values from old config.yaml
+
+# 3. Install service
+sudo cp netmonitor-sensor.service /etc/systemd/system/
+sudo systemctl enable --now netmonitor-sensor
+
+# 4. Verify
+sudo systemctl status netmonitor-sensor
 ```
 
-4. **Test new configuration**:
-```bash
-# Test with sensor.conf
-sudo python3 netmonitor.py -c sensor.conf
-
-# If successful, update systemd service
-sudo systemctl daemon-reload
-sudo systemctl restart netmonitor
-```
+**Troubleshooting Checklist:**
+- [ ] Service running? `systemctl status netmonitor-sensor`
+- [ ] Network connectivity? `ping soc.example.com`
+- [ ] Token valid? Check SOC dashboard → Sensors
+- [ ] Config syncing? `journalctl -u netmonitor-sensor | grep "Config sync"`
+- [ ] Firewall open? `curl -v https://soc.example.com:8443`
 
 ---
 
-## Support
-
-For issues or questions:
-- Check logs: `sudo journalctl -u netmonitor -f`
-- GitHub Issues: https://github.com/your-org/netmonitor/issues
-- Documentation: https://docs.netmonitor.example.com
+*Last updated: December 2025*

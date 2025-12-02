@@ -61,11 +61,16 @@ class SensorAuthManager:
         conn = self.db._get_connection()
         try:
             cursor = conn.cursor()
+
+            # Convert permissions dict to JSON string for PostgreSQL
+            import json
+            permissions_json = json.dumps(permissions)
+
             cursor.execute('''
                 INSERT INTO sensor_tokens (sensor_id, token_hash, token_name, expires_at, permissions)
-                VALUES (%s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s::jsonb)
                 RETURNING id
-            ''', (sensor_id, token_hash, token_name, expires_at, permissions))
+            ''', (sensor_id, token_hash, token_name, expires_at, permissions_json))
 
             token_id = cursor.fetchone()[0]
             conn.commit()
