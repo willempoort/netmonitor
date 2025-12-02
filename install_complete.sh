@@ -286,6 +286,81 @@ EOF
     print_success "Database schema geïnitialiseerd"
 }
 
+download_bootstrap_assets() {
+    if [[ ! $INSTALL_CORE =~ ^[Yy]$ ]]; then
+        return
+    fi
+
+    print_header "Bootstrap Assets Lokaal Downloaden"
+
+    cd $INSTALL_DIR
+    mkdir -p web/static/css web/static/js web/static/fonts
+
+    print_info "Bootstrap CSS downloaden..."
+    curl -sL https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css -o web/static/css/bootstrap.min.css || {
+        print_error "Bootstrap CSS download mislukt"
+        return 1
+    }
+
+    print_info "Bootstrap JS (bundle) downloaden..."
+    curl -sL https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js -o web/static/js/bootstrap.bundle.min.js || {
+        print_error "Bootstrap JS download mislukt"
+        return 1
+    }
+
+    print_info "Bootstrap Icons CSS downloaden..."
+    curl -sL https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css -o web/static/css/bootstrap-icons.css || {
+        print_error "Bootstrap Icons CSS download mislukt"
+        return 1
+    }
+
+    print_info "Bootstrap Icons fonts downloaden..."
+    curl -sL https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/fonts/bootstrap-icons.woff -o web/static/fonts/bootstrap-icons.woff || {
+        print_warning "Bootstrap Icons font download mislukt (optioneel)"
+    }
+    curl -sL https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/fonts/bootstrap-icons.woff2 -o web/static/fonts/bootstrap-icons.woff2 || {
+        print_warning "Bootstrap Icons font download mislukt (optioneel)"
+    }
+
+    print_info "Chart.js downloaden..."
+    curl -sL https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js -o web/static/js/chart.umd.min.js || {
+        print_error "Chart.js download mislukt"
+        return 1
+    }
+
+    print_info "Socket.IO client downloaden..."
+    curl -sL https://cdn.socket.io/4.6.0/socket.io.min.js -o web/static/js/socket.io.min.js || {
+        print_error "Socket.IO download mislukt"
+        return 1
+    }
+
+    # Fix Bootstrap Icons CSS paths naar lokale fonts
+    sed -i 's|https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/fonts/|/static/fonts/|g' web/static/css/bootstrap-icons.css
+
+    print_success "Bootstrap assets lokaal gedownload"
+}
+
+init_database_defaults() {
+    if [[ ! $INSTALL_CORE =~ ^[Yy]$ ]]; then
+        return
+    fi
+
+    print_header "Database Default Configuratie Laden"
+
+    cd $INSTALL_DIR
+    source venv/bin/activate
+
+    print_info "Default threshold waarden uit config.yaml laden in database..."
+
+    python3 init_database_defaults.py >> $LOG_FILE 2>&1
+
+    if [ $? -eq 0 ]; then
+        print_success "Default thresholds geladen in database"
+    else
+        print_warning "Fout bij laden defaults - check $LOG_FILE"
+    fi
+}
+
 download_threat_feeds() {
     if [[ ! $INSTALL_CORE =~ ^[Yy]$ ]]; then
         return
@@ -567,7 +642,9 @@ main() {
     setup_database
     install_netmonitor
     configure_netmonitor
+    download_bootstrap_assets
     init_database_schema
+    init_database_defaults
     download_threat_feeds
     setup_admin_user
     setup_systemd_services
