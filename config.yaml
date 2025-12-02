@@ -9,6 +9,8 @@
 self_monitor:
   # Enable/disable local network monitoring on the SOC server
   # Set to false if you only want to receive alerts from remote sensors
+  # NOTE: When enabled, SOC server will appear in sensor list with implicit heartbeat
+  #       via metrics (every 60s). No separate sensor_client.py needed.
   enabled: true
 
   # Sensor ID for the SOC server (must be unique)
@@ -21,6 +23,7 @@ self_monitor:
 
   # Network interface to monitor on the SOC server
   # Use 'any' to monitor all interfaces, or specify: eth0, ens33, etc.
+  # IMPORTANT: Default 'lo' only monitors loopback - change to eth0/ens33 for real traffic!
   interface: lo
 
 # ============================================================================

@@ -76,6 +76,25 @@ self_monitor:
 
 **Note:** When `enabled: true`, SOC server loads thresholds from **database** (with config.yaml as fallback). This means Web UI changes apply **immediately** without restart!
 
+### Heartbeat & Status Monitoring
+
+**SOC Server (when self_monitor enabled):**
+- **Implicit heartbeat**: Metrics saved every 60 seconds via `save_sensor_metrics()`
+- **Status update**: `last_seen` timestamp updated automatically with metrics
+- **No explicit heartbeat calls** needed (built-in to netmonitor.py)
+
+**Remote Sensors (sensor_client.py):**
+- **Explicit heartbeat**: Separate API call every 30 seconds (configurable)
+- **Metrics**: Separate API call every 60 seconds
+- **Both update** `last_seen` timestamp
+
+**Dashboard Status Rules:**
+- 🟢 **Online**: `last_seen` < 2 minutes ago
+- 🟡 **Warning**: `last_seen` between 2-10 minutes ago
+- 🔴 **Offline**: `last_seen` > 10 minutes ago
+
+This means if SOC server stops saving metrics for >2 minutes, it will show as Warning/Offline in the sensor list.
+
 ---
 
 ## 📡 Remote Sensor Configuration (`config-sensor-minimal.yaml`)

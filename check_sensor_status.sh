@@ -77,9 +77,12 @@ echo "  • Online:  last_seen < 2 minutes ago"
 echo "  • Warning: last_seen < 10 minutes ago"
 echo "  • Offline: last_seen > 10 minutes ago"
 echo
-echo "  • Heartbeat interval: 30 seconds"
-echo "  • If 4+ heartbeats miss → Warning status"
-echo "  • If 20+ heartbeats miss → Offline status"
+echo "Heartbeat Behavior:"
+echo "  • SOC Server (netmonitor.py):   Implicit via metrics (every 60s)"
+echo "  • Remote Sensors (sensor_client.py): Explicit heartbeat (every 30s)"
+echo
+echo "  • SOC: If 2+ metric saves miss → Warning status"
+echo "  • Remote: If 4+ heartbeats miss → Warning status"
 echo
 echo "=========================================="
 echo "Troubleshooting:"

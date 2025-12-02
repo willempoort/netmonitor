@@ -29,10 +29,24 @@ Remote sensors stellen je in staat om meerdere netwerk segmenten te monitoren zo
 ```
 
 **Key Principles:**
-- **Sensors**: Monitor network traffic, send alerts to SOC server (gebruik `sensor.conf`)
-- **SOC Server**: Centralized management, configuration, and dashboard (gebruik `config.yaml`)
+- **Remote Sensors**: Run `sensor_client.py`, use `sensor.conf` (bash KEY=value format)
+- **SOC Server**: Runs `netmonitor.py`, uses `config.yaml` (YAML format)
 - **Configuration**: Detection settings managed centrally, sensors only need connection info
 - **Authentication**: Token-based authentication voor veilige communicatie
+
+### SOC Server vs Remote Sensors
+
+| Component | SOC Server | Remote Sensors |
+|-----------|------------|----------------|
+| **Program** | `netmonitor.py` | `sensor_client.py` |
+| **Config File** | `config.yaml` (YAML) | `sensor.conf` (bash) |
+| **Self-Monitor** | Optional via `self_monitor.enabled` | Always monitors |
+| **Heartbeat** | Implicit (via metrics, 60s) | Explicit (API call, 30s) |
+| **Dashboard** | ✅ Runs web UI | ❌ No UI |
+| **Database** | ✅ Direct access | ❌ API only |
+| **Service** | `netmonitor.service` | `netmonitor-sensor.service` |
+
+**IMPORTANT:** SOC server does NOT need `sensor_client.py`. The `netmonitor.py` program has built-in self-monitoring capability. Simply enable `self_monitor.enabled: true` in `config.yaml`.
 
 ### Voordelen
 

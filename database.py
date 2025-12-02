@@ -1185,10 +1185,18 @@ class DatabaseManager:
                           uptime_seconds: int = None, packets_captured: int = None,
                           alerts_sent: int = None, network_interface: str = None,
                           bandwidth_mbps: float = None) -> bool:
-        """Save sensor performance metrics"""
+        """
+        Save sensor performance metrics and update last_seen timestamp.
+
+        This function serves as an implicit heartbeat for sensors that save metrics regularly.
+        Both remote sensors (sensor_client.py) and SOC server self-monitoring (netmonitor.py)
+        use this to maintain their 'online' status.
+        """
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
+
+            # Insert metrics into sensor_metrics table
             cursor.execute('''
                 INSERT INTO sensor_metrics
                 (sensor_id, cpu_percent, memory_percent, disk_percent, uptime_seconds,
@@ -1196,6 +1204,15 @@ class DatabaseManager:
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ''', (sensor_id, cpu_percent, memory_percent, disk_percent, uptime_seconds,
                   packets_captured, alerts_sent, network_interface, bandwidth_mbps))
+
+            # Update last_seen timestamp (implicit heartbeat)
+            # This keeps the sensor status as 'online' in the dashboard
+            cursor.execute('''
+                UPDATE sensors
+                SET last_seen = NOW(), status = 'online'
+                WHERE sensor_id = %s
+            ''', (sensor_id,))
+
             conn.commit()
             return True
         except Exception as e:
