@@ -9,19 +9,44 @@ echo "NetMonitor Sensor Status Checker"
 echo "=========================================="
 echo
 
-# Load config
-if [ -f "config.yaml" ]; then
-    echo "📋 Database Info:"
-    DB_HOST=$(grep -A5 "postgresql:" config.yaml | grep "host:" | awk '{print $2}')
-    DB_NAME=$(grep -A5 "postgresql:" config.yaml | grep "database:" | awk '{print $2}')
-    DB_USER=$(grep -A5 "postgresql:" config.yaml | grep "user:" | awk '{print $2}')
-    echo "  Host: $DB_HOST"
-    echo "  Database: $DB_NAME"
-    echo "  User: $DB_USER"
+# Function to load .env file
+load_env() {
+    if [ -f .env ]; then
+        export $(grep -v '^#' .env | grep -v '^$' | xargs)
+    fi
+}
+
+# Load .env if it exists
+load_env
+
+# Load database config
+echo "📋 Database Info:"
+if [ -n "$DB_HOST" ]; then
+    # Already loaded from .env
+    echo "  (Using .env)"
 else
-    echo "❌ config.yaml not found"
-    exit 1
+    # Fall back to config.yaml
+    if [ -f "config.yaml" ]; then
+        echo "  (Using config.yaml)"
+        DB_HOST=$(grep -A5 "postgresql:" config.yaml | grep "host:" | awk '{print $2}')
+        DB_NAME=$(grep -A5 "postgresql:" config.yaml | grep "database:" | awk '{print $2}')
+        DB_USER=$(grep -A5 "postgresql:" config.yaml | grep "user:" | awk '{print $2}')
+        PGPASSWORD=$(grep -A5 "postgresql:" config.yaml | grep "password:" | awk '{print $2}')
+    else
+        echo "❌ Neither .env nor config.yaml found"
+        exit 1
+    fi
 fi
+
+# Set defaults if not found
+DB_HOST=${DB_HOST:-localhost}
+DB_NAME=${DB_NAME:-netmonitor}
+DB_USER=${DB_USER:-netmonitor}
+PGPASSWORD=${PGPASSWORD:-${DB_PASSWORD:-netmonitor}}
+
+echo "  Host: $DB_HOST"
+echo "  Database: $DB_NAME"
+echo "  User: $DB_USER"
 
 echo
 echo "🔍 Checking Sensor Processes:"
@@ -49,8 +74,7 @@ fi
 echo
 echo "📊 Sensor Status in Database:"
 
-# Query database for sensor status
-PGPASSWORD=$(grep -A5 "postgresql:" config.yaml | grep "password:" | awk '{print $2}')
+# Query database for sensor status (PGPASSWORD already set from .env or config.yaml)
 export PGPASSWORD
 
 psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -c "

@@ -15,28 +15,37 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config_loader import load_config
 from database import DatabaseManager
+from env_loader import get_db_config
+import os
 
 
 def display_qr_code(username: str):
     """Display 2FA QR code for a user"""
 
-    # Load config
+    # Load config (still needed for other settings)
     try:
         config = load_config('config.yaml')
     except Exception as e:
         print(f"❌ Error loading config: {e}")
         sys.exit(1)
 
-    # Connect to database
+    # Connect to database - prefer .env over config.yaml
     try:
-        db_config = config.get('database', {}).get('postgresql', {})
-        db = DatabaseManager(
-            host=db_config.get('host', 'localhost'),
-            port=db_config.get('port', 5432),
-            database=db_config.get('database', 'netmonitor'),
-            user=db_config.get('user', 'netmonitor'),
-            password=db_config.get('password', 'netmonitor')
-        )
+        if os.path.exists('.env'):
+            db_config = get_db_config()
+            print("ℹ️  Using credentials from .env")
+        else:
+            db_config_yaml = config.get('database', {}).get('postgresql', {})
+            db_config = {
+                'host': db_config_yaml.get('host', 'localhost'),
+                'port': db_config_yaml.get('port', 5432),
+                'database': db_config_yaml.get('database', 'netmonitor'),
+                'user': db_config_yaml.get('user', 'netmonitor'),
+                'password': db_config_yaml.get('password', 'netmonitor')
+            }
+            print("ℹ️  Using credentials from config.yaml")
+
+        db = DatabaseManager(**db_config)
     except Exception as e:
         print(f"❌ Database connection failed: {e}")
         sys.exit(1)

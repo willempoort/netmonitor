@@ -11,19 +11,37 @@ echo
 echo "Retrieving your 2FA secret from the database..."
 echo
 
-# Get database config from config.yaml
-DB_HOST=$(grep -A 5 "postgresql:" config.yaml | grep "host:" | awk '{print $2}')
-DB_PORT=$(grep -A 5 "postgresql:" config.yaml | grep "port:" | awk '{print $2}')
-DB_NAME=$(grep -A 5 "postgresql:" config.yaml | grep "database:" | awk '{print $2}')
-DB_USER=$(grep -A 5 "postgresql:" config.yaml | grep "user:" | awk '{print $2}')
-DB_PASS=$(grep -A 5 "postgresql:" config.yaml | grep "password:" | awk '{print $2}')
+# Function to load .env file
+load_env() {
+    if [ -f .env ]; then
+        echo "  ℹ️  Loading credentials from .env"
+        export $(grep -v '^#' .env | grep -v '^$' | xargs)
+    fi
+}
 
-# Set defaults if not found
+# Load .env if it exists
+load_env
+
+# Get database config from .env (if loaded) or config.yaml
+if [ -n "$DB_HOST" ]; then
+    # Already loaded from .env
+    :
+else
+    # Fall back to config.yaml
+    echo "  ℹ️  Loading credentials from config.yaml"
+    DB_HOST=$(grep -A 5 "postgresql:" config.yaml | grep "host:" | awk '{print $2}')
+    DB_PORT=$(grep -A 5 "postgresql:" config.yaml | grep "port:" | awk '{print $2}')
+    DB_NAME=$(grep -A 5 "postgresql:" config.yaml | grep "database:" | awk '{print $2}')
+    DB_USER=$(grep -A 5 "postgresql:" config.yaml | grep "user:" | awk '{print $2}')
+    DB_PASS=$(grep -A 5 "postgresql:" config.yaml | grep "password:" | awk '{print $2}')
+fi
+
+# Set defaults if still not found
 DB_HOST=${DB_HOST:-localhost}
 DB_PORT=${DB_PORT:-5432}
 DB_NAME=${DB_NAME:-netmonitor}
 DB_USER=${DB_USER:-netmonitor}
-DB_PASS=${DB_PASS:-netmonitor}
+DB_PASS=${DB_PASS:-${DB_PASSWORD:-netmonitor}}
 
 # Query database
 RESULT=$(PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -t -A -c \

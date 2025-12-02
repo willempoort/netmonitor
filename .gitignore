@@ -40,5 +40,8 @@ env/
 .DS_Store
 Thumbs.db
 
+# Environment variables (NEVER commit this!)
+.env
+
 # Config overrides (optioneel, commentaar uit als je custom configs wilt ignoren)
 # config.local.yaml

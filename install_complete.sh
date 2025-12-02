@@ -250,6 +250,37 @@ configure_netmonitor() {
         sed -i "/^dashboard:/a\  secret_key: \"$SECRET_KEY\"" config.yaml
     fi
 
+    # Generate .env file with secure credentials
+    print_info "Genereren van .env bestand..."
+    cat > "$INSTALL_DIR/.env" <<ENVEOF
+# NetMonitor Environment Configuration
+# Generated during installation on $(date)
+# NEVER commit this file to version control!
+
+# PostgreSQL Database Configuration
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=$DB_NAME
+DB_USER=$DB_USER
+DB_PASSWORD=$DB_PASS
+
+# Web Dashboard Configuration
+DASHBOARD_HOST=0.0.0.0
+DASHBOARD_PORT=8181
+DASHBOARD_SECRET_KEY=$SECRET_KEY
+
+# Installation Configuration
+INSTALL_DIR=$INSTALL_DIR
+
+# Sensor Configuration (optional - configured during sensor installation)
+SENSOR_ID=
+SENSOR_NAME=
+SOC_SERVER_URL=
+ENVEOF
+
+    chmod 600 "$INSTALL_DIR/.env"
+    print_success ".env bestand aangemaakt (chmod 600 voor security)"
+
     print_success "Config.yaml bijgewerkt"
 }
 
