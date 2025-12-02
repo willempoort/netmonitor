@@ -302,11 +302,15 @@ download_bootstrap_assets() {
         return 1
     }
 
-    print_info "Bootstrap JS (bundle) downloaden..."
+    print_info "Bootstrap JS (bundle with Popper) downloaden..."
     curl -sL https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js -o web/static/js/bootstrap.bundle.min.js || {
         print_error "Bootstrap JS download mislukt"
         return 1
     }
+    # Verify it includes Popper
+    if ! grep -q "Popper" web/static/js/bootstrap.bundle.min.js 2>/dev/null; then
+        print_warning "Bootstrap bundle might not include Popper.js"
+    fi
 
     print_info "Bootstrap Icons CSS downloaden..."
     curl -sL https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css -o web/static/css/bootstrap-icons.css || {
