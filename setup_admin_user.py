@@ -181,16 +181,20 @@ def main():
             print("❌ Failed to create user")
             sys.exit(1)
 
-        print("✓ Admin user created successfully!")
+        print(f"✓ Admin user '{username}' created successfully!")
         print()
 
         # Show 2FA details if enabled
-        if enable_2fa and user.totp_secret:
+        # SECURITY: NEVER print user.totp_secret - it must remain secret!
+        if enable_2fa and user.totp_enabled:
             print("=" * 70)
             print("⚠️  TWO-FACTOR AUTHENTICATION SETUP")
             print("=" * 70)
             print()
             print("Your account has been created with 2FA enabled.")
+            print()
+            print("🔒 SECURITY: The 2FA secret is stored securely in the database.")
+            print("   It will NEVER be displayed in logs or terminal for security.")
             print()
             print("To complete 2FA setup:")
             print("  1. Log in to the web dashboard")

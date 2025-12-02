@@ -45,8 +45,16 @@ class WebUser:
         """Required by Flask-Login"""
         return str(self.id)
 
+    def __repr__(self):
+        """String representation - NEVER include totp_secret for security!"""
+        return f"<WebUser(id={self.id}, username='{self.username}', role='{self.role}', 2fa={'enabled' if self.totp_enabled else 'disabled'})>"
+
+    def __str__(self):
+        """String representation - NEVER include totp_secret for security!"""
+        return f"User: {self.username} ({self.role})"
+
     def to_dict(self):
-        """Convert to dictionary for JSON responses"""
+        """Convert to dictionary for JSON responses - NEVER include totp_secret!"""
         return {
             'id': self.id,
             'username': self.username,
