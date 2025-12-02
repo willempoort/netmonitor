@@ -73,6 +73,24 @@ class ThreatDetector:
 
         self.logger.info("Threat Detector geïnitialiseerd")
 
+    def _get_threshold(self, *keys, default=None):
+        """
+        Safely get a threshold value from config with fallback to default.
+        Usage: self._get_threshold('dns_tunnel', 'query_length_threshold', default=50)
+        """
+        try:
+            value = self.config['thresholds']
+            for key in keys:
+                value = value[key]
+            return value
+        except (KeyError, TypeError):
+            if default is not None:
+                return default
+            # Log warning if no default provided
+            key_path = '.'.join(keys)
+            self.logger.warning(f"Config key 'thresholds.{key_path}' not found and no default provided")
+            return None
+
     def _parse_ip_list(self, ip_list):
         """Parse lijst van IPs/CIDRs naar ipaddress objecten"""
         parsed = []
@@ -174,25 +192,25 @@ class ThreatDetector:
                 })
 
         # Port scan detection
-        if self.config['thresholds']['port_scan']['enabled']:
+        if self._get_threshold('port_scan', 'enabled', default=True):
             threat = self._detect_port_scan(packet)
             if threat:
                 threats.append(threat)
 
         # Connection flood detection
-        if self.config['thresholds']['connection_flood']['enabled']:
+        if self._get_threshold('connection_flood', 'enabled', default=True):
             threat = self._detect_connection_flood(packet)
             if threat:
                 threats.append(threat)
 
         # Unusual packet size detection
-        if self.config['thresholds']['packet_size']['enabled']:
+        if self._get_threshold('packet_size', 'enabled', default=True):
             threat = self._detect_unusual_packet_size(packet)
             if threat:
                 threats.append(threat)
 
         # DNS tunneling detection (enhanced with content analysis)
-        if self.config['thresholds']['dns_tunnel']['enabled']:
+        if self._get_threshold('dns_tunnel', 'enabled', default=True):
             threat = self._detect_dns_tunnel(packet)
             if threat:
                 threats.append(threat)
@@ -247,8 +265,9 @@ class ThreatDetector:
         current_time = time.time()
 
         # Reset tracking als time window is verlopen
+        time_window = self._get_threshold('port_scan', 'time_window', default=60)
         if tracker['first_seen'] and \
-           (current_time - tracker['first_seen']) > self.config['thresholds']['port_scan']['time_window']:
+           (current_time - tracker['first_seen']) > time_window:
             tracker['ports'].clear()
             tracker['first_seen'] = current_time
 
@@ -259,8 +278,8 @@ class ThreatDetector:
         tracker['last_seen'] = current_time
 
         # Check threshold
-        threshold = self.config['thresholds']['port_scan']['unique_ports']
-        if len(tracker['ports']) >= threshold:
+        threshold = self._get_threshold('port_scan', 'unique_ports', default=20)
+        if threshold and len(tracker['ports']) >= threshold:
             # Bewaar de gescande poorten voordat we resetten
             ports_found = len(tracker['ports'])
             scanned_ports = sorted(list(tracker['ports']))  # Sla de lijst op
@@ -305,15 +324,16 @@ class ThreatDetector:
         connections.append(current_time)
 
         # Verwijder oude entries buiten time window
-        time_window = self.config['thresholds']['connection_flood']['time_window']
+        time_window = self._get_threshold('connection_flood', 'time_window', default=10)
         cutoff_time = current_time - time_window
 
         # Count recente connecties
         recent_connections = sum(1 for ts in connections if ts > cutoff_time)
 
-        threshold = self.config['thresholds']['connection_flood']['connections_per_second'] * time_window
+        connections_per_second = self._get_threshold('connection_flood', 'connections_per_second', default=100)
+        threshold = connections_per_second * time_window if connections_per_second else None
 
-        if recent_connections > threshold:
+        if threshold and recent_connections > threshold:
             return {
                 'type': 'CONNECTION_FLOOD',
                 'severity': 'MEDIUM',
@@ -332,7 +352,7 @@ class ThreatDetector:
 
         ip_layer = packet[IP]
         packet_size = len(packet)
-        threshold = self.config['thresholds']['packet_size']['min_suspicious_size']
+        threshold = self._get_threshold('packet_size', 'min_suspicious_size', default=1400)
 
         if packet_size > threshold:
             return {
@@ -408,8 +428,8 @@ class ThreatDetector:
                 }
 
         # Check query length (legacy detection)
-        query_length_threshold = self.config['thresholds']['dns_tunnel']['query_length_threshold']
-        if len(query) > query_length_threshold:
+        query_length_threshold = self._get_threshold('dns_tunnel', 'query_length_threshold', default=50)
+        if query_length_threshold and len(query) > query_length_threshold:
             return {
                 'type': 'DNS_TUNNEL_SUSPICIOUS_LENGTH',
                 'severity': 'MEDIUM',
@@ -428,8 +448,8 @@ class ThreatDetector:
         cutoff_time = current_time - 60
         recent_queries = sum(1 for ts in queries if ts > cutoff_time)
 
-        queries_threshold = self.config['thresholds']['dns_tunnel']['queries_per_minute']
-        if recent_queries > queries_threshold:
+        queries_threshold = self._get_threshold('dns_tunnel', 'queries_per_minute', default=150)
+        if queries_threshold and recent_queries > queries_threshold:
             return {
                 'type': 'DNS_TUNNEL_HIGH_RATE',
                 'severity': 'MEDIUM',
