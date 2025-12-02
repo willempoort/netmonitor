@@ -485,8 +485,13 @@ class SensorClient:
                 headers=self._get_headers(),
                 timeout=5
             )
-            return response.status_code == 200
-        except:
+            if response.status_code == 200:
+                return True
+            else:
+                self.logger.warning(f"Heartbeat failed: HTTP {response.status_code}")
+                return False
+        except Exception as e:
+            self.logger.debug(f"Heartbeat error: {e}")
             return False
 
     def _poll_commands(self):
