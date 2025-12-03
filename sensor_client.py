@@ -485,7 +485,7 @@ class SensorClient:
 
                 # Parse interface (handle comma-separated list)
                 interfaces_to_check = []
-                if interface_config == 'any' or interface_config is None:
+                if interface_config in ('any', 'all') or interface_config is None:
                     # Will use fallback logic below
                     pass
                 elif isinstance(interface_config, str) and ',' in interface_config:
@@ -977,7 +977,7 @@ class SensorClient:
         # Parse interface configuration (support comma-separated list)
         interface_config = self.config.get('interface', 'eth0')
 
-        if interface_config == 'any' or interface_config is None:
+        if interface_config in ('any', 'all') or interface_config is None:
             interface = None  # Listen on all interfaces
             interface_display = "all interfaces"
         elif isinstance(interface_config, str) and ',' in interface_config:
