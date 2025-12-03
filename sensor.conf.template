@@ -16,9 +16,19 @@
 # ============================================
 
 # Network Interface (REQUIRED)
-# Which network interface to monitor for packets
-# Examples: eth0, eth1, ens33, wlan0, enp0s3
-# Comma-separated for multiple: eth0,eth1
+# Which network interface(s) to monitor for packets
+#
+# Single interface:
+#   INTERFACE=eth0
+#
+# Multiple interfaces (comma-separated, no spaces recommended):
+#   INTERFACE=ens192,ens224
+#   INTERFACE=eth0,eth1,eth2
+#
+# All interfaces:
+#   INTERFACE=any
+#
+# Examples: eth0, eth1, ens33, wlan0, enp0s3, ens192
 INTERFACE=eth0
 
 # SOC Server URL (REQUIRED)
