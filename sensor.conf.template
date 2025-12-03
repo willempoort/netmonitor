@@ -24,6 +24,12 @@ INTERFACE=eth0
 # SOC Server URL (REQUIRED)
 # The URL of your central SOC server dashboard
 # Format: http://hostname:port or https://hostname:port
+#
+# IMPORTANT: Always specify the port explicitly!
+# - For standard HTTPS (port 443): https://soc.example.com:443
+# - For custom port (e.g., 8080): https://soc.example.com:8080
+# - If no port is specified, defaults are: HTTPS=443, HTTP=80
+#
 SOC_SERVER_URL=http://soc.example.com:8080
 
 # SSL Certificate Verification (OPTIONAL)

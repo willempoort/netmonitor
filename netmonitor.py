@@ -10,6 +10,7 @@ import argparse
 import logging
 import threading
 import time
+import psutil
 from pathlib import Path
 
 try:
@@ -477,13 +478,54 @@ class NetworkMonitor:
                 hostname = self.self_monitor_config.get('hostname') or socket.gethostname()
                 location = self.self_monitor_config.get('location', 'SOC Server')
 
+                # Detect IP address from monitoring interface
+                ip_address = None
+                try:
+                    interface_config = self.self_monitor_config.get('interface', self.config.get('interface', 'lo'))
+
+                    # Handle 'any' or None interface
+                    if interface_config == 'any' or interface_config is None:
+                        interface = None
+                    elif isinstance(interface_config, str) and ',' in interface_config:
+                        # For multiple interfaces, use the first one
+                        interface = interface_config.split(',')[0].strip()
+                    else:
+                        interface = interface_config
+
+                    if interface:
+                        net_addrs = psutil.net_if_addrs()
+
+                        if interface in net_addrs:
+                            # Get IPv4 address from the monitoring interface
+                            for addr in net_addrs[interface]:
+                                if addr.family == socket.AF_INET:  # IPv4
+                                    ip_address = addr.address
+                                    break
+
+                    # Fallback: try to get any non-loopback IP
+                    if not ip_address:
+                        net_addrs = psutil.net_if_addrs()
+                        for iface, addrs in net_addrs.items():
+                            if iface.startswith('lo'):  # Skip loopback
+                                continue
+                            for addr in addrs:
+                                if addr.family == socket.AF_INET:
+                                    ip_address = addr.address
+                                    break
+                            if ip_address:
+                                break
+                except Exception as e:
+                    self.logger.debug(f"Could not detect IP address: {e}")
+                    ip_address = None
+
                 self.db.register_sensor(
                     sensor_id=self.sensor_id,
                     hostname=hostname,
-                    location=location
+                    location=location,
+                    ip_address=ip_address
                     # Note: status is automatically set to 'online' by register_sensor()
                 )
-                self.logger.info(f"SOC server registered as sensor: {self.sensor_id} ({hostname})")
+                self.logger.info(f"SOC server registered as sensor: {self.sensor_id} ({hostname}, IP: {ip_address or 'unknown'})")
             except Exception as e:
                 self.logger.warning(f"Could not register SOC server as sensor: {e}")
 

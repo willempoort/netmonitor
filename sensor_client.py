@@ -242,6 +242,13 @@ class SensorClient:
             # Unknown scheme, return as-is
             return url
 
+        # Log warning when default port is used
+        logger = logging.getLogger('NetMonitor.Sensor')
+        logger.warning(f"⚠️  No port specified in SOC_SERVER_URL, using default port {default_port} for {parsed.scheme.upper()}")
+        logger.warning(f"⚠️  Original URL: {url}")
+        logger.warning(f"⚠️  If your SOC server runs on a different port (e.g., 8080), please specify it explicitly:")
+        logger.warning(f"⚠️  Example: {parsed.scheme}://{parsed.hostname}:8080")
+
         # Reconstruct URL with explicit port
         netloc_with_port = f"{parsed.hostname}:{default_port}"
         normalized = urlunparse((
@@ -351,7 +358,8 @@ class SensorClient:
                     'sensor_id': self.sensor_id,
                     'include_defaults': 'false'  # Sensors use local config as base
                 },
-                timeout=10
+                timeout=10,
+                verify=self.ssl_verify
             )
 
             if response.status_code == 200:
@@ -431,7 +439,8 @@ class SensorClient:
                 f"{self.server_url}/api/whitelist",
                 headers=self._get_headers(),
                 params={'sensor_id': self.sensor_id},
-                timeout=10
+                timeout=10,
+                verify=self.ssl_verify
             )
 
             if response.status_code == 200:
@@ -513,7 +522,8 @@ class SensorClient:
                         'batch_interval': self.batch_interval
                     }
                 },
-                timeout=10
+                timeout=10,
+                verify=self.ssl_verify
             )
 
             if response.status_code == 200:
@@ -531,7 +541,8 @@ class SensorClient:
             response = requests.post(
                 f"{self.server_url}/api/sensors/{self.sensor_id}/heartbeat",
                 headers=self._get_headers(),
-                timeout=5
+                timeout=5,
+                verify=self.ssl_verify
             )
             if response.status_code == 200:
                 return True
@@ -548,7 +559,8 @@ class SensorClient:
             response = requests.get(
                 f"{self.server_url}/api/sensors/{self.sensor_id}/commands",
                 headers=self._get_headers(),
-                timeout=10
+                timeout=10,
+                verify=self.ssl_verify
             )
 
             if response.status_code == 200:
@@ -574,7 +586,8 @@ class SensorClient:
             requests.put(
                 f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
                 json={'status': 'executing'},
-                timeout=10
+                timeout=10,
+                verify=self.ssl_verify
             )
 
             result = {'success': False, 'message': 'Unknown command'}
@@ -590,7 +603,8 @@ class SensorClient:
                 requests.put(
                     f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
                     json={'status': 'completed', 'result': result},
-                    timeout=10
+                    timeout=10,
+                    verify=self.ssl_verify
                 )
                 # Schedule restart
                 import subprocess
@@ -675,7 +689,8 @@ class SensorClient:
                 requests.put(
                     f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
                     json={'status': 'completed', 'result': result},
-                    timeout=10
+                    timeout=10,
+                    verify=self.ssl_verify
                 )
                 # Schedule reboot
                 import subprocess
@@ -720,7 +735,8 @@ class SensorClient:
                         requests.put(
                             f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
                             json={'status': 'completed', 'result': result},
-                            timeout=10
+                            timeout=10,
+                            verify=self.ssl_verify
                         )
 
                         # Schedule service restart
@@ -753,7 +769,8 @@ class SensorClient:
             requests.put(
                 f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
                 json={'status': 'completed', 'result': result},
-                timeout=10
+                timeout=10,
+                verify=self.ssl_verify
             )
 
             self.logger.info(f"Command {command_type} completed: {result.get('message', 'OK')}")
@@ -765,7 +782,8 @@ class SensorClient:
                 requests.put(
                     f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
                     json={'status': 'failed', 'result': {'error': str(e)}},
-                    timeout=10
+                    timeout=10,
+                    verify=self.ssl_verify
                 )
             except:
                 pass
@@ -810,7 +828,8 @@ class SensorClient:
                     'network_interface': self.config.get('interface', 'unknown'),
                     'bandwidth_mbps': round(mbps, 2)  # Add bandwidth in Mbps
                 },
-                timeout=10
+                timeout=10,
+                verify=self.ssl_verify
             )
 
             if response.status_code == 200:
@@ -828,7 +847,8 @@ class SensorClient:
                 f"{self.server_url}/api/sensors/{self.sensor_id}/alerts",
                 headers=self._get_headers(),
                 json={'alerts': [alert]},
-                timeout=10
+                timeout=10,
+                verify=self.ssl_verify
             )
 
             if response.status_code == 200:
@@ -862,7 +882,8 @@ class SensorClient:
                 f"{self.server_url}/api/sensors/{self.sensor_id}/alerts",
                 headers=self._get_headers(),
                 json={'alerts': alerts},
-                timeout=30
+                timeout=30,
+                verify=self.ssl_verify
             )
 
             if response.status_code == 200:
