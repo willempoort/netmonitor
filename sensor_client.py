@@ -480,15 +480,30 @@ class SensorClient:
             # Get IP address from the monitoring interface (not loopback)
             ip_address = None
             try:
-                interface = self.config.get('interface', 'eth0')
+                interface_config = self.config.get('interface', 'eth0')
                 net_addrs = psutil.net_if_addrs()
 
-                if interface in net_addrs:
-                    # Get IPv4 address from the monitoring interface
-                    for addr in net_addrs[interface]:
-                        if addr.family == socket.AF_INET:  # IPv4
-                            ip_address = addr.address
-                            break
+                # Parse interface (handle comma-separated list)
+                interfaces_to_check = []
+                if interface_config == 'any' or interface_config is None:
+                    # Will use fallback logic below
+                    pass
+                elif isinstance(interface_config, str) and ',' in interface_config:
+                    # Multiple interfaces - use first one
+                    interfaces_to_check = [iface.strip() for iface in interface_config.split(',')]
+                else:
+                    # Single interface
+                    interfaces_to_check = [interface_config]
+
+                # Try to get IP from specified interfaces
+                for iface in interfaces_to_check:
+                    if iface in net_addrs:
+                        for addr in net_addrs[iface]:
+                            if addr.family == socket.AF_INET:  # IPv4
+                                ip_address = addr.address
+                                break
+                    if ip_address:
+                        break
 
                 # Fallback: try to get any non-loopback IP
                 if not ip_address:
@@ -959,8 +974,22 @@ class SensorClient:
         self.logger.info("Remote Sensor Client Starting")
         self.logger.info("=" * 60)
 
-        interface = self.config.get('interface', 'eth0')
-        self.logger.info(f"Monitoring interface: {interface}")
+        # Parse interface configuration (support comma-separated list)
+        interface_config = self.config.get('interface', 'eth0')
+
+        if interface_config == 'any' or interface_config is None:
+            interface = None  # Listen on all interfaces
+            interface_display = "all interfaces"
+        elif isinstance(interface_config, str) and ',' in interface_config:
+            # Multiple interfaces: "ens192, ens224" -> ["ens192", "ens224"]
+            interface = [iface.strip() for iface in interface_config.split(',')]
+            interface_display = ', '.join(interface)
+        else:
+            # Single interface
+            interface = interface_config
+            interface_display = interface_config
+
+        self.logger.info(f"Monitoring interface: {interface_display}")
         self.logger.info(f"Batch upload interval: {self.batch_interval}s")
 
         # Start upload thread
