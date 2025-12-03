@@ -220,6 +220,9 @@ def require_sensor_token_or_login():
     """
     Decorator that accepts either sensor token authentication OR Flask-Login session
     Used for endpoints that sensors AND web users need to access (like /api/config)
+
+    Special case: GET requests with sensor_id parameter are allowed without authentication
+    This allows newly registered sensors to fetch their config and whitelist without tokens
     """
     def decorator(f):
         @wraps(f)
@@ -250,8 +253,16 @@ def require_sensor_token_or_login():
                 logger.debug(f"API access via web session: {current_user.username}")
                 return f(*args, **kwargs)
 
+            # Special case: Allow GET requests with sensor_id parameter (for sensor registration flow)
+            if request.method == 'GET' and request.args.get('sensor_id'):
+                from flask import g
+                g.auth_method = 'sensor_registration'
+                g.sensor_id = request.args.get('sensor_id')
+                logger.debug(f"API access via sensor registration flow: {g.sensor_id}")
+                return f(*args, **kwargs)
+
             # No valid authentication
-            logger.warning(f"Unauthorized API access attempt from {request.remote_addr}")
+            logger.warning(f"Unauthorized API access attempt from {request.remote_addr} to {request.path}")
             return jsonify({
                 'success': False,
                 'error': 'Authentication required (sensor token or web login)'
