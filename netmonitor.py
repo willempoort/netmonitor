@@ -483,8 +483,8 @@ class NetworkMonitor:
                 try:
                     interface_config = self.self_monitor_config.get('interface', self.config.get('interface', 'lo'))
 
-                    # Handle 'any' or None interface
-                    if interface_config == 'any' or interface_config is None:
+                    # Handle 'any', 'all', or None interface
+                    if interface_config in ('any', 'all') or interface_config is None:
                         interface = None
                     elif isinstance(interface_config, str) and ',' in interface_config:
                         # For multiple interfaces, use the first one
@@ -533,7 +533,7 @@ class NetworkMonitor:
         interface_config = self.self_monitor_config.get('interface', self.config.get('interface', 'lo'))
 
         # Parse interface configuration (support comma-separated list)
-        if interface_config == 'any' or interface_config is None:
+        if interface_config in ('any', 'all') or interface_config is None:
             interface = None  # Listen on all interfaces
             self.interface_display = "all interfaces"
         elif isinstance(interface_config, str) and ',' in interface_config:

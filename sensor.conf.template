@@ -25,8 +25,9 @@
 #   INTERFACE=ens192,ens224
 #   INTERFACE=eth0,eth1,eth2
 #
-# All interfaces:
+# All interfaces (use 'any' or 'all'):
 #   INTERFACE=any
+#   INTERFACE=all
 #
 # Examples: eth0, eth1, ens33, wlan0, enp0s3, ens192
 INTERFACE=eth0
