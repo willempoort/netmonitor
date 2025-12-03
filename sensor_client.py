@@ -171,6 +171,14 @@ class SensorClient:
             self.config.get('sensor', {}).get('token')
         )
 
+        # SSL verification setting
+        self.ssl_verify = self.config.get('server', {}).get('ssl_verify', True)
+        if isinstance(self.ssl_verify, str):
+            self.ssl_verify = self.ssl_verify.lower() in ('true', 'yes', '1')
+
+        # Normalize server URL (add default port if missing)
+        self.server_url = self._normalize_server_url(self.server_url)
+
         # Statistics
         self.packets_captured = 0
         self.alerts_sent = 0
@@ -206,6 +214,46 @@ class SensorClient:
         hostname = socket.gethostname()
         self.logger.info(f"SENSOR_ID not specified, using hostname: {hostname}")
         return hostname
+
+    def _normalize_server_url(self, url):
+        """
+        Normalize server URL by adding default port if missing
+
+        Examples:
+            https://soc.example.com           → https://soc.example.com:443
+            http://soc.example.com            → http://soc.example.com:80
+            https://soc.example.com:8443      → https://soc.example.com:8443 (unchanged)
+            http://192.168.1.1:8080           → http://192.168.1.1:8080 (unchanged)
+        """
+        from urllib.parse import urlparse, urlunparse
+
+        parsed = urlparse(url)
+
+        # If port is already specified, return as-is
+        if parsed.port:
+            return url
+
+        # Add default port based on scheme
+        if parsed.scheme == 'https':
+            default_port = 443
+        elif parsed.scheme == 'http':
+            default_port = 80
+        else:
+            # Unknown scheme, return as-is
+            return url
+
+        # Reconstruct URL with explicit port
+        netloc_with_port = f"{parsed.hostname}:{default_port}"
+        normalized = urlunparse((
+            parsed.scheme,
+            netloc_with_port,
+            parsed.path,
+            parsed.params,
+            parsed.query,
+            parsed.fragment
+        ))
+
+        return normalized
 
     def _get_headers(self):
         """Get HTTP headers with authentication token if available"""
