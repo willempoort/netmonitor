@@ -123,15 +123,30 @@ INTERFACE=eth0              # Monitor traffic op mirror port
 # eth1 wordt automatisch gebruikt voor SOC communicatie
 ```
 
-**Switch configuratie voorbeeld (Allied Telesis):**
+**Switch configuratie voorbeeld (Allied Telesis - GETEST):**
 ```
-# Mirror port 23 (naar sensor eth0)
-mirror session 1 destination interface port1.0.23
-mirror session 1 source interface port1.0.1-22 direction both
+# Configureer port 24 als mirror destination
+# Mirror al het verkeer van port 1-23 naar port 24 (beide richtingen)
 
-# Sensor management op port 24 (naar sensor eth1)
-# Normale access/trunk port configuratie
+enable
+configure terminal
+interface port1.0.24
+mirror interface none                                    # Clear previous config
+mirror interface port1.0.1-port1.0.23 direction both    # Mirror ports 1-23 → 24
+do write
+exit
+exit
+
+# Verificatie:
+show mirror interface
 ```
+
+**Belangrijke notities:**
+- Je configureert de **destination port** (waar de sensor aan hangt)
+- `mirror interface none` wist eerdere mirror configuratie
+- `direction both` mirrort zowel inbound als outbound verkeer
+- Notatie: `port1.0.1-port1.0.23` (met volledige port nummer na streepje)
+- **NIET** gebruiken: `mirror session` syntax (oudere/andere modellen)
 
 ---
 
