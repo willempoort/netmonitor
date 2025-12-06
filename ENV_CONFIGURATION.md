@@ -71,7 +71,8 @@ DB_PASSWORD=je_wachtwoord_hier
 # Web Dashboard Configuration
 DASHBOARD_HOST=0.0.0.0
 DASHBOARD_PORT=8181
-DASHBOARD_SECRET_KEY=random_secret_key
+# Flask secret key (generate with: python3 -c "import secrets; print(secrets.token_hex(32))")
+FLASK_SECRET_KEY=random_secret_key
 
 # Installation Configuration
 INSTALL_DIR=/opt/netmonitor
