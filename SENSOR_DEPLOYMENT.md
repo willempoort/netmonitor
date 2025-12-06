@@ -93,9 +93,44 @@ Internet ──→ [eth0] Nano Pi [eth1] ──→ Internal Network
               └─ Mirror/analyze traffic
 ```
 
-**2. Mirror port** (Voor single ethernet devices)
+**2. Mirror/SPAN port** (Voor switch-based monitoring)
 ```
-Switch (SPAN/Mirror Port) ──→ Nano Pi
+Switch (SPAN/Mirror Port) ──→ [eth0] Nano Pi [eth1] ──→ SOC Server
+                               └─ Monitor only    └─ Management traffic
+```
+
+#### ⚠️ **BELANGRIJK: Mirror Port Configuratie**
+
+**Meerdere NICs vereist:**
+Sommige switches (zoals Allied Telesis) configureren mirror ports als **destination-only** (TX disabled). Dit betekent:
+
+✅ **eth0** (mirror port) - Ontvangt gemirrord verkeer (RX only)
+✅ **eth1** (management port) - Voor communicatie met SOC server (TX/RX)
+
+**Gevolgen:**
+- De sensor **moet minstens 2 network interfaces hebben**
+- Mirror port kan geen uitgaand verkeer versturen
+- Management verkeer (heartbeats, alerts) gaat via aparte interface
+
+**Voordeel:**
+- Sensor traffic naar SOC kan via apart netwerksegment (meer security)
+- Mirror port blijft dedicated voor monitoring
+
+**Configuratie:**
+```bash
+# sensor.conf
+INTERFACE=eth0              # Monitor traffic op mirror port
+# eth1 wordt automatisch gebruikt voor SOC communicatie
+```
+
+**Switch configuratie voorbeeld (Allied Telesis):**
+```
+# Mirror port 23 (naar sensor eth0)
+mirror session 1 destination interface port1.0.23
+mirror session 1 source interface port1.0.1-22 direction both
+
+# Sensor management op port 24 (naar sensor eth1)
+# Normale access/trunk port configuratie
 ```
 
 ---
@@ -208,7 +243,43 @@ CONFIG_SYNC_INTERVAL=300
 SSL_VERIFY=true
 ```
 
-### Stap 6: Test Configuration
+### Stap 6: Whitelist SOC Server (BELANGRIJK voor mirror port setups!)
+
+**Waarom nodig:**
+Bij mirror port configuraties ziet de sensor zijn **eigen uitgaande verkeer** naar de SOC server via de mirror. Dit veroorzaakt false positive brute force alerts omdat meerdere HTTPS requests naar dezelfde server worden gedetecteerd.
+
+**Symptoom:**
+```
+⚠️ [HIGH] BRUTE_FORCE_ATTEMPT: Mogelijke brute force aanval op HTTPS: 5 pogingen
+```
+
+**Oplossing - Whitelist via sensor.conf:**
+
+```bash
+nano sensor.conf
+
+# Voeg toe (onderaan):
+SENSOR_WHITELIST=soc.rapidsteelservice.com
+
+# Of met IP adres:
+SENSOR_WHITELIST=10.100.0.100/32
+
+# Meerdere entries (comma-separated):
+SENSOR_WHITELIST=soc.rapidsteelservice.com,10.100.0.100/32
+```
+
+**Alternatief - Whitelist via Dashboard:**
+1. Login op SOC Dashboard
+2. Navigeer naar **Whitelist Management**
+3. Klik **Add Entry**
+4. Vul in:
+   - IP/Domain: `soc.rapidsteelservice.com`
+   - Scope: `Sensor-specific`
+   - Sensor: `sensor-8282b4`
+   - Comment: `SOC server - prevent false positives`
+5. Klik **Save**
+
+### Stap 7: Test Configuration
 
 ```bash
 # Test sensor in foreground (Ctrl+C to stop)
@@ -216,9 +287,10 @@ sudo python3 sensor_client.py -c sensor.conf
 
 # Check for errors in output
 # Should see: "Registered sensor..." and "Config synced from server..."
+# Should NOT see brute force alerts for SOC server communication
 ```
 
-### Stap 7: Install Systemd Service
+### Stap 8: Install Systemd Service
 
 ```bash
 # Copy service file
@@ -235,7 +307,7 @@ sudo systemctl start netmonitor-sensor
 sudo systemctl status netmonitor-sensor
 ```
 
-### Stap 8: Verify in Dashboard
+### Stap 9: Verify in Dashboard
 
 1. Open SOC dashboard: `https://soc.example.com:8080`
 2. Login
