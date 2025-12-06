@@ -125,8 +125,8 @@ INTERFACE=eth0              # Monitor traffic op mirror port
 
 **Switch configuratie voorbeeld (Allied Telesis - GETEST):**
 ```
-# Configureer port 24 als mirror destination
-# Mirror al het verkeer van port 1-23 naar port 24 (beide richtingen)
+# Configureer port1.0.24 als mirror destination
+# Mirror al het verkeer van port1.0.1 t/m port1.0.23 naar port1.0.24 (beide richtingen)
 
 enable
 configure terminal
