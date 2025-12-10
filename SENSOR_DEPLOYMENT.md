@@ -274,13 +274,13 @@ Bij mirror port configuraties ziet de sensor zijn **eigen uitgaande verkeer** na
 nano sensor.conf
 
 # Voeg toe (onderaan):
-SENSOR_WHITELIST=soc.rapidsteelservice.com
+SENSOR_WHITELIST=soc.poort.net
 
 # Of met IP adres:
 SENSOR_WHITELIST=10.100.0.100/32
 
 # Meerdere entries (comma-separated):
-SENSOR_WHITELIST=soc.rapidsteelservice.com,10.100.0.100/32
+SENSOR_WHITELIST=soc.poort.net,10.100.0.100/32
 ```
 
 **Alternatief - Whitelist via Dashboard:**
@@ -288,7 +288,7 @@ SENSOR_WHITELIST=soc.rapidsteelservice.com,10.100.0.100/32
 2. Navigeer naar **Whitelist Management**
 3. Klik **Add Entry**
 4. Vul in:
-   - IP/Domain: `soc.rapidsteelservice.com`
+   - IP/Domain: `soc.poort.net`
    - Scope: `Sensor-specific`
    - Sensor: `sensor-8282b4`
    - Comment: `SOC server - prevent false positives`

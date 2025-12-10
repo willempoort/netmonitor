@@ -34,11 +34,11 @@ Het probleem kan zijn:
 
 #### Stap 1: DNS Record Toevoegen
 
-Voeg een A-record toe voor `mcp.rapidsteelservice.com`:
+Voeg een A-record toe voor `mcp.poort.net`:
 ```
 Type: A
 Name: mcp
-Value: [IP van soc.rapidsteelservice.com]
+Value: [IP van soc.poort.net]
 TTL: 300
 ```
 
@@ -58,7 +58,7 @@ sudo nginx -t
 #### Stap 3: SSL Certificaat (Let's Encrypt)
 
 ```bash
-sudo certbot --nginx -d mcp.rapidsteelservice.com
+sudo certbot --nginx -d mcp.poort.net
 ```
 
 #### Stap 4: Reload Nginx
@@ -71,11 +71,11 @@ sudo systemctl reload nginx
 
 ```bash
 # Health check
-curl https://mcp.rapidsteelservice.com/health
+curl https://mcp.poort.net/health
 
 # MCP endpoints
-curl https://mcp.rapidsteelservice.com/mcp/tools
-curl https://mcp.rapidsteelservice.com/docs
+curl https://mcp.poort.net/mcp/tools
+curl https://mcp.poort.net/docs
 ```
 
 #### Stap 6: Update Claude Desktop Config
@@ -87,7 +87,7 @@ curl https://mcp.rapidsteelservice.com/docs
       "command": "python3",
       "args": ["/pad/naar/http_bridge_client.py"],
       "env": {
-        "MCP_HTTP_URL": "https://mcp.rapidsteelservice.com",
+        "MCP_HTTP_URL": "https://mcp.poort.net",
         "MCP_HTTP_TOKEN": "your_token_here"
       }
     }
@@ -97,15 +97,15 @@ curl https://mcp.rapidsteelservice.com/docs
 
 **Bridge maakt nu:**
 ```
-https://mcp.rapidsteelservice.com/mcp/tools ✅
-https://mcp.rapidsteelservice.com/mcp/resources ✅
+https://mcp.poort.net/mcp/tools ✅
+https://mcp.poort.net/mcp/resources ✅
 ```
 
 ---
 
 ### Oplossing 2: Huidige Setup Debuggen
 
-Als de `/mcp/` route op `soc.rapidsteelservice.com` niet werkt, check:
+Als de `/mcp/` route op `soc.poort.net` niet werkt, check:
 
 #### Test 1: Check Nginx Config Actief
 
@@ -121,10 +121,10 @@ sudo nginx -T | grep -A 5 "location /mcp"
 
 ```bash
 # Test SSL verbinding
-curl -v https://soc.rapidsteelservice.com/mcp/health
+curl -v https://soc.poort.net/mcp/health
 
 # Check certificaat
-openssl s_client -connect soc.rapidsteelservice.com:443 -servername soc.rapidsteelservice.com </dev/null
+openssl s_client -connect soc.poort.net:443 -servername soc.poort.net </dev/null
 ```
 
 **Als SSL errors:**
@@ -145,7 +145,7 @@ tail -f /tmp/mcp_http_bridge.log
 
 **Handmatig testen:**
 ```bash
-export MCP_HTTP_URL="https://soc.rapidsteelservice.com"
+export MCP_HTTP_URL="https://soc.poort.net"
 export MCP_HTTP_TOKEN="your_token_here"
 python3 http_bridge_client.py
 ```
@@ -195,14 +195,14 @@ Edit `/opt/netmonitor/mcp_server/http_server.py` om SSL te ondersteunen, of draa
 ┌─────────────────────────────┐
 │  Nginx Reverse Proxy        │
 │                             │
-│  mcp.rapidsteelservice.com  │ → Port 8000 (MCP API)
-│  soc.rapidsteelservice.com  │ → Port 8080 (Dashboard)
+│  mcp.poort.net  │ → Port 8000 (MCP API)
+│  soc.poort.net  │ → Port 8080 (Dashboard)
 └─────────────────────────────┘
 ```
 
 **Routing:**
-- `https://mcp.rapidsteelservice.com/*` → MCP HTTP API (8000)
-- `https://soc.rapidsteelservice.com/*` → Web Dashboard (8080)
+- `https://mcp.poort.net/*` → MCP HTTP API (8000)
+- `https://soc.poort.net/*` → Web Dashboard (8080)
 
 **Voordelen:**
 - ✅ Schone scheiding
@@ -215,14 +215,14 @@ Edit `/opt/netmonitor/mcp_server/http_server.py` om SSL te ondersteunen, of draa
 
 ## 🔧 Troubleshooting Checklist
 
-- [ ] DNS record voor `mcp.rapidsteelservice.com` bestaat
+- [ ] DNS record voor `mcp.poort.net` bestaat
 - [ ] Nginx config gekopieerd en enabled
 - [ ] SSL certificaat aangemaakt (`certbot`)
 - [ ] Nginx test passed (`nginx -t`)
 - [ ] Nginx reloaded (`systemctl reload nginx`)
 - [ ] MCP API draait op poort 8000 (`lsof -i :8000`)
-- [ ] Health endpoint bereikbaar (`curl https://mcp.rapidsteelservice.com/health`)
-- [ ] MCP endpoints bereikbaar (`curl https://mcp.rapidsteelservice.com/mcp/tools`)
+- [ ] Health endpoint bereikbaar (`curl https://mcp.poort.net/health`)
+- [ ] MCP endpoints bereikbaar (`curl https://mcp.poort.net/mcp/tools`)
 - [ ] Bridge client config updated
 - [ ] Claude Desktop herstart
 
@@ -234,17 +234,17 @@ Edit `/opt/netmonitor/mcp_server/http_server.py` om SSL te ondersteunen, of draa
 
 ```bash
 # Health (geen auth)
-curl https://mcp.rapidsteelservice.com/health
+curl https://mcp.poort.net/health
 
 # API info (geen auth)
-curl https://mcp.rapidsteelservice.com/
+curl https://mcp.poort.net/
 
 # Tools lijst (auth required)
 curl -H "Authorization: Bearer YOUR_TOKEN" \
-  https://mcp.rapidsteelservice.com/mcp/tools
+  https://mcp.poort.net/mcp/tools
 
 # API docs
-curl https://mcp.rapidsteelservice.com/docs
+curl https://mcp.poort.net/docs
 ```
 
 ### Test Claude Desktop Verbinding
@@ -266,23 +266,23 @@ Als MCP server correct verbonden is, zie je een lijst met NetMonitor tools.
 ## 🚀 Quick Start (Dedicated Subdomain)
 
 ```bash
-# 1. DNS: Voeg A-record toe voor mcp.rapidsteelservice.com
+# 1. DNS: Voeg A-record toe voor mcp.poort.net
 
 # 2. Installeer nginx config
 sudo cp nginx-mcp-subdomain.conf /etc/nginx/sites-available/mcp
 sudo ln -sf /etc/nginx/sites-available/mcp /etc/nginx/sites-enabled/mcp
 
 # 3. SSL certificaat
-sudo certbot --nginx -d mcp.rapidsteelservice.com
+sudo certbot --nginx -d mcp.poort.net
 
 # 4. Test en reload
 sudo nginx -t && sudo systemctl reload nginx
 
 # 5. Test endpoint
-curl https://mcp.rapidsteelservice.com/health
+curl https://mcp.poort.net/health
 
 # 6. Update Claude Desktop config
-# MCP_HTTP_URL: "https://mcp.rapidsteelservice.com"
+# MCP_HTTP_URL: "https://mcp.poort.net"
 
 # 7. Herstart Claude Desktop
 ```
@@ -298,7 +298,7 @@ Als het nog steeds niet werkt:
 1. **Check bridge logs:** `tail -f /tmp/mcp_http_bridge.log`
 2. **Test handmatig:** Exporteer env vars en run bridge script
 3. **Check nginx logs:** `tail -f /var/log/nginx/mcp_error.log`
-4. **Verify SSL:** `openssl s_client -connect mcp.rapidsteelservice.com:443`
+4. **Verify SSL:** `openssl s_client -connect mcp.poort.net:443`
 5. **Check firewall:** `sudo ufw status`
 
 **Meest voorkomende problemen:**
