@@ -100,7 +100,7 @@ server_name soc.example.com;  # WIJZIG NAAR JE DOMEIN
 
 Naar bijvoorbeeld:
 ```nginx
-server_name soc.rapidsteelservice.com;
+server_name soc.poort.net;
 ```
 
 Test nginx configuratie:

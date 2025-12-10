@@ -10,7 +10,7 @@ echo ""
 NGINX_CONF=""
 for conf in /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*; do
     if [ -f "$conf" ]; then
-        if grep -q "soc.rapidsteelservice.com" "$conf" 2>/dev/null; then
+        if grep -q "soc.poort.net" "$conf" 2>/dev/null; then
             NGINX_CONF="$conf"
             break
         fi
@@ -18,7 +18,7 @@ for conf in /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*; do
 done
 
 if [ -z "$NGINX_CONF" ]; then
-    echo "❌ Cannot find nginx config for soc.rapidsteelservice.com"
+    echo "❌ Cannot find nginx config for soc.poort.net"
     echo ""
     echo "Please provide the path to your nginx config file."
     exit 1
