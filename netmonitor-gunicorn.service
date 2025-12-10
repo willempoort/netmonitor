@@ -1,0 +1,58 @@
+[Unit]
+Description=NetMonitor Dashboard (Gunicorn)
+After=network.target
+Requires=netmonitor.service
+
+[Service]
+Type=notify
+User=root
+Group=root
+WorkingDirectory=/opt/netmonitor
+
+# Create runtime directory for PID file
+RuntimeDirectory=netmonitor
+RuntimeDirectoryMode=0755
+
+# Ensure log directory exists
+ExecStartPre=/bin/mkdir -p /var/log/netmonitor
+ExecStartPre=/bin/chown root:root /var/log/netmonitor
+
+# Start Gunicorn with eventlet workers for SocketIO support
+ExecStart=/usr/local/bin/gunicorn \
+    --config /opt/netmonitor/gunicorn_config.py \
+    --bind 127.0.0.1:8000 \
+    --workers 4 \
+    --worker-class eventlet \
+    --worker-connections 1000 \
+    --timeout 30 \
+    --graceful-timeout 30 \
+    --access-logfile /var/log/netmonitor/gunicorn_access.log \
+    --error-logfile /var/log/netmonitor/gunicorn_error.log \
+    --log-level info \
+    --pid /var/run/netmonitor/gunicorn.pid \
+    wsgi:application
+
+# Restart on failure
+Restart=on-failure
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=30
+
+# Environment
+Environment="PYTHONUNBUFFERED=1"
+Environment="DASHBOARD_PORT=8000"
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/netmonitor /var/log/netmonitor /var/run/netmonitor /var/cache/netmonitor
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=netmonitor-dashboard
+
+[Install]
+WantedBy=multi-user.target
