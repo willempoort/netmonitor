@@ -1,6 +1,31 @@
 # Gunicorn Production Setup voor NetMonitor
 
-Complete productie setup met Gunicorn WSGI server op poort 8000.
+⚠️ **WAARSCHUWING**: Deze setup gebruikt poort 8000 voor Gunicorn, maar NetMonitor gebruikt poort 8000 standaard voor de **MCP HTTP API**!
+
+**NetMonitor Standaard Setup:**
+- Poort **8080**: Web Dashboard (Flask + eventlet)
+- Poort **8000**: MCP HTTP API (FastAPI + Uvicorn)
+
+**Deze Gunicorn setup:**
+- Poort **8000**: Web Dashboard (Flask + Gunicorn + eventlet workers)
+
+**⚠️ CONFLICT**: Je kunt niet beide tegelijk draaien op poort 8000!
+
+## Opties:
+
+### Optie 1: Standaard Setup Gebruiken (Aanbevolen)
+Gebruik de standaard setup met:
+- Web Dashboard op poort 8080 (eventlet)
+- MCP API op poort 8000 (FastAPI)
+- Nginx config: `nginx-netmonitor-dual.conf`
+
+### Optie 2: Gunicorn Gebruiken (Gevorderd)
+Als je echt Gunicorn wilt gebruiken:
+1. **Stop de MCP API** of verplaats deze naar een andere poort
+2. Wijzig Gunicorn naar poort **8001** (zie configuratie aanpassingen hieronder)
+3. Update nginx configuratie
+
+---
 
 ## Waarom Gunicorn?
 
