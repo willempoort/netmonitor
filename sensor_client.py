@@ -164,6 +164,9 @@ class SensorClient:
         self.batch_interval = batch_interval
         self.running = False
 
+        # Config ETag for caching (prevents unnecessary config downloads)
+        self.config_etag = None
+
         # Authentication token
         self.token = (
             os.environ.get('SENSOR_TOKEN') or
@@ -349,11 +352,22 @@ class SensorClient:
         self._update_config()
 
     def _update_config(self):
-        """Fetch configuration from SOC server and merge with local config"""
+        """Fetch configuration from SOC server and merge with local config
+
+        Uses ETag-based caching to minimize bandwidth:
+        - Sends If-None-Match header with cached ETag
+        - 304 response: config unchanged, skip update
+        - 200 response: config changed, update and cache new ETag
+        """
         try:
+            # Prepare headers with ETag if we have one
+            headers = self._get_headers()
+            if self.config_etag:
+                headers['If-None-Match'] = self.config_etag
+
             response = requests.get(
                 f"{self.server_url}/api/config",
-                headers=self._get_headers(),
+                headers=headers,
                 params={
                     'sensor_id': self.sensor_id,
                     'include_defaults': 'false'  # Sensors use local config as base
@@ -362,7 +376,18 @@ class SensorClient:
                 verify=self.ssl_verify
             )
 
+            # Handle 304 Not Modified (config unchanged)
+            if response.status_code == 304:
+                self.logger.debug("✓ Config unchanged (304 Not Modified)")
+                return
+
+            # Handle 200 OK (config available)
             if response.status_code == 200:
+                # Save new ETag for next request
+                new_etag = response.headers.get('ETag')
+                if new_etag:
+                    self.config_etag = new_etag
+
                 result = response.json()
                 if result.get('success'):
                     server_config = result.get('config', {})
