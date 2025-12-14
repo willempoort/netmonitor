@@ -209,12 +209,12 @@
         .bg-offline { background: var(--accent-danger); }
         .bg-critical { background: var(--accent-danger); }
 
-        /* ==================== Metrics View ==================== */
-        .metrics-container {
+        /* ==================== Traffic Chart View ==================== */
+        .traffic-container {
             display: none;
         }
 
-        .metrics-container.active {
+        .traffic-container.active {
             display: block;
         }
 
@@ -547,17 +547,17 @@
             </div>
         </div>
 
-        <!-- Metrics Screen -->
-        <div id="screen-metrics" class="metrics-container active">
-            <div class="metrics-grid" id="metrics-grid">
-                <!-- Metrics cards will be populated by JavaScript -->
-                <div class="loading">
-                    <div class="spinner"></div>
-                    <p>Loading metrics...</p>
-                </div>
+        <!-- Metrics Grid - Always Visible -->
+        <div class="metrics-grid" id="metrics-grid">
+            <!-- Metrics cards will be populated by JavaScript -->
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading metrics...</p>
             </div>
+        </div>
 
-            <!-- Traffic Chart -->
+        <!-- Traffic Chart Screen - Page 1 Only -->
+        <div id="screen-traffic" class="traffic-container active">
             <div class="traffic-chart-container">
                 <div class="traffic-chart-header">
                     <h3 class="traffic-chart-title">📊 Network Traffic - Last 24 Hours</h3>
@@ -576,7 +576,7 @@
             </div>
         </div>
 
-        <!-- Alerts Screen -->
+        <!-- Alerts Screen - Page 2 Only -->
         <div id="screen-alerts" class="alerts-container">
             <h2 style="margin-bottom: 1rem; font-size: 1.5rem;">⚠️ Critical & High Severity Alerts</h2>
             <div id="alerts-list">
@@ -672,7 +672,7 @@
             currentScreen = (currentScreen + 1) % 3;
 
             // Show current screen
-            const screens = ['screen-metrics', 'screen-alerts', 'screen-sensors'];
+            const screens = ['screen-traffic', 'screen-alerts', 'screen-sensors'];
             document.getElementById(screens[currentScreen]).classList.add('active');
 
             // Update indicators
