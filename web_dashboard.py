@@ -1381,75 +1381,50 @@ def api_kiosk_traffic():
     try:
         from datetime import datetime, timedelta
 
-        # Get metrics from last 24 hours, grouped by hour
-        now = datetime.now()
-        start_time = now - timedelta(hours=24)
-
-        # Query database for traffic metrics
-        # Get hourly aggregated bandwidth data
-        query = """
-            SELECT
-                datetime(timestamp, 'unixepoch', 'localtime') as hour,
-                AVG(bandwidth_in) as avg_bandwidth_in,
-                AVG(bandwidth_out) as avg_bandwidth_out,
-                AVG(bandwidth_in + bandwidth_out) as avg_bandwidth_total
-            FROM (
-                SELECT
-                    strftime('%s', timestamp) - strftime('%s', timestamp) % 3600 as timestamp,
-                    bandwidth_mbps as bandwidth_in,
-                    bandwidth_mbps * 0.4 as bandwidth_out
-                FROM metrics
-                WHERE timestamp >= datetime('now', '-24 hours')
-                GROUP BY timestamp / 3600
-            )
-            GROUP BY hour
-            ORDER BY hour ASC
-        """
-
-        # Execute query
-        conn = db.conn
-        cursor = conn.cursor()
-        cursor.execute(query)
-        results = cursor.fetchall()
+        # Get traffic history from database (last 24 hours, up to 288 points = 5min intervals)
+        traffic_data = db.get_traffic_history(hours=24, limit=288)
 
         # Format data for Chart.js
         labels = []
         bandwidth_in = []
         bandwidth_out = []
-        bandwidth_total = []
 
-        for row in results:
-            # Parse hour from timestamp
-            hour_str = row[0] if row[0] else ''
-            if hour_str:
-                try:
-                    dt = datetime.strptime(hour_str, '%Y-%m-%d %H:%M:%S')
+        if traffic_data and len(traffic_data) > 0:
+            for record in traffic_data:
+                # Format timestamp
+                timestamp = record.get('timestamp')
+                if timestamp:
+                    if isinstance(timestamp, str):
+                        dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                    else:
+                        dt = timestamp
                     labels.append(dt.strftime('%H:%M'))
-                except:
-                    labels.append(hour_str[-5:])  # Just get HH:MM
-            else:
-                labels.append('')
+                else:
+                    labels.append('')
 
-            bandwidth_in.append(round(row[1] if row[1] else 0, 2))
-            bandwidth_out.append(round(row[2] if row[2] else 0, 2))
-            bandwidth_total.append(round(row[3] if row[3] else 0, 2))
+                # Convert bytes to Mbps (bytes per 5 minutes -> Mbps)
+                # Formula: (bytes * 8) / (5 * 60 * 1000000) = bytes / 37500000
+                inbound = record.get('inbound_bytes', 0) or 0
+                outbound = record.get('outbound_bytes', 0) or 0
 
-        # If no data, generate sample data points for last 24 hours
+                bandwidth_in.append(round(inbound / 37500000, 2))
+                bandwidth_out.append(round(outbound / 37500000, 2))
+
+        # If no data, generate empty data points for last 24 hours
         if len(labels) == 0:
+            now = datetime.now()
             for i in range(24):
                 hour = (now - timedelta(hours=23-i)).strftime('%H:%M')
                 labels.append(hour)
                 bandwidth_in.append(0)
                 bandwidth_out.append(0)
-                bandwidth_total.append(0)
 
         return jsonify({
             'success': True,
             'labels': labels,
             'datasets': {
                 'bandwidth_in': bandwidth_in,
-                'bandwidth_out': bandwidth_out,
-                'bandwidth_total': bandwidth_total
+                'bandwidth_out': bandwidth_out
             },
             'unit': 'Mbps',
             'period': '24 hours'
@@ -1457,6 +1432,9 @@ def api_kiosk_traffic():
 
     except Exception as e:
         logger.error(f"Error getting kiosk traffic data: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
         # Return empty data on error
         now = datetime.now()
         labels = [(now - timedelta(hours=23-i)).strftime('%H:%M') for i in range(24)]
@@ -1466,8 +1444,7 @@ def api_kiosk_traffic():
             'labels': labels,
             'datasets': {
                 'bandwidth_in': [0] * 24,
-                'bandwidth_out': [0] * 24,
-                'bandwidth_total': [0] * 24
+                'bandwidth_out': [0] * 24
             },
             'unit': 'Mbps',
             'period': '24 hours'
