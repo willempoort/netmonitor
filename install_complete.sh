@@ -76,27 +76,67 @@ check_os() {
     fi
 }
 
+load_existing_env() {
+    # Load existing .env values if file exists
+    if [ -f "$INSTALL_DIR/.env" ]; then
+        print_info "Bestaande .env gevonden, waarden worden geladen..."
+        source "$INSTALL_DIR/.env" 2>/dev/null || true
+    fi
+}
+
 prompt_config() {
     print_header "CONFIGURATIE"
 
-    # Database password
-    read -sp "Database password voor netmonitor user (default: netmonitor): " DB_PASS_INPUT
+    # Load existing .env if present
+    load_existing_env
+
+    # Database configuration
+    echo
+    print_info "PostgreSQL Database Configuratie:"
+
+    read -p "Database host (huidige: ${DB_HOST:-localhost}): " DB_HOST_INPUT
+    DB_HOST=${DB_HOST_INPUT:-${DB_HOST:-localhost}}
+
+    read -p "Database port (huidige: ${DB_PORT:-5432}): " DB_PORT_INPUT
+    DB_PORT=${DB_PORT_INPUT:-${DB_PORT:-5432}}
+
+    read -p "Database naam (huidige: ${DB_NAME:-netmonitor}): " DB_NAME_INPUT
+    DB_NAME=${DB_NAME_INPUT:-${DB_NAME:-netmonitor}}
+
+    read -p "Database user (huidige: ${DB_USER:-netmonitor}): " DB_USER_INPUT
+    DB_USER=${DB_USER_INPUT:-${DB_USER:-netmonitor}}
+
+    read -sp "Database password (leeg = behoud huidige): " DB_PASS_INPUT
     echo
     if [ ! -z "$DB_PASS_INPUT" ]; then
         DB_PASS="$DB_PASS_INPUT"
+    elif [ -z "$DB_PASSWORD" ]; then
+        DB_PASS="netmonitor"
+    else
+        DB_PASS="$DB_PASSWORD"
     fi
+
+    # Dashboard configuration
+    echo
+    print_info "Web Dashboard Configuratie:"
+
+    read -p "Dashboard host (huidige: ${DASHBOARD_HOST:-0.0.0.0}): " DASH_HOST_INPUT
+    DASHBOARD_HOST=${DASH_HOST_INPUT:-${DASHBOARD_HOST:-0.0.0.0}}
+
+    read -p "Dashboard port (huidige: ${DASHBOARD_PORT:-8080}): " DASH_PORT_INPUT
+    DASHBOARD_PORT=${DASH_PORT_INPUT:-${DASHBOARD_PORT:-8080}}
 
     # Network interface
     echo
     print_info "Beschikbare network interfaces:"
     ip link show | grep -E "^[0-9]+:" | awk '{print "  - " $2}' | sed 's/:$//'
     echo
-    read -p "Welke interface wil je monitoren? (default: eth0): " INTERFACE
-    INTERFACE=${INTERFACE:-eth0}
+    read -p "Welke interface wil je monitoren? (huidige: ${MONITOR_INTERFACE:-eth0}): " INTERFACE_INPUT
+    INTERFACE=${INTERFACE_INPUT:-${MONITOR_INTERFACE:-eth0}}
 
     # Internal network
-    read -p "Jouw interne netwerk CIDR (default: 192.168.1.0/24): " INTERNAL_NET
-    INTERNAL_NET=${INTERNAL_NET:-192.168.1.0/24}
+    read -p "Jouw interne netwerk CIDR (huidige: ${INTERNAL_NETWORK:-192.168.1.0/24}): " INTERNAL_NET_INPUT
+    INTERNAL_NET=${INTERNAL_NET_INPUT:-${INTERNAL_NETWORK:-192.168.1.0/24}}
 
     # Components
     echo
@@ -107,8 +147,18 @@ prompt_config() {
     read -p "NetMonitor Core? (Y/n) " INSTALL_CORE
     INSTALL_CORE=${INSTALL_CORE:-Y}
 
-    read -p "MCP HTTP API Server? (y/N) " INSTALL_MCP
-    INSTALL_MCP=${INSTALL_MCP:-N}
+    # MCP API configuration
+    read -p "MCP HTTP API Server? (huidige: ${MCP_API_ENABLED:-false}, y/N) " INSTALL_MCP_INPUT
+    INSTALL_MCP=${INSTALL_MCP_INPUT:-N}
+
+    if [[ $INSTALL_MCP =~ ^[Yy]$ ]]; then
+        MCP_API_ENABLED="true"
+        read -p "MCP API port (huidige: ${MCP_API_PORT:-8000}): " MCP_PORT_INPUT
+        MCP_API_PORT=${MCP_PORT_INPUT:-${MCP_API_PORT:-8000}}
+    else
+        MCP_API_ENABLED="false"
+        MCP_API_PORT=${MCP_API_PORT:-8000}
+    fi
 
     read -p "Nginx reverse proxy? (y/N) " INSTALL_NGINX
     INSTALL_NGINX=${INSTALL_NGINX:-N}
@@ -231,57 +281,67 @@ configure_netmonitor() {
 
     cd $INSTALL_DIR
 
-    # Backup existing config
+    # Backup existing configs
     if [ -f config.yaml ]; then
         cp config.yaml config.yaml.backup.$(date +%Y%m%d_%H%M%S)
-        print_info "Bestaande config backed up"
+        print_info "Bestaande config.yaml backed up"
     fi
 
-    # Update config.yaml
+    if [ -f .env ]; then
+        cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
+        print_info "Bestaande .env backed up"
+    fi
+
+    # Generate Flask secret key if not exists
+    if [ -z "$FLASK_SECRET_KEY" ]; then
+        FLASK_SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+    fi
+
+    # Create/Update .env from .env.example
+    print_info "Genereren/updaten van .env bestand..."
+
+    if [ ! -f .env.example ]; then
+        print_error ".env.example niet gevonden!"
+        return 1
+    fi
+
+    # Start with .env.example as base
+    cp .env.example .env.new
+
+    # Update with configured values
+    sed -i "s|^INSTALL_DIR=.*|INSTALL_DIR=$INSTALL_DIR|" .env.new
+    sed -i "s|^DB_HOST=.*|DB_HOST=$DB_HOST|" .env.new
+    sed -i "s|^DB_PORT=.*|DB_PORT=$DB_PORT|" .env.new
+    sed -i "s|^DB_NAME=.*|DB_NAME=$DB_NAME|" .env.new
+    sed -i "s|^DB_USER=.*|DB_USER=$DB_USER|" .env.new
+    sed -i "s|^DB_PASSWORD=.*|DB_PASSWORD=$DB_PASS|" .env.new
+    sed -i "s|^DB_TYPE=.*|DB_TYPE=postgresql|" .env.new
+    sed -i "s|^DASHBOARD_HOST=.*|DASHBOARD_HOST=$DASHBOARD_HOST|" .env.new
+    sed -i "s|^DASHBOARD_PORT=.*|DASHBOARD_PORT=$DASHBOARD_PORT|" .env.new
+    sed -i "s|^FLASK_SECRET_KEY=.*|FLASK_SECRET_KEY=$FLASK_SECRET_KEY|" .env.new
+    sed -i "s|^MCP_API_ENABLED=.*|MCP_API_ENABLED=$MCP_API_ENABLED|" .env.new
+    sed -i "s|^MCP_API_PORT=.*|MCP_API_PORT=$MCP_API_PORT|" .env.new
+    sed -i "s|^MONITOR_INTERFACE=.*|MONITOR_INTERFACE=$INTERFACE|" .env.new
+    sed -i "s|^INTERNAL_NETWORK=.*|INTERNAL_NETWORK=$INTERNAL_NET|" .env.new
+
+    # Move new .env into place
+    mv .env.new .env
+    chmod 600 .env
+    print_success ".env bestand aangemaakt/bijgewerkt (chmod 600 voor security)"
+
+    # Update config.yaml with basic settings
     sed -i "s/^interface:.*/interface: $INTERFACE/" config.yaml
     sed -i "s|password: netmonitor|password: $DB_PASS|" config.yaml
 
-    # Update internal networks (simplified)
+    # Update internal networks in config.yaml
     print_info "Internal network ingesteld op: $INTERNAL_NET"
 
-    # Generate secret key
-    SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+    # Add secret key to config.yaml if not exists
     if ! grep -q "secret_key:" config.yaml; then
-        sed -i "/^dashboard:/a\  secret_key: \"$SECRET_KEY\"" config.yaml
+        sed -i "/^dashboard:/a\  secret_key: \"$FLASK_SECRET_KEY\"" config.yaml
     fi
 
-    # Generate .env file with secure credentials
-    print_info "Genereren van .env bestand..."
-    cat > "$INSTALL_DIR/.env" <<ENVEOF
-# NetMonitor Environment Configuration
-# Generated during installation on $(date)
-# NEVER commit this file to version control!
-
-# PostgreSQL Database Configuration
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=$DB_NAME
-DB_USER=$DB_USER
-DB_PASSWORD=$DB_PASS
-
-# Web Dashboard Configuration
-DASHBOARD_HOST=0.0.0.0
-DASHBOARD_PORT=8181
-FLASK_SECRET_KEY=$SECRET_KEY
-
-# Installation Configuration
-INSTALL_DIR=$INSTALL_DIR
-
-# Sensor Configuration (optional - configured during sensor installation)
-SENSOR_ID=
-SENSOR_NAME=
-SOC_SERVER_URL=
-ENVEOF
-
-    chmod 600 "$INSTALL_DIR/.env"
-    print_success ".env bestand aangemaakt (chmod 600 voor security)"
-
-    print_success "Config.yaml bijgewerkt"
+    print_success "Configuratie bestanden bijgewerkt"
 }
 
 init_database_schema() {
@@ -444,67 +504,34 @@ setup_systemd_services() {
 
     cd $INSTALL_DIR
 
-    # Generate service files with correct paths (not templates!)
-    print_info "Generating service files with installation paths..."
+    # Use install_services.sh to generate service files from templates
+    print_info "Genereren van service files via install_services.sh..."
 
-    # 1. Main NetMonitor service
-    cat > /etc/systemd/system/netmonitor.service <<EOF
-[Unit]
-Description=Network Monitor - Verdacht Verkeer Detectie
-After=network.target
+    # Run install_services.sh non-interactively (auto-enable services)
+    # Set environment variable to enable auto-confirmation
+    export AUTO_CONFIRM=yes
+    bash install_services.sh >> $LOG_FILE 2>&1
 
-[Service]
-Type=simple
-User=root
-WorkingDirectory=${INSTALL_DIR}
-ExecStart=${INSTALL_DIR}/venv/bin/python3 ${INSTALL_DIR}/netmonitor.py
-Restart=on-failure
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
+    if [ $? -eq 0 ]; then
+        print_success "Service files gegenereerd via templates"
+    else
+        print_error "Service generatie mislukt - check $LOG_FILE"
+        return 1
+    fi
 
-# Security hardening
-NoNewPrivileges=true
-PrivateTmp=true
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    # 2. Feed Update service
-    cat > /etc/systemd/system/netmonitor-feed-update.service <<EOF
-[Unit]
-Description=Network Monitor - Threat Feed Update
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-User=root
-WorkingDirectory=${INSTALL_DIR}
-ExecStart=${INSTALL_DIR}/venv/bin/python3 ${INSTALL_DIR}/update_feeds.py
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    # 3. Copy timer (no paths to replace)
-    cp netmonitor-feed-update.timer /etc/systemd/system/
-
-    # Reload systemd
-    systemctl daemon-reload
-    print_success "Service files gegenereerd met correcte paths"
-
-    # Enable and start services
-    systemctl enable netmonitor >> $LOG_FILE 2>&1
-    systemctl start netmonitor
+    # Start main service
+    systemctl start netmonitor >> $LOG_FILE 2>&1
     print_success "NetMonitor service gestart"
 
-    systemctl enable netmonitor-feed-update.timer >> $LOG_FILE 2>&1
-    systemctl start netmonitor-feed-update.timer
+    # Start feed update timer
+    systemctl start netmonitor-feed-update.timer >> $LOG_FILE 2>&1
     print_success "Feed update timer gestart"
+
+    # Start MCP API if enabled
+    if [[ $MCP_API_ENABLED == "true" ]]; then
+        systemctl start netmonitor-mcp-http >> $LOG_FILE 2>&1
+        print_success "MCP API service gestart"
+    fi
 
     # Check status
     sleep 2

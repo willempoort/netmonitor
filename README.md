@@ -199,7 +199,47 @@ Alle sync intervals configureerbaar via dashboard:
 
 ## 🚀 Quick Start Installation
 
-### Modern Installatie (Aanbevolen - Met Virtual Environment)
+### Complete Installatie (Aanbevolen - 1 Script)
+
+**Alles in één keer: PostgreSQL, TimescaleDB, NetMonitor, Web Auth, MCP API**
+
+```bash
+# 1. Clone repository naar /opt
+cd /opt
+sudo git clone <repository-url>
+cd netmonitor
+
+# 2. Run complete installation script
+sudo ./install_complete.sh
+# → Interactive prompts voor:
+#    - Database credentials (bestaande waarden worden voorgesteld)
+#    - Network interface
+#    - Internal network CIDR
+#    - Componenten selectie
+#    - Dashboard port
+#    - MCP API configuratie
+# → Installeert PostgreSQL + TimescaleDB
+# → Maakt .env bestand aan (behoudt bestaande settings!)
+# → Genereert services vanuit templates
+# → Setup admin user voor dashboard
+# → ~20-30 minuten installatie tijd
+
+# 3. Klaar! Open dashboard
+firefox http://localhost:8080
+```
+
+**✨ Voordelen:**
+- ✅ **Slimme .env handling**: Bestaande waarden worden voorgesteld, ontbrekende worden toegevoegd
+- ✅ **Alles geautomatiseerd**: Van database tot services
+- ✅ **PostgreSQL + TimescaleDB**: Production-ready database setup
+- ✅ **Template-based services**: Via install_services.sh met .env configuratie
+- ✅ **Safe re-run**: Kan opnieuw uitgevoerd zonder bestaande settings te verliezen
+- ✅ **Backup**: Automatische backup van config.yaml en .env
+
+### Handmatige Installatie (Voor experts)
+
+<details>
+<summary>Klik hier voor stap-voor-stap handmatige installatie</summary>
 
 ```bash
 # 1. Clone repository
@@ -214,11 +254,17 @@ sudo mkdir -p /var/log/netmonitor
 sudo mkdir -p /var/cache/netmonitor/feeds
 sudo mkdir -p /var/lib/netmonitor
 
-# 4. Installeer alle systemd services
-sudo ./install_services.sh
-# → Kies welke services je wilt enablen (main monitor, feed update, MCP server)
+# 4. Configureer .env (kopieer van .env.example)
+sudo cp .env.example .env
+sudo nano .env  # Pas aan naar je setup
 
-# 5. Klaar! Check status
+# 5. Installeer systemd services (gebruikt .env en templates!)
+sudo ./install_services.sh
+# → Genereert services vanuit templates in services/ directory
+# → Leest configuratie uit .env bestand
+# → Vraagt welke services je wilt enablen
+
+# 6. Klaar! Check status
 sudo systemctl status netmonitor netmonitor-feed-update.timer
 ```
 
@@ -227,6 +273,8 @@ sudo systemctl status netmonitor netmonitor-feed-update.timer
 - Geen conflicts met system packages
 - Geen sudo pip nodig
 - MCP package alleen via pip beschikbaar
+
+</details>
 
 Zie [VENV_SETUP.md](VENV_SETUP.md) voor details en [SERVICE_INSTALLATION.md](SERVICE_INSTALLATION.md) voor service management.
 

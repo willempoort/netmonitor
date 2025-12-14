@@ -261,21 +261,29 @@ enable_service() {
     echo ""
 }
 
+# Check if running in auto-confirm mode (used by install_complete.sh)
+AUTO_ENABLE="false"
+if [ "$AUTO_CONFIRM" = "yes" ] || [ "$AUTO_CONFIRM" = "true" ]; then
+    AUTO_ENABLE="true"
+    echo_info "Running in auto-confirm mode - services will be enabled automatically"
+    echo ""
+fi
+
 # Enable main service
-enable_service "netmonitor.service" "NetMonitor Main Service"
+enable_service "netmonitor.service" "NetMonitor Main Service" "$AUTO_ENABLE"
 
 # Enable dashboard service (if installed)
 if [ "$DASHBOARD_SERVER" = "gunicorn" ]; then
-    enable_service "netmonitor-dashboard.service" "Web Dashboard (Gunicorn)"
+    enable_service "netmonitor-dashboard.service" "Web Dashboard (Gunicorn)" "$AUTO_ENABLE"
 fi
 
 # Enable MCP HTTP API (if installed)
 if [ "$MCP_API_ENABLED" = "true" ]; then
-    enable_service "netmonitor-mcp-http.service" "MCP HTTP API"
+    enable_service "netmonitor-mcp-http.service" "MCP HTTP API" "$AUTO_ENABLE"
 fi
 
 # Enable feed update timer
-enable_service "netmonitor-feed-update.timer" "Threat Feed Update Timer"
+enable_service "netmonitor-feed-update.timer" "Threat Feed Update Timer" "$AUTO_ENABLE"
 
 # ============================================================================
 # Installation Summary
