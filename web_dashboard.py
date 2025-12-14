@@ -1251,6 +1251,127 @@ def api_reset_config():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ==================== Kiosk Mode Routes (Public Access) ====================
+
+@app.route('/kiosk')
+def kiosk_view():
+    """
+    Kiosk mode fullscreen view - Public access for monitoring displays
+    No authentication required
+    """
+    return render_template('kiosk.html')
+
+@app.route('/api/kiosk/metrics')
+def api_kiosk_metrics():
+    """
+    Get aggregated metrics for kiosk display - Public API
+    Returns cumulative metrics from ALL sensors
+    """
+    try:
+        # Get aggregated metrics from ALL sensors
+        aggregated = db.get_aggregated_metrics()
+
+        # Get sensor status overview
+        sensors = db.get_sensors()
+
+        # Calculate average CPU/Memory across all sensors
+        total_cpu = 0
+        total_memory = 0
+        sensor_count = 0
+
+        for sensor in sensors:
+            if sensor.get('cpu_percent') is not None:
+                total_cpu += sensor['cpu_percent']
+                sensor_count += 1
+            if sensor.get('memory_percent') is not None:
+                total_memory += sensor['memory_percent']
+
+        avg_cpu = round(total_cpu / sensor_count, 1) if sensor_count > 0 else 0
+        avg_memory = round(total_memory / sensor_count, 1) if sensor_count > 0 else 0
+
+        # Get critical/high alerts (last hour)
+        alerts = db.get_recent_alerts(limit=20, hours=1)
+        critical_alerts = [a for a in alerts if a['severity'] in ['CRITICAL', 'HIGH']]
+
+        # Get alert statistics for threat breakdown
+        stats = db.get_alert_statistics(hours=24)
+
+        # Sensor health counts
+        sensor_health = {
+            'total': len(sensors),
+            'online': len([s for s in sensors if s['computed_status'] == 'online']),
+            'warning': len([s for s in sensors if s['computed_status'] == 'warning']),
+            'offline': len([s for s in sensors if s['computed_status'] == 'offline'])
+        }
+
+        return jsonify({
+            'success': True,
+            'timestamp': datetime.now().isoformat(),
+            'metrics': {
+                'bandwidth_mbps': aggregated.get('bandwidth_mbps', 0),
+                'packets_per_sec': aggregated.get('packets_per_sec', 0),
+                'alerts_per_min': aggregated.get('alerts_per_min', 0),
+                'active_sensors': f"{sensor_health['online']}/{sensor_health['total']}",
+                'avg_cpu_percent': avg_cpu,
+                'avg_memory_percent': avg_memory
+            },
+            'sensor_health': sensor_health,
+            'critical_alerts': critical_alerts[:10],  # Max 10 for kiosk
+            'top_threats': dict(list(stats.get('by_type', {}).items())[:5]),
+            'alert_severity': stats.get('by_severity', {})
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting kiosk metrics: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'metrics': {
+                'bandwidth_mbps': 0,
+                'packets_per_sec': 0,
+                'alerts_per_min': 0,
+                'active_sensors': '0/0',
+                'avg_cpu_percent': 0,
+                'avg_memory_percent': 0
+            }
+        }), 500
+
+@app.route('/api/kiosk/sensors')
+def api_kiosk_sensors():
+    """
+    Get detailed sensor status for kiosk sensor view
+    Public API - no auth required
+    """
+    try:
+        sensors = db.get_sensors()
+
+        # Format for kiosk display
+        formatted_sensors = []
+        for sensor in sensors:
+            formatted_sensors.append({
+                'id': sensor['sensor_id'],
+                'name': sensor['hostname'],
+                'location': sensor.get('location', 'Unknown'),
+                'status': sensor['computed_status'],
+                'cpu': sensor.get('cpu_percent', 0),
+                'memory': sensor.get('memory_percent', 0),
+                'bandwidth': sensor.get('bandwidth_mbps', 0),
+                'alerts_24h': sensor.get('alerts_24h', 0),
+                'last_seen': sensor.get('last_seen')
+            })
+
+        return jsonify({
+            'success': True,
+            'sensors': formatted_sensors,
+            'total': len(formatted_sensors),
+            'online': len([s for s in formatted_sensors if s['status'] == 'online'])
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting kiosk sensors: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ==================== WebSocket Events ====================
 
 @socketio.on('connect')

@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetMonitor SOC - Kiosk Mode</title>
+    <style>
+        /* ==================== CSS Variables for Theming ==================== */
+        :root[data-theme="dark"] {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-card: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --text-muted: #94a3b8;
+            --border-color: #475569;
+            --accent-primary: #3b82f6;
+            --accent-success: #10b981;
+            --accent-warning: #f59e0b;
+            --accent-danger: #ef4444;
+            --shadow: rgba(0, 0, 0, 0.5);
+        }
+
+        :root[data-theme="light"] {
+            --bg-primary: #f8fafc;
+            --bg-secondary: #ffffff;
+            --bg-card: #ffffff;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --accent-primary: #3b82f6;
+            --accent-success: #10b981;
+            --accent-warning: #f59e0b;
+            --accent-danger: #ef4444;
+            --shadow: rgba(0, 0, 0, 0.1);
+        }
+
+        /* ==================== Base Styles ==================== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+                sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+
+        /* ==================== Container & Layout ==================== */
+        .kiosk-container {
+            max-width: 100vw;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border-radius: 0.5rem;
+            border: 1px solid var(--border-color);
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--accent-primary);
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--accent-success);
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .timestamp {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        /* ==================== Controls ==================== */
+        .controls {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn:hover {
+            background: var(--accent-primary);
+            color: white;
+            transform: translateY(-1px);
+        }
+
+        .btn-icon {
+            padding: 0.5rem;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* ==================== Grid Layout ==================== */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        @media (min-width: 1024px) {
+            .metrics-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        /* ==================== Cards ==================== */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px var(--shadow);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 12px var(--shadow);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .card-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 0.05em;
+        }
+
+        .card-icon {
+            font-size: 1.5rem;
+        }
+
+        .card-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1;
+            margin-bottom: 0.5rem;
+        }
+
+        .card-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        /* ==================== Status Colors ==================== */
+        .status-online { color: var(--accent-success); }
+        .status-warning { color: var(--accent-warning); }
+        .status-offline { color: var(--accent-danger); }
+        .status-critical { color: var(--accent-danger); }
+
+        .bg-online { background: var(--accent-success); }
+        .bg-warning { background: var(--accent-warning); }
+        .bg-offline { background: var(--accent-danger); }
+        .bg-critical { background: var(--accent-danger); }
+
+        /* ==================== Alerts View ==================== */
+        .alerts-container {
+            display: none;
+        }
+
+        .alerts-container.active {
+            display: block;
+        }
+
+        .alert-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-left: 4px solid var(--accent-danger);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            transition: all 0.2s ease;
+        }
+
+        .alert-item:hover {
+            transform: translateX(4px);
+            border-left-width: 6px;
+        }
+
+        .alert-item.severity-HIGH {
+            border-left-color: var(--accent-warning);
+        }
+
+        .alert-item.severity-CRITICAL {
+            border-left-color: var(--accent-danger);
+        }
+
+        .alert-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 0.5rem;
+        }
+
+        .alert-type {
+            font-weight: 700;
+            font-size: 1rem;
+            color: var(--text-primary);
+        }
+
+        .alert-severity {
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .alert-severity.HIGH {
+            background: var(--accent-warning);
+            color: white;
+        }
+
+        .alert-severity.CRITICAL {
+            background: var(--accent-danger);
+            color: white;
+        }
+
+        .alert-description {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .alert-meta {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        /* ==================== Sensors View ==================== */
+        .sensors-container {
+            display: none;
+        }
+
+        .sensors-container.active {
+            display: block;
+        }
+
+        .sensors-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1rem;
+        }
+
+        .sensor-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            transition: all 0.2s ease;
+        }
+
+        .sensor-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px var(--shadow);
+        }
+
+        .sensor-card.online {
+            border-left: 4px solid var(--accent-success);
+        }
+
+        .sensor-card.warning {
+            border-left: 4px solid var(--accent-warning);
+        }
+
+        .sensor-card.offline {
+            border-left: 4px solid var(--accent-danger);
+        }
+
+        .sensor-name {
+            font-weight: 700;
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
+            color: var(--text-primary);
+        }
+
+        .sensor-location {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
+        }
+
+        .sensor-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .sensor-stat {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sensor-stat-label {
+            font-size: 0.625rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .sensor-stat-value {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        /* ==================== Fullscreen Hint ==================== */
+        .fullscreen-hint {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 2rem 3rem;
+            border-radius: 1rem;
+            text-align: center;
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .fullscreen-hint.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .fullscreen-hint h2 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        .fullscreen-hint p {
+            font-size: 1.25rem;
+            color: #cbd5e1;
+        }
+
+        .fullscreen-hint kbd {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            background: #334155;
+            border-radius: 0.375rem;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin: 0 0.25rem;
+        }
+
+        /* ==================== Screen Indicator ==================== */
+        .screen-indicator {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: center;
+            margin-top: 1rem;
+        }
+
+        .screen-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--border-color);
+            transition: all 0.3s ease;
+        }
+
+        .screen-dot.active {
+            background: var(--accent-primary);
+            transform: scale(1.3);
+        }
+
+        /* ==================== Loading State ==================== */
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+        }
+
+        .spinner {
+            border: 3px solid var(--border-color);
+            border-top: 3px solid var(--accent-primary);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* ==================== Responsive ==================== */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.5rem;
+            }
+
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .sensors-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="kiosk-container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🛡️ NetMonitor SOC - Kiosk</h1>
+            <div class="header-controls">
+                <div class="status-dot"></div>
+                <span class="timestamp" id="timestamp">--:--:--</span>
+                <div class="controls">
+                    <button class="btn btn-icon" onclick="toggleTheme()" title="Toggle Theme">
+                        <span id="theme-icon">🌙</span>
+                    </button>
+                    <button class="btn btn-icon" onclick="toggleFullscreen()" title="Fullscreen (F11)">
+                        <span>⛶</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Metrics Screen -->
+        <div id="screen-metrics" class="metrics-container active">
+            <div class="metrics-grid" id="metrics-grid">
+                <!-- Metrics cards will be populated by JavaScript -->
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading metrics...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alerts Screen -->
+        <div id="screen-alerts" class="alerts-container">
+            <h2 style="margin-bottom: 1rem; font-size: 1.5rem;">⚠️ Critical & High Severity Alerts</h2>
+            <div id="alerts-list">
+                <!-- Alerts will be populated by JavaScript -->
+            </div>
+        </div>
+
+        <!-- Sensors Screen -->
+        <div id="screen-sensors" class="sensors-container">
+            <h2 style="margin-bottom: 1rem; font-size: 1.5rem;">📡 Sensor Status</h2>
+            <div class="sensors-grid" id="sensors-grid">
+                <!-- Sensors will be populated by JavaScript -->
+            </div>
+        </div>
+
+        <!-- Screen Indicator -->
+        <div class="screen-indicator">
+            <div class="screen-dot active" data-screen="0"></div>
+            <div class="screen-dot" data-screen="1"></div>
+            <div class="screen-dot" data-screen="2"></div>
+        </div>
+    </div>
+
+    <!-- Fullscreen Hint -->
+    <div class="fullscreen-hint" id="fullscreen-hint">
+        <h2>Kiosk Mode</h2>
+        <p>Press <kbd>F11</kbd> for fullscreen</p>
+        <p style="margin-top: 1rem; font-size: 1rem;">This message will auto-hide in 5 seconds</p>
+    </div>
+
+    <script>
+        // ==================== Configuration ====================
+        const CONFIG = {
+            refreshInterval: 5000,      // 5 seconds
+            rotationInterval: 30000,    // 30 seconds
+            hintDuration: 5000          // 5 seconds
+        };
+
+        // ==================== State ====================
+        let currentScreen = 0;
+        let rotationTimer = null;
+        let refreshTimer = null;
+
+        // ==================== Theme Management ====================
+        function initTheme() {
+            const savedTheme = localStorage.getItem('kiosk-theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            updateThemeIcon(savedTheme);
+        }
+
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme');
+            const next = current === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', next);
+            localStorage.setItem('kiosk-theme', next);
+            updateThemeIcon(next);
+        }
+
+        function updateThemeIcon(theme) {
+            document.getElementById('theme-icon').textContent = theme === 'dark' ? '☀️' : '🌙';
+        }
+
+        // ==================== Fullscreen Management ====================
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.error('Fullscreen error:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        function showFullscreenHint() {
+            const hint = document.getElementById('fullscreen-hint');
+            hint.classList.add('show');
+            setTimeout(() => {
+                hint.classList.remove('show');
+            }, CONFIG.hintDuration);
+        }
+
+        // ==================== Screen Rotation ====================
+        function rotateScreen() {
+            // Hide all screens
+            document.querySelectorAll('[id^="screen-"]').forEach(el => el.classList.remove('active'));
+
+            // Update current screen (cycle through 0, 1, 2)
+            currentScreen = (currentScreen + 1) % 3;
+
+            // Show current screen
+            const screens = ['screen-metrics', 'screen-alerts', 'screen-sensors'];
+            document.getElementById(screens[currentScreen]).classList.add('active');
+
+            // Update indicators
+            document.querySelectorAll('.screen-dot').forEach((dot, index) => {
+                dot.classList.toggle('active', index === currentScreen);
+            });
+        }
+
+        function startRotation() {
+            rotationTimer = setInterval(rotateScreen, CONFIG.rotationInterval);
+        }
+
+        function stopRotation() {
+            if (rotationTimer) {
+                clearInterval(rotationTimer);
+                rotationTimer = null;
+            }
+        }
+
+        // ==================== Data Fetching ====================
+        async function fetchMetrics() {
+            try {
+                const response = await fetch('/api/kiosk/metrics');
+                const data = await response.json();
+
+                if (data.success) {
+                    updateMetrics(data);
+                    updateAlerts(data.critical_alerts || []);
+                }
+            } catch (error) {
+                console.error('Error fetching metrics:', error);
+            }
+        }
+
+        async function fetchSensors() {
+            try {
+                const response = await fetch('/api/kiosk/sensors');
+                const data = await response.json();
+
+                if (data.success) {
+                    updateSensors(data.sensors || []);
+                }
+            } catch (error) {
+                console.error('Error fetching sensors:', error);
+            }
+        }
+
+        // ==================== UI Updates ====================
+        function updateMetrics(data) {
+            const metrics = data.metrics || {};
+            const sensorHealth = data.sensor_health || {};
+
+            const metricsHTML = `
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Bandwidth</span>
+                        <span class="card-icon">📊</span>
+                    </div>
+                    <div class="card-value">${formatNumber(metrics.bandwidth_mbps || 0)}</div>
+                    <div class="card-label">Mbps Total</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Packets</span>
+                        <span class="card-icon">📦</span>
+                    </div>
+                    <div class="card-value">${formatNumber(metrics.packets_per_sec || 0)}</div>
+                    <div class="card-label">per second</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Alerts</span>
+                        <span class="card-icon">⚠️</span>
+                    </div>
+                    <div class="card-value status-${getAlertColor(metrics.alerts_per_min || 0)}">
+                        ${formatNumber(metrics.alerts_per_min || 0, 2)}
+                    </div>
+                    <div class="card-label">per minute</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Sensors</span>
+                        <span class="card-icon">📡</span>
+                    </div>
+                    <div class="card-value status-${getSensorHealthColor(sensorHealth)}">
+                        ${metrics.active_sensors || '0/0'}
+                    </div>
+                    <div class="card-label">Online / Total</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">CPU Average</span>
+                        <span class="card-icon">💻</span>
+                    </div>
+                    <div class="card-value status-${getResourceColor(metrics.avg_cpu_percent || 0)}">
+                        ${formatNumber(metrics.avg_cpu_percent || 0, 1)}%
+                    </div>
+                    <div class="card-label">Across all sensors</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Memory Average</span>
+                        <span class="card-icon">🧠</span>
+                    </div>
+                    <div class="card-value status-${getResourceColor(metrics.avg_memory_percent || 0)}">
+                        ${formatNumber(metrics.avg_memory_percent || 0, 1)}%
+                    </div>
+                    <div class="card-label">Across all sensors</div>
+                </div>
+            `;
+
+            document.getElementById('metrics-grid').innerHTML = metricsHTML;
+            updateTimestamp();
+        }
+
+        function updateAlerts(alerts) {
+            if (alerts.length === 0) {
+                document.getElementById('alerts-list').innerHTML = `
+                    <div class="card" style="text-align: center; padding: 2rem;">
+                        <div style="font-size: 3rem; margin-bottom: 1rem;">✅</div>
+                        <h3 style="color: var(--accent-success);">No Critical Alerts</h3>
+                        <p style="color: var(--text-muted); margin-top: 0.5rem;">All systems operating normally</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const alertsHTML = alerts.map(alert => `
+                <div class="alert-item severity-${alert.severity}">
+                    <div class="alert-header">
+                        <span class="alert-type">${escapeHtml(alert.alert_type || 'Unknown')}</span>
+                        <span class="alert-severity ${alert.severity}">${alert.severity}</span>
+                    </div>
+                    <div class="alert-description">${escapeHtml(alert.description || 'No description')}</div>
+                    <div class="alert-meta">
+                        <span>📡 ${escapeHtml(alert.sensor_id || 'N/A')}</span>
+                        <span>🕐 ${formatTimestamp(alert.timestamp)}</span>
+                        ${alert.source_ip ? `<span>🌐 ${escapeHtml(alert.source_ip)}</span>` : ''}
+                    </div>
+                </div>
+            `).join('');
+
+            document.getElementById('alerts-list').innerHTML = alertsHTML;
+        }
+
+        function updateSensors(sensors) {
+            if (sensors.length === 0) {
+                document.getElementById('sensors-grid').innerHTML = `
+                    <div class="card" style="text-align: center; padding: 2rem;">
+                        <p style="color: var(--text-muted);">No sensors found</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const sensorsHTML = sensors.map(sensor => `
+                <div class="sensor-card ${sensor.status}">
+                    <div class="sensor-name">${escapeHtml(sensor.name)}</div>
+                    <div class="sensor-location">📍 ${escapeHtml(sensor.location)}</div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                        <div class="bg-${sensor.status}" style="width: 8px; height: 8px; border-radius: 50%;"></div>
+                        <span style="font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">
+                            ${sensor.status}
+                        </span>
+                    </div>
+                    <div class="sensor-stats">
+                        <div class="sensor-stat">
+                            <span class="sensor-stat-label">CPU</span>
+                            <span class="sensor-stat-value">${formatNumber(sensor.cpu || 0, 1)}%</span>
+                        </div>
+                        <div class="sensor-stat">
+                            <span class="sensor-stat-label">Memory</span>
+                            <span class="sensor-stat-value">${formatNumber(sensor.memory || 0, 1)}%</span>
+                        </div>
+                        <div class="sensor-stat">
+                            <span class="sensor-stat-label">Bandwidth</span>
+                            <span class="sensor-stat-value">${formatNumber(sensor.bandwidth || 0, 1)} Mbps</span>
+                        </div>
+                        <div class="sensor-stat">
+                            <span class="sensor-stat-label">Alerts 24h</span>
+                            <span class="sensor-stat-value">${sensor.alerts_24h || 0}</span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            document.getElementById('sensors-grid').innerHTML = sensorsHTML;
+        }
+
+        function updateTimestamp() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('nl-NL');
+            document.getElementById('timestamp').textContent = timeStr;
+        }
+
+        // ==================== Utility Functions ====================
+        function formatNumber(num, decimals = 0) {
+            return Number(num).toFixed(decimals);
+        }
+
+        function formatTimestamp(timestamp) {
+            if (!timestamp) return 'N/A';
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function getAlertColor(rate) {
+            if (rate === 0) return 'online';
+            if (rate < 1) return 'warning';
+            return 'critical';
+        }
+
+        function getSensorHealthColor(health) {
+            if (!health || health.total === 0) return 'offline';
+            const onlinePercent = (health.online / health.total) * 100;
+            if (onlinePercent === 100) return 'online';
+            if (onlinePercent >= 80) return 'warning';
+            return 'critical';
+        }
+
+        function getResourceColor(percent) {
+            if (percent < 70) return 'online';
+            if (percent < 85) return 'warning';
+            return 'critical';
+        }
+
+        // ==================== Auto Refresh ====================
+        function startAutoRefresh() {
+            // Initial fetch
+            fetchMetrics();
+            fetchSensors();
+
+            // Set up refresh interval
+            refreshTimer = setInterval(() => {
+                fetchMetrics();
+                fetchSensors();
+            }, CONFIG.refreshInterval);
+        }
+
+        function stopAutoRefresh() {
+            if (refreshTimer) {
+                clearInterval(refreshTimer);
+                refreshTimer = null;
+            }
+        }
+
+        // ==================== Initialization ====================
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize theme
+            initTheme();
+
+            // Show fullscreen hint
+            setTimeout(showFullscreenHint, 1000);
+
+            // Start auto-refresh
+            startAutoRefresh();
+
+            // Start screen rotation
+            startRotation();
+
+            // Update timestamp every second
+            setInterval(updateTimestamp, 1000);
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'F11') {
+                    e.preventDefault();
+                    toggleFullscreen();
+                } else if (e.key === 't' || e.key === 'T') {
+                    toggleTheme();
+                }
+            });
+        });
+
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            stopAutoRefresh();
+            stopRotation();
+        });
+    </script>
+</body>
+</html>
