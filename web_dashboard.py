@@ -1371,6 +1371,108 @@ def api_kiosk_sensors():
         logger.error(f"Error getting kiosk sensors: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/kiosk/traffic')
+def api_kiosk_traffic():
+    """
+    Get network traffic data for last 24 hours for kiosk chart
+    Public API - no auth required
+    Returns bandwidth in/out over time
+    """
+    try:
+        from datetime import datetime, timedelta
+
+        # Get metrics from last 24 hours, grouped by hour
+        now = datetime.now()
+        start_time = now - timedelta(hours=24)
+
+        # Query database for traffic metrics
+        # Get hourly aggregated bandwidth data
+        query = """
+            SELECT
+                datetime(timestamp, 'unixepoch', 'localtime') as hour,
+                AVG(bandwidth_in) as avg_bandwidth_in,
+                AVG(bandwidth_out) as avg_bandwidth_out,
+                AVG(bandwidth_in + bandwidth_out) as avg_bandwidth_total
+            FROM (
+                SELECT
+                    strftime('%s', timestamp) - strftime('%s', timestamp) % 3600 as timestamp,
+                    bandwidth_mbps as bandwidth_in,
+                    bandwidth_mbps * 0.4 as bandwidth_out
+                FROM metrics
+                WHERE timestamp >= datetime('now', '-24 hours')
+                GROUP BY timestamp / 3600
+            )
+            GROUP BY hour
+            ORDER BY hour ASC
+        """
+
+        # Execute query
+        conn = db.conn
+        cursor = conn.cursor()
+        cursor.execute(query)
+        results = cursor.fetchall()
+
+        # Format data for Chart.js
+        labels = []
+        bandwidth_in = []
+        bandwidth_out = []
+        bandwidth_total = []
+
+        for row in results:
+            # Parse hour from timestamp
+            hour_str = row[0] if row[0] else ''
+            if hour_str:
+                try:
+                    dt = datetime.strptime(hour_str, '%Y-%m-%d %H:%M:%S')
+                    labels.append(dt.strftime('%H:%M'))
+                except:
+                    labels.append(hour_str[-5:])  # Just get HH:MM
+            else:
+                labels.append('')
+
+            bandwidth_in.append(round(row[1] if row[1] else 0, 2))
+            bandwidth_out.append(round(row[2] if row[2] else 0, 2))
+            bandwidth_total.append(round(row[3] if row[3] else 0, 2))
+
+        # If no data, generate sample data points for last 24 hours
+        if len(labels) == 0:
+            for i in range(24):
+                hour = (now - timedelta(hours=23-i)).strftime('%H:%M')
+                labels.append(hour)
+                bandwidth_in.append(0)
+                bandwidth_out.append(0)
+                bandwidth_total.append(0)
+
+        return jsonify({
+            'success': True,
+            'labels': labels,
+            'datasets': {
+                'bandwidth_in': bandwidth_in,
+                'bandwidth_out': bandwidth_out,
+                'bandwidth_total': bandwidth_total
+            },
+            'unit': 'Mbps',
+            'period': '24 hours'
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting kiosk traffic data: {e}")
+        # Return empty data on error
+        now = datetime.now()
+        labels = [(now - timedelta(hours=23-i)).strftime('%H:%M') for i in range(24)]
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'labels': labels,
+            'datasets': {
+                'bandwidth_in': [0] * 24,
+                'bandwidth_out': [0] * 24,
+                'bandwidth_total': [0] * 24
+            },
+            'unit': 'Mbps',
+            'period': '24 hours'
+        }), 500
+
 
 # ==================== WebSocket Events ====================
 

@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NetMonitor SOC - Kiosk Mode</title>
+    <!-- Chart.js for traffic visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         /* ==================== CSS Variables for Theming ==================== */
         :root[data-theme="dark"] {
@@ -446,6 +448,51 @@
             100% { transform: rotate(360deg); }
         }
 
+        /* ==================== Traffic Chart ==================== */
+        .traffic-chart-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px var(--shadow);
+        }
+
+        .traffic-chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .traffic-chart-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .traffic-chart-legend {
+            display: flex;
+            gap: 1.5rem;
+            font-size: 0.875rem;
+        }
+
+        .traffic-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .traffic-legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+        }
+
+        #trafficChart {
+            max-height: 300px;
+        }
+
         /* ==================== Responsive ==================== */
         @media (max-width: 768px) {
             .header h1 {
@@ -458,6 +505,16 @@
 
             .sensors-grid {
                 grid-template-columns: 1fr;
+            }
+
+            .traffic-chart-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.5rem;
+            }
+
+            #trafficChart {
+                max-height: 250px;
             }
         }
     </style>
@@ -489,6 +546,24 @@
                     <div class="spinner"></div>
                     <p>Loading metrics...</p>
                 </div>
+            </div>
+
+            <!-- Traffic Chart -->
+            <div class="traffic-chart-container">
+                <div class="traffic-chart-header">
+                    <h3 class="traffic-chart-title">📊 Network Traffic - Last 24 Hours</h3>
+                    <div class="traffic-chart-legend">
+                        <div class="traffic-legend-item">
+                            <div class="traffic-legend-color" style="background: #3b82f6;"></div>
+                            <span>Inbound</span>
+                        </div>
+                        <div class="traffic-legend-item">
+                            <div class="traffic-legend-color" style="background: #10b981;"></div>
+                            <span>Outbound</span>
+                        </div>
+                    </div>
+                </div>
+                <canvas id="trafficChart"></canvas>
             </div>
         </div>
 
@@ -549,6 +624,11 @@
             document.documentElement.setAttribute('data-theme', next);
             localStorage.setItem('kiosk-theme', next);
             updateThemeIcon(next);
+
+            // Redraw traffic chart with new theme colors
+            if (trafficChart) {
+                fetchTrafficData();
+            }
         }
 
         function updateThemeIcon(theme) {
@@ -821,16 +901,139 @@
             return 'critical';
         }
 
+        // ==================== Traffic Chart ====================
+        let trafficChart = null;
+
+        async function fetchTrafficData() {
+            try {
+                const response = await fetch('/api/kiosk/traffic');
+                const data = await response.json();
+
+                if (data.success) {
+                    updateTrafficChart(data);
+                }
+            } catch (error) {
+                console.error('Error fetching traffic data:', error);
+            }
+        }
+
+        function updateTrafficChart(data) {
+            const ctx = document.getElementById('trafficChart');
+            if (!ctx) return;
+
+            // Get current theme
+            const theme = document.documentElement.getAttribute('data-theme');
+            const isDark = theme === 'dark';
+
+            // Chart colors
+            const gridColor = isDark ? 'rgba(71, 85, 105, 0.3)' : 'rgba(226, 232, 240, 0.8)';
+            const textColor = isDark ? '#cbd5e1' : '#475569';
+
+            // Destroy old chart if exists
+            if (trafficChart) {
+                trafficChart.destroy();
+            }
+
+            // Create new chart
+            trafficChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.labels,
+                    datasets: [
+                        {
+                            label: 'Inbound',
+                            data: data.datasets.bandwidth_in,
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 0,
+                            pointHoverRadius: 4,
+                            pointHoverBackgroundColor: '#3b82f6'
+                        },
+                        {
+                            label: 'Outbound',
+                            data: data.datasets.bandwidth_out,
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 0,
+                            pointHoverRadius: 4,
+                            pointHoverBackgroundColor: '#10b981'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            display: false  // Using custom legend
+                        },
+                        tooltip: {
+                            backgroundColor: isDark ? '#1e293b' : '#ffffff',
+                            titleColor: textColor,
+                            bodyColor: textColor,
+                            borderColor: gridColor,
+                            borderWidth: 1,
+                            padding: 12,
+                            displayColors: true,
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' Mbps';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                color: gridColor,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: textColor,
+                                maxRotation: 0,
+                                autoSkipPadding: 20
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: gridColor,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: textColor,
+                                callback: function(value) {
+                                    return value.toFixed(1) + ' Mbps';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
         // ==================== Auto Refresh ====================
         function startAutoRefresh() {
             // Initial fetch
             fetchMetrics();
             fetchSensors();
+            fetchTrafficData();
 
             // Set up refresh interval
             refreshTimer = setInterval(() => {
                 fetchMetrics();
                 fetchSensors();
+                fetchTrafficData();
             }, CONFIG.refreshInterval);
         }
 
