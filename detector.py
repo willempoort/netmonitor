@@ -772,8 +772,6 @@ class ThreatDetector:
         if not packet.haslayer(UDP):
             return None
 
-        from scapy.all import UDP
-
         udp_layer = packet[UDP]
         dst_port = udp_layer.dport
         src_port = udp_layer.sport

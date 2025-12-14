@@ -925,6 +925,38 @@ curl http://localhost:8080/api/traffic/history?hours=24
 curl http://localhost:8080/api/top-talkers?limit=10
 ```
 
+#### Configuration API (for Sensors)
+
+**Get sensor configuration** (with ETag caching support):
+
+```bash
+# First request - get config with ETag
+curl -H "Authorization: Bearer YOUR_SENSOR_TOKEN" \
+     http://localhost:8080/api/config?sensor_id=sensor-001
+
+# Response includes ETag header:
+# ETag: "a1b2c3d4e5f6..."
+# { "success": true, "config": { ... } }
+
+# Subsequent requests - use If-None-Match header
+curl -H "Authorization: Bearer YOUR_SENSOR_TOKEN" \
+     -H "If-None-Match: \"a1b2c3d4e5f6...\"" \
+     http://localhost:8080/api/config?sensor_id=sensor-001
+
+# If config unchanged: 304 Not Modified (no body, saves bandwidth)
+# If config changed: 200 OK with new config and new ETag
+```
+
+**ETag Benefits:**
+- **Bandwidth savings**: 99% reduction after initial config load
+- **Faster responses**: 304 returns immediately without database query
+- **Automatic**: Sensors handle ETags automatically via `sensor_client.py`
+- **Standard HTTP**: Uses well-tested HTTP caching mechanism
+
+**Parameters:**
+- `sensor_id`: Unique sensor identifier (optional, returns global config if omitted)
+- `include_defaults`: Include default values (default: true for UI, false for sensors)
+
 ### Dashboard Configuration
 
 In `config.yaml`:
