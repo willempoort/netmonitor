@@ -121,14 +121,59 @@ thresholds:
     enabled: true
     attempts_threshold: 5     # Aantal pogingen dat als verdacht wordt gezien
     time_window: 300          # Tijdvenster in seconden (5 min)
+    exclude_streaming: true   # Negeer bekende streaming services (Netflix, YouTube, etc.)
+    exclude_cdn: true         # Negeer bekende CDN providers (Cloudflare, Akamai, etc.)
+
+  # Modern Protocol Detection - QUIC/HTTP3 en streaming services
+  modern_protocols:
+    quic_detection: true      # Detecteer QUIC (HTTP/3) verkeer
+    http3_detection: true     # Detecteer HTTP/3 over QUIC
+    # Bekende streaming service IP ranges (updates via threat feeds mogelijk)
+    streaming_services:
+      - 23.246.0.0/18         # Netflix (Akamai CDN)
+      - 37.77.184.0/21        # Netflix (Akamai CDN)
+      - 45.57.0.0/17          # Netflix
+      - 64.120.128.0/17       # Netflix
+      - 66.197.128.0/17       # Netflix
+      - 108.175.32.0/20       # Netflix
+      - 185.2.220.0/22        # Netflix (Europe)
+      - 185.9.188.0/22        # Netflix (Europe)
+      - 192.173.64.0/18       # Netflix
+      - 198.38.96.0/19        # Netflix
+      - 198.45.48.0/20        # Netflix
+      - 208.75.76.0/22        # Netflix
+      - 2620:10c:7000::/44    # Netflix IPv6
+      - 142.250.0.0/15        # Google (YouTube, etc.)
+      - 172.217.0.0/16        # Google
+      - 173.194.0.0/16        # Google
+      - 216.58.192.0/19       # Google
+      - 2001:4860::/32        # Google IPv6
+      - 13.32.0.0/15          # Amazon CloudFront (Prime Video)
+      - 13.224.0.0/14         # Amazon CloudFront
+      - 13.249.0.0/16         # Amazon CloudFront
+      - 18.64.0.0/14          # Amazon CloudFront
+      - 2600:9000::/28        # Amazon CloudFront IPv6
+    # CDN providers (veel parallelle verbindingen is normaal)
+    cdn_providers:
+      - 104.16.0.0/13         # Cloudflare
+      - 172.64.0.0/13         # Cloudflare
+      - 162.158.0.0/15        # Cloudflare
+      - 2606:4700::/32        # Cloudflare IPv6
+      - 23.32.0.0/11          # Akamai
+      - 23.192.0.0/11         # Akamai
+      - 95.100.0.0/15         # Akamai
+      - 2.16.0.0/13           # Akamai
+      - 184.24.0.0/13         # Akamai
+      - 2600:1400::/24        # Akamai IPv6
 
   # Protocol mismatch detection - detecteert protocollen op ongebruikelijke poorten
   protocol_mismatch:
     enabled: true
     detect_http_non_standard: true   # HTTP verkeer op niet-standaard poorten
     detect_ssh_non_standard: true    # SSH verkeer op andere poorten dan 22
-    detect_dns_non_standard: true    # DNS verkeer op andere poorten dan 53
+    detect_dns_non_standard: true    # DNS verkeer op andere poerten dan 53
     detect_ftp_non_standard: true    # FTP verkeer op andere poorten dan 20/21
+    ignore_quic: true                # Negeer QUIC (UDP 443) voor HTTP detection
 
 # Blacklisted IPs (known malicious IPs)
 blacklist:

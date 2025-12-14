@@ -68,10 +68,17 @@ class ThreatDetector:
         self.config_whitelist = self._parse_ip_list(config.get('whitelist', []))
         self.blacklist = self._parse_ip_list(config.get('blacklist', []))
 
+        # Parse modern protocol ranges (streaming services, CDN providers)
+        modern_protocols = config.get('thresholds', {}).get('modern_protocols', {})
+        self.streaming_services = self._parse_ip_list(modern_protocols.get('streaming_services', []))
+        self.cdn_providers = self._parse_ip_list(modern_protocols.get('cdn_providers', []))
+
         # Initialize content analyzer if available
         self.content_analyzer = ContentAnalyzer() if ContentAnalyzer else None
 
         self.logger.info("Threat Detector geïnitialiseerd")
+        self.logger.info(f"Streaming services whitelist: {len(self.streaming_services)} ranges")
+        self.logger.info(f"CDN providers whitelist: {len(self.cdn_providers)} ranges")
 
     def _get_threshold(self, *keys, default=None):
         """
@@ -237,6 +244,11 @@ class ThreatDetector:
             threat = self._detect_brute_force(packet)
             if threat:
                 threats.append(threat)
+
+        # QUIC/HTTP3 detection (informational, not a threat)
+        modern_protocols_config = self.config['thresholds'].get('modern_protocols', {})
+        if modern_protocols_config.get('quic_detection', True):
+            self._detect_quic(packet)  # Logs but doesn't alert
 
         # Protocol mismatch detection
         if self.config['thresholds'].get('protocol_mismatch', {}).get('enabled', True):
@@ -719,6 +731,78 @@ class ThreatDetector:
 
         return None
 
+    def _detect_quic(self, packet):
+        """
+        Detect QUIC (HTTP/3) protocol traffic
+
+        QUIC uses UDP on ports 443 (most common) and 80.
+        This is modern HTTP/3 traffic from browsers and apps.
+        Does not generate alerts - only logs for visibility.
+
+        QUIC characteristics:
+        - UDP protocol
+        - Typically port 443 (sometimes 80)
+        - Initial packet has specific QUIC version negotiation bits
+        """
+        if not packet.haslayer(UDP):
+            return None
+
+        from scapy.all import UDP
+
+        udp_layer = packet[UDP]
+        dst_port = udp_layer.dport
+        src_port = udp_layer.sport
+
+        # QUIC commonly uses UDP port 443, sometimes 80
+        if dst_port not in [443, 80] and src_port not in [443, 80]:
+            return None
+
+        # Check if packet has payload (QUIC packets have data)
+        if not hasattr(packet, 'load') or len(packet.load) < 5:
+            return None
+
+        # QUIC initial packets start with specific flags
+        # Long header: bit 0x80 set, version field follows
+        try:
+            first_byte = packet.load[0]
+            # Long header (0x80 bit set) indicates QUIC
+            if first_byte & 0x80:
+                # This looks like QUIC traffic
+                self.logger.debug(f"QUIC/HTTP3 traffic detected: {packet[IP].src}:{src_port} -> {packet[IP].dst}:{dst_port}")
+                return True
+        except:
+            pass
+
+        return None
+
+    def _is_streaming_or_cdn(self, ip_address):
+        """
+        Check if IP belongs to known streaming service or CDN provider
+
+        Args:
+            ip_address: IP address to check
+
+        Returns:
+            tuple: (is_match, service_type) where service_type is 'streaming', 'cdn', or None
+        """
+        # Check streaming services
+        for ip_network in self.streaming_services:
+            try:
+                if ipaddress.ip_address(ip_address) in ip_network:
+                    return (True, 'streaming')
+            except:
+                pass
+
+        # Check CDN providers
+        for ip_network in self.cdn_providers:
+            try:
+                if ipaddress.ip_address(ip_address) in ip_network:
+                    return (True, 'cdn')
+            except:
+                pass
+
+        return (False, None)
+
     def _detect_brute_force(self, packet):
         """
         Detecteer brute force aanvallen op authenticatie services
@@ -726,6 +810,11 @@ class ThreatDetector:
         Detecteert herhaalde connection attempts naar:
         - SSH (22), Telnet (23), FTP (21), RDP (3389)
         - HTTP Auth (80, 443, 8080), SMB (445), MySQL (3306), PostgreSQL (5432)
+
+        Excludes false positives from:
+        - Known streaming services (Netflix, YouTube, Prime Video)
+        - CDN providers (Cloudflare, Akamai)
+        - QUIC/HTTP3 traffic (many parallel connections are normal)
         """
         if not packet.haslayer(TCP):
             return None
@@ -761,6 +850,19 @@ class ThreatDetector:
         brute_force_config = self.config['thresholds'].get('brute_force', {})
         if not brute_force_config.get('enabled', True):
             return None
+
+        # Check if we should exclude streaming services and CDN providers
+        exclude_streaming = brute_force_config.get('exclude_streaming', True)
+        exclude_cdn = brute_force_config.get('exclude_cdn', True)
+
+        # Skip detection for HTTP/HTTPS if destination is streaming service or CDN
+        if dst_port in [80, 443, 8080]:
+            is_match, service_type = self._is_streaming_or_cdn(dst_ip)
+            if is_match:
+                if (service_type == 'streaming' and exclude_streaming) or \
+                   (service_type == 'cdn' and exclude_cdn):
+                    self.logger.debug(f"Brute force detection skipped for {dst_ip} ({service_type} service)")
+                    return None
 
         attempts_threshold = brute_force_config.get('attempts_threshold', 5)
         time_window = brute_force_config.get('time_window', 300)

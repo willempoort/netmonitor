@@ -50,14 +50,23 @@ BEST_PRACTICE_CONFIG = {
         "brute_force": {
             "enabled": True,
             "attempts_threshold": 5,    # Failed login attempts
-            "time_window": 300          # Within 5 minutes
+            "time_window": 300,         # Within 5 minutes
+            "exclude_streaming": True,  # Exclude streaming services (Netflix, YouTube, etc.)
+            "exclude_cdn": True         # Exclude CDN providers (Cloudflare, Akamai, etc.)
+        },
+        "modern_protocols": {
+            "quic_detection": True,     # Detect QUIC/HTTP3 traffic (informational)
+            "http3_detection": True,    # Detect HTTP/3 over QUIC
+            "streaming_services": [],   # Populated from config.yaml
+            "cdn_providers": []         # Populated from config.yaml
         },
         "protocol_mismatch": {
             "enabled": True,
             "detect_http_non_standard": True,   # HTTP on non-standard ports
             "detect_ssh_non_standard": True,    # SSH on non-standard ports
             "detect_dns_non_standard": True,    # DNS on non-standard ports
-            "detect_ftp_non_standard": True     # FTP on non-standard ports
+            "detect_ftp_non_standard": True,    # FTP on non-standard ports
+            "ignore_quic": True                 # Ignore QUIC (UDP 443) for mismatch detection
         },
         "icmp_tunnel": {
             "enabled": True,
@@ -178,12 +187,18 @@ PARAMETER_DESCRIPTIONS = {
     "thresholds.brute_force.enabled": "Enable brute force detection",
     "thresholds.brute_force.attempts_threshold": "Failed attempts that trigger brute force alert",
     "thresholds.brute_force.time_window": "Time window (seconds) for brute force detection",
+    "thresholds.brute_force.exclude_streaming": "Exclude known streaming services (Netflix, YouTube) from detection",
+    "thresholds.brute_force.exclude_cdn": "Exclude known CDN providers (Cloudflare, Akamai) from detection",
+
+    "thresholds.modern_protocols.quic_detection": "Enable QUIC/HTTP3 protocol detection (informational)",
+    "thresholds.modern_protocols.http3_detection": "Enable HTTP/3 over QUIC detection",
 
     "thresholds.protocol_mismatch.enabled": "Enable protocol mismatch detection",
     "thresholds.protocol_mismatch.detect_http_non_standard": "Detect HTTP on non-standard ports",
     "thresholds.protocol_mismatch.detect_ssh_non_standard": "Detect SSH on non-standard ports",
     "thresholds.protocol_mismatch.detect_dns_non_standard": "Detect DNS on non-standard ports",
     "thresholds.protocol_mismatch.detect_ftp_non_standard": "Detect FTP on non-standard ports",
+    "thresholds.protocol_mismatch.ignore_quic": "Ignore QUIC (UDP 443/80) for HTTP mismatch detection",
 
     "thresholds.icmp_tunnel.enabled": "Enable ICMP tunneling detection",
     "thresholds.icmp_tunnel.payload_size_threshold": "ICMP payload size (bytes) that triggers alert",
@@ -223,6 +238,7 @@ PARAMETER_CATEGORIES = {
         "thresholds.outbound_volume",
         "thresholds.lateral_movement",
         "thresholds.brute_force",
+        "thresholds.modern_protocols",
         "thresholds.protocol_mismatch",
         "thresholds.icmp_tunnel",
         "thresholds.http_anomaly",
