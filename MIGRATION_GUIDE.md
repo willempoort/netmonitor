@@ -57,12 +57,15 @@ Voor een betrouwbare migratie raden we een **clean install aanpak** aan:
 ### **Data Veiligheid**
 
 **Data wordt NIET verwijderd:**
-- ✅ Database: `/var/lib/netmonitor/netmonitor.db` (blijft intact)
-- ✅ Logs: `/var/log/netmonitor/` (blijft intact)
-- ✅ Config: `config.yaml` (backup en migrate)
-- ✅ Threat feeds: `/var/cache/netmonitor/` (blijft intact)
+- ✅ **Database**: PostgreSQL database (blijft volledig intact)
+- ✅ **Logs**: `/var/log/netmonitor/` (blijft intact)
+- ✅ **Config**: `config.yaml` (backup en migrate)
+- ✅ **Threat feeds**: `/var/cache/netmonitor/` (blijft intact)
 
 **Alleen applicatie code wordt vervangen** - alle data blijft behouden!
+
+**⚠️ PostgreSQL Database:**
+NetMonitor gebruikt PostgreSQL met TimescaleDB extensie voor production. De database draait als aparte service en wordt **niet** geraakt door de migratie. Alle historische data (alerts, metrics, traffic) blijft beschikbaar.
 
 ---
 
@@ -83,8 +86,8 @@ systemctl status netmonitor-feed-update.timer
 cat /opt/netmonitor/config.yaml | grep -A5 "dashboard:"
 ls -la /opt/netmonitor/.env 2>/dev/null || echo "No .env file (expected)"
 
-# 3. Check database locatie
-sudo sqlite3 /var/lib/netmonitor/netmonitor.db ".tables" 2>/dev/null || echo "Database not found"
+# 3. Check database (PostgreSQL)
+sudo -u postgres psql -d netmonitor -c "\dt" 2>/dev/null || echo "Database not accessible"
 
 # 4. Note current ports
 sudo netstat -tlnp | grep -E ":(8000|8080)"
@@ -99,7 +102,8 @@ df -h /opt
 # - Dashboard poort: _____
 # - MCP API running? Y/N
 # - Gunicorn of embedded Flask? _____
-# - PostgreSQL of SQLite? _____
+# - PostgreSQL database naam: _____
+# - PostgreSQL credentials: _____
 # - Custom config.yaml settings? _____
 ```
 
@@ -202,14 +206,62 @@ sudo bash setup_venv.sh
 
 ### **Stap 4: Configuratie Migratie**
 
-**4.1 Create .env from template:**
+**4.1 Verify PostgreSQL Database:**
+
+**⚠️ KRITIEK: NetMonitor vereist PostgreSQL met TimescaleDB**
+
+```bash
+# Check PostgreSQL draait
+sudo systemctl status postgresql
+
+# Verify TimescaleDB extensie geïnstalleerd is
+sudo -u postgres psql -c "SELECT * FROM pg_available_extensions WHERE name='timescaledb';"
+
+# Check of netmonitor database bestaat
+sudo -u postgres psql -l | grep netmonitor
+
+# Als database bestaat, verify tables
+sudo -u postgres psql -d netmonitor -c "\dt"
+```
+
+**Als PostgreSQL/TimescaleDB niet geïnstalleerd is:**
+```bash
+# Installeer PostgreSQL en TimescaleDB
+sudo apt update
+sudo apt install postgresql postgresql-contrib
+
+# Installeer TimescaleDB (Ubuntu/Debian)
+sudo sh -c "echo 'deb https://packagecloud.io/timescale/timescaledb/ubuntu/ $(lsb_release -c -s) main' > /etc/apt/sources.list.d/timescaledb.list"
+wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey | sudo apt-key add -
+sudo apt update
+sudo apt install timescaledb-2-postgresql-16
+
+# Configureer TimescaleDB
+sudo timescaledb-tune --quiet --yes
+
+# Restart PostgreSQL
+sudo systemctl restart postgresql
+
+# Create database en user (NetMonitor init script doet dit automatisch)
+# Maar je kunt het ook handmatig:
+sudo -u postgres psql <<EOF
+CREATE DATABASE netmonitor;
+CREATE USER netmonitor_user WITH PASSWORD 'jouw_sterke_wachtwoord';
+GRANT ALL PRIVILEGES ON DATABASE netmonitor TO netmonitor_user;
+\c netmonitor
+CREATE EXTENSION IF NOT EXISTS timescaledb;
+GRANT ALL ON SCHEMA public TO netmonitor_user;
+EOF
+```
+
+**4.2 Create .env from template:**
 
 ```bash
 cd /opt/netmonitor
 sudo cp .env.example .env
 ```
 
-**4.2 Migrate settings naar .env:**
+**4.3 Migrate settings naar .env:**
 
 Open beide configs naast elkaar:
 ```bash
@@ -228,12 +280,17 @@ sudo nano /opt/netmonitor/.env
 | `config.yaml: dashboard.host` | `DASHBOARD_HOST` | `0.0.0.0` |
 | Embedded Flask? | `DASHBOARD_SERVER` | `embedded` |
 | Using Gunicorn? | `DASHBOARD_SERVER` | `gunicorn` |
-| PostgreSQL database? | `DB_TYPE` | `postgresql` |
+| PostgreSQL database | `DB_TYPE` | `postgresql` (verplicht) |
 | PostgreSQL host | `DB_HOST` | `localhost` |
-| PostgreSQL credentials | `DB_USER`, `DB_PASSWORD` | ... |
+| PostgreSQL database naam | `DB_NAME` | `netmonitor` |
+| PostgreSQL user | `DB_USER` | `netmonitor_user` |
+| PostgreSQL password | `DB_PASSWORD` | `<your-password>` |
+| PostgreSQL poort | `DB_PORT` | `5432` |
 | MCP HTTP API running? | `MCP_API_ENABLED` | `true`/`false` |
 
-**4.3 Generate Flask secret key:**
+**⚠️ Belangrijk:** NetMonitor vereist PostgreSQL met TimescaleDB extensie. SQLite is **niet** geschikt voor productie.
+
+**4.4 Generate Flask secret key:**
 
 ```bash
 # Generate new secret key
@@ -244,7 +301,7 @@ sudo nano /opt/netmonitor/.env
 # Set: FLASK_SECRET_KEY=<generated-key>
 ```
 
-**4.4 Restore custom config.yaml settings:**
+**4.5 Restore custom config.yaml settings:**
 
 ```bash
 # Copy oude config als referentie
@@ -391,11 +448,17 @@ firefox https://soc.poort.net/kiosk
 **7.3 Check Database:**
 
 ```bash
-# Verify database toegankelijk is
-sudo sqlite3 /var/lib/netmonitor/netmonitor.db "SELECT COUNT(*) FROM alerts;"
+# Verify database toegankelijk is (PostgreSQL)
+sudo -u postgres psql -d netmonitor -c "SELECT COUNT(*) FROM alerts;"
 
 # Check sensor data
-sudo sqlite3 /var/lib/netmonitor/netmonitor.db "SELECT sensor_id, hostname, last_seen FROM sensors;"
+sudo -u postgres psql -d netmonitor -c "SELECT sensor_id, hostname, last_seen FROM sensors LIMIT 10;"
+
+# Check traffic metrics
+sudo -u postgres psql -d netmonitor -c "SELECT COUNT(*) FROM traffic_metrics;"
+
+# Verify TimescaleDB extension
+sudo -u postgres psql -d netmonitor -c "SELECT * FROM pg_extension WHERE extname='timescaledb';"
 ```
 
 **7.4 Check Logs:**
@@ -546,13 +609,16 @@ Print deze checklist en vink af tijdens migratie:
 ## ❓ Veelgestelde Vragen
 
 ### **Q: Verlies ik mijn alert history?**
-A: Nee! Database blijft in `/var/lib/netmonitor/netmonitor.db` - alle data blijft intact.
+A: Nee! PostgreSQL database blijft volledig intact - alle historische data (alerts, metrics, traffic) blijft beschikbaar.
 
 ### **Q: Kan ik de oude en nieuwe installatie tegelijk draaien?**
-A: Nee, beide gebruiken dezelfde database en poorten. Migreer clean.
+A: Nee, beide gebruiken dezelfde PostgreSQL database en poorten. Migreer clean.
 
 ### **Q: Moet ik PostgreSQL opnieuw configureren?**
-A: Nee, als je PostgreSQL gebruikte blijft die database intact. Alleen de connection settings moeten naar `.env`.
+A: Nee, de PostgreSQL database blijft intact. Alleen de connection settings (credentials, host, port) moeten naar `.env` gemigreerd worden.
+
+### **Q: Ondersteunt NetMonitor nog SQLite?**
+A: Nee, voor productie gebruik is **alleen PostgreSQL met TimescaleDB** ondersteund. SQLite is niet geschikt voor de hoeveelheid time-series data die NetMonitor genereert.
 
 ### **Q: Wat als ik custom modifications heb in Python files?**
 A: Die moet je handmatig mergen. Maak eerst een lijst van je changes:
@@ -602,10 +668,20 @@ sudo tail -f /var/log/netmonitor/netmonitor.log
 
 ### **Database errors**
 ```bash
-# Check database permissions
-sudo ls -la /var/lib/netmonitor/netmonitor.db
-sudo chown root:root /var/lib/netmonitor/netmonitor.db
-sudo chmod 644 /var/lib/netmonitor/netmonitor.db
+# Check PostgreSQL status
+sudo systemctl status postgresql
+
+# Check database connection
+sudo -u postgres psql -d netmonitor -c "SELECT version();"
+
+# Verify credentials in .env
+grep -E "DB_USER|DB_PASSWORD|DB_NAME|DB_HOST" /opt/netmonitor/.env
+
+# Test connection met credentials uit .env
+PGPASSWORD='<password>' psql -h localhost -U netmonitor_user -d netmonitor -c "SELECT COUNT(*) FROM alerts;"
+
+# Check PostgreSQL logs voor errors
+sudo tail -f /var/log/postgresql/postgresql-*-main.log
 ```
 
 ### **Kiosk 404 na migratie**
@@ -618,6 +694,32 @@ cd /opt/netmonitor
 sudo git fetch origin
 sudo git checkout claude/implement-kiosk-mode-cOe95
 sudo systemctl restart netmonitor
+```
+
+### **PostgreSQL connection errors**
+```bash
+# Error: "psycopg2.OperationalError: FATAL: password authentication failed"
+# Fix: Check credentials in .env
+grep -E "DB_USER|DB_PASSWORD" /opt/netmonitor/.env
+
+# Test connection handmatig
+PGPASSWORD='je_wachtwoord' psql -h localhost -U netmonitor_user -d netmonitor
+
+# Error: "TimescaleDB extension not found"
+# Fix: Install en enable TimescaleDB
+sudo apt install timescaledb-2-postgresql-16
+sudo -u postgres psql -d netmonitor -c "CREATE EXTENSION IF NOT EXISTS timescaledb;"
+
+# Error: "permission denied for schema public"
+# Fix: Grant permissions to user
+sudo -u postgres psql -d netmonitor -c "GRANT ALL ON SCHEMA public TO netmonitor_user;"
+sudo -u postgres psql -d netmonitor -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO netmonitor_user;"
+sudo -u postgres psql -d netmonitor -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO netmonitor_user;"
+
+# Error: "could not connect to server"
+# Fix: Check PostgreSQL draait
+sudo systemctl status postgresql
+sudo systemctl start postgresql
 ```
 
 ---
