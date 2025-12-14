@@ -1,0 +1,42 @@
+[Unit]
+Description=NetMonitor MCP HTTP API Server (AI Integration)
+Documentation=https://github.com/willempoort/netmonitor
+After=network.target
+# Only require PostgreSQL if using it
+After=postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=__INSTALL_DIR__
+
+# Load environment variables
+EnvironmentFile=-__INSTALL_DIR__/.env
+EnvironmentFile=-/etc/netmonitor/netmonitor.env
+
+# Additional environment for MCP HTTP API
+Environment="PYTHONUNBUFFERED=1"
+
+# Start MCP HTTP API server
+# Port and host are configurable via .env
+ExecStart=__INSTALL_DIR__/venv/bin/python3 __INSTALL_DIR__/mcp_server/http_server.py \
+    --host ${MCP_API_HOST:-0.0.0.0} \
+    --port ${MCP_API_PORT:-8000}
+
+# Restart behavior
+Restart=always
+RestartSec=10
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ReadWritePaths=/var/log/netmonitor
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=netmonitor-mcp-http
+
+[Install]
+WantedBy=multi-user.target

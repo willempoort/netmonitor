@@ -1,0 +1,21 @@
+[Unit]
+Description=NetMonitor Threat Feed Update Service
+Documentation=https://github.com/willempoort/netmonitor
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=__INSTALL_DIR__
+
+# Load environment variables
+EnvironmentFile=-__INSTALL_DIR__/.env
+EnvironmentFile=-/etc/netmonitor/netmonitor.env
+
+# Run threat feed update
+ExecStart=__INSTALL_DIR__/venv/bin/python3 __INSTALL_DIR__/update_feeds.py
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=netmonitor-feed-update

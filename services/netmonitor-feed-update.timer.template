@@ -1,0 +1,14 @@
+[Unit]
+Description=NetMonitor Threat Feed Update Timer
+Documentation=https://github.com/willempoort/netmonitor
+
+[Timer]
+# Run every hour
+OnCalendar=hourly
+# Run 5 minutes after boot if missed
+OnBootSec=5min
+# Allow some randomization to prevent all instances updating at once
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

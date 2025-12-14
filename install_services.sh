@@ -1,285 +1,338 @@
 #!/bin/bash
-# Install all NetMonitor services (main monitor, feed update, MCP server)
+# ============================================================================
+# NetMonitor Service Installation Script
+# ============================================================================
+# This script generates systemd service files from templates and installs them.
+# It uses .env configuration and replaces __INSTALL_DIR__ placeholders.
+#
+# Usage:
+#   sudo bash install_services.sh
+#
+# Requirements:
+#   - Must be run as root (sudo)
+#   - .env file should exist (created from .env.example)
+#   - Service templates in services/ directory
+# ============================================================================
 
-set -e  # Exit on error
+set -e  # Exit on any error
 
-echo "========================================="
-echo "NetMonitor Services Installation"
-echo "========================================="
-echo ""
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+echo_info() {
+    echo -e "${BLUE}ℹ${NC} $1"
+}
+
+echo_success() {
+    echo -e "${GREEN}✓${NC} $1"
+}
+
+echo_warning() {
+    echo -e "${YELLOW}⚠${NC} $1"
+}
+
+echo_error() {
+    echo -e "${RED}✗${NC} $1"
+}
+
+echo_header() {
+    echo ""
+    echo "============================================"
+    echo "$1"
+    echo "============================================"
+    echo ""
+}
+
+# ============================================================================
+# Preflight Checks
+# ============================================================================
+
+echo_header "NetMonitor Service Installation"
 
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then
-    echo "⚠️  Please run as root (sudo)"
+    echo_error "This script must be run as root"
+    echo "Please run: sudo bash install_services.sh"
     exit 1
 fi
 
-# Get the absolute path of the netmonitor directory
+# Detect installation directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV_DIR="${SCRIPT_DIR}/venv"
-MCP_SERVER_DIR="${SCRIPT_DIR}/mcp_server"
+INSTALL_DIR="${INSTALL_DIR:-$SCRIPT_DIR}"
 
-echo "NetMonitor directory: ${SCRIPT_DIR}"
-echo ""
+echo_info "Installation directory: $INSTALL_DIR"
 
-# Verify main files exist
-if [ ! -f "${SCRIPT_DIR}/netmonitor.py" ]; then
-    echo "⚠️  Warning: netmonitor.py not found at ${SCRIPT_DIR}/netmonitor.py"
-    echo "Main NetMonitor service will be skipped."
-    SKIP_MAIN=true
-fi
-
-if [ ! -f "${SCRIPT_DIR}/update_feeds.py" ]; then
-    echo "⚠️  Warning: update_feeds.py not found at ${SCRIPT_DIR}/update_feeds.py"
-    echo "Feed update service will be skipped."
-    SKIP_FEED=true
-fi
-
-if [ ! -f "${MCP_SERVER_DIR}/server.py" ]; then
-    echo "⚠️  Warning: server.py not found at ${MCP_SERVER_DIR}/server.py"
-    echo "MCP server service will be skipped."
-    SKIP_MCP=true
-fi
-
-# Check if virtual environment exists
-if [ ! -d "${VENV_DIR}" ]; then
-    echo "⚠️  Virtual environment not found at ${VENV_DIR}"
-    echo ""
-    echo "NetMonitor requires a Python virtual environment with all dependencies."
-    echo "Do you want to create it now? This will:"
-    echo "  - Create a venv at ${VENV_DIR}"
-    echo "  - Install all Python dependencies (scapy, flask, MCP, etc.)"
-    echo ""
-    read -p "Create virtual environment now? (Y/n): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-        echo ""
-        echo "Running setup_venv.sh as current user..."
-        # Run as the original user (not root)
-        ORIGINAL_USER="${SUDO_USER:-$USER}"
-        sudo -u "$ORIGINAL_USER" bash "${SCRIPT_DIR}/setup_venv.sh"
-        echo ""
-        echo "Virtual environment setup complete. Continuing with service installation..."
-        echo ""
-    else
-        echo ""
-        echo "❌ Cannot install services without virtual environment."
-        echo "Please run: ./setup_venv.sh first, then try again."
-        exit 1
-    fi
-fi
-
-# Verify venv Python exists
-VENV_PYTHON="${VENV_DIR}/bin/python3"
-if [ ! -f "${VENV_PYTHON}" ]; then
-    echo "❌ Error: Python not found in venv at ${VENV_PYTHON}"
-    echo "Please run: ./setup_venv.sh first"
+# Check if services directory exists
+if [ ! -d "$INSTALL_DIR/services" ]; then
+    echo_error "Services directory not found: $INSTALL_DIR/services"
+    echo "Please ensure you're running this from the NetMonitor directory"
     exit 1
 fi
 
-echo "Using Python from venv: ${VENV_PYTHON}"
 echo ""
 
-# Service installation function
-install_service() {
-    local SERVICE_NAME=$1
-    local SERVICE_FILE=$2
+# ============================================================================
+# Load Configuration from .env
+# ============================================================================
 
-    echo "Installing ${SERVICE_NAME}..."
-    cp "${SERVICE_FILE}" /etc/systemd/system/
-    chmod 644 /etc/systemd/system/$(basename "${SERVICE_FILE}")
-    echo "✓ ${SERVICE_NAME} installed"
+echo_info "Loading configuration from .env..."
+
+if [ -f "$INSTALL_DIR/.env" ]; then
+    # Export all variables from .env
+    set -a  # Automatically export all variables
+    source "$INSTALL_DIR/.env"
+    set +a
+    echo_success "Configuration loaded from .env"
+else
+    echo_warning "No .env file found - using defaults"
+    echo_info "To customize configuration:"
+    echo "  cp $INSTALL_DIR/.env.example $INSTALL_DIR/.env"
+    echo "  nano $INSTALL_DIR/.env"
+    echo ""
+fi
+
+# Set defaults if not in .env
+DASHBOARD_SERVER="${DASHBOARD_SERVER:-embedded}"
+DASHBOARD_PORT="${DASHBOARD_PORT:-8080}"
+MCP_API_ENABLED="${MCP_API_ENABLED:-false}"
+MCP_API_PORT="${MCP_API_PORT:-8000}"
+LOG_DIR="${LOG_DIR:-/var/log/netmonitor}"
+RUN_DIR="${RUN_DIR:-/var/run/netmonitor}"
+DATA_DIR="${DATA_DIR:-/var/lib/netmonitor}"
+CACHE_DIR="${CACHE_DIR:-/var/cache/netmonitor}"
+
+echo ""
+echo "Configuration Summary:"
+echo "  Dashboard server: $DASHBOARD_SERVER"
+echo "  Dashboard port:   $DASHBOARD_PORT"
+echo "  MCP API enabled:  $MCP_API_ENABLED"
+echo "  MCP API port:     $MCP_API_PORT"
+echo ""
+
+# ============================================================================
+# Create Required Directories
+# ============================================================================
+
+echo_info "Creating required directories..."
+
+for dir in "$LOG_DIR" "$RUN_DIR" "$DATA_DIR" "$CACHE_DIR"; do
+    if [ ! -d "$dir" ]; then
+        mkdir -p "$dir"
+        chown root:root "$dir"
+        chmod 755 "$dir"
+        echo_success "Created: $dir"
+    fi
+done
+
+echo ""
+
+# ============================================================================
+# Service Template Generation
+# ============================================================================
+
+generate_service() {
+    local template_file="$1"
+    local output_file="$2"
+    local service_name="$(basename "$output_file" .service)"
+
+    if [ ! -f "$template_file" ]; then
+        echo_warning "Template not found: $template_file"
+        return 1
+    fi
+
+    echo_info "Generating $service_name..."
+
+    # Replace __INSTALL_DIR__ placeholder
+    sed "s|__INSTALL_DIR__|$INSTALL_DIR|g" "$template_file" > "$output_file"
+
+    # Set permissions
+    chmod 644 "$output_file"
+    chown root:root "$output_file"
+
+    echo_success "$service_name generated"
+    return 0
 }
 
-# Generate service files with correct paths
-echo "Step 1: Generating service files with correct paths..."
-echo ""
+echo_header "Generating Service Files from Templates"
 
-# 1. Main NetMonitor service
-if [ -z "$SKIP_MAIN" ]; then
-    cat > /etc/systemd/system/netmonitor.service <<EOF
-[Unit]
-Description=Network Monitor - Verdacht Verkeer Detectie
-After=network.target
+SERVICES_INSTALLED=0
 
-[Service]
-Type=simple
-User=root
-WorkingDirectory=${SCRIPT_DIR}
-ExecStart=${VENV_PYTHON} ${SCRIPT_DIR}/netmonitor.py
-Restart=on-failure
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-
-# Security hardening
-NoNewPrivileges=true
-PrivateTmp=true
-
-[Install]
-WantedBy=multi-user.target
-EOF
-    chmod 644 /etc/systemd/system/netmonitor.service
-    echo "✓ netmonitor.service created"
-else
-    echo "⊘ netmonitor.service skipped (file not found)"
+# 1. Main NetMonitor Service (always install)
+if generate_service \
+    "$INSTALL_DIR/services/netmonitor.service.template" \
+    "/etc/systemd/system/netmonitor.service"; then
+    ((SERVICES_INSTALLED++))
 fi
 
-# 2. Feed Update service
-if [ -z "$SKIP_FEED" ]; then
-    cat > /etc/systemd/system/netmonitor-feed-update.service <<EOF
-[Unit]
-Description=Network Monitor - Threat Feed Update
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-User=root
-WorkingDirectory=${SCRIPT_DIR}
-ExecStart=${VENV_PYTHON} ${SCRIPT_DIR}/update_feeds.py
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-    chmod 644 /etc/systemd/system/netmonitor-feed-update.service
-    echo "✓ netmonitor-feed-update.service created"
-
-    # Copy timer (no paths to replace)
-    if [ -f "${SCRIPT_DIR}/netmonitor-feed-update.timer" ]; then
-        cp "${SCRIPT_DIR}/netmonitor-feed-update.timer" /etc/systemd/system/
-        chmod 644 /etc/systemd/system/netmonitor-feed-update.timer
-        echo "✓ netmonitor-feed-update.timer installed"
+# 2. Dashboard Service (only if using gunicorn)
+if [ "$DASHBOARD_SERVER" = "gunicorn" ]; then
+    echo_info "Dashboard server mode is 'gunicorn' - installing separate dashboard service"
+    if generate_service \
+        "$INSTALL_DIR/services/netmonitor-dashboard.service.template" \
+        "/etc/systemd/system/netmonitor-dashboard.service"; then
+        ((SERVICES_INSTALLED++))
     fi
 else
-    echo "⊘ netmonitor-feed-update.service skipped (file not found)"
+    echo_info "Dashboard server mode is 'embedded' - dashboard runs within netmonitor.service"
 fi
 
-# 3. MCP Server service
-if [ -z "$SKIP_MCP" ]; then
-    cat > /etc/systemd/system/netmonitor-mcp.service <<EOF
-[Unit]
-Description=NetMonitor MCP Server (SSE/HTTP)
-After=network.target postgresql.service
-Requires=postgresql.service
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=${MCP_SERVER_DIR}
-Environment="NETMONITOR_DB_HOST=localhost"
-Environment="NETMONITOR_DB_PORT=5432"
-Environment="NETMONITOR_DB_NAME=netmonitor"
-Environment="NETMONITOR_DB_USER=mcp_readonly"
-Environment="NETMONITOR_DB_PASSWORD=mcp_netmonitor_readonly_2024"
-ExecStart=${VENV_PYTHON} ${MCP_SERVER_DIR}/server.py --transport sse --host 0.0.0.0 --port 3000
-Restart=always
-RestartSec=10
-
-# Logging
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=netmonitor-mcp
-
-[Install]
-WantedBy=multi-user.target
-EOF
-    chmod 644 /etc/systemd/system/netmonitor-mcp.service
-    echo "✓ netmonitor-mcp.service created"
+# 3. MCP HTTP API Service (only if enabled)
+if [ "$MCP_API_ENABLED" = "true" ]; then
+    echo_info "MCP HTTP API enabled - installing MCP service"
+    if generate_service \
+        "$INSTALL_DIR/services/netmonitor-mcp-http.service.template" \
+        "/etc/systemd/system/netmonitor-mcp-http.service"; then
+        ((SERVICES_INSTALLED++))
+    fi
 else
-    echo "⊘ netmonitor-mcp.service skipped (file not found)"
+    echo_info "MCP HTTP API disabled (set MCP_API_ENABLED=true in .env to enable)"
+fi
+
+# 4. Feed Update Service (always install)
+if generate_service \
+    "$INSTALL_DIR/services/netmonitor-feed-update.service.template" \
+    "/etc/systemd/system/netmonitor-feed-update.service"; then
+    ((SERVICES_INSTALLED++))
+fi
+
+# 5. Feed Update Timer
+if generate_service \
+    "$INSTALL_DIR/services/netmonitor-feed-update.timer.template" \
+    "/etc/systemd/system/netmonitor-feed-update.timer"; then
+    echo_success "Feed update timer installed"
 fi
 
 echo ""
-echo "Step 2: Reloading systemd..."
+echo_success "$SERVICES_INSTALLED service(s) generated successfully"
+echo ""
+
+# ============================================================================
+# Systemd Reload
+# ============================================================================
+
+echo_info "Reloading systemd daemon..."
 systemctl daemon-reload
-
-echo ""
-echo "Step 3: Which services do you want to enable and start?"
+echo_success "Systemd daemon reloaded"
 echo ""
 
-# Ask for each service
-if [ -z "$SKIP_MAIN" ]; then
-    read -p "Enable and start netmonitor.service? (Y/n): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-        systemctl enable netmonitor.service
-        systemctl start netmonitor.service
-        echo "✓ netmonitor.service enabled and started"
+# ============================================================================
+# Service Enablement
+# ============================================================================
+
+echo_header "Service Enablement"
+
+echo "Which services would you like to enable and start?"
+echo ""
+
+enable_service() {
+    local service_name="$1"
+    local service_description="$2"
+    local auto_enable="${3:-false}"
+
+    if [ ! -f "/etc/systemd/system/$service_name" ]; then
+        return 0  # Service not installed, skip
+    fi
+
+    if [ "$auto_enable" = "true" ]; then
+        # Auto-enable without prompting
+        systemctl enable "$service_name" 2>/dev/null || true
+        systemctl start "$service_name" 2>/dev/null || true
+        echo_success "$service_description enabled and started"
+    else
+        # Prompt user
+        read -p "Enable and start $service_description? (Y/n): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            systemctl enable "$service_name"
+            systemctl start "$service_name"
+            echo_success "$service_description enabled and started"
+        else
+            echo_info "$service_description skipped"
+        fi
     fi
     echo ""
+}
+
+# Enable main service
+enable_service "netmonitor.service" "NetMonitor Main Service"
+
+# Enable dashboard service (if installed)
+if [ "$DASHBOARD_SERVER" = "gunicorn" ]; then
+    enable_service "netmonitor-dashboard.service" "Web Dashboard (Gunicorn)"
 fi
 
-if [ -z "$SKIP_FEED" ]; then
-    read -p "Enable and start netmonitor-feed-update.timer? (Y/n): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-        systemctl enable netmonitor-feed-update.timer
-        systemctl start netmonitor-feed-update.timer
-        echo "✓ netmonitor-feed-update.timer enabled and started"
-    fi
-    echo ""
+# Enable MCP HTTP API (if installed)
+if [ "$MCP_API_ENABLED" = "true" ]; then
+    enable_service "netmonitor-mcp-http.service" "MCP HTTP API"
 fi
 
-if [ -z "$SKIP_MCP" ]; then
-    read -p "Enable and start netmonitor-mcp.service? (Y/n): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-        systemctl enable netmonitor-mcp.service
-        systemctl start netmonitor-mcp.service
-        echo "✓ netmonitor-mcp.service enabled and started"
-    fi
-    echo ""
-fi
+# Enable feed update timer
+enable_service "netmonitor-feed-update.timer" "Threat Feed Update Timer"
 
-echo ""
-echo "========================================="
-echo "✓ NetMonitor Services Installation Complete"
-echo "========================================="
-echo ""
+# ============================================================================
+# Installation Summary
+# ============================================================================
+
+echo_header "Installation Complete"
+
 echo "Service Status:"
 echo ""
 
-if [ -z "$SKIP_MAIN" ]; then
-    echo "--- NetMonitor Main ---"
-    systemctl status netmonitor.service --no-pager -l || true
+show_service_status() {
+    local service_name="$1"
+    if [ -f "/etc/systemd/system/$service_name" ]; then
+        echo "--- $(basename "$service_name" .service) ---"
+        systemctl status "$service_name" --no-pager --lines=3 || true
+        echo ""
+    fi
+}
+
+show_service_status "netmonitor.service"
+[ "$DASHBOARD_SERVER" = "gunicorn" ] && show_service_status "netmonitor-dashboard.service"
+[ "$MCP_API_ENABLED" = "true" ] && show_service_status "netmonitor-mcp-http.service"
+show_service_status "netmonitor-feed-update.timer"
+
+echo ""
+echo_header "Next Steps"
+
+echo "1. Review service logs:"
+echo "   sudo journalctl -u netmonitor -f"
+echo ""
+
+if [ "$DASHBOARD_SERVER" = "embedded" ]; then
+    echo "2. Access Web Dashboard:"
+    echo "   http://localhost:$DASHBOARD_PORT"
+    echo "   https://$(hostname -f 2>/dev/null || echo 'your-server')"
+    echo ""
+elif [ "$DASHBOARD_SERVER" = "gunicorn" ]; then
+    echo "2. Access Web Dashboard (Gunicorn):"
+    echo "   http://localhost:$DASHBOARD_PORT"
+    echo "   Logs: sudo journalctl -u netmonitor-dashboard -f"
     echo ""
 fi
 
-if [ -z "$SKIP_FEED" ]; then
-    echo "--- Feed Update Timer ---"
-    systemctl status netmonitor-feed-update.timer --no-pager -l || true
+if [ "$MCP_API_ENABLED" = "true" ]; then
+    echo "3. MCP HTTP API:"
+    echo "   http://localhost:$MCP_API_PORT/docs (API documentation)"
+    echo "   Logs: sudo journalctl -u netmonitor-mcp-http -f"
     echo ""
 fi
 
-if [ -z "$SKIP_MCP" ]; then
-    echo "--- MCP Server ---"
-    systemctl status netmonitor-mcp.service --no-pager -l || true
-    echo ""
-fi
+echo "Useful Commands:"
+echo "  systemctl status netmonitor        # Check main service"
+echo "  systemctl restart netmonitor       # Restart monitoring"
+echo "  journalctl -u netmonitor -f        # Follow logs"
+echo ""
+echo "  systemctl list-timers              # Check feed update timer"
+echo "  systemctl start netmonitor-feed-update.service  # Manual feed update"
+echo ""
 
-echo ""
-echo "Useful commands:"
-echo ""
-echo "NetMonitor Main:"
-echo "  Start:   sudo systemctl start netmonitor"
-echo "  Stop:    sudo systemctl stop netmonitor"
-echo "  Restart: sudo systemctl restart netmonitor"
-echo "  Status:  sudo systemctl status netmonitor"
-echo "  Logs:    sudo journalctl -u netmonitor -f"
-echo ""
-echo "Feed Update:"
-echo "  Status:  sudo systemctl status netmonitor-feed-update.timer"
-echo "  Logs:    sudo journalctl -u netmonitor-feed-update -f"
-echo "  Manual:  sudo systemctl start netmonitor-feed-update.service"
-echo ""
-echo "MCP Server:"
-echo "  Start:   sudo systemctl start netmonitor-mcp"
-echo "  Stop:    sudo systemctl stop netmonitor-mcp"
-echo "  Restart: sudo systemctl restart netmonitor-mcp"
-echo "  Status:  sudo systemctl status netmonitor-mcp"
-echo "  Logs:    sudo journalctl -u netmonitor-mcp -f"
-echo "  Health:  curl http://localhost:3000/health"
-echo ""
+echo_header "Installation Successful"

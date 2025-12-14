@@ -1,0 +1,38 @@
+[Unit]
+Description=NetMonitor Remote Sensor Client
+Documentation=https://github.com/willempoort/netmonitor
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=__INSTALL_DIR__
+
+# Load environment variables
+# For sensors, use dedicated sensor.conf or .env file
+EnvironmentFile=-__INSTALL_DIR__/.env
+EnvironmentFile=-__INSTALL_DIR__/sensor.conf
+EnvironmentFile=-/etc/netmonitor/sensor.env
+
+# Start sensor client
+# Sensor configuration can be in sensor.conf (bash format) or .env
+ExecStart=__INSTALL_DIR__/venv/bin/python3 __INSTALL_DIR__/sensor_client.py \
+    --config __INSTALL_DIR__/config.yaml
+
+# Restart behavior
+Restart=on-failure
+RestartSec=10
+
+# Security hardening
+PrivateTmp=yes
+NoNewPrivileges=true
+ReadWritePaths=/var/log/netmonitor
+ReadWritePaths=/var/cache/netmonitor
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=netmonitor-sensor
+
+[Install]
+WantedBy=multi-user.target

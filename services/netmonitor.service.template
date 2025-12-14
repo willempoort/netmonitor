@@ -1,0 +1,41 @@
+[Unit]
+Description=NetMonitor - Network Security Monitoring Engine
+Documentation=https://github.com/willempoort/netmonitor
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=__INSTALL_DIR__
+
+# Load environment variables from .env file
+# The - prefix means the file is optional (no error if missing)
+EnvironmentFile=-__INSTALL_DIR__/.env
+EnvironmentFile=-/etc/netmonitor/netmonitor.env
+
+# Start netmonitor monitoring engine
+# This includes the embedded Flask dashboard if DASHBOARD_SERVER=embedded
+ExecStart=__INSTALL_DIR__/venv/bin/python3 __INSTALL_DIR__/netmonitor.py \
+    --config __INSTALL_DIR__/config.yaml
+
+# Restart behavior
+Restart=on-failure
+RestartSec=10
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Allow read/write to required directories
+ReadWritePaths=${DATA_DIR:-/var/lib/netmonitor}
+ReadWritePaths=${LOG_DIR:-/var/log/netmonitor}
+ReadWritePaths=${RUN_DIR:-/var/run/netmonitor}
+ReadWritePaths=${CACHE_DIR:-/var/cache/netmonitor}
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=netmonitor
+
+[Install]
+WantedBy=multi-user.target

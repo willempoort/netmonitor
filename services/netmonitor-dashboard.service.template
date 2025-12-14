@@ -1,0 +1,62 @@
+[Unit]
+Description=NetMonitor Web Dashboard (Gunicorn WSGI Server)
+Documentation=https://github.com/willempoort/netmonitor
+After=network.target netmonitor.service
+Requires=netmonitor.service
+
+[Service]
+Type=notify
+User=root
+WorkingDirectory=__INSTALL_DIR__
+
+# Load environment variables
+EnvironmentFile=-__INSTALL_DIR__/.env
+EnvironmentFile=-/etc/netmonitor/netmonitor.env
+
+# Create runtime directory for PID files
+RuntimeDirectory=netmonitor
+RuntimeDirectoryMode=0755
+
+# Ensure log and run directories exist
+ExecStartPre=/bin/mkdir -p ${LOG_DIR:-/var/log/netmonitor}
+ExecStartPre=/bin/mkdir -p ${RUN_DIR:-/var/run/netmonitor}
+ExecStartPre=/bin/chown root:root ${LOG_DIR:-/var/log/netmonitor}
+
+# Start Gunicorn with eventlet workers for SocketIO support
+# Port and workers are configurable via .env file
+ExecStart=/usr/local/bin/gunicorn \
+    --bind ${DASHBOARD_HOST:-0.0.0.0}:${DASHBOARD_PORT:-8080} \
+    --workers ${DASHBOARD_WORKERS:-4} \
+    --worker-class eventlet \
+    --worker-connections 1000 \
+    --timeout 30 \
+    --graceful-timeout 30 \
+    --access-logfile ${LOG_DIR:-/var/log/netmonitor}/dashboard_access.log \
+    --error-logfile ${LOG_DIR:-/var/log/netmonitor}/dashboard_error.log \
+    --log-level ${LOG_LEVEL:-info} \
+    --pid ${RUN_DIR:-/var/run/netmonitor}/dashboard.pid \
+    wsgi:application
+
+# Restart behavior
+Restart=on-failure
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=30
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/netmonitor
+ReadWritePaths=/var/log/netmonitor
+ReadWritePaths=/var/run/netmonitor
+ReadWritePaths=/var/cache/netmonitor
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=netmonitor-dashboard
+
+[Install]
+WantedBy=multi-user.target
