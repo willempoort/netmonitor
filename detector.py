@@ -70,8 +70,21 @@ class ThreatDetector:
 
         # Parse modern protocol ranges (streaming services, CDN providers)
         modern_protocols = config.get('thresholds', {}).get('modern_protocols', {})
-        self.streaming_services = self._parse_ip_list(modern_protocols.get('streaming_services', []))
-        self.cdn_providers = self._parse_ip_list(modern_protocols.get('cdn_providers', []))
+
+        # Defensieve check: zorg dat het lijsten zijn
+        streaming_list = modern_protocols.get('streaming_services', [])
+        cdn_list = modern_protocols.get('cdn_providers', [])
+
+        if not isinstance(streaming_list, list):
+            self.logger.warning(f"streaming_services is not a list (got {type(streaming_list).__name__}), using empty list")
+            streaming_list = []
+
+        if not isinstance(cdn_list, list):
+            self.logger.warning(f"cdn_providers is not a list (got {type(cdn_list).__name__}), using empty list")
+            cdn_list = []
+
+        self.streaming_services = self._parse_ip_list(streaming_list)
+        self.cdn_providers = self._parse_ip_list(cdn_list)
 
         # Initialize content analyzer if available
         self.content_analyzer = ContentAnalyzer() if ContentAnalyzer else None
