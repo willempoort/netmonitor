@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetMonitor SOC - Kiosk Mode</title>
+    
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <style>
+        /* Base Styles */
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        
+        /* Dark Theme (Default) */
+        body.dark-theme {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+        }
+        
+        /* Light Theme */
+        body.light-theme {
+            background: linear-gradient(135deg, #f5f7fa 0%, #e3e8ef 100%);
+            color: #2c3e50;
+        }
+        
+        /* Container */
+        .kiosk-container {
+            padding: 20px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Header */
+        .kiosk-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px 25px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .dark-theme .kiosk-header {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .light-theme .kiosk-header {
+            background: rgba(0, 0, 0, 0.03);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        
+        .kiosk-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .pulse-dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #4ade80;
+            animation: pulse 2s ease-in-out infinite;
+            box-shadow: 0 0 20px rgba(74, 222, 128, 0.5);
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
+        }
+        
+        .kiosk-controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        .theme-toggle, .fullscreen-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .dark-theme .theme-toggle,
+        .dark-theme .fullscreen-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: #e0e0e0;
+        }
+        
+        .light-theme .theme-toggle,
+        .light-theme .fullscreen-btn {
+            background: rgba(0, 0, 0, 0.1);
+            color: #2c3e50;
+        }
+        
+        .theme-toggle:hover,
+        .fullscreen-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .last-update {
+            font-size: 0.9rem;
+            opacity: 0.7;
+        }
+        
+        /* Grid Layout */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: 20px;
+            flex: 1;
+            min-height: 0;
+        }
+        
+        /* Metric Card */
+        .metric-card {
+            padding: 30px;
+            border-radius: 15px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(10px);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .dark-theme .metric-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .light-theme .metric-card {
+            background: rgba(255, 255, 255, 0.8);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+        
+        .metric-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+        }
+        
+        .metric-value {
+            font-size: 4rem;
+            font-weight: 700;
+            line-height: 1;
+            margin-bottom: 10px;
+        }
+        
+        .metric-label {
+            font-size: 1.2rem;
+            opacity: 0.7;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        
+        .metric-unit {
+            font-size: 2rem;
+            opacity: 0.6;
+            margin-left: 5px;
+        }
+        
+        /* Screen Views */
+        .screen-view {
+            display: none;
+        }
+        
+        .screen-view.active {
+            display: block;
+        }
+        
+        /* Alerts Screen */
+        .alerts-list {
+            max-height: 600px;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+        
+        .alert-item {
+            padding: 15px 20px;
+            margin-bottom: 10px;
+            border-radius: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(10px);
+        }
+        
+        .dark-theme .alert-item {
+            background: rgba(255, 255, 255, 0.05);
+            border-left: 4px solid;
+        }
+        
+        .light-theme .alert-item {
+            background: rgba(255, 255, 255, 0.9);
+            border-left: 4px solid;
+        }
+        
+        .alert-item.critical { border-left-color: #ef4444; }
+        .alert-item.high { border-left-color: #f59e0b; }
+        
+        .alert-severity {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        
+        .alert-severity.critical {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .alert-severity.high {
+            background: #f59e0b;
+            color: white;
+        }
+        
+        /* Sensor Grid */
+        .sensors-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+        }
+        
+        .sensor-card {
+            padding: 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .dark-theme .sensor-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .light-theme .sensor-card {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        
+        .sensor-status {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .sensor-status.online { background: #4ade80; box-shadow: 0 0 10px rgba(74, 222, 128, 0.5); }
+        .sensor-status.warning { background: #fbbf24; box-shadow: 0 0 10px rgba(251, 191, 36, 0.5); }
+        .sensor-status.offline { background: #ef4444; box-shadow: 0 0 10px rgba(239, 68, 68, 0.5); }
+        
+        /* Fullscreen Hint */
+        .fullscreen-hint {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            opacity: 0.7;
+            transition: opacity 0.3s;
+        }
+        
+        .dark-theme .fullscreen-hint {
+            background: rgba(255, 255, 255, 0.1);
+            color: #e0e0e0;
+        }
+        
+        .light-theme .fullscreen-hint {
+            background: rgba(0, 0, 0, 0.1);
+            color: #2c3e50;
+        }
+        
+        .fullscreen-hint:hover {
+            opacity: 1;
+        }
+        
+        /* Responsive */
+        @media (max-width: 1400px) {
+            .metric-value { font-size: 3rem; }
+            .kiosk-title { font-size: 2rem; }
+        }
+        
+        @media (max-width: 1024px) {
+            .metrics-grid {
+                grid-template-columns: repeat(2, 1fr);
+                grid-template-rows: repeat(3, 1fr);
+            }
+        }
+    </style>
+</head>
+<body class="dark-theme">
+    <div class="kiosk-container">
+        <!-- Header -->
+        <div class="kiosk-header">
+            <h1 class="kiosk-title">
+                <span class="pulse-dot"></span>
+                NetMonitor SOC
+            </h1>
+            <div class="kiosk-controls">
+                <div class="last-update">
+                    Laatste update: <span id="lastUpdate">-</span>
+                </div>
+                <button class="theme-toggle" onclick="toggleTheme()">
+                    <span id="themeIcon">☀️</span> Thema
+                </button>
+                <button class="fullscreen-btn" onclick="toggleFullscreen()">
+                    ⛶ Fullscreen
+                </button>
+            </div>
+        </div>
+        
+        <!-- Screen 1: Metrics Grid -->
+        <div id="screen-metrics" class="screen-view active">
+            <div class="metrics-grid">
+                <!-- Bandwidth -->
+                <div class="metric-card">
+                    <div class="metric-icon">📊</div>
+                    <div class="metric-value">
+                        <span id="bandwidth">0</span>
+                        <span class="metric-unit">Mb/s</span>
+                    </div>
+                    <div class="metric-label">Total Bandwidth</div>
+                </div>
+                
+                <!-- Packets/sec -->
+                <div class="metric-card">
+                    <div class="metric-icon">📦</div>
+                    <div class="metric-value">
+                        <span id="packetsPerSec">0</span>
+                        <span class="metric-unit">pkt/s</span>
+                    </div>
+                    <div class="metric-label">Packets per Second</div>
+                </div>
+                
+                <!-- Alerts/min -->
+                <div class="metric-card">
+                    <div class="metric-icon">🚨</div>
+                    <div class="metric-value">
+                        <span id="alertsPerMin">0</span>
+                        <span class="metric-unit">alert/min</span>
+                    </div>
+                    <div class="metric-label">Alert Rate</div>
+                </div>
+                
+                <!-- Active Sensors -->
+                <div class="metric-card">
+                    <div class="metric-icon">📡</div>
+                    <div class="metric-value">
+                        <span id="activeSensors">0/0</span>
+                    </div>
+                    <div class="metric-label">Active Sensors</div>
+                </div>
+                
+                <!-- Avg CPU -->
+                <div class="metric-card">
+                    <div class="metric-icon">💻</div>
+                    <div class="metric-value">
+                        <span id="avgCpu">0</span>
+                        <span class="metric-unit">%</span>
+                    </div>
+                    <div class="metric-label">Avg CPU Usage</div>
+                </div>
+                
+                <!-- Avg Memory -->
+                <div class="metric-card">
+                    <div class="metric-icon">🧠</div>
+                    <div class="metric-value">
+                        <span id="avgMemory">0</span>
+                        <span class="metric-unit">%</span>
+                    </div>
+                    <div class="metric-label">Avg Memory Usage</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Screen 2: Critical Alerts -->
+        <div id="screen-alerts" class="screen-view">
+            <h2 style="margin-bottom: 20px; font-size: 2rem;">🔴 Critical Alerts (Last Hour)</h2>
+            <div class="alerts-list" id="alertsList">
+                <!-- Alerts will be injected here -->
+            </div>
+        </div>
+        
+        <!-- Screen 3: Sensor Status -->
+        <div id="screen-sensors" class="screen-view">
+            <h2 style="margin-bottom: 20px; font-size: 2rem;">📡 Sensor Status Overview</h2>
+            <div class="sensors-grid" id="sensorsGrid">
+                <!-- Sensors will be injected here -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- Fullscreen Hint -->
+    <div class="fullscreen-hint">
+        💡 Druk op <strong>F11</strong> voor fullscreen
+    </div>
+    
+    <script>
+        // Configuration
+        const REFRESH_INTERVAL = 5000; // 5 seconds
+        const ROTATION_INTERVAL = 30000; // 30 seconds
+        const screens = ['screen-metrics', 'screen-alerts', 'screen-sensors'];
+        let currentScreen = 0;
+        let autoRotate = true;
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load theme preference
+            const savedTheme = localStorage.getItem('kioskTheme') || 'dark';
+            document.body.className = savedTheme + '-theme';
+            updateThemeIcon();
+            
+            // Start fetching data
+            fetchKioskData();
+            setInterval(fetchKioskData, REFRESH_INTERVAL);
+            
+            // Start screen rotation
+            setInterval(rotateScreen, ROTATION_INTERVAL);
+        });
+        
+        // Fetch kiosk data
+        async function fetchKioskData() {
+            try {
+                const response = await fetch('/api/kiosk/metrics');
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateMetrics(data.metrics);
+                    updateAlerts(data.critical_alerts);
+                    updateLastUpdate();
+                }
+                
+                // Fetch sensors separately
+                const sensorsResponse = await fetch('/api/kiosk/sensors');
+                const sensorsData = await sensorsResponse.json();
+                
+                if (sensorsData.success) {
+                    updateSensors(sensorsData.sensors);
+                }
+                
+            } catch (error) {
+                console.error('Error fetching kiosk data:', error);
+            }
+        }
+        
+        // Update metrics
+        function updateMetrics(metrics) {
+            document.getElementById('bandwidth').textContent = metrics.bandwidth_mbps.toFixed(1);
+            document.getElementById('packetsPerSec').textContent = Math.round(metrics.packets_per_sec).toLocaleString();
+            document.getElementById('alertsPerMin').textContent = metrics.alerts_per_min;
+            document.getElementById('activeSensors').textContent = metrics.active_sensors;
+            document.getElementById('avgCpu').textContent = metrics.avg_cpu_percent.toFixed(1);
+            document.getElementById('avgMemory').textContent = metrics.avg_memory_percent.toFixed(1);
+        }
+        
+        // Update alerts
+        function updateAlerts(alerts) {
+            const alertsList = document.getElementById('alertsList');
+            
+            if (alerts.length === 0) {
+                alertsList.innerHTML = '<p style="text-align: center; opacity: 0.5; margin-top: 50px; font-size: 1.5rem;">✅ Geen kritieke alerts</p>';
+                return;
+            }
+            
+            alertsList.innerHTML = alerts.map(alert => `
+                <div class="alert-item ${alert.severity.toLowerCase()}">
+                    <div>
+                        <strong>${alert.threat_type}</strong><br>
+                        <small>${alert.source_ip || 'N/A'} → ${alert.destination_ip || 'N/A'}</small><br>
+                        <small>${alert.description}</small>
+                    </div>
+                    <div>
+                        <span class="alert-severity ${alert.severity.toLowerCase()}">${alert.severity}</span>
+                        <br>
+                        <small>${new Date(alert.timestamp).toLocaleTimeString()}</small>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Update sensors
+        function updateSensors(sensors) {
+            const sensorsGrid = document.getElementById('sensorsGrid');
+            
+            sensorsGrid.innerHTML = sensors.map(sensor => `
+                <div class="sensor-card">
+                    <h4 style="margin-bottom: 10px;">
+                        <span class="sensor-status ${sensor.status}"></span>
+                        ${sensor.name}
+                    </h4>
+                    <p style="opacity: 0.7; margin-bottom: 15px;">${sensor.location}</p>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                            <small>CPU</small><br>
+                            <strong>${sensor.cpu.toFixed(1)}%</strong>
+                        </div>
+                        <div>
+                            <small>Memory</small><br>
+                            <strong>${sensor.memory.toFixed(1)}%</strong>
+                        </div>
+                        <div>
+                            <small>Bandwidth</small><br>
+                            <strong>${sensor.bandwidth.toFixed(1)} Mb/s</strong>
+                        </div>
+                        <div>
+                            <small>Alerts (24h)</small><br>
+                            <strong>${sensor.alerts_24h}</strong>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Update last update time
+        function updateLastUpdate() {
+            const now = new Date();
+            document.getElementById('lastUpdate').textContent = now.toLocaleTimeString();
+        }
+        
+        // Rotate screens
+        function rotateScreen() {
+            if (!autoRotate) return;
+            
+            // Hide current screen
+            document.getElementById(screens[currentScreen]).classList.remove('active');
+            
+            // Move to next screen
+            currentScreen = (currentScreen + 1) % screens.length;
+            
+            // Show next screen
+            document.getElementById(screens[currentScreen]).classList.add('active');
+        }
+        
+        // Toggle theme
+        function toggleTheme() {
+            const body = document.body;
+            const currentTheme = body.classList.contains('dark-theme') ? 'dark' : 'light';
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            
+            body.className = newTheme + '-theme';
+            localStorage.setItem('kioskTheme', newTheme);
+            updateThemeIcon();
+        }
+        
+        // Update theme icon
+        function updateThemeIcon() {
+            const isDark = document.body.classList.contains('dark-theme');
+            document.getElementById('themeIcon').textContent = isDark ? '☀️' : '🌙';
+        }
+        
+        // Toggle fullscreen
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        // Pause rotation on user interaction
+        document.addEventListener('click', function() {
+            autoRotate = false;
+            setTimeout(() => { autoRotate = true; }, 60000); // Resume after 1 minute
+        });
+    </script>
+</body>
+</html>
