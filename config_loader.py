@@ -165,14 +165,23 @@ def _build_sensor_config(conf_dict):
             'brute_force': {
                 'enabled': True,
                 'attempts_threshold': 5,
-                'time_window': 300
+                'time_window': 300,
+                'exclude_streaming': True,
+                'exclude_cdn': True
+            },
+            'modern_protocols': {
+                'quic_detection': True,
+                'http3_detection': True,
+                'streaming_services': [],  # Loaded from main config
+                'cdn_providers': []  # Loaded from main config
             },
             'protocol_mismatch': {
                 'enabled': True,
                 'detect_http_non_standard': True,
                 'detect_ssh_non_standard': True,
                 'detect_dns_non_standard': True,
-                'detect_ftp_non_standard': True
+                'detect_ftp_non_standard': True,
+                'ignore_quic': True
             },
         },
 
