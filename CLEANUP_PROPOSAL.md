@@ -1,411 +1,652 @@
-# NetMonitor Codebase Cleanup & Professionalisering
+# NetMonitor Professionalisering & Cleanup Voorstel (HERZIEN)
 
-## Samenvatting Analyse
+## 🔍 Werkelijke Architectuur (Na Correcte Analyse)
 
-Na grondige analyse van de codebase zijn de volgende problemen geïdentificeerd:
-
-### 🔴 Kritieke Issues
-
-1. **Poort Inconsistentie**
-   - Service draait op poort 8000 (gunicorn)
-   - Documentatie en config.yaml vermelden poort 8080
-   - Nginx configs wijzen naar poort 8080 (upstream netmonitor_dashboard)
-   - **Status**: Dashboard werkt na reboot, dus draait op 8000
-   - **Impact**: Verwarring en potentiële deployment failures
-
-2. **Service File Verwarring**
-   - `netmonitor.service` = Template met placeholders (NIET direct bruikbaar)
-   - `netmonitor-gunicorn.service` = Actieve productie service
-   - Onduidelijk welke service de dashboard start
-   - Geen duidelijke documentatie over service architecture
-
-3. **Documentatie Overload**
-   - 33 markdown bestanden totaal
-   - 22 markdown bestanden in root directory
-   - Veel overlap en verouderde informatie
-   - Geen master index of navigatie structuur
-
----
-
-## 🎯 Voorgestelde Oplossingen
-
-### Fase 1: Poort Standaardisatie (URGENT)
-
-**Beslissing nodig:** Welke poort is de standaard?
-
-**Optie A: Gebruik poort 8000 overal (AANBEVOLEN)**
-- Gunicorn draait al op 8000
-- Minder wijzigingen aan services
-- MCP HTTP API gebruikt ook 8000 (maar via nginx /mcp path)
-
-**Optie B: Gebruik poort 8080 overal**
-- Consistent met oorspronkelijke documentatie
-- Flask development server standaard
-- Vereist wijzigingen aan gunicorn config en service
-
-**Acties voor Optie A:**
-```yaml
-# config.yaml wijzigen
-dashboard:
-  port: 8000  # Was: 8080
-
-# nginx configs updaten
-upstream netmonitor_dashboard {
-    server 127.0.0.1:8000;  # Was: 8080
-}
-
-# Alle documentatie updaten (README.md, DASHBOARD.md, etc.)
-http://localhost:8000/kiosk  # Overal 8080 → 8000
-```
-
-**Acties voor Optie B:**
-```python
-# gunicorn_config.py
-bind = "127.0.0.1:8080"  # Was: 8000
-
-# netmonitor-gunicorn.service
---bind 127.0.0.1:8080 \  # Was: 8000
-
-# wsgi.py
-app.run(host='0.0.0.0', port=8080, debug=False)  # Was: 8000
-```
-
----
-
-### Fase 2: Documentatie Herstructurering
-
-**Nieuwe Structuur:**
-
-```
-/netmonitor/
-├── README.md                          # Quick start + links naar docs/
-├── CHANGELOG.md                       # Version history
-│
-├── docs/                              # Alle documentatie hier
-│   ├── INDEX.md                       # Master index van alle docs
-│   │
-│   ├── installation/                  # Installation guides
-│   │   ├── QUICK_START.md            # Minimale setup (5 minuten)
-│   │   ├── COMPLETE_INSTALLATION.md  # Volledige setup
-│   │   ├── SERVICE_INSTALLATION.md   # Systemd services
-│   │   ├── VENV_SETUP.md             # Python virtual env
-│   │   └── SENSOR_DEPLOYMENT.md      # Remote sensors
-│   │
-│   ├── configuration/                 # Config guides
-│   │   ├── CONFIG_GUIDE.md           # config.yaml reference
-│   │   ├── ENV_CONFIGURATION.md      # Environment variables
-│   │   ├── NGINX_SETUP.md            # Nginx configuratie
-│   │   └── GUNICORN_SETUP.md         # Gunicorn configuratie
-│   │
-│   ├── usage/                         # Gebruikers handleidingen
-│   │   ├── USER_MANUAL.md            # Eindgebruiker handleiding
-│   │   ├── ADMIN_MANUAL.md           # Admin handleiding
-│   │   ├── DASHBOARD.md              # Dashboard features
-│   │   └── KIOSK_MODE.md             # Kiosk mode setup (nieuw)
-│   │
-│   ├── development/                   # Developer docs
-│   │   ├── ARCHITECTURE.md           # System architecture (nieuw)
-│   │   ├── DATABASE_SCHEMA.md        # Database design (nieuw)
-│   │   ├── API_REFERENCE.md          # API endpoints (nieuw)
-│   │   └── TESTING.md                # Test suite docs
-│   │
-│   ├── features/                      # Feature documentatie
-│   │   ├── DETECTION_FEATURES.md     # Detection capabilities
-│   │   ├── THREAT_FEEDS.md           # Threat intelligence
-│   │   └── MCP_INTEGRATION.md        # AI integration
-│   │
-│   ├── troubleshooting/              # Problem solving
-│   │   ├── COMMON_ISSUES.md          # FAQ (nieuw)
-│   │   ├── DEBUGGING.md              # Debug procedures (nieuw)
-│   │   └── PERFORMANCE.md            # Performance tuning (nieuw)
-│   │
-│   └── archived/                      # Verouderde docs
-│       ├── legacy_stdio_mcp/
-│       ├── old_installation_methods/
-│       └── deprecated_features/
-│
-├── .claude/                           # Claude Code specifiek
-│   ├── instructions.md
-│   └── implementation-plans/
-│       └── kiosk-mode-implementation-plan.md
-│
-└── scripts/                           # Install & utility scripts
-    ├── install_complete.sh
-    ├── install_services.sh
-    └── setup/                         # Setup helpers
-        ├── setup_http_api.sh
-        └── setup_sensor_auth.py
-```
-
-**Te Archiveren Bestanden:**
-
-```bash
-# Verplaats naar docs/archived/
-- MCP_NGINX_SETUP.md → docs/archived/legacy_stdio_mcp/
-- mcp_server/legacy_stdio_sse/*.md → docs/archived/legacy_stdio_mcp/
-- FIXES_TESTING.md → docs/archived/
-- TEST_SUITE_SUMMARY.md → docs/development/TESTING.md (merge)
-
-# Consolideren (merge meerdere docs)
-- POSTGRESQL_SETUP.md + TIMESCALEDB_SETUP.md → docs/installation/DATABASE_SETUP.md
-- PRODUCTION.md → docs/installation/PRODUCTION_DEPLOYMENT.md
-- KIOSK-DEPLOYMENT.md → docs/usage/KIOSK_MODE.md
-```
-
----
-
-### Fase 3: Service Architecture Documentatie
-
-**Nieuw bestand: docs/development/ARCHITECTURE.md**
-
-Duidelijke uitleg van:
+### **Service Architectuur:**
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    NetMonitor Architecture                    │
+│                    NetMonitor Services                        │
 ├─────────────────────────────────────────────────────────────┤
 │                                                               │
-│  ┌─────────────────────────────────────────────────────────┐ │
-│  │ Nginx (Port 80/443)                                     │ │
-│  │  - SSL Termination                                      │ │
-│  │  - Reverse Proxy                                        │ │
-│  │  - Static file serving                                  │ │
-│  └──────┬────────────────────┬─────────────────────────────┘ │
-│         │                    │                                │
-│         ▼                    ▼                                │
-│  ┌─────────────────┐  ┌─────────────────┐                   │
-│  │ Dashboard       │  │ MCP HTTP API    │                   │
-│  │ (Port 8000)     │  │ (Port 8080)     │                   │
-│  │                 │  │                 │                   │
-│  │ Gunicorn        │  │ Uvicorn         │                   │
-│  │  └─ Eventlet    │  │  └─ FastAPI     │                   │
-│  │     workers     │  │                 │                   │
-│  │  └─ SocketIO    │  │                 │                   │
-│  │  └─ Flask app   │  │                 │                   │
-│  └────────┬────────┘  └────────┬────────┘                   │
-│           │                    │                              │
-│           └────────┬───────────┘                              │
-│                    ▼                                          │
-│         ┌─────────────────────┐                              │
-│         │ SQLite Database     │                              │
-│         │  - Sensors          │                              │
-│         │  - Alerts           │                              │
-│         │  - Metrics          │                              │
-│         │  - Whitelist        │                              │
-│         │  - Config           │                              │
-│         └─────────────────────┘                              │
+│  1. netmonitor.service (PRIMAIR)                             │
+│     └─> Start: netmonitor.py                                 │
+│         └─> Importeert DashboardServer from web_dashboard    │
+│             └─> Start Flask in thread (poort uit config)     │
+│                                                               │
+│  2. netmonitor-gunicorn.service (ALTERNATIEF?)               │
+│     └─> Start: gunicorn wsgi:application                     │
+│         └─> Hardcoded poort 8000                             │
+│         └─> Requires: netmonitor.service                     │
+│         └─> Status: Mogelijk NIET in gebruik ❓              │
+│                                                               │
+│  3. netmonitor-mcp-http.service (AI INTEGRATION)             │
+│     └─> Dynamisch aangemaakt door setup_http_api.sh         │
+│         └─> Start: http_server.py                            │
+│         └─> Hardcoded poort 8000 ⚠️ CONFLICT!               │
+│         └─> PostgreSQL based                                 │
+│                                                               │
+│  4. netmonitor-feed-update.service                           │
+│     └─> Threat feed updates                                  │
+│                                                               │
+│  5. netmonitor-sensor.service (REMOTE SENSORS)               │
+│     └─> Start: sensor_client.py                              │
+│         └─> Hardcoded /opt/netmonitor ✅                     │
 │                                                               │
 └─────────────────────────────────────────────────────────────┘
-
-Services (systemd):
-├── netmonitor.service              # Main monitoring engine
-├── netmonitor-gunicorn.service     # Web dashboard (Gunicorn)
-├── netmonitor-mcp-http.service     # MCP HTTP API (Uvicorn)
-└── netmonitor-feed-update.service  # Threat feed updates
 ```
 
 ---
 
-### Fase 4: Nieuwe Master README
+## 🔴 Kritieke Problemen Geïdentificeerd
 
-**Vereenvoudigde README.md:**
+### **1. POORT CONFLICT (8000)**
 
-```markdown
-# NetMonitor SOC - Security Operations Center
-
-Professional network monitoring platform met real-time dashboard en AI integration.
-
-## 🚀 Quick Start
+Twee services willen beide poort 8000:
 
 ```bash
-# Clone repository
-git clone https://github.com/willempoort/netmonitor.git
-cd netmonitor
+# netmonitor-gunicorn.service (regel 23)
+--bind 127.0.0.1:8000
 
-# Install (automatic setup)
-sudo bash install_complete.sh
-
-# Access dashboard
-https://soc.poort.net/
+# netmonitor-mcp-http.service (setup_http_api.sh regel 182)
+ExecStart=$PYTHON $SCRIPT_DIR/http_server.py --host 0.0.0.0 --port 8000
 ```
 
-## 📚 Documentatie
+**Impact:** Deze services kunnen NIET tegelijk draaien!
 
-**Voor nieuwe gebruikers:**
-- [Quick Start Guide](docs/installation/QUICK_START.md) - 5 minuten setup
-- [User Manual](docs/usage/USER_MANUAL.md) - Dashboard gebruik
+### **2. Geen Consistente .env Gebruik**
 
-**Voor administrators:**
-- [Complete Installation](docs/installation/COMPLETE_INSTALLATION.md) - Volledige setup
-- [Admin Manual](docs/usage/ADMIN_MANUAL.md) - Beheer & configuratie
-- [Sensor Deployment](docs/installation/SENSOR_DEPLOYMENT.md) - Remote sensors
-
-**Voor developers:**
-- [Architecture](docs/development/ARCHITECTURE.md) - System design
-- [API Reference](docs/development/API_REFERENCE.md) - REST API docs
-
-**Alle documentatie:** [📖 Documentation Index](docs/INDEX.md)
-
-## 🎯 Features
-
-- ✅ Real-time web dashboard (Flask + SocketIO)
-- ✅ Kiosk mode voor NOC displays
-- ✅ AI integration via MCP HTTP API
-- ✅ Remote sensor management
-- ✅ Threat intelligence feeds
-- ✅ Configuration as code
-
-## 🔧 Architecture
-
-```
-Nginx → Gunicorn (Dashboard:8000) → SQLite
-     └→ Uvicorn (MCP API:8080)    ↗
-```
-
-Zie [ARCHITECTURE.md](docs/development/ARCHITECTURE.md) voor details.
-
-## 📦 Services
-
-| Service | Poort | Beschrijving |
-|---------|-------|--------------|
-| Nginx | 80/443 | Reverse proxy + SSL |
-| Dashboard | 8000 | Web UI (Gunicorn) |
-| MCP API | 8080 | AI integration (Uvicorn) |
-
-## 🐛 Troubleshooting
-
-Zie [Common Issues](docs/troubleshooting/COMMON_ISSUES.md)
-
-## 📝 License
-
-MIT License - See LICENSE file
-```
-
----
-
-### Fase 5: Script Consolidatie
-
-**Huidige scripts:**
-- `install.sh` - Wat doet deze?
-- `install_complete.sh` - Complete install
-- `install_services.sh` - Service install
-
-**Voorstel:**
-
+**.env.example heeft:**
 ```bash
-scripts/
-├── install.sh                 # Symlink → install_complete.sh
-├── install_complete.sh        # Main installer (keep)
-├── install_services.sh        # Service setup (keep)
-│
-├── setup/                     # Setup utilities
-│   ├── setup_http_api.sh     # MCP HTTP API
-│   ├── setup_nginx.sh        # Nginx config (nieuw)
-│   ├── setup_ssl.sh          # SSL certificates (nieuw)
-│   └── setup_sensor_auth.py  # Sensor tokens
-│
-├── utils/                     # Utility scripts (nieuw)
-│   ├── check_services.sh     # Service health check
-│   ├── backup_database.sh    # DB backup
-│   └── update_feeds.sh       # Manual feed update
-│
-└── troubleshooting/          # Debug helpers (nieuw)
-    ├── check_ports.sh        # Port conflicts
-    ├── test_connectivity.sh  # Network tests
-    └── collect_logs.sh       # Log collection
+DASHBOARD_PORT=8080
+INSTALL_DIR=/opt/netmonitor
+```
+
+**Maar service files gebruiken:**
+- Hardcoded poorten (8000)
+- Hardcoded paths (/opt/netmonitor, /usr/local/bin/gunicorn)
+- Geen EnvironmentFile= directive
+
+### **3. Onduidelijke Service Status**
+
+- Welke service start de dashboard? netmonitor.service OF netmonitor-gunicorn.service?
+- Is netmonitor-gunicorn.service een legacy/alternatief?
+- Documentatie is onduidelijk over service dependencies
+
+### **4. Template vs Productie Verwarring**
+
+`netmonitor.service` is een TEMPLATE met `__INSTALL_DIR__` placeholders:
+```bash
+ExecStart=__INSTALL_DIR__/venv/bin/python3 __INSTALL_DIR__/netmonitor.py
+```
+
+Dit werkt NIET as-is - moet gegenereerd worden door install script!
+
+---
+
+## 🎯 Professionalisering Voorstel
+
+### **Fase 1: Service Architectuur Standaardisatie**
+
+#### **1.1 Besluit: Welke Dashboard Setup?**
+
+**Optie A: Embedded Flask (HUIDIGE netmonitor.service)**
+```
+✅ Voordelen:
+- Eén service (netmonitor.service)
+- Simpelere architectuur
+- Dashboard start automatisch met monitoring
+
+❌ Nadelen:
+- Flask development server (niet production-grade)
+- Moeilijker te scalen
+```
+
+**Optie B: Separate Gunicorn Service**
+```
+✅ Voordelen:
+- Production-grade WSGI server
+- Beter performance (eventlet workers)
+- Separate restart mogelijk
+
+❌ Nadelen:
+- Twee services te managen
+- Complexere setup
+```
+
+**AANBEVELING: Optie B (Separate Gunicorn)**
+- Maar DAN verwijder dashboard code uit netmonitor.py
+- Of disable dashboard in config als gunicorn service gebruikt wordt
+
+#### **1.2 Poort Allocatie Standaard**
+
+**Voorgestelde Standaard:**
+```bash
+# Web Dashboard
+DASHBOARD_PORT=8080    # Flask/Gunicorn voor web UI
+
+# MCP HTTP API
+MCP_API_PORT=8000      # FastAPI/Uvicorn voor AI integration
+
+# Nginx
+NGINX_HTTP=80
+NGINX_HTTPS=443
+```
+
+**Rationalisatie:**
+- Verschillende poorten voor verschillende services ✅
+- Geen conflicts ✅
+- Consistent met documentatie (.env.example) ✅
+
+---
+
+### **Fase 2: Environment Variable Standaardisatie**
+
+#### **2.1 .env Template Updaten**
+
+**Nieuwe .env.example:**
+```bash
+# NetMonitor Environment Configuration
+# Copy to .env and update values: cp .env.example .env
+
+# ============================================================================
+# Installation Configuration
+# ============================================================================
+# BELANGRIJK: Standaard installatie pad is /opt/netmonitor
+# Als je hiervan afwijkt, ben je zelf verantwoordelijk voor pad aanpassingen
+INSTALL_DIR=/opt/netmonitor
+
+# ============================================================================
+# Web Dashboard Configuration
+# ============================================================================
+DASHBOARD_HOST=0.0.0.0
+DASHBOARD_PORT=8080
+
+# Dashboard Server Type (flask|gunicorn)
+# flask   = Embedded Flask server (simpel, development)
+# gunicorn = Production WSGI server (aanbevolen voor productie)
+DASHBOARD_SERVER=gunicorn
+
+# Flask Secret Key (generate: python3 -c "import secrets; print(secrets.token_hex(32))")
+FLASK_SECRET_KEY=change-this-to-a-random-secret-key
+
+# ============================================================================
+# MCP HTTP API Configuration (AI Integration)
+# ============================================================================
+MCP_API_HOST=0.0.0.0
+MCP_API_PORT=8000
+MCP_API_WORKERS=4
+
+# ============================================================================
+# Database Configuration
+# ============================================================================
+# Database Type (sqlite|postgresql)
+DB_TYPE=sqlite
+
+# SQLite (default)
+SQLITE_PATH=/var/lib/netmonitor/netmonitor.db
+
+# PostgreSQL (optional - voor MCP HTTP API)
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=netmonitor
+DB_USER=netmonitor
+DB_PASSWORD=netmonitor
+
+# ============================================================================
+# Logging Configuration
+# ============================================================================
+LOG_DIR=/var/log/netmonitor
+LOG_LEVEL=INFO
+
+# ============================================================================
+# Runtime Directories
+# ============================================================================
+RUN_DIR=/var/run/netmonitor
+DATA_DIR=/var/lib/netmonitor
+CACHE_DIR=/var/cache/netmonitor
+
+# ============================================================================
+# Sensor Configuration (for remote sensors only)
+# ============================================================================
+SENSOR_ID=
+SENSOR_NAME=
+SOC_SERVER_URL=
+SENSOR_TOKEN=
+```
+
+#### **2.2 Service Files met EnvironmentFile**
+
+**Template: netmonitor.service.template**
+```ini
+[Unit]
+Description=NetMonitor - Network Monitoring Engine
+After=network.target
+Documentation=https://github.com/willempoort/netmonitor
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=__INSTALL_DIR__
+
+# Load environment variables
+EnvironmentFile=-__INSTALL_DIR__/.env
+EnvironmentFile=-/etc/netmonitor/netmonitor.env
+
+# Start netmonitor (without embedded dashboard if DASHBOARD_SERVER=gunicorn)
+ExecStart=__INSTALL_DIR__/venv/bin/python3 __INSTALL_DIR__/netmonitor.py --config __INSTALL_DIR__/config.yaml
+
+# Restart on failure
+Restart=on-failure
+RestartSec=10
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/netmonitor /var/log/netmonitor /var/run/netmonitor /var/cache/netmonitor
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=netmonitor
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Template: netmonitor-dashboard.service.template**
+```ini
+[Unit]
+Description=NetMonitor Web Dashboard (Gunicorn)
+After=network.target netmonitor.service
+Requires=netmonitor.service
+Documentation=https://github.com/willempoort/netmonitor
+
+[Service]
+Type=notify
+User=root
+WorkingDirectory=__INSTALL_DIR__
+
+# Load environment variables
+EnvironmentFile=-__INSTALL_DIR__/.env
+EnvironmentFile=-/etc/netmonitor/netmonitor.env
+
+# Create runtime directory
+RuntimeDirectory=netmonitor
+RuntimeDirectoryMode=0755
+
+# Ensure directories exist
+ExecStartPre=/bin/mkdir -p ${LOG_DIR:-/var/log/netmonitor}
+ExecStartPre=/bin/mkdir -p ${RUN_DIR:-/var/run/netmonitor}
+
+# Start Gunicorn with eventlet workers for SocketIO
+ExecStart=/usr/local/bin/gunicorn \
+    --bind ${DASHBOARD_HOST:-0.0.0.0}:${DASHBOARD_PORT:-8080} \
+    --workers ${DASHBOARD_WORKERS:-4} \
+    --worker-class eventlet \
+    --worker-connections 1000 \
+    --timeout 30 \
+    --graceful-timeout 30 \
+    --access-logfile ${LOG_DIR:-/var/log/netmonitor}/dashboard_access.log \
+    --error-logfile ${LOG_DIR:-/var/log/netmonitor}/dashboard_error.log \
+    --log-level ${LOG_LEVEL:-info} \
+    --pid ${RUN_DIR:-/var/run/netmonitor}/dashboard.pid \
+    wsgi:application
+
+# Restart on failure
+Restart=on-failure
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=30
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/netmonitor /var/log/netmonitor /var/run/netmonitor /var/cache/netmonitor
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=netmonitor-dashboard
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Template: netmonitor-mcp-http.service.template**
+```ini
+[Unit]
+Description=NetMonitor MCP HTTP API Server (AI Integration)
+After=network.target postgresql.service
+Wants=postgresql.service
+Documentation=https://github.com/willempoort/netmonitor
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=__INSTALL_DIR__
+
+# Load environment variables
+EnvironmentFile=-__INSTALL_DIR__/.env
+EnvironmentFile=-/etc/netmonitor/netmonitor.env
+
+# Start MCP HTTP API
+ExecStart=__INSTALL_DIR__/venv/bin/python3 __INSTALL_DIR__/mcp_server/http_server.py \
+    --host ${MCP_API_HOST:-0.0.0.0} \
+    --port ${MCP_API_PORT:-8000}
+
+# Restart on failure
+Restart=always
+RestartSec=10
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=netmonitor-mcp-http
+
+[Install]
+WantedBy=multi-user.target
 ```
 
 ---
 
-## 🎯 Implementatie Plan
+### **Fase 3: Install Script Verbetering**
 
-### **Stap 1: Poort Fix (URGENT) - 30 minuten**
+**install_services.sh verbeteren:**
+```bash
+#!/bin/bash
+# NetMonitor Service Installation Script
+# Generates service files from templates with correct paths
 
-1. Besluit: Poort 8000 of 8080?
-2. Update alle configs naar gekozen poort
-3. Test lokaal: `curl http://localhost:POORT/kiosk`
-4. Update nginx en reload
-5. Test via nginx: `curl https://soc.poort.net/kiosk`
+set -e
 
-### **Stap 2: Documentatie Restructurering - 2 uur**
+# Detect installation directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INSTALL_DIR="${INSTALL_DIR:-$SCRIPT_DIR}"
 
-1. Create `docs/` directory structuur
-2. Move bestanden naar juiste locaties
-3. Create `docs/INDEX.md` master index
-4. Update alle interne links
-5. Archive legacy docs
+echo "NetMonitor Service Installation"
+echo "================================"
+echo "Installation directory: $INSTALL_DIR"
+echo ""
 
-### **Stap 3: README Vereenvoudiging - 30 minuten**
+# Load .env if exists
+if [ -f "$INSTALL_DIR/.env" ]; then
+    echo "Loading configuration from .env..."
+    source "$INSTALL_DIR/.env"
+fi
 
-1. Backup huidige README.md
-2. Create nieuwe simplified README
-3. Ensure alle features gedocumenteerd in docs/
-4. Add links naar relevante docs
+# Set defaults
+DASHBOARD_SERVER="${DASHBOARD_SERVER:-gunicorn}"
+DASHBOARD_PORT="${DASHBOARD_PORT:-8080}"
+MCP_API_PORT="${MCP_API_PORT:-8000}"
 
-### **Stap 4: Architecture Documentatie - 1 uur**
+echo "Configuration:"
+echo "  Dashboard server: $DASHBOARD_SERVER"
+echo "  Dashboard port:   $DASHBOARD_PORT"
+echo "  MCP API port:     $MCP_API_PORT"
+echo ""
 
-1. Create `docs/development/ARCHITECTURE.md`
-2. Document service dependencies
-3. Add port mapping table
-4. Create system diagrams
-5. Document database schema
+# Function to generate service file from template
+generate_service() {
+    local template="$1"
+    local output="$2"
 
-### **Stap 5: Service Documentatie - 30 minuten**
+    if [ ! -f "$template" ]; then
+        echo "⚠️  Template not found: $template"
+        return 1
+    fi
 
-1. Document elke systemd service
-2. Add startup order
-3. Add troubleshooting per service
-4. Create service health check script
+    echo "Generating $output from template..."
+    sed -e "s|__INSTALL_DIR__|$INSTALL_DIR|g" \
+        "$template" > "$output"
 
-### **Stap 6: Testing & Validatie - 1 uur**
+    echo "✅ Generated: $output"
+}
 
-1. Test alle links in documentatie
-2. Verify install scripts work
-3. Test kiosk mode deployment
-4. Update CHANGELOG.md
+# Generate main netmonitor service
+generate_service \
+    "$INSTALL_DIR/netmonitor.service.template" \
+    "/etc/systemd/system/netmonitor.service"
+
+# Generate dashboard service (if using gunicorn)
+if [ "$DASHBOARD_SERVER" = "gunicorn" ]; then
+    generate_service \
+        "$INSTALL_DIR/netmonitor-dashboard.service.template" \
+        "/etc/systemd/system/netmonitor-dashboard.service"
+fi
+
+# Reload systemd
+systemctl daemon-reload
+echo ""
+echo "✅ Systemd daemon reloaded"
+
+# Enable services
+echo ""
+echo "Enabling services..."
+systemctl enable netmonitor.service
+
+if [ "$DASHBOARD_SERVER" = "gunicorn" ]; then
+    systemctl enable netmonitor-dashboard.service
+fi
+
+echo ""
+echo "=================================================="
+echo "Installation Complete!"
+echo "=================================================="
+echo ""
+echo "Next steps:"
+echo "  1. Review configuration: nano $INSTALL_DIR/.env"
+echo "  2. Start services:"
+echo "       sudo systemctl start netmonitor"
+if [ "$DASHBOARD_SERVER" = "gunicorn" ]; then
+    echo "       sudo systemctl start netmonitor-dashboard"
+fi
+echo "  3. Check status:"
+echo "       sudo systemctl status netmonitor"
+if [ "$DASHBOARD_SERVER" = "gunicorn" ]; then
+    echo "       sudo systemctl status netmonitor-dashboard"
+fi
+echo ""
+```
 
 ---
 
-## 📊 Prioritering
+### **Fase 4: Nginx Configuratie met .env**
 
-| Taak | Priority | Impact | Effort |
-|------|----------|--------|--------|
-| Fix poort conflict | 🔴 URGENT | High | Low |
-| Service documentatie | 🟡 High | High | Medium |
-| Docs restructurering | 🟡 High | Medium | High |
-| README simplificatie | 🟢 Medium | Medium | Low |
-| Script consolidatie | 🟢 Low | Low | Medium |
+**nginx-netmonitor.conf.template:**
+```nginx
+# NetMonitor Nginx Configuration Template
+# This file should be processed to replace __DASHBOARD_PORT__ and __MCP_API_PORT__
+
+upstream netmonitor_dashboard {
+    server 127.0.0.1:__DASHBOARD_PORT__;  # Will be replaced with $DASHBOARD_PORT from .env
+    keepalive 32;
+}
+
+upstream netmonitor_mcp_api {
+    server 127.0.0.1:__MCP_API_PORT__;    # Will be replaced with $MCP_API_PORT from .env
+    keepalive 32;
+}
+
+# ... rest of nginx config
+```
+
+**generate_nginx_config.sh:**
+```bash
+#!/bin/bash
+# Generate Nginx config from template with correct ports
+
+source /opt/netmonitor/.env
+
+sed -e "s|__DASHBOARD_PORT__|${DASHBOARD_PORT:-8080}|g" \
+    -e "s|__MCP_API_PORT__|${MCP_API_PORT:-8000}|g" \
+    /opt/netmonitor/nginx-netmonitor.conf.template \
+    > /etc/nginx/sites-available/netmonitor.conf
+
+echo "✅ Nginx config generated with:"
+echo "   Dashboard port: ${DASHBOARD_PORT:-8080}"
+echo "   MCP API port:   ${MCP_API_PORT:-8000}"
+```
+
+---
+
+### **Fase 5: Documentatie Restructurering**
+
+**Nieuwe Structuur:**
+```
+/netmonitor/
+├── README.md                    # Quick start + architectuur overzicht
+├── .env.example                 # Template met ALLE variabelen
+│
+├── docs/
+│   ├── INDEX.md                 # Master index
+│   ├── ARCHITECTURE.md          # ⭐ System architecture (NIEUW)
+│   │
+│   ├── installation/
+│   │   ├── QUICKSTART.md        # 5-minuten setup
+│   │   ├── PRODUCTION.md        # Productie deployment
+│   │   ├── SERVICES.md          # ⭐ Service management (NIEUW)
+│   │   └── ENVIRONMENT.md       # ⭐ .env configuration (NIEUW)
+│   │
+│   ├── usage/
+│   │   ├── USER_MANUAL.md
+│   │   ├── ADMIN_MANUAL.md
+│   │   ├── DASHBOARD.md
+│   │   └── KIOSK_MODE.md
+│   │
+│   └── development/
+│       ├── SERVICE_TEMPLATES.md  # ⭐ Template system (NIEUW)
+│       └── CONTRIBUTING.md
+│
+├── services/                     # ⭐ Service templates (NIEUW)
+│   ├── README.md
+│   ├── netmonitor.service.template
+│   ├── netmonitor-dashboard.service.template
+│   ├── netmonitor-mcp-http.service.template
+│   └── netmonitor-sensor.service.template
+│
+└── scripts/
+    ├── install_complete.sh
+    ├── install_services.sh       # ⭐ Verbeterd met templates
+    └── generate_nginx_config.sh  # ⭐ NIEUW
+```
+
+---
+
+## 📋 Implementatie Plan
+
+### **Stap 1: .env Standaardisatie (30 min)**
+
+1. Update .env.example met ALLE variabelen
+2. Create .env op server (cp .env.example .env)
+3. Set juiste waarden (poorten, paths, secrets)
+
+### **Stap 2: Service Templates (1 uur)**
+
+1. Create services/ directory
+2. Move service files naar templates
+3. Add EnvironmentFile directive
+4. Test template generation
+
+### **Stap 3: Install Script Update (30 min)**
+
+1. Update install_services.sh
+2. Add template processing
+3. Add .env loading
+4. Test complete installation
+
+### **Stap 4: Poort Fix (30 min)**
+
+1. Set DASHBOARD_PORT=8080 in .env
+2. Set MCP_API_PORT=8000 in .env
+3. Regenerate service files
+4. Update nginx config
+5. Restart services
+
+### **Stap 5: Documentatie (2 uur)**
+
+1. Create docs/ARCHITECTURE.md
+2. Create docs/installation/SERVICES.md
+3. Create docs/installation/ENVIRONMENT.md
+4. Update README.md met architecture diagram
 
 ---
 
 ## ✅ Succes Criteria
 
-Na cleanup moet een nieuwe gebruiker:
+Na cleanup:
 
-1. **In 5 minuten** kunnen starten met Quick Start guide
-2. **Duidelijk weten** welke poort de dashboard gebruikt
-3. **Gemakkelijk vinden** welke documentatie ze nodig hebben
-4. **Begrijpen** hoe de services samenwerken
-5. **Troubleshooten** zonder code te moeten lezen
+1. **✅ Consistente configuratie:**
+   - Alle poorten uit .env
+   - Alle paths uit .env (of default /opt/netmonitor)
+   - Geen hardcoded waarden in service files
+
+2. **✅ Duidelijke service architectuur:**
+   - Documentatie legt uit welke service wat doet
+   - Template system maakt services reproduceerbaar
+   - Geen port conflicts
+
+3. **✅ Professionele deployment:**
+   - install_services.sh genereert correcte files
+   - .env based configuratie
+   - Easy troubleshooting
+
+4. **✅ Begrijpelijke docs:**
+   - ARCHITECTURE.md legt alles uit
+   - Duidelijke service dependencies
+   - Template documentatie
 
 ---
 
-## 🤔 Vragen voor Beslissing
+## 🎯 Aanbevolen Aanpak
 
-1. **Poort standaard:** 8000 of 8080? (Advies: 8000, minimal change)
-2. **Legacy MCP docs:** Archiveren of verwijderen? (Advies: archiveren)
-3. **Database migratie:** PostgreSQL docs behouden? (Advies: ja, in docs/installation/)
-4. **Testing docs:** Merge in één document? (Advies: ja)
+**Gefaseerd implementeren:**
+
+1. **WEEK 1: Foundation**
+   - .env.example update
+   - Service templates maken
+   - Install script verbeteren
+
+2. **WEEK 2: Migration**
+   - Poort standaardisatie
+   - Service regeneratie
+   - Testing
+
+3. **WEEK 3: Documentation**
+   - ARCHITECTURE.md schrijven
+   - Docs herstructureren
+   - README vereenvoudigen
 
 ---
 
-## 📝 Volgende Stappen
+## ❓ Beslissingen Nodig
 
-Wil je dat ik:
+1. **Dashboard Server:** Embedded Flask OF separate Gunicorn?
+   - **Advies:** Separate Gunicorn (production-ready)
 
-A. **Start met poort fix** - Los conflict nu op (30 min)
-B. **Create docs structure** - Maak directory structuur en INDEX.md (1 uur)
-C. **Generate ARCHITECTURE.md** - Volledige system documentatie (1 uur)
-D. **All of the above** - Complete cleanup in één keer (4-5 uur)
+2. **Poort Allocatie:**
+   - Dashboard: 8080 ✅
+   - MCP API: 8000 ✅
+   - **Akkoord?**
 
-Of heb je andere prioriteiten?
+3. **Template Locatie:**
+   - services/ directory OF root?
+   - **Advies:** services/ directory (cleaner)
+
+4. **Prioriteit:**
+   - Alles in één keer OF gefaseerd?
+   - **Advies:** Gefaseerd (minder risico)
+
+---
+
+Wil je dat ik nu start met:
+- **A.** .env.example update en service templates (2 uur)
+- **B.** Alleen poort fix voor kiosk mode (30 min)
+- **C.** ARCHITECTURE.md documentatie eerst (1 uur)
+- **D.** Anders?
