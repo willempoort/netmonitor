@@ -67,9 +67,23 @@ Een krachtig netwerk monitoring platform voor Linux met **real-time web dashboar
   - AI-assisted sensor management via natuurlijke taal
   - Volledige audit trail van alle AI acties
 
-  **Quick start:**
+  **Installatie:**
+
+  MCP API wordt geïnstalleerd via `install_complete.sh` (zie [Quick Start Installation](#-quick-start-installation)):
   ```bash
-  cd /opt/netmonitor && sudo ./mcp_server/setup_http_api.sh
+  sudo ./install_complete.sh
+  # → Antwoord "Y" bij "MCP HTTP API Server? (y/N)"
+  # → MCP_API_ENABLED=true wordt automatisch in .env gezet
+  # → Service wordt gegenereerd en gestart
+  ```
+
+  Of handmatig na installatie:
+  ```bash
+  # 1. Enable in .env
+  echo "MCP_API_ENABLED=true" >> /opt/netmonitor/.env
+
+  # 2. Regenereer services
+  cd /opt/netmonitor && sudo ./install_services.sh
   ```
 
   **Documentatie:** [MCP_HTTP_API.md](MCP_HTTP_API.md) | API Docs: http://localhost:8000/docs
