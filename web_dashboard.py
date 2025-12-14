@@ -8,6 +8,8 @@ import os
 import sys
 import logging
 import threading
+import hashlib
+import json
 from pathlib import Path
 from datetime import datetime
 
@@ -1072,7 +1074,13 @@ def api_check_whitelist(ip_address):
 @app.route('/api/config', methods=['GET'])
 @require_sensor_token_or_login()
 def api_get_config():
-    """Get configuration for a sensor (merged defaults + global + sensor-specific)"""
+    """Get configuration for a sensor (merged defaults + global + sensor-specific)
+
+    Supports ETag-based caching:
+    - Send If-None-Match header with previous ETag
+    - Returns 304 Not Modified if config unchanged
+    - Returns 200 OK with ETag header if config changed
+    """
     try:
         sensor_id = request.args.get('sensor_id') or None  # Convert empty string to None
         parameter_path = request.args.get('parameter_path') or None
@@ -1100,7 +1108,24 @@ def api_get_config():
         else:
             config = db_config
 
-        return jsonify({'success': True, 'config': config})
+        # Generate ETag from config content (MD5 hash of JSON)
+        config_json = json.dumps(config, sort_keys=True, default=str)
+        etag = hashlib.md5(config_json.encode('utf-8')).hexdigest()
+
+        # Check If-None-Match header (client's cached ETag)
+        client_etag = request.headers.get('If-None-Match')
+        if client_etag and client_etag.strip('"') == etag:
+            # Config unchanged - return 304 Not Modified
+            response = app.response_class(status=304)
+            response.headers['ETag'] = f'"{etag}"'
+            return response
+
+        # Config changed or no cache - return full config with ETag
+        response = jsonify({'success': True, 'config': config})
+        response.headers['ETag'] = f'"{etag}"'
+        response.headers['Cache-Control'] = 'no-cache'  # Must revalidate with server
+        return response
+
     except Exception as e:
         logger.error(f"Error getting config: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
