@@ -65,8 +65,20 @@ class ThreatDetector:
         self.protocol_mismatch_tracker = defaultdict(lambda: deque(maxlen=50))
 
         # Parsed whitelist/blacklist from config
-        self.config_whitelist = self._parse_ip_list(config.get('whitelist', []))
-        self.blacklist = self._parse_ip_list(config.get('blacklist', []))
+        # Defensive check: ensure they are lists
+        whitelist_raw = config.get('whitelist', [])
+        blacklist_raw = config.get('blacklist', [])
+
+        if not isinstance(whitelist_raw, list):
+            self.logger.warning(f"whitelist is not a list (got {type(whitelist_raw).__name__}), using empty list")
+            whitelist_raw = []
+
+        if not isinstance(blacklist_raw, list):
+            self.logger.warning(f"blacklist is not a list (got {type(blacklist_raw).__name__}), using empty list")
+            blacklist_raw = []
+
+        self.config_whitelist = self._parse_ip_list(whitelist_raw)
+        self.blacklist = self._parse_ip_list(blacklist_raw)
 
         # Parse modern protocol ranges (streaming services, CDN providers)
         modern_protocols = config.get('thresholds', {}).get('modern_protocols', {})
