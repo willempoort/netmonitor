@@ -92,12 +92,17 @@ class MCPHTTPServer:
 
     def __init__(self):
         """Initialize MCP HTTP server"""
+        # Get root_path from environment for reverse proxy support
+        root_path = os.environ.get('MCP_ROOT_PATH', '')
+
         self.app = FastAPI(
             title="NetMonitor MCP API",
             description="HTTP API for NetMonitor Security Operations Center via Model Context Protocol",
             version="2.0.0",
             docs_url="/docs",
-            redoc_url="/redoc"
+            redoc_url="/redoc",
+            root_path=root_path,  # Support for reverse proxy (e.g., /mcp)
+            redirect_slashes=False  # Prevent 307 redirects on trailing slashes
         )
 
         self.db = None
