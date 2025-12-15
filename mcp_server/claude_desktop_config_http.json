@@ -6,7 +6,7 @@
         "/home/user/netmonitor/mcp_server/http_bridge_client.py"
       ],
       "env": {
-        "MCP_HTTP_URL": "https://soc.poort.net:8000",
+        "MCP_HTTP_URL": "https://soc.poort.net/mcp",
         "MCP_HTTP_TOKEN": "YOUR_API_TOKEN_HERE"
       }
     }
