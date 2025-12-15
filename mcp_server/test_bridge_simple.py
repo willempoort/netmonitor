@@ -37,30 +37,55 @@ message = '{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"proto
 print(f"Sending: {message.strip()}")
 
 try:
+    # Write the message
     process.stdin.write(message)
     process.stdin.flush()
-    process.stdin.close()
 
-    # Wait and collect output
-    stdout, stderr = process.communicate(timeout=5)
+    # Wait a bit for response
+    import time
+    time.sleep(2)
 
-    print("\n=== STDOUT ===")
-    print(stdout if stdout else "(empty)")
+    # Try to read response (non-blocking check)
+    import select
+    if select.select([process.stdout], [], [], 0)[0]:
+        response = process.stdout.readline()
+        print("\n=== STDOUT ===")
+        print(response if response else "(empty)")
+    else:
+        print("\n=== STDOUT ===")
+        print("(no response yet)")
 
-    print("\n=== STDERR ===")
-    print(stderr if stderr else "(empty)")
+    # Check if process is still running
+    poll_result = process.poll()
+    if poll_result is not None:
+        print(f"\n⚠️  Process exited with code: {poll_result}")
 
-    print(f"\n=== EXIT CODE: {process.returncode} ===")
+        # Read any remaining output
+        remaining_stdout = process.stdout.read()
+        remaining_stderr = process.stderr.read()
 
-except subprocess.TimeoutExpired:
-    print("\nTimeout!")
-    process.kill()
-    stdout, stderr = process.communicate()
-    print("\n=== STDOUT ===")
-    print(stdout if stdout else "(empty)")
-    print("\n=== STDERR ===")
-    print(stderr if stderr else "(empty)")
+        if remaining_stdout:
+            print(f"\nRemaining STDOUT:\n{remaining_stdout}")
+        if remaining_stderr:
+            print(f"\n=== STDERR ===\n{remaining_stderr}")
+    else:
+        print("\n✅ Process still running")
+
+        # Kill it gracefully
+        process.stdin.close()
+        process.terminate()
+        try:
+            stdout, stderr = process.communicate(timeout=2)
+            if stderr:
+                print(f"\n=== STDERR ===\n{stderr}")
+        except:
+            process.kill()
+
 except Exception as e:
     print(f"\nError: {e}")
     import traceback
     traceback.print_exc()
+    try:
+        process.kill()
+    except:
+        pass
