@@ -4,6 +4,14 @@ MCP HTTP Bridge Client for Claude Desktop
 
 This bridge allows Claude Desktop to connect to the MCP HTTP API server.
 Claude Desktop expects STDIO transport, this script translates STDIO <-> HTTP API.
+
+Configuration via environment variables:
+  MCP_HTTP_URL: Base URL of MCP HTTP API
+    - Direct access: https://soc.poort.net:8000
+    - Via nginx proxy: https://soc.poort.net/mcp
+  MCP_HTTP_TOKEN: Bearer token for authentication
+
+The bridge will append route paths like /tools, /resources, etc. to the base URL.
 """
 
 import sys
@@ -64,19 +72,19 @@ class MCPHTTPBridge:
 
     def list_resources(self) -> Dict:
         """List available MCP resources"""
-        return self._make_request('GET', '/mcp/resources')
+        return self._make_request('GET', '/resources')
 
     def read_resource(self, uri: str) -> Dict:
         """Read a specific resource"""
         # Map resource URI to endpoint
         if uri == 'dashboard://summary':
-            return self._make_request('GET', '/mcp/resources/dashboard/summary')
+            return self._make_request('GET', '/resources/dashboard/summary')
         else:
             raise ValueError(f"Unknown resource: {uri}")
 
     def list_tools(self) -> Dict:
         """List available MCP tools"""
-        return self._make_request('GET', '/mcp/tools')
+        return self._make_request('GET', '/tools')
 
     def call_tool(self, tool_name: str, parameters: Dict) -> Dict:
         """Execute a tool"""
@@ -84,7 +92,7 @@ class MCPHTTPBridge:
             'tool_name': tool_name,
             'parameters': parameters
         }
-        return self._make_request('POST', '/mcp/tools/execute', data)
+        return self._make_request('POST', '/tools/execute', data)
 
     async def handle_stdio(self):
         """
