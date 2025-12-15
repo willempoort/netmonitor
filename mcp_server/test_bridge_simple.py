@@ -23,8 +23,14 @@ env = os.environ.copy()
 env['MCP_HTTP_URL'] = api_url
 env['MCP_HTTP_TOKEN'] = api_token
 
+# Use the same Python interpreter that's running this script
+python_executable = sys.executable
+
+print(f"Using Python: {python_executable}")
+print(f"Bridge script: {bridge_script}\n")
+
 process = subprocess.Popen(
-    ['python3', bridge_script],
+    [python_executable, bridge_script],
     stdin=subprocess.PIPE,
     stdout=subprocess.PIPE,
     stderr=subprocess.PIPE,
