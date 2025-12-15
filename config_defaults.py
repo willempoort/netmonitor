@@ -192,6 +192,8 @@ PARAMETER_DESCRIPTIONS = {
 
     "thresholds.modern_protocols.quic_detection": "Enable QUIC/HTTP3 protocol detection (informational)",
     "thresholds.modern_protocols.http3_detection": "Enable HTTP/3 over QUIC detection",
+    "thresholds.modern_protocols.streaming_services": "IP ranges for known streaming services (Netflix, YouTube, Prime Video) - CIDR notation",
+    "thresholds.modern_protocols.cdn_providers": "IP ranges for known CDN providers (Cloudflare, Akamai, etc.) - CIDR notation",
 
     "thresholds.protocol_mismatch.enabled": "Enable protocol mismatch detection",
     "thresholds.protocol_mismatch.detect_http_non_standard": "Detect HTTP on non-standard ports",
