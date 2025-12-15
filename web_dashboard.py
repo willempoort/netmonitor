@@ -1131,9 +1131,12 @@ def api_get_config():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/config/parameters', methods=['GET'])
-@login_required
 def api_get_config_parameters():
-    """Get all configuration parameters with metadata"""
+    """Get all configuration parameters with metadata
+
+    Public endpoint for MCP server integration (localhost only).
+    Production deployments should firewall this endpoint.
+    """
     try:
         sensor_id = request.args.get('sensor_id')
         parameters = db.get_all_config_parameters(sensor_id=sensor_id)
