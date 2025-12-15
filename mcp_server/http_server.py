@@ -437,6 +437,17 @@ class MCPHTTPServer:
                     "required": ["parameter_name", "value"]
                 },
                 "scope_required": "read_write"
+            },
+            {
+                "name": "get_config_parameters",
+                "description": "Get all configuration parameters with their values and metadata",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "sensor_id": {"type": "string", "description": "Optional sensor ID to get sensor-specific config"}
+                    }
+                },
+                "scope_required": "read_only"
             }
         ]
         return tools
@@ -460,6 +471,7 @@ class MCPHTTPServer:
             'get_recent_threats': self._tool_get_recent_threats,
             'get_sensor_status': self._tool_get_sensor_status,
             'set_config_parameter': self._tool_set_config_parameter,
+            'get_config_parameters': self._tool_get_config_parameters,
         }
 
         if tool_name not in tool_map:
@@ -649,6 +661,50 @@ class MCPHTTPServer:
                 'success': False,
                 'error': str(e),
                 'message': 'Failed to update configuration. Ensure the dashboard API is running.'
+            }
+
+    async def _tool_get_config_parameters(self, params: Dict) -> Dict:
+        """Implement get_config_parameters tool"""
+        import requests
+
+        sensor_id = params.get('sensor_id')
+
+        # Get config from dashboard API
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            query_params = {}
+            if sensor_id:
+                query_params['sensor_id'] = sensor_id
+
+            response = requests.get(
+                f"{dashboard_url}/api/config/parameters",
+                params=query_params,
+                timeout=10
+            )
+
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get('success'):
+                parameters = data.get('parameters', [])
+                return {
+                    'success': True,
+                    'parameters': parameters,
+                    'count': len(parameters)
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': data.get('error', 'Unknown error')
+                }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error getting config parameters: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to retrieve configuration. Ensure the dashboard API is running.'
             }
 
     async def _get_dashboard_summary(self) -> str:
