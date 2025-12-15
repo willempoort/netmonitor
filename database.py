@@ -1754,7 +1754,8 @@ class DatabaseManager:
             results = []
             for row in cursor.fetchall():
                 row_dict = dict(row)
-                row_dict['parameter_value'] = json.loads(row_dict['parameter_value'])
+                # JSONB is already parsed by psycopg2 - no need to json.loads()
+                # Just keep the value as-is (it's already a Python object: dict, list, bool, etc.)
                 results.append(row_dict)
 
             return results
