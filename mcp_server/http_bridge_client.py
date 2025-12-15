@@ -17,7 +17,6 @@ The bridge will append route paths like /tools, /resources, etc. to the base URL
 import sys
 import json
 import os
-import asyncio
 import logging
 from typing import Any, Dict
 import requests
@@ -94,7 +93,7 @@ class MCPHTTPBridge:
         }
         return self._make_request('POST', '/tools/execute', data)
 
-    async def handle_stdio(self):
+    def handle_stdio(self):
         """
         Handle STDIO communication with Claude Desktop
 
@@ -244,7 +243,7 @@ def main():
     bridge = MCPHTTPBridge(api_url, api_token)
 
     try:
-        asyncio.run(bridge.handle_stdio())
+        bridge.handle_stdio()
     except KeyboardInterrupt:
         logger.info("Bridge stopped by user")
     except Exception as e:
