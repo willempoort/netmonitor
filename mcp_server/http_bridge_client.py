@@ -10,6 +10,8 @@ Configuration via environment variables:
     - Direct access: https://soc.poort.net:8000
     - Via nginx proxy: https://soc.poort.net/mcp
   MCP_HTTP_TOKEN: Bearer token for authentication
+  MCP_VERIFY_SSL: Verify SSL certificates (default: true)
+    - Set to 'false' to disable SSL verification (e.g., for self-signed certs)
 
 The bridge will append route paths like /tools, /resources, etc. to the base URL.
 """
@@ -20,6 +22,7 @@ import os
 import logging
 from typing import Any, Dict
 import requests
+import urllib3
 
 # Setup logging to file (Claude Desktop hides stdout/stderr)
 logging.basicConfig(
@@ -35,20 +38,26 @@ logger = logging.getLogger('MCP.HTTPBridge')
 class MCPHTTPBridge:
     """Bridge between Claude Desktop (STDIO) and MCP HTTP API"""
 
-    def __init__(self, api_url: str, api_token: str):
+    def __init__(self, api_url: str, api_token: str, verify_ssl: bool = True):
         """
         Initialize bridge
 
         Args:
             api_url: Base URL of MCP HTTP API (e.g., https://soc.poort.net:8000)
             api_token: Bearer token for authentication
+            verify_ssl: Whether to verify SSL certificates (default: True)
         """
         self.api_url = api_url.rstrip('/')
+        self.verify_ssl = verify_ssl
         self.headers = {
             'Authorization': f'Bearer {api_token}',
             'Content-Type': 'application/json'
         }
         logger.info(f"Initialized MCP HTTP Bridge to {api_url}")
+        if not verify_ssl:
+            logger.warning("SSL certificate verification is DISABLED")
+            # Suppress SSL warnings when verification is disabled
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     def _make_request(self, method: str, endpoint: str, data: Dict = None) -> Dict:
         """Make HTTP request to MCP API"""
@@ -56,9 +65,9 @@ class MCPHTTPBridge:
 
         try:
             if method == 'GET':
-                response = requests.get(url, headers=self.headers, verify=True, timeout=30)
+                response = requests.get(url, headers=self.headers, verify=self.verify_ssl, timeout=30)
             elif method == 'POST':
-                response = requests.post(url, headers=self.headers, json=data, verify=True, timeout=30)
+                response = requests.post(url, headers=self.headers, json=data, verify=self.verify_ssl, timeout=30)
             else:
                 raise ValueError(f"Unsupported method: {method}")
 
@@ -233,6 +242,7 @@ def main():
     # Get configuration from environment
     api_url = os.environ.get('MCP_HTTP_URL', 'https://soc.poort.net:8000')
     api_token = os.environ.get('MCP_HTTP_TOKEN')
+    verify_ssl = os.environ.get('MCP_VERIFY_SSL', 'true').lower() in ('true', '1', 'yes')
 
     if not api_token:
         logger.error("MCP_HTTP_TOKEN environment variable not set")
@@ -240,7 +250,7 @@ def main():
         sys.exit(1)
 
     # Create and run bridge
-    bridge = MCPHTTPBridge(api_url, api_token)
+    bridge = MCPHTTPBridge(api_url, api_token, verify_ssl=verify_ssl)
 
     try:
         bridge.handle_stdio()
