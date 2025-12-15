@@ -261,7 +261,7 @@ class MCPHTTPServer:
 
         # ==================== MCP Protocol Endpoints ====================
 
-        @self.app.get("/mcp/tools", response_model=List[ToolInfo])
+        @self.app.get("/tools", response_model=List[ToolInfo])
         async def list_tools(token_details: Dict = Depends(verify_token)):
             """
             List all available MCP tools
@@ -273,7 +273,7 @@ class MCPHTTPServer:
             """
             return self._get_tools_list()
 
-        @self.app.get("/mcp/resources", response_model=List[ResourceInfo])
+        @self.app.get("/resources", response_model=List[ResourceInfo])
         async def list_resources(token_details: Dict = Depends(verify_token)):
             """
             List all available MCP resources
@@ -289,7 +289,7 @@ class MCPHTTPServer:
                 }
             ]
 
-        @self.app.get("/mcp/resources/dashboard/summary")
+        @self.app.get("/resources/dashboard/summary")
         async def get_dashboard_resource(token_details: Dict = Depends(verify_token)):
             """
             Get dashboard summary resource
@@ -308,7 +308,7 @@ class MCPHTTPServer:
                 logger.error(f"Error getting dashboard summary: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
 
-        @self.app.post("/mcp/tools/execute", response_model=ToolResponse)
+        @self.app.post("/tools/execute", response_model=ToolResponse)
         async def execute_tool(
             tool_request: ToolRequest,
             request: Request,
