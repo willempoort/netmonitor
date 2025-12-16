@@ -265,6 +265,15 @@ class MetricsCollector:
             }
             self.db.add_traffic_metrics(metrics)
 
+            # Reset traffic counters after saving so next save contains delta, not cumulative
+            # This ensures the graph shows traffic per interval, not a constantly rising line
+            self.total_packets = 0
+            self.total_bytes = 0
+            self.inbound_packets = 0
+            self.inbound_bytes = 0
+            self.outbound_packets = 0
+            self.outbound_bytes = 0
+
             # Save top talkers
             top_talkers = self.get_top_talkers(limit=20)
             self.db.update_top_talkers(top_talkers)
