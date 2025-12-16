@@ -14,28 +14,26 @@ Deze gids beschrijft de aanbevolen productie architectuur voor NetMonitor SOC me
                        ▼
                   ┌─────────┐
                   │ Firewall│
-                  │ Router  │
-                  └────┬────┘
-                       │
-              ┌────────┴────────┐
-              │                 │
-         SPAN/Mirror        Normal
-           Port              Traffic
-              │                 │
-              │            ┌────┴─────┐
-              │            │  Core    │
-              │            │  Switch  │
-              │            └────┬─────┘
-              │                 │
-              │            ┌────┴──────────────────┐
-              │            │                       │
-              │         VLAN 10              VLAN 100
-              │      (Production)         (Management)
-              │            │                       │
-              │       ┌────┴────┐            ┌─────┴─────┐
-              │       │ Users   │            │ SOC       │
-              │       │ Servers │            │ Infra     │
-              │       └─────────┘            └─────┬─────┘
+              ┌───┤ Router  ├───┐
+              │   └─────────┘   │
+         WAN Port              LAN Port
+              │                  │
+              │                  ▼
+         ┌────┴────┐        ┌────────┐
+         │ Switch  │        │  Core  │
+         │ Port 1  │        │ Switch │
+         │ (WAN)   │        └────┬───┘
+         └────┬────┘             │
+              │                  │
+         SPAN/Mirror        ┌────┴──────────────────┐
+           Port             │                       │
+              │          VLAN 10              VLAN 100
+              │       (Production)         (Management)
+              │             │                       │
+              │        ┌────┴────┐            ┌─────┴─────┐
+              │        │ Users   │            │ SOC       │
+              │        │ Servers │            │ Infra     │
+              │        └─────────┘            └─────┬─────┘
               │                                     │
               │                              ┌──────┴──────┐
               │                              │             │
@@ -45,11 +43,40 @@ Deze gids beschrijft de aanbevolen productie architectuur voor NetMonitor SOC me
               │                         ┌────┴─────┐  ┌───┴────┐
               └────────────────────────►│ Monitor  │  │Monitor │
                                         │Interface │  │  eth0  │
-                                        │   lo/    │  │        │
-                                        │  eth1    │  │  eth1  │
-                                        └──────────┘  │(Mgmt)  │
-                                                      └────────┘
+                                        │          │  │        │
+                                        │   eth1   │  │  eth1  │
+                                        │ (Mgmt)   │  │(Mgmt)  │
+                                        └──────────┘  └────────┘
+
+BELANGRIJK: Mirror het WAN interface (vóór NAT) om originele externe IP's te zien!
 ```
+
+**Belangrijke aandachtspunten:**
+- ⚠️ **Mirror WAN traffic** (tussen internet en firewall) om originele IP's te zien
+- ⚠️ **Niet LAN traffic** (na firewall) - dan zie je alleen internal/NAT'd IP's
+- ✅ Voor reverse proxy traffic: Mirror VÓÓR de firewall NAT gebeurt
+
+### Twee deployment scenarios:
+
+**Scenario A: Firewall direct op switch (meest voorkomend)**
+```
+Internet ──► [Switch Port 1: Firewall WAN] ──► Firewall ──► [Switch Port 2: Firewall LAN]
+                      │
+                 SPAN/Mirror
+                      │
+                      └──────────────────────► [Switch Port 24: Sensor]
+```
+✅ Mirror Port 1 (WAN side) om originele externe IP's te zien
+
+**Scenario B: Aparte WAN switch**
+```
+Internet ──► WAN Switch ──► Firewall ──► LAN Switch ──► Internal Network
+                  │
+             SPAN Port
+                  │
+                  └──────────────────────────► Sensor (ziet WAN traffic)
+```
+✅ SPAN op WAN switch
 
 ---
 
@@ -118,22 +145,61 @@ Alle sensoren gebruiken:
        │                              (API, heartbeat, alerts)
        │
        └─────────────────────────────► SPAN/Mirror Port
-                                       (Monitored traffic)
+                                       (WAN traffic - vóór NAT!)
 ```
 
 **Interface Configuratie:**
 
 **eth0 (Monitor Interface)**
-- Aangesloten op SPAN/mirror port
+- Aangesloten op SPAN/mirror port die **WAN traffic** spiegelt
 - **Geen IP adres** (promiscuous mode)
 - Alleen packet capture
 - Read-only verkeer
+- ⚠️ **Cruciaal:** Mirror WAN side om originele externe IP's te zien
 
 **eth1 (Management Interface)**
 - Aangesloten op Management VLAN
 - Heeft IP adres (DHCP of static)
 - HTTPS naar SOC server
 - API communicatie
+
+---
+
+## 🚨 NAT en IP Visibility
+
+### Waarom WAN Traffic Monitoren?
+
+**Probleem met LAN-side monitoring:**
+```
+Internet (203.0.113.50) ──► Firewall ──NAT──► LAN (192.168.1.100)
+                                                      ▲
+                                                      │
+                                               Sensor ziet alleen
+                                               192.168.1.100
+                                               (VERKEERD!)
+```
+
+**Oplossing: WAN-side monitoring:**
+```
+Internet (203.0.113.50) ──► [SPAN] ──► Firewall ──NAT──► LAN
+                              │
+                              └────────► Sensor ziet 203.0.113.50
+                                        (CORRECT!)
+```
+
+### Reverse Proxy Scenario
+
+Voor reverse proxy setups (nginx, HAProxy, Traefik):
+
+**LAN-side (VERKEERD):**
+- Alerts tonen firewall IP als source
+- Geen onderscheid tussen verschillende externe clients
+- False positives voor brute force (alles lijkt van 1 IP te komen)
+
+**WAN-side (CORRECT):**
+- Alerts tonen originele externe IP
+- Correcte threat intelligence lookups
+- Accurate brute force detection per client
 
 ---
 

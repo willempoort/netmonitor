@@ -19,23 +19,65 @@ Port mirroring (ook wel SPAN - Switched Port Analyzer) kopieert al het verkeer v
 
 ### Wat te Mirroren?
 
-**Beste Keuze: Firewall/Router Uplink**
+**⚠️ CRUCIAAL: Mirror WAN Traffic (vóór NAT)!**
+
+**Beste Keuze: WAN Uplink naar Firewall**
 ```
-Internet ─► [Firewall] ─► [Switch Port 1] ─mirror─► [Port 24: Sensor]
-                              ▲
-                              └─ Mirror deze port
+Internet ─► [Switch Port 1: WAN] ─► Firewall ─► [Switch Port 2: LAN]
+                   ▲                                    │
+                   │                                    └──► Internal Network
+              SPAN/Mirror
+                   │
+                   └──────────────────────► [Port 24: Sensor]
+
+✅ Mirror Port 1 (WAN side) - Ziet originele externe IP's!
+❌ Mirror Port 2 (LAN side) - Ziet alleen NAT'd IP's!
 ```
 
-**Voordelen:**
-✅ Ziet al het verkeer van/naar internet
-✅ Originele externe IP adressen zichtbaar
-✅ Bevat alle inbound/outbound connecties
-✅ Ideaal voor threat detection
+**Waarom WAN-side monitoren:**
+✅ Ziet originele externe IP adressen (vóór NAT)
+✅ Accurate threat detection voor reverse proxy setups
+✅ Geen false positives door firewall IP
+✅ Correcte brute force detection per client
+✅ Juiste threat intelligence lookups
 
-**Alternatieven:**
-- Specifieke VLAN (bijv. alleen DMZ)
-- Server farm uplink
-- Meerdere poorten tegelijk (als switch dit ondersteunt)
+**Wat gebeurt er met LAN-side (VERKEERD):**
+❌ Alle externe verkeer lijkt van 1 IP te komen (firewall)
+❌ Brute force alerts op verkeerd IP
+❌ Geen onderscheid tussen verschillende externe clients
+
+**Alternatieve Monitoring Punten:**
+
+1. **WAN uplink** (aanbevolen) - Alle internet traffic
+2. **DMZ VLAN** - Alleen publieke servers (web, mail, etc.)
+3. **Server farm uplink** - Intern datacentre verkeer
+4. **Specifieke kritieke servers** - Database, domain controllers
+
+**Netwerk Topologie Voorbeelden:**
+
+**Type A: Firewall tussen twee switches**
+```
+Internet ──► WAN Switch ──Port X──► [Firewall WAN] ──► [Firewall LAN] ──Port Y──► LAN Switch
+                  │
+             SPAN Port X (✅ CORRECT - ziet externe IPs)
+```
+
+**Type B: Firewall op één switch (meest voorkomend)**
+```
+         ┌──Port 1 (WAN)──► Firewall ──► Port 2 (LAN)──┐
+Internet─┤                                              ├──► Internal Network
+         └──────────────── Switch ────────────────────┘
+                            │
+                       SPAN Port 1 (✅ CORRECT)
+                    of SPAN Port 2 (❌ VERKEERD)
+```
+
+**Type C: Router/modem rechtstreeks**
+```
+Internet ──► Modem ──► [Switch Port 1] ──► Firewall/Router ──► [Port 2] ──► LAN
+                            │
+                       SPAN Port 1 (✅ CORRECT - als modem in bridge mode)
+```
 
 ### Destination Port Setup
 
