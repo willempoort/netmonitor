@@ -600,6 +600,8 @@ Toegang via web dashboard of direct via API.
 
 ## Monitoring Port Setup
 
+**📘 Uitgebreide Switch Configuratie Guide:** Zie [docs/SWITCH_MIRROR_CONFIGURATION.md](docs/SWITCH_MIRROR_CONFIGURATION.md) voor gedetailleerde instructies per switch merk (Cisco, HPE, Ubiquiti, Mikrotik, Dell, Juniper, etc.)
+
 ### Switch Configuratie
 
 Voor gebruik op een monitoring/span port, configureer je switch om verkeer te mirroren:
@@ -840,6 +842,8 @@ sudo journalctl -u netmonitor -f  # Live logs
 - **Monitor de monitor**: Check periodiek of de tool nog draait en correct functioneert
 
 ## 🏗️ Architectuur
+
+**📋 Production Deployment Guide:** Zie [ARCHITECTURE_BEST_PRACTICES.md](ARCHITECTURE_BEST_PRACTICES.md) voor aanbevolen netwerk architectuur met dedicated monitoring hardware, VLAN segmentatie en port mirroring configuratie.
 
 ```
 netmonitor.py              - Main entry point, packet capture loop
