@@ -28,9 +28,11 @@ from web_dashboard import app, socketio, init_dashboard
 # Initialize the dashboard components (database, auth managers, etc.)
 init_dashboard(config_file='config.yaml')
 
-# For gunicorn with eventlet workers and SocketIO, we expose the SocketIO instance
-# The SocketIO instance wraps the Flask app and handles WebSocket connections
-application = socketio
+# For gunicorn with eventlet workers and Flask-SocketIO v5.x+:
+# Expose the Flask app object (NOT the socketio instance)
+# The SocketIO instance has already wrapped the app at initialization in web_dashboard.py
+# So the Flask app is already SocketIO-enabled and handles WebSocket connections
+application = app
 
 if __name__ == "__main__":
     # This allows running the file directly for testing
