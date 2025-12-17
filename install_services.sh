@@ -135,6 +135,69 @@ done
 echo ""
 
 # ============================================================================
+# Service Cleanup (Legacy/Orphaned Services)
+# ============================================================================
+
+echo_header "Cleaning Up Old/Legacy Services"
+
+cleanup_service() {
+    local service_name="$1"
+    local reason="$2"
+
+    if systemctl list-unit-files | grep -q "^$service_name"; then
+        echo_info "Found legacy service: $service_name"
+        echo_warning "Reason: $reason"
+
+        # Stop service if running
+        if systemctl is-active --quiet "$service_name"; then
+            echo_info "Stopping $service_name..."
+            systemctl stop "$service_name" 2>/dev/null || true
+        fi
+
+        # Disable service if enabled
+        if systemctl is-enabled --quiet "$service_name" 2>/dev/null; then
+            echo_info "Disabling $service_name..."
+            systemctl disable "$service_name" 2>/dev/null || true
+        fi
+
+        # Remove service file
+        if [ -f "/etc/systemd/system/$service_name" ]; then
+            echo_info "Removing /etc/systemd/system/$service_name..."
+            rm -f "/etc/systemd/system/$service_name"
+            echo_success "$service_name removed"
+        fi
+    fi
+}
+
+# Cleanup old/renamed services
+# Add any legacy service names here that should be removed
+LEGACY_SERVICES=()
+
+# If switching FROM embedded TO gunicorn, no cleanup needed (dashboard just moves)
+# If switching FROM gunicorn TO embedded, cleanup dashboard service
+if [ "$DASHBOARD_SERVER" = "embedded" ]; then
+    if systemctl list-unit-files | grep -q "^netmonitor-dashboard.service"; then
+        echo_warning "Switching from gunicorn to embedded mode"
+        cleanup_service "netmonitor-dashboard.service" "Switching to embedded dashboard (dashboard now runs in netmonitor.service)"
+    fi
+fi
+
+# Cleanup any legacy services
+for legacy_service in "${LEGACY_SERVICES[@]}"; do
+    cleanup_service "$legacy_service" "Legacy service, replaced by current architecture"
+done
+
+# Reload systemd after cleanup
+if [ ${#LEGACY_SERVICES[@]} -gt 0 ] || [ "$DASHBOARD_SERVER" = "embedded" ]; then
+    echo_info "Reloading systemd after cleanup..."
+    systemctl daemon-reload
+    echo ""
+fi
+
+echo_success "Service cleanup completed"
+echo ""
+
+# ============================================================================
 # Service Template Generation
 # ============================================================================
 
