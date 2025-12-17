@@ -136,16 +136,35 @@ class NetworkMonitor:
         )
         self.alert_manager = AlertManager(self.config)
 
-        # Initialiseer web dashboard
+        # Initialiseer web dashboard (alleen embedded mode)
+        # Als DASHBOARD_SERVER=gunicorn, dan draait dashboard als separate service
         self.dashboard = None
+        import os
+        dashboard_server = os.environ.get('DASHBOARD_SERVER', 'embedded')
+
         if self.config.get('dashboard', {}).get('enabled', True):
-            try:
-                host = self.config.get('dashboard', {}).get('host', '0.0.0.0')
-                port = self.config.get('dashboard', {}).get('port', 8080)
-                self.dashboard = DashboardServer(config_file=config_file, host=host, port=port)
-                self.logger.info("Web Dashboard enabled")
-            except Exception as e:
-                self.logger.error(f"Fout bij initialiseren dashboard: {e}")
+            if dashboard_server == 'embedded':
+                # Start embedded Flask dashboard in this process
+                try:
+                    host = self.config.get('dashboard', {}).get('host', '0.0.0.0')
+                    port = self.config.get('dashboard', {}).get('port', 8080)
+                    self.dashboard = DashboardServer(config_file=config_file, host=host, port=port)
+                    self.logger.info("Web Dashboard enabled (embedded Flask mode)")
+                except Exception as e:
+                    self.logger.error(f"Fout bij initialiseren dashboard: {e}")
+            elif dashboard_server == 'gunicorn':
+                # Dashboard runs as separate service (netmonitor-dashboard.service)
+                self.logger.info("Dashboard mode: gunicorn (running as separate service)")
+                self.logger.info("Dashboard should be started via: systemctl start netmonitor-dashboard")
+            else:
+                self.logger.warning(f"Unknown DASHBOARD_SERVER value: {dashboard_server}, defaulting to embedded")
+                try:
+                    host = self.config.get('dashboard', {}).get('host', '0.0.0.0')
+                    port = self.config.get('dashboard', {}).get('port', 8080)
+                    self.dashboard = DashboardServer(config_file=config_file, host=host, port=port)
+                    self.logger.info("Web Dashboard enabled (embedded Flask mode)")
+                except Exception as e:
+                    self.logger.error(f"Fout bij initialiseren dashboard: {e}")
 
         # Setup signal handlers voor graceful shutdown
         signal.signal(signal.SIGINT, self.signal_handler)
