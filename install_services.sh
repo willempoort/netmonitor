@@ -129,8 +129,33 @@ for dir in "$LOG_DIR" "$RUN_DIR" "$DATA_DIR" "$CACHE_DIR"; do
         chown root:root "$dir"
         chmod 755 "$dir"
         echo_success "Created: $dir"
+    else
+        # Directory exists, ensure correct permissions
+        chown root:root "$dir" 2>/dev/null || true
+        chmod 755 "$dir" 2>/dev/null || true
     fi
 done
+
+# Explicitly ensure /var/run/netmonitor exists for gunicorn PID file
+# /var/run is often a symlink to /run on modern systems
+if [ ! -d "/var/run/netmonitor" ]; then
+    if [ -L "/var/run" ]; then
+        # /var/run is a symlink to /run
+        mkdir -p "/run/netmonitor"
+        chown root:root "/run/netmonitor"
+        chmod 755 "/run/netmonitor"
+        echo_success "Created: /run/netmonitor (symlinked from /var/run/netmonitor)"
+    else
+        # /var/run is a real directory
+        mkdir -p "/var/run/netmonitor"
+        chown root:root "/var/run/netmonitor"
+        chmod 755 "/var/run/netmonitor"
+        echo_success "Created: /var/run/netmonitor"
+    fi
+else
+    chown root:root "/var/run/netmonitor" 2>/dev/null || true
+    chmod 755 "/var/run/netmonitor" 2>/dev/null || true
+fi
 
 echo ""
 
