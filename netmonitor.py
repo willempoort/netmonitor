@@ -30,6 +30,7 @@ from abuseipdb_client import AbuseIPDBClient
 from database import DatabaseManager
 from metrics_collector import MetricsCollector
 from web_dashboard import DashboardServer
+from device_discovery import DeviceDiscovery
 
 
 class NetworkMonitor:
@@ -135,6 +136,19 @@ class NetworkMonitor:
             sensor_id=self.sensor_id  # Pass sensor_id for SOC server self-monitoring
         )
         self.alert_manager = AlertManager(self.config)
+
+        # Initialiseer device discovery
+        self.device_discovery = None
+        if self.config.get('device_discovery', {}).get('enabled', True):
+            try:
+                self.device_discovery = DeviceDiscovery(
+                    db_manager=self.db,
+                    sensor_id=self.sensor_id,
+                    config=self.config
+                )
+                self.logger.info("Device Discovery enabled")
+            except Exception as e:
+                self.logger.error(f"Fout bij initialiseren device discovery: {e}")
 
         # Initialiseer web dashboard (alleen embedded mode)
         # Als DASHBOARD_SERVER=gunicorn, dan draait dashboard als separate service
@@ -330,12 +344,27 @@ class NetworkMonitor:
         """Handle shutdown signals"""
         self.logger.info(f"Signal {signum} ontvangen, shutting down...")
         self.running = False
+
+        # Graceful shutdown of device discovery
+        if self.device_discovery:
+            try:
+                self.device_discovery.shutdown()
+            except Exception as e:
+                self.logger.error(f"Error shutting down device discovery: {e}")
+
         sys.exit(0)
 
     def packet_callback(self, packet):
         """Callback functie voor elk ontvangen packet"""
         try:
-            # Check of packet IP layer heeft
+            # Device discovery - process all packets (including ARP)
+            if self.device_discovery:
+                try:
+                    self.device_discovery.process_packet(packet)
+                except Exception as dd_error:
+                    self.logger.debug(f"Device discovery error: {dd_error}")
+
+            # Check of packet IP layer heeft voor threat detection
             if not packet.haslayer(IP):
                 return
 

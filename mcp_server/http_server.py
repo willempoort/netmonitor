@@ -559,6 +559,45 @@ class MCPHTTPServer:
                     "required": ["name", "category", "ip_ranges"]
                 },
                 "scope_required": "read_write"
+            },
+            # Device Discovery Tools
+            {
+                "name": "get_device_traffic_stats",
+                "description": "Get traffic statistics for a device (ports, protocols, bytes, communication partners)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "ip_address": {"type": "string", "description": "IP address of the device"}
+                    },
+                    "required": ["ip_address"]
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "get_device_classification_hints",
+                "description": "Get automatic classification suggestions for a device based on observed traffic patterns",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "ip_address": {"type": "string", "description": "IP address of the device"}
+                    },
+                    "required": ["ip_address"]
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "create_template_from_device",
+                "description": "Create a new device template based on observed behavior of a specific device (requires write access)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "ip_address": {"type": "string", "description": "IP address of the device to learn from"},
+                        "template_name": {"type": "string", "description": "Name for the new template"},
+                        "category": {"type": "string", "enum": ["iot", "server", "endpoint", "other"]}
+                    },
+                    "required": ["ip_address", "template_name"]
+                },
+                "scope_required": "read_write"
             }
         ]
         return tools
@@ -593,6 +632,10 @@ class MCPHTTPServer:
             'get_device_classification_stats': self._tool_get_device_classification_stats,
             'assign_device_template': self._tool_assign_device_template,
             'create_service_provider': self._tool_create_service_provider,
+            # Device Discovery Tools
+            'get_device_traffic_stats': self._tool_get_device_traffic_stats,
+            'get_device_classification_hints': self._tool_get_device_classification_hints,
+            'create_template_from_device': self._tool_create_template_from_device,
         }
 
         if tool_name not in tool_map:
@@ -1046,6 +1089,154 @@ class MCPHTTPServer:
                 'success': False,
                 'error': str(e),
                 'message': 'Failed to create service provider. Ensure the dashboard API is running.'
+            }
+
+    # ==================== Device Discovery Tool Implementations ====================
+
+    async def _tool_get_device_traffic_stats(self, params: Dict) -> Dict:
+        """Implement get_device_traffic_stats tool"""
+        import requests
+
+        ip_address = params.get('ip_address')
+
+        if not ip_address:
+            return {'success': False, 'error': 'ip_address is required'}
+
+        # Get traffic stats from dashboard API
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.get(
+                f"{dashboard_url}/api/devices/{ip_address}/traffic-stats",
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    'success': True,
+                    'ip_address': ip_address,
+                    'traffic_stats': data.get('stats', {})
+                }
+            elif response.status_code == 404:
+                return {
+                    'success': True,
+                    'ip_address': ip_address,
+                    'traffic_stats': None,
+                    'message': f'No traffic statistics available for {ip_address}'
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': f'API returned status {response.status_code}'
+                }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error getting device traffic stats: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to retrieve traffic stats. Ensure the dashboard API is running.'
+            }
+
+    async def _tool_get_device_classification_hints(self, params: Dict) -> Dict:
+        """Implement get_device_classification_hints tool"""
+        import requests
+
+        ip_address = params.get('ip_address')
+
+        if not ip_address:
+            return {'success': False, 'error': 'ip_address is required'}
+
+        # Get classification hints from dashboard API
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.get(
+                f"{dashboard_url}/api/devices/{ip_address}/classification-hints",
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                hints = data.get('hints', {})
+
+                return {
+                    'success': True,
+                    'ip_address': ip_address,
+                    'hints': hints,
+                    'suggested_templates': hints.get('suggested_templates', []),
+                    'confidence': hints.get('confidence', 0.0),
+                    'reasoning': hints.get('reasoning', [])
+                }
+            elif response.status_code == 404:
+                return {
+                    'success': True,
+                    'ip_address': ip_address,
+                    'hints': None,
+                    'message': f'No classification hints available for {ip_address}. Device may not have enough observed traffic.'
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': f'API returned status {response.status_code}'
+                }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error getting device classification hints: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to retrieve classification hints. Ensure the dashboard API is running.'
+            }
+
+    async def _tool_create_template_from_device(self, params: Dict) -> Dict:
+        """Implement create_template_from_device tool (requires write access)"""
+        import requests
+
+        ip_address = params.get('ip_address')
+        template_name = params.get('template_name')
+        category = params.get('category', 'other')
+
+        if not ip_address or not template_name:
+            return {'success': False, 'error': 'ip_address and template_name are required'}
+
+        # Create template via dashboard API
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.post(
+                f"{dashboard_url}/api/device-templates/from-device",
+                json={
+                    'ip_address': ip_address,
+                    'template_name': template_name,
+                    'category': category
+                },
+                timeout=15
+            )
+
+            if response.status_code == 200 or response.status_code == 201:
+                data = response.json()
+                return {
+                    'success': True,
+                    'template_id': data.get('template_id'),
+                    'template_name': template_name,
+                    'message': f'Template "{template_name}" created from device {ip_address}',
+                    'behaviors_added': data.get('behaviors_added', 0)
+                }
+            else:
+                data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
+                return {
+                    'success': False,
+                    'error': data.get('error', f'API returned status {response.status_code}')
+                }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error creating template from device: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to create template. Ensure the dashboard API is running.'
             }
 
     async def _get_dashboard_summary(self) -> str:
