@@ -22,11 +22,17 @@ except ImportError:
     ContentAnalyzer = None
     analyze_dns = None
 
+# Import behavior matcher for template-based alert suppression
+try:
+    from behavior_matcher import BehaviorMatcher
+except ImportError:
+    BehaviorMatcher = None
+
 
 class ThreatDetector:
     """Detecteert verschillende soorten verdacht netwerkverkeer"""
 
-    def __init__(self, config, threat_feed_manager=None, behavior_detector=None, abuseipdb_client=None, db_manager=None, sensor_id=None):
+    def __init__(self, config, threat_feed_manager=None, behavior_detector=None, abuseipdb_client=None, db_manager=None, sensor_id=None, behavior_matcher=None):
         self.config = config
         self.logger = logging.getLogger('NetMonitor.Detector')
 
@@ -36,6 +42,15 @@ class ThreatDetector:
         self.abuseipdb = abuseipdb_client
         self.db_manager = db_manager  # Optional: for database whitelist checks
         self.sensor_id = sensor_id     # Optional: for sensor-specific whitelists
+
+        # Initialize behavior matcher for template-based alert suppression
+        self.behavior_matcher = behavior_matcher
+        if not self.behavior_matcher and BehaviorMatcher and db_manager:
+            try:
+                self.behavior_matcher = BehaviorMatcher(db_manager=db_manager, config=config)
+                self.logger.info("BehaviorMatcher initialized for template-based alert suppression")
+            except Exception as e:
+                self.logger.warning(f"Could not initialize BehaviorMatcher: {e}")
 
         # Tracking data structures
         self.port_scan_tracker = defaultdict(lambda: {
@@ -284,6 +299,13 @@ class ThreatDetector:
         if self.behavior_detector:
             behavior_threats = self.behavior_detector.analyze_packet(packet)
             threats.extend(behavior_threats)
+
+        # Apply template-based alert suppression
+        # This filters out alerts for expected device behavior
+        if threats and self.behavior_matcher:
+            threats = self.behavior_matcher.filter_threats(threats, packet)
+            # Return only non-suppressed threats (suppressed ones are logged)
+            threats = self.behavior_matcher.get_active_threats(threats)
 
         return threats
 

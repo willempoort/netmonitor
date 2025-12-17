@@ -598,6 +598,31 @@ class MCPHTTPServer:
                     "required": ["ip_address", "template_name"]
                 },
                 "scope_required": "read_write"
+            },
+            # Alert Suppression Tools
+            {
+                "name": "get_alert_suppression_stats",
+                "description": "Get statistics about template-based alert suppression (alerts checked, suppressed, rates)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {}
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "test_alert_suppression",
+                "description": "Test if an alert would be suppressed for a specific device based on its template",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "source_ip": {"type": "string", "description": "Source IP address of the device"},
+                        "destination_ip": {"type": "string", "description": "Destination IP address"},
+                        "alert_type": {"type": "string", "description": "Alert type (e.g., PORT_SCAN, BEACONING, CONNECTION_FLOOD)"},
+                        "destination_port": {"type": "number", "description": "Destination port (optional)"}
+                    },
+                    "required": ["source_ip", "alert_type"]
+                },
+                "scope_required": "read_only"
             }
         ]
         return tools
@@ -636,6 +661,9 @@ class MCPHTTPServer:
             'get_device_traffic_stats': self._tool_get_device_traffic_stats,
             'get_device_classification_hints': self._tool_get_device_classification_hints,
             'create_template_from_device': self._tool_create_template_from_device,
+            # Alert Suppression Tools
+            'get_alert_suppression_stats': self._tool_get_alert_suppression_stats,
+            'test_alert_suppression': self._tool_test_alert_suppression,
         }
 
         if tool_name not in tool_map:
@@ -1238,6 +1266,162 @@ class MCPHTTPServer:
                 'error': str(e),
                 'message': 'Failed to create template. Ensure the dashboard API is running.'
             }
+
+    # ==================== Alert Suppression Tool Implementations ====================
+
+    async def _tool_get_alert_suppression_stats(self, params: Dict) -> Dict:
+        """Implement get_alert_suppression_stats tool"""
+        import requests
+
+        # Get suppression stats from dashboard API
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.get(
+                f"{dashboard_url}/api/suppression/stats",
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    'success': True,
+                    'statistics': data.get('stats', {}),
+                    'message': 'Alert suppression statistics retrieved successfully'
+                }
+            else:
+                # If API not available, return basic info
+                return {
+                    'success': True,
+                    'statistics': {
+                        'alerts_checked': 0,
+                        'alerts_suppressed': 0,
+                        'suppression_rate': 0,
+                        'note': 'Live statistics require dashboard API'
+                    },
+                    'message': 'Statistics unavailable from live system'
+                }
+
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Could not get suppression stats from dashboard: {e}")
+            return {
+                'success': True,
+                'statistics': {
+                    'alerts_checked': 0,
+                    'alerts_suppressed': 0,
+                    'suppression_rate': 0,
+                    'note': 'Live statistics require dashboard API'
+                },
+                'message': 'Statistics unavailable - dashboard API not responding'
+            }
+
+    async def _tool_test_alert_suppression(self, params: Dict) -> Dict:
+        """Implement test_alert_suppression tool"""
+        source_ip = params.get('source_ip')
+        destination_ip = params.get('destination_ip', '')
+        alert_type = params.get('alert_type')
+        destination_port = params.get('destination_port')
+
+        if not source_ip or not alert_type:
+            return {'success': False, 'error': 'source_ip and alert_type are required'}
+
+        # Get device template for source IP
+        device = self.db.get_device_by_ip(source_ip)
+
+        if not device:
+            return {
+                'success': True,
+                'would_suppress': False,
+                'reason': f'No registered device found for IP {source_ip}',
+                'device': None,
+                'template': None
+            }
+
+        if not device.get('template_id'):
+            return {
+                'success': True,
+                'would_suppress': False,
+                'reason': f'Device {source_ip} has no assigned template',
+                'device': {
+                    'ip_address': device.get('ip_address'),
+                    'hostname': device.get('hostname'),
+                    'mac_address': device.get('mac_address')
+                },
+                'template': None
+            }
+
+        template = self.db.get_device_template_by_id(device['template_id'])
+        if not template:
+            return {
+                'success': True,
+                'would_suppress': False,
+                'reason': 'Template not found',
+                'device': device,
+                'template': None
+            }
+
+        # Check behaviors
+        behaviors = template.get('behaviors', [])
+        matching_behaviors = []
+
+        for behavior in behaviors:
+            if behavior.get('action') != 'allow':
+                continue
+
+            behavior_type = behavior.get('behavior_type')
+            params_b = behavior.get('parameters', {})
+
+            # Check for matching rules
+            match_reason = None
+
+            if behavior_type == 'allowed_ports' and destination_port:
+                allowed_ports = params_b.get('ports', [])
+                if destination_port in allowed_ports:
+                    match_reason = f"Port {destination_port} is in allowed ports list"
+
+            elif behavior_type == 'expected_destinations' and destination_ip:
+                # Check if destination is a service provider
+                provider = self.db.check_ip_in_service_providers(destination_ip)
+                allowed_categories = params_b.get('categories', [])
+                if provider and provider['category'] in allowed_categories:
+                    match_reason = f"Destination is {provider['provider_name']} ({provider['category']})"
+
+            elif behavior_type == 'traffic_pattern':
+                if params_b.get('high_bandwidth') and alert_type in ('HIGH_OUTBOUND_VOLUME', 'UNUSUAL_PACKET_SIZE'):
+                    match_reason = "High bandwidth traffic is expected"
+                if params_b.get('continuous') and alert_type == 'BEACONING':
+                    match_reason = "Continuous streaming is expected"
+
+            elif behavior_type == 'connection_behavior':
+                if params_b.get('high_connection_rate') and alert_type == 'CONNECTION_FLOOD':
+                    match_reason = "High connection rate is expected for servers"
+
+            if match_reason:
+                matching_behaviors.append({
+                    'behavior_type': behavior_type,
+                    'reason': match_reason
+                })
+
+        would_suppress = len(matching_behaviors) > 0
+
+        return {
+            'success': True,
+            'would_suppress': would_suppress,
+            'reason': matching_behaviors[0]['reason'] if matching_behaviors else f'No matching behavior rules for {alert_type}',
+            'matching_behaviors': matching_behaviors,
+            'device': {
+                'ip_address': device.get('ip_address'),
+                'hostname': device.get('hostname'),
+                'mac_address': device.get('mac_address'),
+                'template_name': template.get('name')
+            },
+            'template': {
+                'id': template.get('id'),
+                'name': template.get('name'),
+                'category': template.get('category'),
+                'behaviors_count': len(behaviors)
+            }
+        }
 
     async def _get_dashboard_summary(self) -> str:
         """Get dashboard summary text"""
