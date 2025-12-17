@@ -231,12 +231,31 @@ Authorization: Bearer a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9
 - get_recent_threats
 - get_sensor_status
 - export_alerts_csv
+# Device Classification (read_only):
+- get_devices
+- get_device_by_ip
+- get_device_templates
+- get_device_template_details
+- get_service_providers
+- check_ip_service_provider
+- get_device_classification_stats
+- get_device_traffic_stats
+- get_device_classification_hints
+- get_device_learning_status
+- get_device_learned_behavior
+- get_alert_suppression_stats
+- test_alert_suppression
 
 # read_write kan alles van read_only + :
 - set_config_parameter
 - send_sensor_command
 - add_whitelist_entry
 - remove_whitelist_entry
+# Device Classification (read_write):
+- assign_device_template
+- create_service_provider
+- create_template_from_device
+- save_device_learned_behavior
 
 # admin kan alles + :
 - Token management

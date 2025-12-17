@@ -53,6 +53,7 @@ Production deployment guides:
 
 Feature-specifieke documentatie:
 
+- **[Device Classification](features/DEVICE_CLASSIFICATION.md)** - ML-based apparaat classificatie en alert suppression
 - **[Detection Features](features/DETECTION_FEATURES.md)** - Alle threat detection capabilities
 - **[Threat Feeds](features/THREAT_FEEDS.md)** - Threat intelligence configuratie
 - **[MCP HTTP API](features/MCP_HTTP_API.md)** - AI integration via HTTP API
@@ -83,6 +84,7 @@ Architectuur en best practices:
 | Install from scratch | [Complete Installation](installation/COMPLETE_INSTALLATION.md) |
 | Setup remote sensor | [Sensor Deployment](deployment/SENSOR_DEPLOYMENT.md) |
 | Configure detection rules | [Config Guide](usage/CONFIG_GUIDE.md) |
+| Device classification setup | [Device Classification](features/DEVICE_CLASSIFICATION.md) |
 | Switch to Gunicorn | [Dashboard Server Comparison](deployment/DASHBOARD_SERVER_COMPARISON.md) |
 | Setup threat feeds | [Threat Feeds](features/THREAT_FEEDS.md) |
 | Configure MCP API | [MCP HTTP API](features/MCP_HTTP_API.md) |
