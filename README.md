@@ -14,6 +14,7 @@ Een krachtig netwerk monitoring platform voor Linux met **real-time web dashboar
 - **Configuration as Code** - Alle settings via GUI beheerbaar
 - **AI Integration** - MCP server voor Claude Desktop integratie
 - **Real-time synchronization** - Wijzigingen direct doorgevoerd
+- **Device Classification** - ML-gebaseerde apparaatherkenning met behavior learning
 
 ### 🖥️ Real-Time Web Dashboard
 
@@ -293,18 +294,28 @@ THREAT_FEED_UPDATE_INTERVAL=3600  # 1 uur (default)
 | **DNS Non-Standard Port** | ✅ | DNS op andere poorten dan 53 |
 | **FTP Non-Standard Port** | ✅ | FTP op andere poorten dan 20/21 |
 
+### 🤖 Device Classification & Behavior Learning
+
+| Feature | Status | Beschrijving |
+|---------|--------|--------------|
+| **Device Discovery** | ✅ | Automatische detectie van apparaten via ARP/IP packets met OUI vendor lookup |
+| **Behavior Learning** | ✅ | Traffic patronen analyseren en leren per apparaat (poorten, protocollen, volumes) |
+| **Template-Based Classification** | ✅ | Apparaten koppelen aan device templates (IP Camera, Smart TV, Server, etc.) |
+| **Alert Suppression** | ✅ | Verwacht gedrag per apparaattype niet als alert tonen (nooit voor CRITICAL/C2/Threats) |
+| **Service Provider Detection** | ✅ | Streaming/CDN verkeer herkennen (Netflix, Spotify, YouTube, etc.) |
+| **Auto Template Generation** | ✅ | Templates automatisch genereren uit geleerd apparaatgedrag |
+
 ### ❌ Niet Geïmplementeerd (Future Roadmap)
 
 | Feature | Status | Reden |
 |---------|--------|-------|
-| **Machine Learning** | ❌ | Alles is rule-based, geen ML anomaly detection |
-| **Behavioral Baselining** | ❌ | Geen unsupervised learning voor normale patronen |
 | **TLS/SSL Inspection** | ❌ | Encrypted traffic analysis beperkt tot metadata |
 
 ### 🎛️ Management & Monitoring Features
 
 | Feature | Status | Beschrijving |
 |---------|--------|--------------|
+| **Device Classification** | ✅ | ML-gebaseerde apparaatherkenning met behavior learning en alert suppression |
 | **Kiosk Mode** | ✅ | Full-screen SOC display met auto-refresh en responsive design |
 | **Configuration Management** | ✅ | Alle detection rules via dashboard GUI (global + per-sensor) |
 | **Whitelist Management** | ✅ | Centralized IP whitelist beheer via dashboard (CIDR support) |
