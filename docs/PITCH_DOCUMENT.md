@@ -24,9 +24,7 @@ NetMonitor is een **Security Operations Center (SOC)** voor uw bedrijfsnetwerk. 
 
 Vergelijk het met een beveiligingscamera voor uw digitale omgeving: 24/7 wakend, direct alarmerend bij inbrekers.
 
-![PLACEHOLDER: Screenshot van het NetMonitor dashboard met live alerts, grafieken en systeem metrics - toon het overzichtelijke dark-theme interface]
-
----
+![Screenshot van het NetMonitor dashboard met live alerts, grafieken en systeem metrics - toon het overzichtelijke dark-theme interface](./images/netmonitor-afb1.png)
 
 ## Unieke Voordelen
 
@@ -52,7 +50,7 @@ NetMonitor detecteert aanvallen **op het moment dat ze plaatsvinden**, niet maan
 
 NetMonitor **leert** welke apparaten in uw netwerk horen en wat normaal gedrag is.
 
-![PLACEHOLDER: Screenshot van Device Classification scherm met apparatenlijst, vendors en templates]
+![Screenshot: van Device Classification scherm met apparatenlijst, vendors en templates](./images/netmonitor-afb3.png)
 
 **Hoe het werkt:**
 - Automatische herkenning van printers, camera's, servers en werkstations
@@ -66,8 +64,6 @@ NetMonitor **leert** welke apparaten in uw netwerk horen en wat normaal gedrag i
 
 Meerdere kantoorlocaties? NetMonitor beheert alles vanuit **één dashboard**.
 
-![PLACEHOLDER: Screenshot van sensor management met meerdere locaties/sensors in het overzicht]
-
 **Voordelen:**
 - Eén overzicht voor alle locaties
 - Centrale configuratie, lokale uitvoering
@@ -78,7 +74,7 @@ Meerdere kantoorlocaties? NetMonitor beheert alles vanuit **één dashboard**.
 
 Perfect voor een dedicated beveiligingsscherm in uw serverruimte of bij de IT-afdeling.
 
-![PLACEHOLDER: Screenshot van Kiosk mode - volledig scherm met grote metrics en traffic grafiek]
+![Screenshot: van Kiosk mode - volledig scherm met grote metrics en traffic grafiek](./images/netmonitor-afb4.png)
 
 - Automatisch verversen
 - Duidelijke visuele waarschuwingen
@@ -160,7 +156,7 @@ NetMonitor werkt samen met moderne AI-assistenten voor **intelligente analyse**.
 - Brute force aanvallen (wachtwoord raden)
 - Poortscanning
 
-![PLACEHOLDER: Infographic met de verschillende detectie-types in een visueel aantrekkelijke layout - iconen voor elke categorie]
+![Screenshot: Infographic met de verschillende detectie-types in een visueel aantrekkelijke layout - iconen voor elke categorie](./images/netmonitor-afb2.png)
 
 ---
 
