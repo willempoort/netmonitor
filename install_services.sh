@@ -101,20 +101,37 @@ fi
 
 # Set defaults if not in .env
 DASHBOARD_SERVER="${DASHBOARD_SERVER:-embedded}"
+DASHBOARD_HOST="${DASHBOARD_HOST:-0.0.0.0}"
 DASHBOARD_PORT="${DASHBOARD_PORT:-8080}"
+DASHBOARD_WORKERS="${DASHBOARD_WORKERS:-4}"
 MCP_API_ENABLED="${MCP_API_ENABLED:-false}"
 MCP_API_PORT="${MCP_API_PORT:-8000}"
 LOG_DIR="${LOG_DIR:-/var/log/netmonitor}"
+LOG_LEVEL="${LOG_LEVEL:-info}"
 RUN_DIR="${RUN_DIR:-/var/run/netmonitor}"
 DATA_DIR="${DATA_DIR:-/var/lib/netmonitor}"
 CACHE_DIR="${CACHE_DIR:-/var/cache/netmonitor}"
 
+# Ensure critical variables exist in .env for systemd service
+# Systemd reads EnvironmentFile and needs these variables defined
+if [ -f "$INSTALL_DIR/.env" ]; then
+    for var in DASHBOARD_HOST DASHBOARD_PORT DASHBOARD_WORKERS LOG_DIR LOG_LEVEL RUN_DIR DATA_DIR CACHE_DIR; do
+        if ! grep -q "^${var}=" "$INSTALL_DIR/.env"; then
+            eval "echo \"${var}=\${$var}\" >> \"$INSTALL_DIR/.env\""
+            echo_info "Added default ${var} to .env"
+        fi
+    done
+fi
+
 echo ""
 echo "Configuration Summary:"
 echo "  Dashboard server: $DASHBOARD_SERVER"
+echo "  Dashboard host:   $DASHBOARD_HOST"
 echo "  Dashboard port:   $DASHBOARD_PORT"
+echo "  Dashboard workers: $DASHBOARD_WORKERS"
 echo "  MCP API enabled:  $MCP_API_ENABLED"
 echo "  MCP API port:     $MCP_API_PORT"
+echo "  Log directory:    $LOG_DIR"
 echo ""
 
 # ============================================================================

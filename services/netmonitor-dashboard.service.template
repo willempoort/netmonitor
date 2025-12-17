@@ -17,25 +17,21 @@ EnvironmentFile=-/etc/netmonitor/netmonitor.env
 RuntimeDirectory=netmonitor
 RuntimeDirectoryMode=0755
 
-# Ensure log and run directories exist
-ExecStartPre=/bin/mkdir -p ${LOG_DIR:-/var/log/netmonitor}
-ExecStartPre=/bin/mkdir -p ${RUN_DIR:-/var/run/netmonitor}
-ExecStartPre=/bin/chown root:root ${LOG_DIR:-/var/log/netmonitor}
-
 # Start Gunicorn with eventlet workers for SocketIO support
 # Port and workers are configurable via .env file
 # Gunicorn binary path is auto-detected during service generation
+# Note: Defaults are set in install_services.sh if not present in .env
 ExecStart=__GUNICORN_BIN__ \
-    --bind ${DASHBOARD_HOST:-0.0.0.0}:${DASHBOARD_PORT:-8080} \
-    --workers ${DASHBOARD_WORKERS:-4} \
+    --bind ${DASHBOARD_HOST}:${DASHBOARD_PORT} \
+    --workers ${DASHBOARD_WORKERS} \
     --worker-class eventlet \
     --worker-connections 1000 \
     --timeout 30 \
     --graceful-timeout 30 \
-    --access-logfile ${LOG_DIR:-/var/log/netmonitor}/dashboard_access.log \
-    --error-logfile ${LOG_DIR:-/var/log/netmonitor}/dashboard_error.log \
-    --log-level ${LOG_LEVEL:-info} \
-    --pid ${RUN_DIR:-/var/run/netmonitor}/dashboard.pid \
+    --access-logfile ${LOG_DIR}/dashboard_access.log \
+    --error-logfile ${LOG_DIR}/dashboard_error.log \
+    --log-level ${LOG_LEVEL} \
+    --pid ${RUN_DIR}/dashboard.pid \
     wsgi:application
 
 # Restart behavior
