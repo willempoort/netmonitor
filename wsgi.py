@@ -20,19 +20,21 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-# Import the Flask app from web_dashboard
-from web_dashboard import init_dashboard
+# Import the Flask app and SocketIO instance from web_dashboard
+# Note: app and socketio are created at module level in web_dashboard.py
+# init_dashboard() only initializes database and authentication, it does NOT return anything
+from web_dashboard import app, socketio, init_dashboard
 
-# Initialize the dashboard and get the Flask app
-# The init_dashboard function creates and returns the Flask app instance
-app = init_dashboard(config_file='config.yaml')
+# Initialize the dashboard components (database, auth managers, etc.)
+init_dashboard(config_file='config.yaml')
 
-# For gunicorn, we need to expose the Flask app object
-application = app
+# For gunicorn with eventlet workers and SocketIO, we expose the SocketIO instance
+# The SocketIO instance wraps the Flask app and handles WebSocket connections
+application = socketio
 
 if __name__ == "__main__":
     # This allows running the file directly for testing
     # In production, gunicorn will import 'application' instead
     print("Starting NetMonitor Dashboard in development mode...")
     print("For production, use: gunicorn -c gunicorn_config.py wsgi:application")
-    app.run(host='0.0.0.0', port=8000, debug=False)
+    socketio.run(app, host='0.0.0.0', port=8000, debug=False)
