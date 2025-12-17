@@ -724,19 +724,6 @@
 
         <!-- Traffic Chart Screen - Page 1 Only -->
         <div id="screen-traffic" class="traffic-container active">
-            <!-- Top Threats Breakdown -->
-            <div class="threat-breakdown">
-                <h3 class="threat-breakdown-title">🎯 Top Threats - Last 24 Hours</h3>
-                <div class="threat-list" id="threat-list">
-                    <!-- Will be populated by JavaScript -->
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        <p>Loading threat data...</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Traffic Chart -->
             <div class="traffic-chart-container">
                 <div class="traffic-chart-header">
                     <h3 class="traffic-chart-title">📊 Network Traffic - Last 24 Hours</h3>
@@ -757,7 +744,20 @@
 
         <!-- Alerts Screen - Page 2 Only -->
         <div id="screen-alerts" class="alerts-container">
-            <h2 style="margin-bottom: 1rem; font-size: 1.5rem;">⚠️ Critical & High Severity Alerts</h2>
+            <!-- Top Threats Breakdown -->
+            <div class="threat-breakdown">
+                <h3 class="threat-breakdown-title">🎯 Top Threats - Last 24 Hours</h3>
+                <div class="threat-list" id="threat-list">
+                    <!-- Will be populated by JavaScript -->
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading threat data...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Critical & High Alerts -->
+            <h2 style="margin-bottom: 1rem; margin-top: 1.5rem; font-size: 1.5rem;">⚠️ Critical & High Severity Alerts</h2>
             <div id="alerts-list">
                 <!-- Alerts will be populated by JavaScript -->
             </div>
@@ -815,16 +815,37 @@
         // ==================== Alert Sound ====================
         const alertSound = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYHGGS67OyXVA4NTann8rxkHAU3kdfw0H4yBSl+zPLaizsKFV6z6uykVxILSKDh8bllHgU1gMrw3Ik3Bxhku+zumlYODUypqeuZVRALRZ7f8btmIAU3kdfw0IIzBSh+zPLbjDsKFl205uqlWRILR5/h8bpmIAU2gcvx3os4BxlluuzunVkODUyrqOyXVRALRZ/g8L5mIAU3gtPx0YQ0BSh/zfPcjz0KFV605+unWhQJhqDi8rtnIgU4g9Xx0IU1BSh/zvPdjT0KFV605+uoXBQLSKLj87xnIwU6hNLx0IY1Byx/z/PejD0KFV+06eypYBUIh6Li8r1mIgU6hNLy0oY2Byx/z/XejD0KFV+06eupYhUGh6Lj8r5mIwU8hNHz0YY1Byx/z/Xej D0KFV+06eupYBUIh6Li8r1mIgU6hNLy0oY2Byx/z/XejD0KFV+06eupYhUGh6Lj8r5mIwU8hNHz0YY1Byx/z/Xej0');
 
-        // Threat type icons
+        // Threat type icons - map database threat types to icons
         const THREAT_ICONS = {
+            // Database naming (UPPERCASE_WITH_UNDERSCORES)
+            'PORT_SCAN': '🔍',
+            'BRUTE_FORCE_ATTEMPT': '🔨',
+            'BRUTE_FORCE': '🔨',
+            'DDOS': '💥',
+            'DDOS_ATTACK': '💥',
+            'MALWARE': '🦠',
+            'MALWARE_DETECTED': '🦠',
+            'EXPLOIT': '⚡',
+            'EXPLOIT_ATTEMPT': '⚡',
+            'BEACONING_DETECTED': '📡',
+            'BEACONING': '📡',
+            'DNS_TUNNEL_SUSPICIOUS_LENGTH': '🌐',
+            'DNS_TUNNEL': '🌐',
+            'UNUSUAL_PACKET_SIZE': '📦',
+            'UNUSUAL_TRAFFIC': '📊',
+            'SUSPICIOUS_ACTIVITY': '⚠️',
+            'ANOMALY': '⚠️',
+            'PHISHING': '🎣',
+            'UNKNOWN': '❓',
+
+            // Legacy naming (Title Case With Spaces) - for backwards compatibility
             'Port Scan': '🔍',
             'Brute Force': '🔨',
             'DDoS': '💥',
             'Malware': '🦠',
             'Exploit': '⚡',
             'Anomaly': '⚠️',
-            'Phishing': '🎣',
-            'Unknown': '❓'
+            'Phishing': '🎣'
         };
 
         // ==================== Theme Management ====================
@@ -1175,6 +1196,14 @@
             document.getElementById('sensors-grid').innerHTML = sensorsHTML;
         }
 
+        function formatThreatName(type) {
+            // Convert UPPERCASE_WITH_UNDERSCORES to Title Case
+            return type
+                .split('_')
+                .map(word => word.charAt(0) + word.slice(1).toLowerCase())
+                .join(' ');
+        }
+
         function updateThreatBreakdown(threats) {
             const threatList = document.getElementById('threat-list');
             if (!threatList) return;
@@ -1199,15 +1228,16 @@
             const maxCount = Math.max(...threatArray.map(t => t.count), 1);
 
             const threatsHTML = threatArray.map(threat => {
-                const icon = THREAT_ICONS[threat.type] || THREAT_ICONS['Unknown'];
+                const icon = THREAT_ICONS[threat.type] || THREAT_ICONS['UNKNOWN'];
                 const barWidth = (threat.count / maxCount) * 100;
+                const displayName = formatThreatName(threat.type);
 
                 return `
                     <div class="threat-item">
                         <div class="threat-info">
                             <div class="threat-icon">${icon}</div>
                             <div class="threat-details">
-                                <div class="threat-name">${escapeHtml(threat.type)}</div>
+                                <div class="threat-name">${escapeHtml(displayName)}</div>
                                 <div class="threat-bar">
                                     <div class="threat-bar-fill" style="width: ${barWidth}%;"></div>
                                 </div>
