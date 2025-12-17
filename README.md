@@ -92,9 +92,52 @@ Een krachtig netwerk monitoring platform voor Linux met **real-time web dashboar
 
   **⚠️ Belangrijke wijziging:** De oude STDIO/SSE MCP implementatie is vervangen door een moderne HTTP REST API met volledige token authenticatie. Legacy files zijn verplaatst naar `mcp_server/legacy_stdio_sse/`
 
-### ⚡ Performance Tuning (Nieuw!)
+### ⚡ Performance Tuning
 
-Alle sync intervals configureerbaar via dashboard:
+NetMonitor is volledig configureerbaar voor verschillende deployment scenario's:
+
+#### 🎛️ Dashboard Server Performance
+
+**Keuze: Embedded Flask vs Gunicorn** (via `.env`)
+```bash
+# Development/Testing (1-2 users)
+DASHBOARD_SERVER=embedded
+
+# Production (10+ users) ⭐ AANBEVOLEN
+DASHBOARD_SERVER=gunicorn
+DASHBOARD_WORKERS=4  # Pas aan op basis van CPU cores
+```
+
+**Performance Karakteristieken:**
+- **Embedded**: ~10-20 concurrent users, 1 process, 350MB RAM
+- **Gunicorn**: 100+ concurrent users, 4+ workers, 1GB RAM
+
+📖 [Volledige Comparison Guide](docs/deployment/DASHBOARD_SERVER_COMPARISON.md)
+
+#### 💾 Database Performance
+
+**Keuze: SQLite vs PostgreSQL** (via `.env`)
+```bash
+# Standaard - Voor single server deployments
+DB_TYPE=sqlite
+SQLITE_PATH=/var/lib/netmonitor/netmonitor.db
+
+# Enterprise - Voor distributed deployments + MCP API
+DB_TYPE=postgresql
+DB_HOST=localhost
+DB_NAME=netmonitor
+# + Connection pooling (config.yaml)
+```
+
+**Gebruik PostgreSQL voor:**
+- 🔀 Multi-sensor deployments
+- 🤖 MCP HTTP API integration
+- 📊 >1M alerts per dag
+- ⏱️ TimescaleDB time-series queries
+
+#### 🔄 Sensor Sync Intervals
+
+Alle sync intervals configureerbaar via dashboard **Settings > Performance**:
 - `config_sync_interval` (default: 300s) - Hoe vaak sensors config ophalen
 - `whitelist_sync_interval` (default: 300s) - Whitelist sync frequentie
 - `metrics_interval` (default: 60s) - Metrics reporting frequentie
@@ -102,6 +145,66 @@ Alle sync intervals configureerbaar via dashboard:
 - `command_poll_interval` (default: 30s) - Command polling frequentie
 
 **Voor snellere updates**: Zet config_sync_interval op 60s voor updates binnen 1 minuut!
+
+#### 📝 Logging & Retention
+
+**Log configuratie** (via `.env`):
+```bash
+LOG_LEVEL=INFO              # DEBUG voor troubleshooting (hogere I/O!)
+LOG_DIR=/var/log/netmonitor
+LOG_RETENTION_DAYS=30       # Automatic log cleanup
+```
+
+**Log Levels Impact:**
+- `DEBUG`: Verbose, ~500MB/dag, alleen voor troubleshooting
+- `INFO`: Normal, ~100MB/dag, production default ⭐
+- `WARNING`: Minimal, ~20MB/dag, alleen errors
+
+#### 🔍 Self-Monitoring
+
+**SOC server zelf monitoren** (via `.env` + `config.yaml`):
+```bash
+# .env
+SELF_MONITOR_ENABLED=true
+SELF_MONITOR_INTERFACE=lo   # Loopback voor internal traffic
+```
+
+Detecteert threats op de SOC server zelf (bijv. compromise van monitoring systeem).
+
+#### 🌐 MCP API Performance
+
+**AI Integration configuratie** (via `.env`):
+```bash
+MCP_API_ENABLED=true
+MCP_API_WORKERS=4           # Pas aan voor concurrent AI clients
+MCP_API_PORT=8000
+```
+
+**Worker Guidelines:**
+- 2-4 workers: 1-2 AI clients
+- 8+ workers: 5+ concurrent AI clients
+
+#### ⚙️ Threat Feed Updates
+
+**Update frequentie** (via `.env`):
+```bash
+THREAT_FEED_UPDATE_INTERVAL=3600  # 1 uur (default)
+# 1800 = 30 min (hogere API load)
+# 7200 = 2 uur (lagere API load)
+```
+
+---
+
+**🎯 Quick Tuning Recommendations:**
+
+| Deployment | Dashboard | Database | Workers | Log Level |
+|------------|-----------|----------|---------|-----------|
+| Home Lab | embedded | sqlite | - | INFO |
+| Small SOC (1-5 sensors) | gunicorn | sqlite | 4 | INFO |
+| Medium SOC (5-20 sensors) | gunicorn | postgresql | 8 | INFO |
+| Enterprise (20+ sensors) | gunicorn | postgresql | 16 | WARNING |
+
+📖 Zie [Production Deployment Guide](docs/deployment/PRODUCTION.md) voor complete tuning guide.
 
 ## 🛡️ Complete Detection Capabilities
 
@@ -198,14 +301,42 @@ Alle sync intervals configureerbaar via dashboard:
 | **Behavioral Baselining** | ❌ | Geen unsupervised learning voor normale patronen |
 | **TLS/SSL Inspection** | ❌ | Encrypted traffic analysis beperkt tot metadata |
 
-### Algemene Features
+### 🎛️ Management & Monitoring Features
+
+| Feature | Status | Beschrijving |
+|---------|--------|--------------|
+| **Kiosk Mode** | ✅ | Full-screen SOC display met auto-refresh en responsive design |
+| **Configuration Management** | ✅ | Alle detection rules via dashboard GUI (global + per-sensor) |
+| **Whitelist Management** | ✅ | Centralized IP whitelist beheer via dashboard (CIDR support) |
+| **Remote Sensor Management** | ✅ | Control, monitor en command sensors vanuit centrale dashboard |
+| **Web Authentication** | ✅ | 2FA, session management, role-based access control |
+| **Real-time Metrics** | ✅ | Live gauges voor CPU, RAM, packets/sec, alerts/min |
+| **Traffic Visualization** | ✅ | Real-time grafieken (inbound/outbound, 24-uur historie) |
+| **Top Talkers Tracking** | ✅ | Top 10 IPs met meeste verkeer (met hostname resolution) |
+| **Alert Feed** | ✅ | Live security alerts met kleuren, audio, en severity filtering |
+| **Self-Monitoring** | ✅ | SOC server kan zichzelf monitoren (detecteert compromise) |
+| **WebSocket Updates** | ✅ | Sub-seconde real-time dashboard updates zonder polling |
+| **Database Support** | ✅ | SQLite (standaard) en PostgreSQL/TimescaleDB (enterprise) |
+| **MCP AI Integration** | ✅ | 23+ AI tools via HTTP API met token auth en rate limiting |
+| **Multi-Sensor Support** | ✅ | Centralized management van remote sensors |
+| **Config as Code** | ✅ | YAML configuratie met validation en defaults |
+| **Service Templates** | ✅ | Systemd service generation vanuit templates + .env |
+| **Sensor Commands** | ✅ | Remote commands: restart, update_whitelist, update_config |
+| **ETag Caching** | ✅ | Efficient config distribution (99% bandwidth reductie) |
+| **GeoIP Support** | ✅ | Country-level IP geolocation voor alerts |
+
+### 🔧 Algemene Features
 
 - Real-time packet capture en analyse
-- Configureerbare detection thresholds
-- Gekleurde console output
-- Gestructureerde logging naar file
+- Configureerbare detection thresholds (alle via GUI aanpasbaar)
+- Gekleurde console output met severity levels
+- Gestructureerde logging naar file (JSON + text)
 - Rate limiting om alert flooding te voorkomen
 - Graceful shutdown bij SIGINT/SIGTERM
+- Virtual environment support (isolatie van dependencies)
+- Template-based service generation (.env driven)
+- Automatic database migrations
+- Hot-reload van configuratie (sensors binnen 1-5 min)
 
 ## Vereisten
 
