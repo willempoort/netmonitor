@@ -645,6 +645,314 @@ class DeviceDiscovery:
 
         return hints
 
+    def generate_learned_behavior(self, ip_address: str) -> Optional[Dict]:
+        """
+        Generate a learned behavior profile from observed traffic statistics.
+        This profile can be used to create a custom device template.
+
+        Args:
+            ip_address: Device IP address
+
+        Returns:
+            Learned behavior dictionary or None if insufficient data
+        """
+        stats = self.traffic_stats.get(ip_address)
+        if not stats:
+            return None
+
+        # Need minimum traffic to learn from
+        if stats['total_packets'] < 100:
+            return None
+
+        # Get device info
+        cache_key = (ip_address, self.sensor_id)
+        device = self.device_cache.get(cache_key, {})
+
+        # Analyze ports
+        ports_seen = stats['ports_seen']
+        dst_ports = {port for proto, port, direction in ports_seen if direction == 'dst'}
+        src_ports = {port for proto, port, direction in ports_seen if direction == 'src'}
+
+        # Calculate time active
+        if stats['first_seen'] and stats['last_seen']:
+            time_active = (stats['last_seen'] - stats['first_seen']).total_seconds()
+        else:
+            time_active = 0
+
+        # Calculate rates
+        packets_per_hour = (stats['total_packets'] / time_active * 3600) if time_active > 0 else 0
+        bytes_per_hour = (stats['total_bytes'] / time_active * 3600) if time_active > 0 else 0
+
+        # Determine behavior characteristics
+        is_server = len(src_ports) > 0  # Has listening ports
+        is_high_bandwidth = bytes_per_hour > 10_000_000  # >10 MB/hour
+        is_low_frequency = packets_per_hour < 100
+        has_many_destinations = len(stats['outbound_ips']) > 10
+        has_many_sources = len(stats['inbound_ips']) > 10
+
+        # Build learned behavior profile
+        learned_behavior = {
+            'ip_address': ip_address,
+            'hostname': device.get('hostname'),
+            'vendor': device.get('vendor'),
+            'mac_address': device.get('mac_address'),
+            'observation_period': {
+                'start': stats['first_seen'].isoformat() if stats['first_seen'] else None,
+                'end': stats['last_seen'].isoformat() if stats['last_seen'] else None,
+                'duration_hours': round(time_active / 3600, 2)
+            },
+            'traffic_summary': {
+                'total_packets': stats['total_packets'],
+                'total_bytes': stats['total_bytes'],
+                'packets_per_hour': round(packets_per_hour, 2),
+                'bytes_per_hour': round(bytes_per_hour, 2),
+                'unique_outbound_destinations': len(stats['outbound_ips']),
+                'unique_inbound_sources': len(stats['inbound_ips'])
+            },
+            'ports': {
+                'outbound_destination_ports': sorted(list(dst_ports)),
+                'inbound_source_ports': sorted(list(src_ports)),
+                'protocols': sorted(list(stats['protocols_seen']))
+            },
+            'characteristics': {
+                'is_server': is_server,
+                'is_high_bandwidth': is_high_bandwidth,
+                'is_low_frequency': is_low_frequency,
+                'has_many_destinations': has_many_destinations,
+                'has_many_sources': has_many_sources
+            },
+            'suggested_behaviors': []
+        }
+
+        # Generate suggested behavior rules
+        suggested_behaviors = []
+
+        # Port-based behaviors
+        if dst_ports:
+            suggested_behaviors.append({
+                'behavior_type': 'allowed_ports',
+                'parameters': {
+                    'ports': sorted(list(dst_ports))[:20],  # Limit to 20 most used
+                    'direction': 'outbound'
+                },
+                'action': 'allow',
+                'description': f'Observed outbound ports: {len(dst_ports)} unique'
+            })
+
+        if src_ports:
+            suggested_behaviors.append({
+                'behavior_type': 'allowed_ports',
+                'parameters': {
+                    'ports': sorted(list(src_ports))[:20],
+                    'direction': 'inbound'
+                },
+                'action': 'allow',
+                'description': f'Server ports: {len(src_ports)} unique'
+            })
+
+        # Traffic pattern behaviors
+        if is_high_bandwidth:
+            suggested_behaviors.append({
+                'behavior_type': 'traffic_pattern',
+                'parameters': {
+                    'high_bandwidth': True,
+                    'max_bytes_per_hour': round(bytes_per_hour * 1.5)  # 50% headroom
+                },
+                'action': 'allow',
+                'description': f'High bandwidth device ({round(bytes_per_hour/1_000_000, 2)} MB/hour)'
+            })
+
+        # Connection behavior
+        if is_server and has_many_sources:
+            suggested_behaviors.append({
+                'behavior_type': 'connection_behavior',
+                'parameters': {
+                    'high_connection_rate': True
+                },
+                'action': 'allow',
+                'description': 'Server with many incoming connections'
+            })
+
+        if is_low_frequency:
+            suggested_behaviors.append({
+                'behavior_type': 'connection_behavior',
+                'parameters': {
+                    'low_frequency': True,
+                    'periodic': True
+                },
+                'action': 'allow',
+                'description': 'Low frequency IoT-like behavior'
+            })
+
+        learned_behavior['suggested_behaviors'] = suggested_behaviors
+
+        return learned_behavior
+
+    def create_template_from_device(self, ip_address: str, template_name: str,
+                                   category: str = 'other',
+                                   description: str = None) -> Optional[int]:
+        """
+        Create a new device template from the learned behavior of a device.
+
+        Args:
+            ip_address: Device IP address to learn from
+            template_name: Name for the new template
+            category: Template category (iot, server, endpoint, other)
+            description: Optional description
+
+        Returns:
+            Template ID if successful, None otherwise
+        """
+        if not self.db:
+            self.logger.error("Database not available for template creation")
+            return None
+
+        # Generate learned behavior
+        learned = self.generate_learned_behavior(ip_address)
+        if not learned:
+            self.logger.warning(f"Insufficient data to learn from device {ip_address}")
+            return None
+
+        # Create description if not provided
+        if not description:
+            device_info = []
+            if learned.get('vendor'):
+                device_info.append(f"Vendor: {learned['vendor']}")
+            if learned.get('hostname'):
+                device_info.append(f"Hostname: {learned['hostname']}")
+            description = f"Learned from {ip_address}. {', '.join(device_info)}"
+
+        # Determine icon based on characteristics
+        chars = learned.get('characteristics', {})
+        if chars.get('is_server'):
+            icon = 'server'
+        elif chars.get('is_high_bandwidth'):
+            icon = 'streaming'
+        elif chars.get('is_low_frequency'):
+            icon = 'sensors'
+        else:
+            icon = 'device'
+
+        try:
+            # Create the template
+            template_id = self.db.create_device_template(
+                name=template_name,
+                description=description,
+                icon=icon,
+                category=category,
+                is_builtin=False,
+                created_by='device_discovery'
+            )
+
+            if not template_id:
+                return None
+
+            # Add the learned behaviors
+            behaviors_added = 0
+            for behavior in learned.get('suggested_behaviors', []):
+                behavior_id = self.db.add_template_behavior(
+                    template_id=template_id,
+                    behavior_type=behavior['behavior_type'],
+                    parameters=behavior['parameters'],
+                    action=behavior['action'],
+                    description=behavior.get('description')
+                )
+                if behavior_id:
+                    behaviors_added += 1
+
+            self.logger.info(
+                f"Created template '{template_name}' (ID: {template_id}) "
+                f"from device {ip_address} with {behaviors_added} behaviors"
+            )
+
+            # Update the device's learned_behavior in database
+            device = self.db.get_device_by_ip(ip_address)
+            if device:
+                self.db.update_device_learned_behavior(device['id'], learned)
+
+            return template_id
+
+        except Exception as e:
+            self.logger.error(f"Error creating template from device: {e}")
+            return None
+
+    def save_learned_behavior(self, ip_address: str) -> bool:
+        """
+        Save the learned behavior profile to the database.
+
+        Args:
+            ip_address: Device IP address
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.db:
+            return False
+
+        learned = self.generate_learned_behavior(ip_address)
+        if not learned:
+            return False
+
+        try:
+            device = self.db.get_device_by_ip(ip_address)
+            if device:
+                return self.db.update_device_learned_behavior(device['id'], learned)
+            return False
+        except Exception as e:
+            self.logger.error(f"Error saving learned behavior: {e}")
+            return False
+
+    def get_learning_status(self, ip_address: str) -> Dict:
+        """
+        Get the learning status for a device.
+
+        Args:
+            ip_address: Device IP address
+
+        Returns:
+            Status dictionary with learning progress
+        """
+        stats = self.traffic_stats.get(ip_address)
+
+        if not stats:
+            return {
+                'ip_address': ip_address,
+                'status': 'not_found',
+                'message': 'Device not found in traffic statistics',
+                'ready_for_learning': False
+            }
+
+        packets = stats['total_packets']
+        min_packets = 100
+
+        if packets < min_packets:
+            return {
+                'ip_address': ip_address,
+                'status': 'collecting',
+                'message': f'Collecting traffic data ({packets}/{min_packets} packets)',
+                'progress_percent': round(packets / min_packets * 100, 1),
+                'ready_for_learning': False,
+                'packets_collected': packets,
+                'packets_needed': min_packets
+            }
+
+        # Calculate observation time
+        if stats['first_seen'] and stats['last_seen']:
+            observation_hours = (stats['last_seen'] - stats['first_seen']).total_seconds() / 3600
+        else:
+            observation_hours = 0
+
+        return {
+            'ip_address': ip_address,
+            'status': 'ready',
+            'message': 'Sufficient data collected for learning',
+            'ready_for_learning': True,
+            'packets_collected': packets,
+            'observation_hours': round(observation_hours, 2),
+            'unique_ports': len(stats['ports_seen']),
+            'unique_destinations': len(stats['outbound_ips'])
+        }
+
     def shutdown(self):
         """Shutdown the device discovery module"""
         self._running = False

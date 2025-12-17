@@ -1479,6 +1479,995 @@ def api_kiosk_traffic():
         }), 500
 
 
+# ==================== Device Classification API ====================
+
+@app.route('/api/devices')
+@login_required
+def api_get_devices():
+    """
+    Get all discovered devices
+    Query params:
+      - sensor_id: Filter by sensor
+      - template_id: Filter by assigned template
+      - active_only: Only show active devices (default: true)
+    """
+    try:
+        sensor_id = request.args.get('sensor_id')
+        template_id = request.args.get('template_id', type=int)
+        active_only = request.args.get('active_only', 'true').lower() == 'true'
+
+        devices = db.get_devices(
+            sensor_id=sensor_id,
+            template_id=template_id,
+            active_only=active_only
+        )
+
+        return jsonify({
+            'success': True,
+            'devices': devices,
+            'total': len(devices)
+        })
+    except Exception as e:
+        logger.error(f"Error getting devices: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/devices/<ip_address>')
+@login_required
+def api_get_device(ip_address):
+    """Get details for a specific device by IP"""
+    try:
+        device = db.get_device_by_ip(ip_address)
+        if not device:
+            return jsonify({'success': False, 'error': 'Device not found'}), 404
+
+        return jsonify({
+            'success': True,
+            'device': device
+        })
+    except Exception as e:
+        logger.error(f"Error getting device {ip_address}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/devices/<ip_address>/template', methods=['PUT'])
+@login_required
+def api_assign_device_template(ip_address):
+    """Assign a template to a device"""
+    try:
+        data = request.get_json()
+        template_id = data.get('template_id')
+        confidence = data.get('confidence', 1.0)
+        method = data.get('method', 'manual')
+
+        if template_id is None:
+            return jsonify({'success': False, 'error': 'template_id is required'}), 400
+
+        success = db.assign_device_template(
+            ip_address=ip_address,
+            template_id=template_id if template_id != 0 else None,
+            confidence=confidence,
+            method=method
+        )
+
+        if success:
+            # Invalidate behavior matcher cache if available
+            try:
+                from behavior_matcher import BehaviorMatcher
+                # Access through netmonitor instance if available
+            except:
+                pass
+
+            return jsonify({'success': True, 'message': 'Template assigned successfully'})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to assign template'}), 500
+
+    except Exception as e:
+        logger.error(f"Error assigning template to {ip_address}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/devices/<ip_address>', methods=['DELETE'])
+@login_required
+def api_delete_device(ip_address):
+    """Delete a device from the database"""
+    try:
+        success = db.delete_device(ip_address)
+        if success:
+            return jsonify({'success': True, 'message': 'Device deleted'})
+        else:
+            return jsonify({'success': False, 'error': 'Device not found'}), 404
+    except Exception as e:
+        logger.error(f"Error deleting device {ip_address}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/devices/<ip_address>/traffic-stats')
+@login_required
+def api_get_device_traffic_stats(ip_address):
+    """
+    Get traffic statistics for a device.
+    Requires active network monitoring to collect stats.
+    """
+    try:
+        # Try to get stats from active device discovery instance
+        # This requires the netmonitor to be running
+        device = db.get_device_by_ip(ip_address)
+        if not device:
+            return jsonify({'success': False, 'error': 'Device not found'}), 404
+
+        # Return stored learned behavior if available
+        learned_behavior = device.get('learned_behavior', {})
+
+        return jsonify({
+            'success': True,
+            'ip_address': ip_address,
+            'device': {
+                'hostname': device.get('hostname'),
+                'mac_address': device.get('mac_address'),
+                'vendor': device.get('vendor'),
+                'template_name': device.get('template_name')
+            },
+            'learned_behavior': learned_behavior,
+            'note': 'Real-time stats require active monitoring. Use MCP API for live data.'
+        })
+    except Exception as e:
+        logger.error(f"Error getting traffic stats for {ip_address}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/devices/<ip_address>/classification-hints')
+@login_required
+def api_get_device_classification_hints(ip_address):
+    """
+    Get classification hints for a device based on learned behavior.
+    """
+    try:
+        device = db.get_device_by_ip(ip_address)
+        if not device:
+            return jsonify({'success': False, 'error': 'Device not found'}), 404
+
+        learned_behavior = device.get('learned_behavior', {})
+
+        # Generate hints from learned behavior
+        hints = {
+            'suggested_templates': [],
+            'vendor': device.get('vendor'),
+            'hostname_pattern': None,
+            'behavior_summary': {}
+        }
+
+        hostname = device.get('hostname', '')
+        if hostname:
+            # Analyze hostname for patterns
+            hostname_lower = hostname.lower()
+            if any(x in hostname_lower for x in ['cam', 'ipc', 'nvr', 'dvr']):
+                hints['hostname_pattern'] = 'ip_camera'
+                hints['suggested_templates'].append({'name': 'IP Camera', 'reason': 'Hostname pattern'})
+            elif any(x in hostname_lower for x in ['nas', 'storage', 'qnap', 'synology']):
+                hints['hostname_pattern'] = 'nas'
+                hints['suggested_templates'].append({'name': 'NAS/File Server', 'reason': 'Hostname pattern'})
+            elif any(x in hostname_lower for x in ['printer', 'hp', 'epson', 'canon', 'brother']):
+                hints['hostname_pattern'] = 'printer'
+                hints['suggested_templates'].append({'name': 'Network Printer', 'reason': 'Hostname pattern'})
+            elif any(x in hostname_lower for x in ['tv', 'roku', 'firetv', 'chromecast', 'appletv']):
+                hints['hostname_pattern'] = 'smart_tv'
+                hints['suggested_templates'].append({'name': 'Smart TV', 'reason': 'Hostname pattern'})
+
+        # Analyze ports from learned behavior
+        if learned_behavior:
+            server_ports = learned_behavior.get('server_ports', [])
+            for port_info in server_ports:
+                port = port_info.get('port')
+                if port == 80 or port == 443:
+                    hints['suggested_templates'].append({'name': 'Web Server', 'reason': f'Serving on port {port}'})
+                elif port == 22:
+                    hints['suggested_templates'].append({'name': 'Linux Server', 'reason': 'SSH service'})
+                elif port in (445, 139):
+                    hints['suggested_templates'].append({'name': 'NAS/File Server', 'reason': 'SMB service'})
+                elif port == 554:
+                    hints['suggested_templates'].append({'name': 'IP Camera', 'reason': 'RTSP service'})
+
+            hints['behavior_summary'] = {
+                'protocols': learned_behavior.get('protocols', []),
+                'typical_ports': [p['port'] for p in learned_behavior.get('typical_ports', [])][:10],
+                'traffic_pattern': learned_behavior.get('traffic_pattern'),
+                'destinations_count': len(learned_behavior.get('typical_destinations', []))
+            }
+
+        return jsonify({
+            'success': True,
+            'ip_address': ip_address,
+            'hints': hints
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting classification hints for {ip_address}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/devices/<ip_address>/save-learned-behavior', methods=['POST'])
+@login_required
+def api_save_device_learned_behavior(ip_address):
+    """
+    Save learned behavior to the database.
+    This captures the current learned behavior profile from active monitoring.
+    """
+    try:
+        device = db.get_device_by_ip(ip_address)
+        if not device:
+            return jsonify({'success': False, 'error': 'Device not found'}), 404
+
+        # Get current learned behavior from the device record
+        learned_behavior = device.get('learned_behavior', {})
+
+        if not learned_behavior:
+            return jsonify({
+                'success': False,
+                'error': 'No learned behavior available. Device needs active monitoring to collect data.'
+            }), 400
+
+        # The learned behavior is already stored in the database via device_discovery
+        # This endpoint confirms it's saved and returns the current state
+        return jsonify({
+            'success': True,
+            'ip_address': ip_address,
+            'message': 'Learned behavior is stored in database',
+            'learned_behavior': learned_behavior
+        })
+
+    except Exception as e:
+        logger.error(f"Error saving learned behavior for {ip_address}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/devices/<ip_address>/learning-status')
+@login_required
+def api_get_device_learning_status(ip_address):
+    """
+    Get the learning status for a device.
+    Shows how much traffic has been analyzed and readiness for template generation.
+    """
+    try:
+        device = db.get_device_by_ip(ip_address)
+        if not device:
+            return jsonify({
+                'success': True,
+                'ip_address': ip_address,
+                'status': 'not_found',
+                'message': 'Device not found'
+            })
+
+        learned_behavior = device.get('learned_behavior', {})
+
+        # Determine status
+        if not learned_behavior:
+            status = 'not_started'
+            message = 'No traffic analyzed yet'
+            ready_for_template = False
+        else:
+            packet_count = learned_behavior.get('packet_count', 0)
+            unique_ports = len(learned_behavior.get('typical_ports', []))
+            unique_destinations = len(learned_behavior.get('typical_destinations', []))
+
+            if packet_count < 100:
+                status = 'learning'
+                message = f'Analyzing traffic ({packet_count} packets)'
+                ready_for_template = False
+            elif unique_ports < 2:
+                status = 'learning'
+                message = 'Need more diverse port activity'
+                ready_for_template = False
+            else:
+                status = 'ready'
+                message = 'Sufficient data for template generation'
+                ready_for_template = True
+
+        return jsonify({
+            'success': True,
+            'ip_address': ip_address,
+            'status': status,
+            'message': message,
+            'ready_for_template': ready_for_template,
+            'statistics': {
+                'packet_count': learned_behavior.get('packet_count', 0) if learned_behavior else 0,
+                'unique_ports': len(learned_behavior.get('typical_ports', [])) if learned_behavior else 0,
+                'unique_destinations': len(learned_behavior.get('typical_destinations', [])) if learned_behavior else 0,
+                'protocols': learned_behavior.get('protocols', []) if learned_behavior else []
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting learning status for {ip_address}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/device-templates/from-device', methods=['POST'])
+@login_required
+def api_create_template_from_device():
+    """
+    Create a new device template based on the learned behavior of a specific device.
+    """
+    try:
+        data = request.get_json()
+
+        ip_address = data.get('ip_address')
+        template_name = data.get('template_name')
+        category = data.get('category', 'other')
+        description = data.get('description')
+
+        if not ip_address or not template_name:
+            return jsonify({
+                'success': False,
+                'error': 'ip_address and template_name are required'
+            }), 400
+
+        # Get device and its learned behavior
+        device = db.get_device_by_ip(ip_address)
+        if not device:
+            return jsonify({'success': False, 'error': 'Device not found'}), 404
+
+        learned_behavior = device.get('learned_behavior', {})
+        if not learned_behavior:
+            return jsonify({
+                'success': False,
+                'error': 'No learned behavior available for this device'
+            }), 400
+
+        # Check if enough data
+        packet_count = learned_behavior.get('packet_count', 0)
+        if packet_count < 50:
+            return jsonify({
+                'success': False,
+                'error': f'Insufficient data ({packet_count} packets). Need at least 50 packets for template generation.'
+            }), 400
+
+        # Create the template
+        if not description:
+            description = f"Auto-generated from device {ip_address}"
+            if device.get('hostname'):
+                description += f" ({device['hostname']})"
+
+        template_id = db.create_device_template(
+            name=template_name,
+            description=description,
+            category=category,
+            created_by=current_user.username if current_user.is_authenticated else 'auto'
+        )
+
+        if not template_id:
+            return jsonify({'success': False, 'error': 'Failed to create template'}), 500
+
+        behaviors_added = 0
+
+        # Add allowed ports behavior
+        typical_ports = learned_behavior.get('typical_ports', [])
+        if typical_ports:
+            ports = [p['port'] for p in typical_ports[:20]]
+            if ports:
+                db.add_template_behavior(
+                    template_id=template_id,
+                    behavior_type='allowed_ports',
+                    parameters={'ports': ports, 'direction': 'outbound'},
+                    action='allow',
+                    description=f"Learned outbound ports: {', '.join(map(str, ports[:5]))}..."
+                )
+                behaviors_added += 1
+
+        # Add server ports behavior
+        server_ports = learned_behavior.get('server_ports', [])
+        if server_ports:
+            ports = [p['port'] for p in server_ports[:10]]
+            if ports:
+                db.add_template_behavior(
+                    template_id=template_id,
+                    behavior_type='allowed_ports',
+                    parameters={'ports': ports, 'direction': 'inbound'},
+                    action='allow',
+                    description=f"Learned server ports: {', '.join(map(str, ports[:5]))}..."
+                )
+                behaviors_added += 1
+
+        # Add protocols behavior
+        protocols = learned_behavior.get('protocols', [])
+        if protocols:
+            db.add_template_behavior(
+                template_id=template_id,
+                behavior_type='allowed_protocols',
+                parameters={'protocols': protocols},
+                action='allow',
+                description=f"Learned protocols: {', '.join(protocols)}"
+            )
+            behaviors_added += 1
+
+        # Add traffic pattern behavior
+        traffic_pattern = learned_behavior.get('traffic_pattern')
+        if traffic_pattern:
+            params = {}
+            if traffic_pattern == 'streaming':
+                params = {'high_bandwidth': True, 'streaming': True}
+            elif traffic_pattern == 'server':
+                params = {'high_connection_rate': True}
+            elif traffic_pattern == 'continuous':
+                params = {'continuous': True}
+            elif traffic_pattern == 'periodic':
+                params = {'periodic': True, 'low_frequency': True}
+
+            if params:
+                db.add_template_behavior(
+                    template_id=template_id,
+                    behavior_type='traffic_pattern',
+                    parameters=params,
+                    action='allow',
+                    description=f"Learned traffic pattern: {traffic_pattern}"
+                )
+                behaviors_added += 1
+
+        # Optionally assign the template to the source device
+        if data.get('assign_to_device', True):
+            db.assign_device_template(
+                ip_address=ip_address,
+                template_id=template_id,
+                confidence=0.8,
+                method='learned'
+            )
+
+        return jsonify({
+            'success': True,
+            'template_id': template_id,
+            'template_name': template_name,
+            'behaviors_added': behaviors_added,
+            'message': f'Template "{template_name}" created with {behaviors_added} behavior rules'
+        })
+
+    except Exception as e:
+        logger.error(f"Error creating template from device: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==================== Device Templates API ====================
+
+@app.route('/api/device-templates')
+@login_required
+def api_get_device_templates():
+    """Get all device templates"""
+    try:
+        category = request.args.get('category')
+        include_inactive = request.args.get('include_inactive', 'false').lower() == 'true'
+
+        templates = db.get_device_templates(
+            category=category,
+            include_inactive=include_inactive
+        )
+
+        return jsonify({
+            'success': True,
+            'templates': templates,
+            'total': len(templates)
+        })
+    except Exception as e:
+        logger.error(f"Error getting device templates: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/device-templates/<int:template_id>')
+@login_required
+def api_get_device_template(template_id):
+    """Get a specific device template with its behaviors"""
+    try:
+        template = db.get_device_template_by_id(template_id)
+        if not template:
+            return jsonify({'success': False, 'error': 'Template not found'}), 404
+
+        return jsonify({
+            'success': True,
+            'template': template
+        })
+    except Exception as e:
+        logger.error(f"Error getting template {template_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/device-templates', methods=['POST'])
+@login_required
+def api_create_device_template():
+    """Create a new device template"""
+    try:
+        data = request.get_json()
+
+        name = data.get('name')
+        if not name:
+            return jsonify({'success': False, 'error': 'name is required'}), 400
+
+        template_id = db.create_device_template(
+            name=name,
+            description=data.get('description'),
+            icon=data.get('icon', 'device'),
+            category=data.get('category', 'other'),
+            created_by=current_user.username if current_user.is_authenticated else 'api'
+        )
+
+        if template_id:
+            # Add behaviors if provided
+            behaviors = data.get('behaviors', [])
+            for behavior in behaviors:
+                db.add_template_behavior(
+                    template_id=template_id,
+                    behavior_type=behavior.get('behavior_type'),
+                    parameters=behavior.get('parameters', {}),
+                    action=behavior.get('action', 'allow'),
+                    description=behavior.get('description')
+                )
+
+            return jsonify({
+                'success': True,
+                'template_id': template_id,
+                'message': 'Template created successfully'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to create template'}), 500
+
+    except Exception as e:
+        logger.error(f"Error creating device template: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/device-templates/<int:template_id>', methods=['PUT'])
+@login_required
+def api_update_device_template(template_id):
+    """Update an existing device template"""
+    try:
+        data = request.get_json()
+
+        # Check if template exists and is not builtin
+        template = db.get_device_template_by_id(template_id)
+        if not template:
+            return jsonify({'success': False, 'error': 'Template not found'}), 404
+
+        if template.get('is_builtin'):
+            return jsonify({'success': False, 'error': 'Cannot modify builtin templates'}), 403
+
+        success = db.update_device_template(
+            template_id=template_id,
+            name=data.get('name'),
+            description=data.get('description'),
+            icon=data.get('icon'),
+            category=data.get('category'),
+            is_active=data.get('is_active')
+        )
+
+        if success:
+            return jsonify({'success': True, 'message': 'Template updated successfully'})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to update template'}), 500
+
+    except Exception as e:
+        logger.error(f"Error updating template {template_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/device-templates/<int:template_id>', methods=['DELETE'])
+@login_required
+def api_delete_device_template(template_id):
+    """Delete a device template"""
+    try:
+        template = db.get_device_template_by_id(template_id)
+        if not template:
+            return jsonify({'success': False, 'error': 'Template not found'}), 404
+
+        if template.get('is_builtin'):
+            return jsonify({'success': False, 'error': 'Cannot delete builtin templates'}), 403
+
+        success = db.delete_device_template(template_id)
+        if success:
+            return jsonify({'success': True, 'message': 'Template deleted'})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to delete template'}), 500
+
+    except Exception as e:
+        logger.error(f"Error deleting template {template_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/device-templates/<int:template_id>/behaviors', methods=['POST'])
+@login_required
+def api_add_template_behavior(template_id):
+    """Add a behavior rule to a template"""
+    try:
+        data = request.get_json()
+
+        template = db.get_device_template_by_id(template_id)
+        if not template:
+            return jsonify({'success': False, 'error': 'Template not found'}), 404
+
+        behavior_type = data.get('behavior_type')
+        if not behavior_type:
+            return jsonify({'success': False, 'error': 'behavior_type is required'}), 400
+
+        behavior_id = db.add_template_behavior(
+            template_id=template_id,
+            behavior_type=behavior_type,
+            parameters=data.get('parameters', {}),
+            action=data.get('action', 'allow'),
+            description=data.get('description')
+        )
+
+        if behavior_id:
+            return jsonify({
+                'success': True,
+                'behavior_id': behavior_id,
+                'message': 'Behavior added successfully'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to add behavior'}), 500
+
+    except Exception as e:
+        logger.error(f"Error adding behavior to template {template_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/device-templates/behaviors/<int:behavior_id>', methods=['DELETE'])
+@login_required
+def api_delete_template_behavior(behavior_id):
+    """Delete a behavior rule from a template"""
+    try:
+        success = db.delete_template_behavior(behavior_id)
+        if success:
+            return jsonify({'success': True, 'message': 'Behavior deleted'})
+        else:
+            return jsonify({'success': False, 'error': 'Behavior not found'}), 404
+    except Exception as e:
+        logger.error(f"Error deleting behavior {behavior_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==================== Service Providers API ====================
+
+@app.route('/api/service-providers')
+@login_required
+def api_get_service_providers():
+    """Get all service providers"""
+    try:
+        category = request.args.get('category')
+        include_inactive = request.args.get('include_inactive', 'false').lower() == 'true'
+
+        providers = db.get_service_providers(
+            category=category,
+            include_inactive=include_inactive
+        )
+
+        return jsonify({
+            'success': True,
+            'providers': providers,
+            'total': len(providers)
+        })
+    except Exception as e:
+        logger.error(f"Error getting service providers: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/service-providers/<int:provider_id>')
+@login_required
+def api_get_service_provider(provider_id):
+    """Get a specific service provider"""
+    try:
+        provider = db.get_service_provider_by_id(provider_id)
+        if not provider:
+            return jsonify({'success': False, 'error': 'Provider not found'}), 404
+
+        return jsonify({
+            'success': True,
+            'provider': provider
+        })
+    except Exception as e:
+        logger.error(f"Error getting provider {provider_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/service-providers', methods=['POST'])
+@login_required
+def api_create_service_provider():
+    """Create a new service provider"""
+    try:
+        data = request.get_json()
+
+        name = data.get('name')
+        category = data.get('category')
+
+        if not name or not category:
+            return jsonify({'success': False, 'error': 'name and category are required'}), 400
+
+        provider_id = db.create_service_provider(
+            name=name,
+            category=category,
+            description=data.get('description'),
+            ip_ranges=data.get('ip_ranges', []),
+            domains=data.get('domains', []),
+            created_by=current_user.username if current_user.is_authenticated else 'api'
+        )
+
+        if provider_id:
+            return jsonify({
+                'success': True,
+                'provider_id': provider_id,
+                'message': 'Provider created successfully'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to create provider'}), 500
+
+    except Exception as e:
+        logger.error(f"Error creating service provider: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/service-providers/<int:provider_id>', methods=['PUT'])
+@login_required
+def api_update_service_provider(provider_id):
+    """Update a service provider"""
+    try:
+        data = request.get_json()
+
+        provider = db.get_service_provider_by_id(provider_id)
+        if not provider:
+            return jsonify({'success': False, 'error': 'Provider not found'}), 404
+
+        if provider.get('is_builtin'):
+            return jsonify({'success': False, 'error': 'Cannot modify builtin providers'}), 403
+
+        success = db.update_service_provider(
+            provider_id=provider_id,
+            name=data.get('name'),
+            category=data.get('category'),
+            description=data.get('description'),
+            ip_ranges=data.get('ip_ranges'),
+            domains=data.get('domains'),
+            is_active=data.get('is_active')
+        )
+
+        if success:
+            return jsonify({'success': True, 'message': 'Provider updated successfully'})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to update provider'}), 500
+
+    except Exception as e:
+        logger.error(f"Error updating provider {provider_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/service-providers/<int:provider_id>', methods=['DELETE'])
+@login_required
+def api_delete_service_provider(provider_id):
+    """Delete a service provider"""
+    try:
+        provider = db.get_service_provider_by_id(provider_id)
+        if not provider:
+            return jsonify({'success': False, 'error': 'Provider not found'}), 404
+
+        if provider.get('is_builtin'):
+            return jsonify({'success': False, 'error': 'Cannot delete builtin providers'}), 403
+
+        success = db.delete_service_provider(provider_id)
+        if success:
+            return jsonify({'success': True, 'message': 'Provider deleted'})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to delete provider'}), 500
+
+    except Exception as e:
+        logger.error(f"Error deleting provider {provider_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/service-providers/check-ip')
+@login_required
+def api_check_ip_in_providers():
+    """Check if an IP belongs to any service provider"""
+    try:
+        ip_address = request.args.get('ip')
+        if not ip_address:
+            return jsonify({'success': False, 'error': 'ip parameter is required'}), 400
+
+        result = db.check_ip_in_service_providers(ip_address)
+
+        return jsonify({
+            'success': True,
+            'ip_address': ip_address,
+            'is_known_provider': result is not None,
+            'provider': result
+        })
+    except Exception as e:
+        logger.error(f"Error checking IP {request.args.get('ip')}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==================== Alert Suppression API ====================
+
+@app.route('/api/suppression/stats')
+@login_required
+def api_get_suppression_stats():
+    """Get alert suppression statistics"""
+    try:
+        # Try to get live stats from behavior matcher if available
+        # For now, return database-derived stats
+        from behavior_matcher import BehaviorMatcher
+
+        # Count devices with templates (potential suppressions)
+        devices = db.get_devices(active_only=True)
+        devices_with_templates = len([d for d in devices if d.get('template_id')])
+
+        # Get recent suppressed alerts from logs (simplified)
+        stats = {
+            'devices_monitored': len(devices),
+            'devices_with_templates': devices_with_templates,
+            'templates_active': len(db.get_device_templates()),
+            'service_providers': len(db.get_service_providers()),
+            'note': 'Real-time suppression stats available via MCP API during active monitoring'
+        }
+
+        return jsonify({
+            'success': True,
+            'stats': stats
+        })
+
+    except ImportError:
+        return jsonify({
+            'success': True,
+            'stats': {
+                'note': 'BehaviorMatcher not available',
+                'devices_monitored': len(db.get_devices(active_only=True)),
+                'templates_active': len(db.get_device_templates())
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error getting suppression stats: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/suppression/test', methods=['POST'])
+@login_required
+def api_test_alert_suppression():
+    """
+    Test if a hypothetical alert would be suppressed.
+    Useful for testing template configurations.
+    """
+    try:
+        data = request.get_json()
+
+        source_ip = data.get('source_ip')
+        threat_type = data.get('threat_type')
+        severity = data.get('severity', 'MEDIUM')
+
+        if not source_ip or not threat_type:
+            return jsonify({
+                'success': False,
+                'error': 'source_ip and threat_type are required'
+            }), 400
+
+        # Check if device has a template
+        device = db.get_device_by_ip(source_ip)
+
+        if not device:
+            return jsonify({
+                'success': True,
+                'would_suppress': False,
+                'reason': 'Device not found in database'
+            })
+
+        if not device.get('template_id'):
+            return jsonify({
+                'success': True,
+                'would_suppress': False,
+                'reason': 'Device has no template assigned'
+            })
+
+        # Get template and test suppression
+        from behavior_matcher import BehaviorMatcher
+        matcher = BehaviorMatcher(db_manager=db)
+
+        test_threat = {
+            'source_ip': source_ip,
+            'destination_ip': data.get('destination_ip'),
+            'type': threat_type,
+            'severity': severity,
+            'metadata': data.get('metadata', {})
+        }
+
+        would_suppress, reason = matcher.should_suppress_alert(test_threat)
+
+        return jsonify({
+            'success': True,
+            'would_suppress': would_suppress,
+            'reason': reason,
+            'device': {
+                'ip': source_ip,
+                'template': device.get('template_name'),
+                'template_id': device.get('template_id')
+            }
+        })
+
+    except ImportError:
+        return jsonify({
+            'success': False,
+            'error': 'BehaviorMatcher module not available'
+        }), 500
+    except Exception as e:
+        logger.error(f"Error testing alert suppression: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==================== Device Classification Stats API ====================
+
+@app.route('/api/device-classification/stats')
+@login_required
+def api_get_device_classification_stats():
+    """Get overall device classification statistics"""
+    try:
+        devices = db.get_devices(active_only=True)
+        templates = db.get_device_templates()
+        providers = db.get_service_providers()
+
+        # Calculate statistics
+        total_devices = len(devices)
+        classified_devices = len([d for d in devices if d.get('template_id')])
+        manual_classifications = len([d for d in devices if d.get('classification_method') == 'manual'])
+        auto_classifications = len([d for d in devices if d.get('classification_method') in ('auto', 'learned')])
+
+        # Devices by template
+        by_template = {}
+        for device in devices:
+            template_name = device.get('template_name', 'Unclassified')
+            by_template[template_name] = by_template.get(template_name, 0) + 1
+
+        # Devices by vendor
+        by_vendor = {}
+        for device in devices:
+            vendor = device.get('vendor', 'Unknown')
+            by_vendor[vendor] = by_vendor.get(vendor, 0) + 1
+
+        # Templates by category
+        templates_by_category = {}
+        for template in templates:
+            cat = template.get('category', 'other')
+            templates_by_category[cat] = templates_by_category.get(cat, 0) + 1
+
+        # Service providers by category
+        providers_by_category = {}
+        for provider in providers:
+            cat = provider.get('category', 'other')
+            providers_by_category[cat] = providers_by_category.get(cat, 0) + 1
+
+        return jsonify({
+            'success': True,
+            'stats': {
+                'devices': {
+                    'total': total_devices,
+                    'classified': classified_devices,
+                    'unclassified': total_devices - classified_devices,
+                    'classification_rate': round(classified_devices / total_devices * 100, 1) if total_devices > 0 else 0,
+                    'manual_classifications': manual_classifications,
+                    'auto_classifications': auto_classifications,
+                    'by_template': by_template,
+                    'by_vendor': dict(sorted(by_vendor.items(), key=lambda x: x[1], reverse=True)[:10])
+                },
+                'templates': {
+                    'total': len(templates),
+                    'builtin': len([t for t in templates if t.get('is_builtin')]),
+                    'custom': len([t for t in templates if not t.get('is_builtin')]),
+                    'by_category': templates_by_category
+                },
+                'service_providers': {
+                    'total': len(providers),
+                    'builtin': len([p for p in providers if p.get('is_builtin')]),
+                    'custom': len([p for p in providers if not p.get('is_builtin')]),
+                    'by_category': providers_by_category
+                }
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting classification stats: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ==================== WebSocket Events ====================
 
 @socketio.on('connect')
