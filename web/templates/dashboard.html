@@ -436,6 +436,194 @@
             </div>
         </div>
 
+        <!-- Device Classification Management Row -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="card bg-secondary">
+                    <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#deviceClassificationCollapse">
+                        <h5 class="mb-0">
+                            <i class="bi bi-diagram-3"></i> Device Classification
+                            <span class="badge bg-info ms-2" id="devices-count">0</span>
+                            <span class="badge bg-success ms-1" id="devices-classified">0</span>
+                        </h5>
+                        <i class="bi bi-chevron-down"></i>
+                    </div>
+                    <div class="collapse" id="deviceClassificationCollapse">
+                        <div class="card-body">
+                            <!-- Device Classification Tabs -->
+                            <ul class="nav nav-tabs nav-fill mb-3" role="tablist">
+                                <li class="nav-item">
+                                    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#devices-tab" type="button">
+                                        <i class="bi bi-hdd-network"></i> Devices
+                                    </button>
+                                </li>
+                                <li class="nav-item">
+                                    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#templates-tab" type="button">
+                                        <i class="bi bi-file-earmark-code"></i> Templates
+                                    </button>
+                                </li>
+                                <li class="nav-item">
+                                    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#providers-tab" type="button">
+                                        <i class="bi bi-cloud"></i> Service Providers
+                                    </button>
+                                </li>
+                                <li class="nav-item">
+                                    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#classification-stats-tab" type="button">
+                                        <i class="bi bi-bar-chart"></i> Statistics
+                                    </button>
+                                </li>
+                            </ul>
+
+                            <div class="tab-content">
+                                <!-- Devices Tab -->
+                                <div class="tab-pane fade show active" id="devices-tab" role="tabpanel">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <div class="input-group" style="max-width: 300px;">
+                                            <span class="input-group-text bg-dark border-secondary"><i class="bi bi-search"></i></span>
+                                            <input type="text" class="form-control bg-dark text-light border-secondary" id="device-search" placeholder="Search devices...">
+                                        </div>
+                                        <div>
+                                            <select class="form-select form-select-sm bg-dark text-light border-secondary d-inline-block" style="width: auto;" id="device-filter-template">
+                                                <option value="">All Templates</option>
+                                                <option value="unclassified">Unclassified</option>
+                                            </select>
+                                            <button class="btn btn-sm btn-outline-success ms-2" onclick="loadDevices()">
+                                                <i class="bi bi-arrow-clockwise"></i> Refresh
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="table-responsive">
+                                        <table class="table table-dark table-sm table-hover mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>IP Address</th>
+                                                    <th>Hostname</th>
+                                                    <th>MAC / Vendor</th>
+                                                    <th>Template</th>
+                                                    <th>Learning Status</th>
+                                                    <th>Last Seen</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="devices-table">
+                                                <tr>
+                                                    <td colspan="7" class="text-center text-muted">Loading devices...</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <!-- Templates Tab -->
+                                <div class="tab-pane fade" id="templates-tab" role="tabpanel">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <div>
+                                            <select class="form-select form-select-sm bg-dark text-light border-secondary d-inline-block" style="width: auto;" id="template-filter-category">
+                                                <option value="">All Categories</option>
+                                                <option value="iot">IoT</option>
+                                                <option value="server">Server</option>
+                                                <option value="endpoint">Endpoint</option>
+                                                <option value="other">Other</option>
+                                            </select>
+                                        </div>
+                                        <button class="btn btn-sm btn-success" onclick="showCreateTemplateModal()">
+                                            <i class="bi bi-plus-circle"></i> New Template
+                                        </button>
+                                    </div>
+                                    <div class="row" id="templates-grid">
+                                        <div class="col-12 text-center text-muted p-4">Loading templates...</div>
+                                    </div>
+                                </div>
+
+                                <!-- Service Providers Tab -->
+                                <div class="tab-pane fade" id="providers-tab" role="tabpanel">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <div>
+                                            <select class="form-select form-select-sm bg-dark text-light border-secondary d-inline-block" style="width: auto;" id="provider-filter-category">
+                                                <option value="">All Categories</option>
+                                                <option value="streaming">Streaming</option>
+                                                <option value="cdn">CDN</option>
+                                                <option value="cloud">Cloud</option>
+                                                <option value="social">Social</option>
+                                                <option value="gaming">Gaming</option>
+                                                <option value="other">Other</option>
+                                            </select>
+                                        </div>
+                                        <button class="btn btn-sm btn-success" onclick="showCreateProviderModal()">
+                                            <i class="bi bi-plus-circle"></i> New Provider
+                                        </button>
+                                    </div>
+                                    <div class="table-responsive">
+                                        <table class="table table-dark table-sm table-hover mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>Name</th>
+                                                    <th>Category</th>
+                                                    <th>IP Ranges</th>
+                                                    <th>Domains</th>
+                                                    <th>Type</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="providers-table">
+                                                <tr>
+                                                    <td colspan="6" class="text-center text-muted">Loading providers...</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <!-- Classification Statistics Tab -->
+                                <div class="tab-pane fade" id="classification-stats-tab" role="tabpanel">
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            <div class="card bg-dark border-secondary">
+                                                <div class="card-body text-center">
+                                                    <h3 class="text-info" id="stat-total-devices">0</h3>
+                                                    <p class="text-muted mb-0">Total Devices</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="card bg-dark border-secondary">
+                                                <div class="card-body text-center">
+                                                    <h3 class="text-success" id="stat-classified">0</h3>
+                                                    <p class="text-muted mb-0">Classified</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="card bg-dark border-secondary">
+                                                <div class="card-body text-center">
+                                                    <h3 class="text-warning" id="stat-unclassified">0</h3>
+                                                    <p class="text-muted mb-0">Unclassified</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row mt-3">
+                                        <div class="col-md-6">
+                                            <h6><i class="bi bi-pie-chart"></i> Devices by Template</h6>
+                                            <div id="devices-by-template" class="mt-2">
+                                                <p class="text-muted">Loading...</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <h6><i class="bi bi-building"></i> Devices by Vendor</h6>
+                                            <div id="devices-by-vendor" class="mt-2">
+                                                <p class="text-muted">Loading...</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Traffic Stats Row -->
         <div class="row mb-4">
             <div class="col-md-6">
@@ -763,6 +951,306 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-primary" id="save-sensor-settings-btn" onclick="saveSensorSettings()">
                         <i class="bi bi-save"></i> Save Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Device Details Modal -->
+    <div class="modal fade" id="deviceDetailsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content bg-dark text-light">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">
+                        <i class="bi bi-hdd-network"></i> Device Details
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="device-detail-ip">
+
+                    <!-- Device Info -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label text-muted">IP Address</label>
+                            <p class="fw-bold" id="device-detail-ip-display">-</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label text-muted">Hostname</label>
+                            <p class="fw-bold" id="device-detail-hostname">-</p>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label text-muted">MAC Address</label>
+                            <p class="fw-bold" id="device-detail-mac">-</p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label text-muted">Vendor</label>
+                            <p class="fw-bold" id="device-detail-vendor">-</p>
+                        </div>
+                    </div>
+
+                    <!-- Template Assignment -->
+                    <hr class="border-secondary">
+                    <h6><i class="bi bi-tag"></i> Template Assignment</h6>
+                    <div class="row mb-3">
+                        <div class="col-md-8">
+                            <select class="form-select bg-secondary text-light border-secondary" id="device-template-select">
+                                <option value="">No Template (Unclassified)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <button class="btn btn-primary w-100" onclick="assignDeviceTemplate()">
+                                <i class="bi bi-check"></i> Assign
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Learning Status -->
+                    <hr class="border-secondary">
+                    <h6><i class="bi bi-lightbulb"></i> Behavior Learning</h6>
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <div class="card bg-secondary border-0">
+                                <div class="card-body text-center py-2">
+                                    <small class="text-muted">Packets Analyzed</small>
+                                    <h5 class="mb-0" id="device-detail-packets">0</h5>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-secondary border-0">
+                                <div class="card-body text-center py-2">
+                                    <small class="text-muted">Unique Ports</small>
+                                    <h5 class="mb-0" id="device-detail-ports">0</h5>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-secondary border-0">
+                                <div class="card-body text-center py-2">
+                                    <small class="text-muted">Status</small>
+                                    <h5 class="mb-0" id="device-detail-status">-</h5>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Classification Hints -->
+                    <div id="device-classification-hints" class="alert alert-info" style="display: none;">
+                        <strong><i class="bi bi-lightbulb"></i> Suggested Templates:</strong>
+                        <ul class="mb-0 mt-2" id="device-hints-list"></ul>
+                    </div>
+
+                    <!-- Create Template from Device -->
+                    <div class="card bg-secondary border-0 mt-3" id="create-template-from-device-card" style="display: none;">
+                        <div class="card-body">
+                            <h6><i class="bi bi-magic"></i> Create Template from Learned Behavior</h6>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <input type="text" class="form-control bg-dark text-light border-secondary"
+                                           id="new-template-from-device-name" placeholder="Template name">
+                                </div>
+                                <div class="col-md-4">
+                                    <select class="form-select bg-dark text-light border-secondary" id="new-template-from-device-category">
+                                        <option value="iot">IoT</option>
+                                        <option value="server">Server</option>
+                                        <option value="endpoint">Endpoint</option>
+                                        <option value="other" selected>Other</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <button class="btn btn-success w-100" onclick="createTemplateFromDevice()">
+                                        <i class="bi bi-plus"></i> Create
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-danger" onclick="deleteDevice()">
+                        <i class="bi bi-trash"></i> Delete Device
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Template Modal -->
+    <div class="modal fade" id="createTemplateModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content bg-dark text-light">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">
+                        <i class="bi bi-plus-circle"></i> Create Device Template
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="template-name" class="form-label">Template Name</label>
+                        <input type="text" class="form-control bg-secondary text-light border-secondary"
+                               id="template-name" placeholder="e.g., IP Camera, Smart TV">
+                    </div>
+                    <div class="mb-3">
+                        <label for="template-category" class="form-label">Category</label>
+                        <select class="form-select bg-secondary text-light border-secondary" id="template-category">
+                            <option value="iot">IoT</option>
+                            <option value="server">Server</option>
+                            <option value="endpoint">Endpoint</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="template-description" class="form-label">Description</label>
+                        <textarea class="form-control bg-secondary text-light border-secondary"
+                                  id="template-description" rows="2" placeholder="Optional description"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="template-icon" class="form-label">Icon</label>
+                        <select class="form-select bg-secondary text-light border-secondary" id="template-icon">
+                            <option value="device">📱 Device</option>
+                            <option value="camera">📷 Camera</option>
+                            <option value="tv">📺 TV</option>
+                            <option value="speaker">🔊 Speaker</option>
+                            <option value="server">🖥️ Server</option>
+                            <option value="router">🌐 Router</option>
+                            <option value="printer">🖨️ Printer</option>
+                            <option value="other">⚙️ Other</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" onclick="createTemplate()">
+                        <i class="bi bi-plus-circle"></i> Create Template
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Template Details Modal -->
+    <div class="modal fade" id="templateDetailsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content bg-dark text-light">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">
+                        <i class="bi bi-file-earmark-code"></i> Template Details
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="template-detail-id">
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label text-muted">Name</label>
+                            <p class="fw-bold" id="template-detail-name">-</p>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label text-muted">Category</label>
+                            <p class="fw-bold" id="template-detail-category">-</p>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label text-muted">Type</label>
+                            <p class="fw-bold" id="template-detail-type">-</p>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label text-muted">Description</label>
+                        <p id="template-detail-description">-</p>
+                    </div>
+
+                    <hr class="border-secondary">
+                    <h6><i class="bi bi-list-check"></i> Behavior Rules</h6>
+                    <div class="table-responsive">
+                        <table class="table table-dark table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Parameters</th>
+                                    <th>Action</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody id="template-behaviors-table">
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted">No behaviors defined</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Devices using this template -->
+                    <hr class="border-secondary">
+                    <h6><i class="bi bi-hdd-network"></i> Devices Using This Template</h6>
+                    <div id="template-devices-list" class="text-muted">
+                        No devices assigned to this template.
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-danger" id="delete-template-btn" onclick="deleteTemplate()" style="display: none;">
+                        <i class="bi bi-trash"></i> Delete
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Service Provider Modal -->
+    <div class="modal fade" id="createProviderModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content bg-dark text-light">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">
+                        <i class="bi bi-plus-circle"></i> Add Service Provider
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="provider-name" class="form-label">Provider Name</label>
+                        <input type="text" class="form-control bg-secondary text-light border-secondary"
+                               id="provider-name" placeholder="e.g., Netflix, Cloudflare">
+                    </div>
+                    <div class="mb-3">
+                        <label for="provider-category" class="form-label">Category</label>
+                        <select class="form-select bg-secondary text-light border-secondary" id="provider-category">
+                            <option value="streaming">Streaming</option>
+                            <option value="cdn">CDN</option>
+                            <option value="cloud">Cloud</option>
+                            <option value="social">Social</option>
+                            <option value="gaming">Gaming</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="provider-ip-ranges" class="form-label">IP Ranges (CIDR, one per line)</label>
+                        <textarea class="form-control bg-secondary text-light border-secondary"
+                                  id="provider-ip-ranges" rows="3" placeholder="e.g., 185.2.220.0/24"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="provider-domains" class="form-label">Domains (one per line)</label>
+                        <textarea class="form-control bg-secondary text-light border-secondary"
+                                  id="provider-domains" rows="2" placeholder="e.g., netflix.com"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="provider-description" class="form-label">Description</label>
+                        <input type="text" class="form-control bg-secondary text-light border-secondary"
+                               id="provider-description" placeholder="Optional description">
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" onclick="createProvider()">
+                        <i class="bi bi-plus-circle"></i> Add Provider
                     </button>
                 </div>
             </div>
@@ -1342,6 +1830,7 @@
     <!-- Custom JS - Load last with defer -->
     <script src="{{ url_for('static', filename='js/dashboard.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/config-management.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/device-classification.js') }}" defer></script>
 
     <!-- Hide loading overlay when DOM is ready -->
     <script>
