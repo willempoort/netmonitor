@@ -2,6 +2,8 @@
 
 Een krachtig netwerk monitoring platform voor Linux met **real-time web dashboard** dat verdacht netwerkverkeer kan detecteren. **Speciaal ontworpen voor monitoring van intern verkeer** om gecompromitteerde machines te detecteren. Geschikt voor gebruik op een monitoring/span port van een switch.
 
+📚 **[Complete Documentation Index](docs/INDEX.md)** | 🚀 [Quick Start](#-quick-start-installation) | 📖 [User Manual](docs/usage/USER_MANUAL.md) | 🛠️ [Admin Manual](docs/usage/ADMIN_MANUAL.md)
+
 ![SOC Dashboard Preview](docs/dashboard-preview.png)
 *Real-time Security Operations Center dashboard voor netwerkmonitoring*
 
@@ -25,7 +27,7 @@ Een krachtig netwerk monitoring platform voor Linux met **real-time web dashboar
 - **Dark Theme**: Professional security monitoring interface
 - **Responsive Design**: Werkt op desktop, tablet en mobile
 
-[Zie DASHBOARD.md voor complete dashboard documentatie →](DASHBOARD.md)
+[Zie DASHBOARD.md voor complete dashboard documentatie →](docs/usage/DASHBOARD.md)
 
 ### 🎛️ Centralized Management & Control (Nieuw!)
 
@@ -86,7 +88,7 @@ Een krachtig netwerk monitoring platform voor Linux met **real-time web dashboar
   cd /opt/netmonitor && sudo ./install_services.sh
   ```
 
-  **Documentatie:** [MCP_HTTP_API.md](MCP_HTTP_API.md) | API Docs: http://localhost:8000/docs
+  **Documentatie:** [MCP_HTTP_API.md](docs/features/MCP_HTTP_API.md) | API Docs: http://localhost:8000/docs
 
   **⚠️ Belangrijke wijziging:** De oude STDIO/SSE MCP implementatie is vervangen door een moderne HTTP REST API met volledige token authenticatie. Legacy files zijn verplaatst naar `mcp_server/legacy_stdio_sse/`
 
@@ -290,7 +292,7 @@ sudo systemctl status netmonitor netmonitor-feed-update.timer
 
 </details>
 
-Zie [VENV_SETUP.md](VENV_SETUP.md) voor details en [SERVICE_INSTALLATION.md](SERVICE_INSTALLATION.md) voor service management.
+Zie [VENV_SETUP.md](docs/installation/VENV_SETUP.md) voor details en [SERVICE_INSTALLATION.md](docs/installation/SERVICE_INSTALLATION.md) voor service management.
 
 ---
 
@@ -397,7 +399,7 @@ abuseipdb:
   threshold: 50     # Alert bij score >= 50
 ```
 
-Zie [THREAT_FEEDS.md](THREAT_FEEDS.md) voor gedetailleerde documentatie.
+Zie [THREAT_FEEDS.md](docs/features/THREAT_FEEDS.md) voor gedetailleerde documentatie.
 
 ### Detection Thresholds Aanpassen
 
@@ -489,7 +491,7 @@ http://192.168.1.X:8080  # Vervang X met server IP
 ✅ **Threat Types** - Meest voorkomende threats
 ✅ **Audio Alerts** - Beep bij CRITICAL/HIGH alerts
 
-[→ Complete Dashboard Documentatie (DASHBOARD.md)](DASHBOARD.md)
+[→ Complete Dashboard Documentatie (DASHBOARD.md)](docs/usage/DASHBOARD.md)
 
 ### Command Line Opties
 
@@ -594,13 +596,13 @@ Alerts en metrics worden opgeslagen in PostgreSQL database met TimescaleDB exten
 - `sensor_metrics` - Sensor performance metrics (CPU, RAM, bandwidth)
 - `whitelist` - Centralized IP whitelist management
 
-**Setup**: Zie `POSTGRESQL_SETUP.md` en `TIMESCALEDB_SETUP.md` voor installatie instructies.
+**Setup**: Zie [POSTGRESQL_SETUP.md](docs/installation/POSTGRESQL_SETUP.md) en [TIMESCALEDB_SETUP.md](docs/installation/TIMESCALEDB_SETUP.md) voor installatie instructies.
 
 Toegang via web dashboard of direct via API.
 
 ## Monitoring Port Setup
 
-**📘 Uitgebreide Switch Configuratie Guide:** Zie [docs/SWITCH_MIRROR_CONFIGURATION.md](docs/SWITCH_MIRROR_CONFIGURATION.md) voor gedetailleerde instructies per switch merk (Cisco, HPE, Ubiquiti, Mikrotik, Dell, Juniper, etc.)
+**📘 Uitgebreide Switch Configuratie Guide:** Zie [docs/architecture/SWITCH_MIRROR_CONFIGURATION.md](docs/architecture/SWITCH_MIRROR_CONFIGURATION.md) voor gedetailleerde instructies per switch merk (Cisco, HPE, Ubiquiti, Mikrotik, Dell, Juniper, etc.)
 
 ### Switch Configuratie
 
@@ -745,7 +747,7 @@ sudo python3 netmonitor.py
 
 ### Threat Feed Issues
 
-Zie [THREAT_FEEDS.md](THREAT_FEEDS.md) voor gedetailleerde troubleshooting.
+Zie [THREAT_FEEDS.md](docs/features/THREAT_FEEDS.md) voor gedetailleerde troubleshooting.
 
 ## ⚡ Performance Consideraties
 
@@ -843,7 +845,7 @@ sudo journalctl -u netmonitor -f  # Live logs
 
 ## 🏗️ Architectuur
 
-**📋 Production Deployment Guide:** Zie [ARCHITECTURE_BEST_PRACTICES.md](ARCHITECTURE_BEST_PRACTICES.md) voor aanbevolen netwerk architectuur met dedicated monitoring hardware, VLAN segmentatie en port mirroring configuratie.
+**📋 Production Deployment Guide:** Zie [ARCHITECTURE_BEST_PRACTICES.md](docs/architecture/ARCHITECTURE_BEST_PRACTICES.md) voor aanbevolen netwerk architectuur met dedicated monitoring hardware, VLAN segmentatie en port mirroring configuratie.
 
 ```
 netmonitor.py              - Main entry point, packet capture loop
@@ -1001,7 +1003,7 @@ http://<server-ip>:8080
 
 ### Security (Production)
 
-Voor productie gebruik, zie [DASHBOARD.md](DASHBOARD.md) voor:
+Voor productie gebruik, zie [DASHBOARD.md](docs/usage/DASHBOARD.md) voor:
 - HTTPS/SSL setup met nginx
 - Authentication (Basic Auth, OAuth)
 - IP whitelisting
