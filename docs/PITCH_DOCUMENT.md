@@ -216,8 +216,8 @@ Onze experts helpen bij de productie-implementatie.
 
 **NetMonitor - Professional Network Security Monitoring**
 
-- Website: [uw-website.nl]
-- Email: [contact@uw-domein.nl]
+- Website: [https://awimax.nl]
+- Email: [willem@awimax.nl]
 - GitHub: [github.com/willempoort/netmonitor]
 
 ---
