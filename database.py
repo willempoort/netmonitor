@@ -680,15 +680,17 @@ class DatabaseManager:
             cutoff_time = datetime.now() - timedelta(hours=hours)
 
             # Use time_bucket for efficient aggregation
+            # SUM instead of AVG because traffic_metrics contains delta values per ~10s
+            # We want total bytes/packets in each 5-minute bucket, not average
             cursor.execute('''
                 SELECT
                     time_bucket('5 minutes', timestamp) AS timestamp,
-                    AVG(total_packets) as total_packets,
-                    AVG(total_bytes) as total_bytes,
-                    AVG(inbound_packets) as inbound_packets,
-                    AVG(inbound_bytes) as inbound_bytes,
-                    AVG(outbound_packets) as outbound_packets,
-                    AVG(outbound_bytes) as outbound_bytes
+                    SUM(total_packets) as total_packets,
+                    SUM(total_bytes) as total_bytes,
+                    SUM(inbound_packets) as inbound_packets,
+                    SUM(inbound_bytes) as inbound_bytes,
+                    SUM(outbound_packets) as outbound_packets,
+                    SUM(outbound_bytes) as outbound_bytes
                 FROM traffic_metrics
                 WHERE timestamp > %s
                 GROUP BY time_bucket('5 minutes', timestamp)
