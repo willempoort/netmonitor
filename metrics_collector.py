@@ -30,6 +30,15 @@ class MetricsCollector:
         self.outbound_packets = 0
         self.outbound_bytes = 0
 
+        # Track last saved values for delta calculation (Option A)
+        # Counters keep running for dashboard display, we only save deltas to database
+        self.last_saved_packets = 0
+        self.last_saved_bytes = 0
+        self.last_saved_inbound_packets = 0
+        self.last_saved_inbound_bytes = 0
+        self.last_saved_outbound_packets = 0
+        self.last_saved_outbound_bytes = 0
+
         # Per-IP statistics
         self.ip_stats = defaultdict(lambda: {
             'packets': 0,
@@ -254,25 +263,34 @@ class MetricsCollector:
             return
 
         try:
-            # Save traffic metrics
+            # Calculate deltas since last save (Option A: counters keep running)
+            # This gives us interval data for the graph while keeping counters alive for dashboard
+            delta_packets = self.total_packets - self.last_saved_packets
+            delta_bytes = self.total_bytes - self.last_saved_bytes
+            delta_inbound_packets = self.inbound_packets - self.last_saved_inbound_packets
+            delta_inbound_bytes = self.inbound_bytes - self.last_saved_inbound_bytes
+            delta_outbound_packets = self.outbound_packets - self.last_saved_outbound_packets
+            delta_outbound_bytes = self.outbound_bytes - self.last_saved_outbound_bytes
+
+            # Save traffic metrics (deltas for this interval)
             metrics = {
-                'total_packets': self.total_packets,
-                'total_bytes': self.total_bytes,
-                'inbound_packets': self.inbound_packets,
-                'inbound_bytes': self.inbound_bytes,
-                'outbound_packets': self.outbound_packets,
-                'outbound_bytes': self.outbound_bytes
+                'total_packets': delta_packets,
+                'total_bytes': delta_bytes,
+                'inbound_packets': delta_inbound_packets,
+                'inbound_bytes': delta_inbound_bytes,
+                'outbound_packets': delta_outbound_packets,
+                'outbound_bytes': delta_outbound_bytes
             }
             self.db.add_traffic_metrics(metrics)
 
-            # Reset traffic counters after saving so next save contains delta, not cumulative
-            # This ensures the graph shows traffic per interval, not a constantly rising line
-            self.total_packets = 0
-            self.total_bytes = 0
-            self.inbound_packets = 0
-            self.inbound_bytes = 0
-            self.outbound_packets = 0
-            self.outbound_bytes = 0
+            # Update last saved values (do NOT reset counters to 0!)
+            # Counters keep running for real-time dashboard display
+            self.last_saved_packets = self.total_packets
+            self.last_saved_bytes = self.total_bytes
+            self.last_saved_inbound_packets = self.inbound_packets
+            self.last_saved_inbound_bytes = self.inbound_bytes
+            self.last_saved_outbound_packets = self.outbound_packets
+            self.last_saved_outbound_bytes = self.outbound_bytes
 
             # Save top talkers
             top_talkers = self.get_top_talkers(limit=20)
