@@ -232,7 +232,7 @@ SERVICES_INSTALLED=0
 if generate_service \
     "$INSTALL_DIR/services/netmonitor.service.template" \
     "/etc/systemd/system/netmonitor.service"; then
-    ((SERVICES_INSTALLED++))
+    SERVICES_INSTALLED=$((SERVICES_INSTALLED + 1))
 fi
 
 # 2. Dashboard Service (only if using gunicorn)
@@ -241,7 +241,7 @@ if [ "$DASHBOARD_SERVER" = "gunicorn" ]; then
     if generate_service \
         "$INSTALL_DIR/services/netmonitor-dashboard.service.template" \
         "/etc/systemd/system/netmonitor-dashboard.service"; then
-        ((SERVICES_INSTALLED++))
+        SERVICES_INSTALLED=$((SERVICES_INSTALLED + 1))
     fi
 else
     echo_info "Dashboard server mode is 'embedded' - dashboard runs within netmonitor.service"
@@ -253,7 +253,7 @@ if [ "$MCP_API_ENABLED" = "true" ]; then
     if generate_service \
         "$INSTALL_DIR/services/netmonitor-mcp-http.service.template" \
         "/etc/systemd/system/netmonitor-mcp-http.service"; then
-        ((SERVICES_INSTALLED++))
+        SERVICES_INSTALLED=$((SERVICES_INSTALLED + 1))
     fi
 else
     echo_info "MCP HTTP API disabled (set MCP_API_ENABLED=true in .env to enable)"
@@ -263,7 +263,7 @@ fi
 if generate_service \
     "$INSTALL_DIR/services/netmonitor-feed-update.service.template" \
     "/etc/systemd/system/netmonitor-feed-update.service"; then
-    ((SERVICES_INSTALLED++))
+    SERVICES_INSTALLED=$((SERVICES_INSTALLED + 1))
 fi
 
 # 5. Feed Update Timer
