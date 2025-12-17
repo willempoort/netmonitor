@@ -623,6 +623,43 @@ class MCPHTTPServer:
                     "required": ["source_ip", "alert_type"]
                 },
                 "scope_required": "read_only"
+            },
+            # Behavior Learning Tools
+            {
+                "name": "get_device_learning_status",
+                "description": "Get the learning status for a device, showing how much traffic has been analyzed and if enough data is available for template generation",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "ip_address": {"type": "string", "description": "IP address of the device"}
+                    },
+                    "required": ["ip_address"]
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "save_device_learned_behavior",
+                "description": "Save the learned behavior profile to the database for a device (requires write access)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "ip_address": {"type": "string", "description": "IP address of the device"}
+                    },
+                    "required": ["ip_address"]
+                },
+                "scope_required": "read_write"
+            },
+            {
+                "name": "get_device_learned_behavior",
+                "description": "Get the learned behavior profile for a device including typical ports, protocols, destinations, and traffic patterns",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "ip_address": {"type": "string", "description": "IP address of the device"}
+                    },
+                    "required": ["ip_address"]
+                },
+                "scope_required": "read_only"
             }
         ]
         return tools
@@ -664,6 +701,10 @@ class MCPHTTPServer:
             # Alert Suppression Tools
             'get_alert_suppression_stats': self._tool_get_alert_suppression_stats,
             'test_alert_suppression': self._tool_test_alert_suppression,
+            # Behavior Learning Tools
+            'get_device_learning_status': self._tool_get_device_learning_status,
+            'save_device_learned_behavior': self._tool_save_device_learned_behavior,
+            'get_device_learned_behavior': self._tool_get_device_learned_behavior,
         }
 
         if tool_name not in tool_map:
@@ -1421,6 +1462,178 @@ class MCPHTTPServer:
                 'category': template.get('category'),
                 'behaviors_count': len(behaviors)
             }
+        }
+
+    # ==================== Behavior Learning Tool Implementations ====================
+
+    async def _tool_get_device_learning_status(self, params: Dict) -> Dict:
+        """Implement get_device_learning_status tool"""
+        ip_address = params.get('ip_address')
+
+        if not ip_address:
+            return {'success': False, 'error': 'ip_address is required'}
+
+        # Get device from database
+        device = self.db.get_device_by_ip(ip_address)
+
+        if not device:
+            return {
+                'success': True,
+                'ip_address': ip_address,
+                'learning_status': 'not_found',
+                'message': f'Device {ip_address} not found in database. It may not have been discovered yet.'
+            }
+
+        learned_behavior = device.get('learned_behavior', {})
+
+        # Analyze learning status
+        has_behavior = bool(learned_behavior)
+        packet_count = learned_behavior.get('packet_count', 0) if has_behavior else 0
+        unique_ports = len(learned_behavior.get('typical_ports', [])) if has_behavior else 0
+        unique_destinations = len(learned_behavior.get('typical_destinations', [])) if has_behavior else 0
+        protocols = learned_behavior.get('protocols', []) if has_behavior else []
+
+        # Determine learning status
+        if not has_behavior:
+            status = 'not_started'
+            message = 'No traffic has been analyzed yet. Device needs active monitoring.'
+        elif packet_count < 100:
+            status = 'insufficient_data'
+            message = f'Only {packet_count} packets analyzed. Need more traffic for reliable behavior profile.'
+        elif unique_ports < 2 and unique_destinations < 3:
+            status = 'learning'
+            message = 'Basic traffic pattern detected. More diverse traffic would improve accuracy.'
+        else:
+            status = 'ready'
+            message = 'Sufficient data available for behavior-based template generation.'
+
+        return {
+            'success': True,
+            'ip_address': ip_address,
+            'device': {
+                'hostname': device.get('hostname'),
+                'mac_address': device.get('mac_address'),
+                'vendor': device.get('vendor'),
+                'template_name': device.get('template_name'),
+                'first_seen': str(device.get('first_seen')) if device.get('first_seen') else None,
+                'last_seen': str(device.get('last_seen')) if device.get('last_seen') else None
+            },
+            'learning_status': status,
+            'message': message,
+            'statistics': {
+                'has_learned_behavior': has_behavior,
+                'packet_count': packet_count,
+                'unique_ports': unique_ports,
+                'unique_destinations': unique_destinations,
+                'protocols': protocols
+            }
+        }
+
+    async def _tool_save_device_learned_behavior(self, params: Dict) -> Dict:
+        """Implement save_device_learned_behavior tool (requires write access)"""
+        import requests
+
+        ip_address = params.get('ip_address')
+
+        if not ip_address:
+            return {'success': False, 'error': 'ip_address is required'}
+
+        # Call dashboard API to save learned behavior
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.post(
+                f"{dashboard_url}/api/devices/{ip_address}/save-learned-behavior",
+                timeout=15
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    'success': True,
+                    'ip_address': ip_address,
+                    'message': f'Learned behavior saved successfully for {ip_address}',
+                    'saved_behavior': data.get('learned_behavior', {})
+                }
+            elif response.status_code == 404:
+                return {
+                    'success': False,
+                    'error': f'Device {ip_address} not found'
+                }
+            else:
+                data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
+                return {
+                    'success': False,
+                    'error': data.get('error', f'API returned status {response.status_code}')
+                }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error saving learned behavior: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to save learned behavior. Ensure the dashboard API is running.'
+            }
+
+    async def _tool_get_device_learned_behavior(self, params: Dict) -> Dict:
+        """Implement get_device_learned_behavior tool"""
+        ip_address = params.get('ip_address')
+
+        if not ip_address:
+            return {'success': False, 'error': 'ip_address is required'}
+
+        # Get device from database
+        device = self.db.get_device_by_ip(ip_address)
+
+        if not device:
+            return {
+                'success': True,
+                'ip_address': ip_address,
+                'learned_behavior': None,
+                'message': f'Device {ip_address} not found in database'
+            }
+
+        learned_behavior = device.get('learned_behavior', {})
+
+        if not learned_behavior:
+            return {
+                'success': True,
+                'ip_address': ip_address,
+                'learned_behavior': None,
+                'message': 'No learned behavior available. Device needs active monitoring to collect traffic data.'
+            }
+
+        # Format learned behavior for display
+        formatted_behavior = {
+            'protocols': learned_behavior.get('protocols', []),
+            'traffic_pattern': learned_behavior.get('traffic_pattern'),
+            'typical_ports': [
+                {'port': p['port'], 'protocol': p.get('protocol', 'TCP'), 'connections': p.get('count', 0)}
+                for p in learned_behavior.get('typical_ports', [])[:15]
+            ],
+            'server_ports': [
+                {'port': p['port'], 'protocol': p.get('protocol', 'TCP'), 'inbound_connections': p.get('count', 0)}
+                for p in learned_behavior.get('server_ports', [])[:10]
+            ],
+            'typical_destinations': learned_behavior.get('typical_destinations', [])[:20],
+            'bytes_in': learned_behavior.get('bytes_in', 0),
+            'bytes_out': learned_behavior.get('bytes_out', 0),
+            'packet_count': learned_behavior.get('packet_count', 0),
+            'observation_period': learned_behavior.get('observation_period'),
+            'generated_at': learned_behavior.get('generated_at')
+        }
+
+        return {
+            'success': True,
+            'ip_address': ip_address,
+            'device': {
+                'hostname': device.get('hostname'),
+                'mac_address': device.get('mac_address'),
+                'vendor': device.get('vendor'),
+                'template_name': device.get('template_name')
+            },
+            'learned_behavior': formatted_behavior,
+            'can_create_template': learned_behavior.get('packet_count', 0) >= 100
         }
 
     async def _get_dashboard_summary(self) -> str:
