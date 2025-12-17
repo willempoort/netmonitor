@@ -1499,7 +1499,7 @@ def api_get_devices():
         devices = db.get_devices(
             sensor_id=sensor_id,
             template_id=template_id,
-            active_only=active_only
+            include_inactive=not active_only
         )
 
         return jsonify({
@@ -2291,7 +2291,7 @@ def api_get_suppression_stats():
         from behavior_matcher import BehaviorMatcher
 
         # Count devices with templates (potential suppressions)
-        devices = db.get_devices(active_only=True)
+        devices = db.get_devices()
         devices_with_templates = len([d for d in devices if d.get('template_id')])
 
         # Get recent suppressed alerts from logs (simplified)
@@ -2313,7 +2313,7 @@ def api_get_suppression_stats():
             'success': True,
             'stats': {
                 'note': 'BehaviorMatcher not available',
-                'devices_monitored': len(db.get_devices(active_only=True)),
+                'devices_monitored': len(db.get_devices()),
                 'templates_active': len(db.get_device_templates())
             }
         })
@@ -2401,7 +2401,7 @@ def api_test_alert_suppression():
 def api_get_device_classification_stats():
     """Get overall device classification statistics"""
     try:
-        devices = db.get_devices(active_only=True)
+        devices = db.get_devices()
         templates = db.get_device_templates()
         providers = db.get_service_providers()
 
