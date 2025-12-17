@@ -44,6 +44,9 @@ class DatabaseManager:
         # Create hypertables and continuous aggregates
         self._setup_timescaledb()
 
+        # Initialize builtin data (templates, service providers)
+        self._init_builtin_data()
+
         self.logger.info(f"Database geïnitialiseerd: PostgreSQL + TimescaleDB")
 
     def _get_connection(self):
@@ -297,6 +300,111 @@ class DatabaseManager:
                 );
             ''')
 
+            # ==================== Device Classification Tables ====================
+
+            # Device templates - predefined and user-defined device types
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS device_templates (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(100) UNIQUE NOT NULL,
+                    description TEXT,
+                    icon VARCHAR(50) DEFAULT 'device',
+                    category VARCHAR(50) DEFAULT 'other',
+                    is_builtin BOOLEAN DEFAULT FALSE,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW(),
+                    created_by VARCHAR(50)
+                );
+            ''')
+
+            # Template behaviors - allowed/expected behaviors per template
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS template_behaviors (
+                    id SERIAL PRIMARY KEY,
+                    template_id INTEGER NOT NULL REFERENCES device_templates(id) ON DELETE CASCADE,
+                    behavior_type VARCHAR(50) NOT NULL,
+                    parameters JSONB NOT NULL DEFAULT '{}',
+                    action VARCHAR(20) DEFAULT 'allow',
+                    description TEXT,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    CONSTRAINT valid_behavior_type CHECK (behavior_type IN (
+                        'allowed_ports', 'allowed_protocols', 'expected_destinations',
+                        'traffic_pattern', 'connection_behavior', 'dns_behavior',
+                        'time_restrictions', 'bandwidth_limit'
+                    )),
+                    CONSTRAINT valid_action CHECK (action IN ('allow', 'alert', 'suppress'))
+                );
+            ''')
+
+            # Index for faster behavior lookups
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_template_behaviors_template
+                ON template_behaviors(template_id, behavior_type);
+            ''')
+
+            # Discovered/registered network devices
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS devices (
+                    id SERIAL PRIMARY KEY,
+                    ip_address INET NOT NULL,
+                    mac_address MACADDR,
+                    hostname VARCHAR(255),
+                    template_id INTEGER REFERENCES device_templates(id) ON DELETE SET NULL,
+                    sensor_id TEXT REFERENCES sensors(sensor_id) ON DELETE CASCADE,
+                    learned_behavior JSONB DEFAULT '{}',
+                    classification_confidence REAL DEFAULT 0.0,
+                    classification_method VARCHAR(50),
+                    first_seen TIMESTAMPTZ DEFAULT NOW(),
+                    last_seen TIMESTAMPTZ DEFAULT NOW(),
+                    is_active BOOLEAN DEFAULT TRUE,
+                    notes TEXT,
+                    created_by VARCHAR(50),
+                    CONSTRAINT unique_device_per_sensor UNIQUE (ip_address, sensor_id)
+                );
+            ''')
+
+            # Indexes for device lookups
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_devices_ip ON devices(ip_address);
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_devices_mac ON devices(mac_address);
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_devices_template ON devices(template_id);
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_devices_sensor ON devices(sensor_id);
+            ''')
+
+            # Service providers - streaming services, CDN providers, etc.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS service_providers (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(100) NOT NULL,
+                    category VARCHAR(50) NOT NULL,
+                    ip_ranges JSONB DEFAULT '[]',
+                    domains JSONB DEFAULT '[]',
+                    description TEXT,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    is_builtin BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW(),
+                    created_by VARCHAR(50),
+                    CONSTRAINT valid_category CHECK (category IN (
+                        'streaming', 'cdn', 'cloud', 'social', 'gaming', 'other'
+                    )),
+                    CONSTRAINT unique_provider_name UNIQUE (name, category)
+                );
+            ''')
+
+            # Index for faster provider lookups
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_service_providers_category
+                ON service_providers(category, is_active);
+            ''')
+
             # Indexes for web authentication
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_web_users_username
@@ -521,6 +629,17 @@ class DatabaseManager:
             self.logger.warning(f"TimescaleDB setup warning (may already exist): {e}")
         finally:
             self._return_connection(conn)
+
+    def _init_builtin_data(self):
+        """Initialize builtin device templates and service providers"""
+        try:
+            templates_count = self.init_builtin_templates()
+            providers_count = self.init_builtin_service_providers()
+
+            if templates_count > 0 or providers_count > 0:
+                self.logger.info(f"Builtin data initialized: {templates_count} templates, {providers_count} service providers")
+        except Exception as e:
+            self.logger.warning(f"Could not initialize builtin data: {e}")
 
     def add_alert(self, alert: Dict) -> int:
         """Add alert to database"""
@@ -1803,6 +1922,829 @@ class DatabaseManager:
             return False
         finally:
             self._return_connection(conn)
+
+    # ==================== Device Template Management ====================
+
+    def create_device_template(self, name: str, description: str = None,
+                               icon: str = 'device', category: str = 'other',
+                               is_builtin: bool = False, created_by: str = None) -> Optional[int]:
+        """Create a new device template"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO device_templates (name, description, icon, category, is_builtin, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id
+            ''', (name, description, icon, category, is_builtin, created_by))
+            template_id = cursor.fetchone()[0]
+            conn.commit()
+            self.logger.info(f"Device template created: {name} (ID: {template_id})")
+            return template_id
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error creating device template: {e}")
+            return None
+        finally:
+            self._return_connection(conn)
+
+    def get_device_templates(self, include_inactive: bool = False,
+                            category: str = None) -> List[Dict]:
+        """Get all device templates"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            query = 'SELECT * FROM device_templates WHERE 1=1'
+            params = []
+
+            if not include_inactive:
+                query += ' AND is_active = TRUE'
+
+            if category:
+                query += ' AND category = %s'
+                params.append(category)
+
+            query += ' ORDER BY is_builtin DESC, name ASC'
+            cursor.execute(query, params)
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            self.logger.error(f"Error getting device templates: {e}")
+            return []
+        finally:
+            self._return_connection(conn)
+
+    def get_device_template_by_id(self, template_id: int) -> Optional[Dict]:
+        """Get a specific device template with its behaviors"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            # Get template
+            cursor.execute('SELECT * FROM device_templates WHERE id = %s', (template_id,))
+            template = cursor.fetchone()
+            if not template:
+                return None
+
+            template = dict(template)
+
+            # Get behaviors
+            cursor.execute('''
+                SELECT * FROM template_behaviors
+                WHERE template_id = %s
+                ORDER BY behavior_type
+            ''', (template_id,))
+            template['behaviors'] = [dict(row) for row in cursor.fetchall()]
+
+            return template
+        except Exception as e:
+            self.logger.error(f"Error getting device template: {e}")
+            return None
+        finally:
+            self._return_connection(conn)
+
+    def update_device_template(self, template_id: int, **kwargs) -> bool:
+        """Update a device template"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            # Build update query dynamically
+            allowed_fields = ['name', 'description', 'icon', 'category', 'is_active']
+            updates = []
+            params = []
+
+            for field in allowed_fields:
+                if field in kwargs:
+                    updates.append(f"{field} = %s")
+                    params.append(kwargs[field])
+
+            if not updates:
+                return False
+
+            updates.append("updated_at = NOW()")
+            params.append(template_id)
+
+            cursor.execute(f'''
+                UPDATE device_templates
+                SET {', '.join(updates)}
+                WHERE id = %s
+            ''', params)
+
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error updating device template: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    def delete_device_template(self, template_id: int) -> bool:
+        """Delete a device template (soft delete by setting is_active=False)"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            # Check if builtin (can't delete builtin templates)
+            cursor.execute('SELECT is_builtin FROM device_templates WHERE id = %s', (template_id,))
+            result = cursor.fetchone()
+            if result and result[0]:
+                self.logger.warning(f"Cannot delete builtin template {template_id}")
+                return False
+
+            cursor.execute('''
+                UPDATE device_templates
+                SET is_active = FALSE, updated_at = NOW()
+                WHERE id = %s
+            ''', (template_id,))
+
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error deleting device template: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    # ==================== Template Behavior Management ====================
+
+    def add_template_behavior(self, template_id: int, behavior_type: str,
+                             parameters: Dict, action: str = 'allow',
+                             description: str = None) -> Optional[int]:
+        """Add a behavior rule to a template"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO template_behaviors
+                (template_id, behavior_type, parameters, action, description)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
+            ''', (template_id, behavior_type, json.dumps(parameters), action, description))
+            behavior_id = cursor.fetchone()[0]
+            conn.commit()
+            return behavior_id
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error adding template behavior: {e}")
+            return None
+        finally:
+            self._return_connection(conn)
+
+    def get_template_behaviors(self, template_id: int) -> List[Dict]:
+        """Get all behaviors for a template"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute('''
+                SELECT * FROM template_behaviors
+                WHERE template_id = %s
+                ORDER BY behavior_type
+            ''', (template_id,))
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            self.logger.error(f"Error getting template behaviors: {e}")
+            return []
+        finally:
+            self._return_connection(conn)
+
+    def update_template_behavior(self, behavior_id: int, parameters: Dict = None,
+                                action: str = None, description: str = None) -> bool:
+        """Update a template behavior"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            updates = []
+            params = []
+
+            if parameters is not None:
+                updates.append("parameters = %s")
+                params.append(json.dumps(parameters))
+            if action is not None:
+                updates.append("action = %s")
+                params.append(action)
+            if description is not None:
+                updates.append("description = %s")
+                params.append(description)
+
+            if not updates:
+                return False
+
+            params.append(behavior_id)
+            cursor.execute(f'''
+                UPDATE template_behaviors
+                SET {', '.join(updates)}
+                WHERE id = %s
+            ''', params)
+
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error updating template behavior: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    def delete_template_behavior(self, behavior_id: int) -> bool:
+        """Delete a template behavior"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM template_behaviors WHERE id = %s', (behavior_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error deleting template behavior: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    # ==================== Device Management ====================
+
+    def register_device(self, ip_address: str, sensor_id: str = None,
+                       mac_address: str = None, hostname: str = None,
+                       template_id: int = None, created_by: str = None) -> Optional[int]:
+        """Register a new device or update if exists"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO devices
+                (ip_address, sensor_id, mac_address, hostname, template_id, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (ip_address, sensor_id)
+                DO UPDATE SET
+                    mac_address = COALESCE(EXCLUDED.mac_address, devices.mac_address),
+                    hostname = COALESCE(EXCLUDED.hostname, devices.hostname),
+                    last_seen = NOW(),
+                    is_active = TRUE
+                RETURNING id
+            ''', (ip_address, sensor_id, mac_address, hostname, template_id, created_by))
+            device_id = cursor.fetchone()[0]
+            conn.commit()
+            return device_id
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error registering device: {e}")
+            return None
+        finally:
+            self._return_connection(conn)
+
+    def get_devices(self, sensor_id: str = None, template_id: int = None,
+                   include_inactive: bool = False) -> List[Dict]:
+        """Get all devices with optional filters"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            query = '''
+                SELECT d.*,
+                       d.ip_address::text as ip_address,
+                       d.mac_address::text as mac_address,
+                       t.name as template_name,
+                       t.icon as template_icon,
+                       t.category as template_category
+                FROM devices d
+                LEFT JOIN device_templates t ON d.template_id = t.id
+                WHERE 1=1
+            '''
+            params = []
+
+            if not include_inactive:
+                query += ' AND d.is_active = TRUE'
+
+            if sensor_id:
+                query += ' AND d.sensor_id = %s'
+                params.append(sensor_id)
+
+            if template_id:
+                query += ' AND d.template_id = %s'
+                params.append(template_id)
+
+            query += ' ORDER BY d.last_seen DESC'
+            cursor.execute(query, params)
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            self.logger.error(f"Error getting devices: {e}")
+            return []
+        finally:
+            self._return_connection(conn)
+
+    def get_device_by_ip(self, ip_address: str, sensor_id: str = None) -> Optional[Dict]:
+        """Get a specific device by IP address"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            query = '''
+                SELECT d.*,
+                       d.ip_address::text as ip_address,
+                       d.mac_address::text as mac_address,
+                       t.name as template_name,
+                       t.icon as template_icon
+                FROM devices d
+                LEFT JOIN device_templates t ON d.template_id = t.id
+                WHERE d.ip_address = %s
+            '''
+            params = [ip_address]
+
+            if sensor_id:
+                query += ' AND d.sensor_id = %s'
+                params.append(sensor_id)
+
+            cursor.execute(query, params)
+            result = cursor.fetchone()
+            return dict(result) if result else None
+        except Exception as e:
+            self.logger.error(f"Error getting device by IP: {e}")
+            return None
+        finally:
+            self._return_connection(conn)
+
+    def assign_device_template(self, device_id: int, template_id: int,
+                              confidence: float = 1.0,
+                              method: str = 'manual') -> bool:
+        """Assign a template to a device"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE devices
+                SET template_id = %s,
+                    classification_confidence = %s,
+                    classification_method = %s,
+                    last_seen = NOW()
+                WHERE id = %s
+            ''', (template_id, confidence, method, device_id))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error assigning device template: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    def update_device_learned_behavior(self, device_id: int,
+                                       learned_behavior: Dict) -> bool:
+        """Update the learned behavior profile of a device"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE devices
+                SET learned_behavior = %s,
+                    last_seen = NOW()
+                WHERE id = %s
+            ''', (json.dumps(learned_behavior), device_id))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error updating device learned behavior: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    def delete_device(self, device_id: int) -> bool:
+        """Delete a device (soft delete)"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE devices
+                SET is_active = FALSE
+                WHERE id = %s
+            ''', (device_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error deleting device: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    # ==================== Service Provider Management ====================
+
+    def create_service_provider(self, name: str, category: str,
+                               ip_ranges: List[str] = None,
+                               domains: List[str] = None,
+                               description: str = None,
+                               is_builtin: bool = False,
+                               created_by: str = None) -> Optional[int]:
+        """Create a new service provider"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO service_providers
+                (name, category, ip_ranges, domains, description, is_builtin, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            ''', (name, category,
+                  json.dumps(ip_ranges or []),
+                  json.dumps(domains or []),
+                  description, is_builtin, created_by))
+            provider_id = cursor.fetchone()[0]
+            conn.commit()
+            self.logger.info(f"Service provider created: {name} (ID: {provider_id})")
+            return provider_id
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error creating service provider: {e}")
+            return None
+        finally:
+            self._return_connection(conn)
+
+    def get_service_providers(self, category: str = None,
+                             include_inactive: bool = False) -> List[Dict]:
+        """Get all service providers"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            query = 'SELECT * FROM service_providers WHERE 1=1'
+            params = []
+
+            if not include_inactive:
+                query += ' AND is_active = TRUE'
+
+            if category:
+                query += ' AND category = %s'
+                params.append(category)
+
+            query += ' ORDER BY category, name'
+            cursor.execute(query, params)
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            self.logger.error(f"Error getting service providers: {e}")
+            return []
+        finally:
+            self._return_connection(conn)
+
+    def get_service_provider_by_id(self, provider_id: int) -> Optional[Dict]:
+        """Get a specific service provider"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute('SELECT * FROM service_providers WHERE id = %s', (provider_id,))
+            result = cursor.fetchone()
+            return dict(result) if result else None
+        except Exception as e:
+            self.logger.error(f"Error getting service provider: {e}")
+            return None
+        finally:
+            self._return_connection(conn)
+
+    def update_service_provider(self, provider_id: int, **kwargs) -> bool:
+        """Update a service provider"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            allowed_fields = ['name', 'category', 'ip_ranges', 'domains',
+                            'description', 'is_active']
+            updates = []
+            params = []
+
+            for field in allowed_fields:
+                if field in kwargs:
+                    if field in ['ip_ranges', 'domains']:
+                        updates.append(f"{field} = %s")
+                        params.append(json.dumps(kwargs[field]))
+                    else:
+                        updates.append(f"{field} = %s")
+                        params.append(kwargs[field])
+
+            if not updates:
+                return False
+
+            updates.append("updated_at = NOW()")
+            params.append(provider_id)
+
+            cursor.execute(f'''
+                UPDATE service_providers
+                SET {', '.join(updates)}
+                WHERE id = %s
+            ''', params)
+
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error updating service provider: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    def delete_service_provider(self, provider_id: int) -> bool:
+        """Delete a service provider (soft delete)"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            # Check if builtin
+            cursor.execute('SELECT is_builtin FROM service_providers WHERE id = %s', (provider_id,))
+            result = cursor.fetchone()
+            if result and result[0]:
+                self.logger.warning(f"Cannot delete builtin service provider {provider_id}")
+                return False
+
+            cursor.execute('''
+                UPDATE service_providers
+                SET is_active = FALSE, updated_at = NOW()
+                WHERE id = %s
+            ''', (provider_id,))
+
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error deleting service provider: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    def get_all_service_provider_ip_ranges(self, category: str = None) -> List[str]:
+        """Get all IP ranges from active service providers (for detector filtering)"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            query = '''
+                SELECT ip_ranges FROM service_providers
+                WHERE is_active = TRUE
+            '''
+            params = []
+
+            if category:
+                query += ' AND category = %s'
+                params.append(category)
+
+            cursor.execute(query, params)
+
+            all_ranges = []
+            for row in cursor.fetchall():
+                ranges = row[0]
+                if ranges:
+                    # JSONB is already parsed
+                    if isinstance(ranges, list):
+                        all_ranges.extend(ranges)
+                    elif isinstance(ranges, str):
+                        all_ranges.extend(json.loads(ranges))
+
+            return all_ranges
+        except Exception as e:
+            self.logger.error(f"Error getting service provider IP ranges: {e}")
+            return []
+        finally:
+            self._return_connection(conn)
+
+    def check_ip_in_service_providers(self, ip_address: str,
+                                      category: str = None) -> Optional[Dict]:
+        """Check if an IP belongs to any service provider"""
+        import ipaddress
+
+        try:
+            ip = ipaddress.ip_address(ip_address)
+        except ValueError:
+            return None
+
+        providers = self.get_service_providers(category=category)
+
+        for provider in providers:
+            ip_ranges = provider.get('ip_ranges', [])
+            if isinstance(ip_ranges, str):
+                ip_ranges = json.loads(ip_ranges)
+
+            for ip_range in ip_ranges:
+                try:
+                    network = ipaddress.ip_network(ip_range, strict=False)
+                    if ip in network:
+                        return {
+                            'provider_id': provider['id'],
+                            'provider_name': provider['name'],
+                            'category': provider['category'],
+                            'matched_range': ip_range
+                        }
+                except ValueError:
+                    continue
+
+        return None
+
+    # ==================== Builtin Data Initialization ====================
+
+    def init_builtin_templates(self) -> int:
+        """Initialize builtin device templates"""
+        builtin_templates = [
+            {
+                'name': 'IP Camera',
+                'description': 'Network surveillance camera (RTSP, ONVIF)',
+                'icon': 'camera',
+                'category': 'iot',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 554, 8080, 8554]}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'RTSP']}, 'action': 'allow'},
+                    {'type': 'traffic_pattern', 'params': {'max_outbound_mbps': 10, 'continuous': True}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Smart Speaker',
+                'description': 'Voice assistant device (Alexa, Google Home, HomePod)',
+                'icon': 'speaker',
+                'category': 'iot',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 8443]}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'mDNS', 'SSDP']}, 'action': 'allow'},
+                    {'type': 'dns_behavior', 'params': {'allow_cloud_dns': True}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Smart TV',
+                'description': 'Internet-connected television',
+                'icon': 'tv',
+                'category': 'iot',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 8080, 8443]}, 'action': 'allow'},
+                    {'type': 'expected_destinations', 'params': {'categories': ['streaming', 'cdn']}, 'action': 'allow'},
+                    {'type': 'traffic_pattern', 'params': {'max_outbound_mbps': 50, 'streaming': True}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Web Server',
+                'description': 'HTTP/HTTPS web server',
+                'icon': 'server',
+                'category': 'server',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443], 'direction': 'inbound'}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'high_connection_rate': True}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'File Server (NAS)',
+                'description': 'Network Attached Storage device',
+                'icon': 'storage',
+                'category': 'server',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [21, 22, 80, 139, 443, 445, 548, 873, 2049, 3260]}, 'action': 'allow'},
+                    {'type': 'traffic_pattern', 'params': {'high_bandwidth': True, 'internal_only': True}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Database Server',
+                'description': 'Database server (MySQL, PostgreSQL, MongoDB)',
+                'icon': 'database',
+                'category': 'server',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [1433, 1521, 3306, 5432, 27017]}, 'action': 'allow'},
+                    {'type': 'expected_destinations', 'params': {'internal_only': True}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Printer',
+                'description': 'Network printer or multifunction device',
+                'icon': 'printer',
+                'category': 'iot',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 515, 631, 9100]}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'mDNS', 'SNMP']}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Workstation',
+                'description': 'Desktop computer or laptop',
+                'icon': 'computer',
+                'category': 'endpoint',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443], 'direction': 'outbound'}, 'action': 'allow'},
+                    {'type': 'dns_behavior', 'params': {'normal_queries': True}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Mobile Device',
+                'description': 'Smartphone or tablet',
+                'icon': 'phone',
+                'category': 'endpoint',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443]}, 'action': 'allow'},
+                    {'type': 'expected_destinations', 'params': {'categories': ['streaming', 'cdn', 'cloud']}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'IoT Sensor',
+                'description': 'Generic IoT sensor or actuator',
+                'icon': 'sensors',
+                'category': 'iot',
+                'behaviors': [
+                    {'type': 'connection_behavior', 'params': {'low_frequency': True, 'periodic': True}, 'action': 'allow'},
+                    {'type': 'traffic_pattern', 'params': {'low_bandwidth': True}, 'action': 'allow'},
+                ]
+            },
+        ]
+
+        count = 0
+        for template_data in builtin_templates:
+            # Check if already exists
+            existing = self.get_device_templates()
+            if any(t['name'] == template_data['name'] for t in existing):
+                continue
+
+            template_id = self.create_device_template(
+                name=template_data['name'],
+                description=template_data['description'],
+                icon=template_data['icon'],
+                category=template_data['category'],
+                is_builtin=True,
+                created_by='system'
+            )
+
+            if template_id:
+                for behavior in template_data.get('behaviors', []):
+                    self.add_template_behavior(
+                        template_id=template_id,
+                        behavior_type=behavior['type'],
+                        parameters=behavior['params'],
+                        action=behavior['action']
+                    )
+                count += 1
+
+        self.logger.info(f"Initialized {count} builtin device templates")
+        return count
+
+    def init_builtin_service_providers(self) -> int:
+        """Initialize builtin service providers from config defaults"""
+        builtin_providers = [
+            {
+                'name': 'Netflix',
+                'category': 'streaming',
+                'description': 'Netflix streaming service',
+                'ip_ranges': [
+                    '23.246.0.0/18', '37.77.184.0/21', '45.57.0.0/17',
+                    '64.120.128.0/17', '66.197.128.0/17', '108.175.32.0/20',
+                    '185.2.220.0/22', '185.9.188.0/22', '192.173.64.0/18',
+                    '198.38.96.0/19', '198.45.48.0/20', '208.75.76.0/22',
+                    '2620:10c:7000::/44'
+                ]
+            },
+            {
+                'name': 'Google/YouTube',
+                'category': 'streaming',
+                'description': 'Google services including YouTube',
+                'ip_ranges': [
+                    '142.250.0.0/15', '172.217.0.0/16', '173.194.0.0/16',
+                    '216.58.192.0/19', '2001:4860::/32'
+                ]
+            },
+            {
+                'name': 'Amazon CloudFront',
+                'category': 'cdn',
+                'description': 'Amazon CloudFront CDN (Prime Video)',
+                'ip_ranges': [
+                    '13.32.0.0/15', '13.224.0.0/14', '13.249.0.0/16',
+                    '18.64.0.0/14', '2600:9000::/28'
+                ]
+            },
+            {
+                'name': 'Cloudflare',
+                'category': 'cdn',
+                'description': 'Cloudflare CDN and security services',
+                'ip_ranges': [
+                    '104.16.0.0/13', '172.64.0.0/13', '162.158.0.0/15',
+                    '2606:4700::/32'
+                ]
+            },
+            {
+                'name': 'Akamai',
+                'category': 'cdn',
+                'description': 'Akamai CDN services',
+                'ip_ranges': [
+                    '23.32.0.0/11', '23.192.0.0/11', '95.100.0.0/15',
+                    '2.16.0.0/13', '184.24.0.0/13', '2600:1400::/24'
+                ]
+            },
+        ]
+
+        count = 0
+        for provider_data in builtin_providers:
+            # Check if already exists
+            existing = self.get_service_providers()
+            if any(p['name'] == provider_data['name'] for p in existing):
+                continue
+
+            provider_id = self.create_service_provider(
+                name=provider_data['name'],
+                category=provider_data['category'],
+                description=provider_data['description'],
+                ip_ranges=provider_data['ip_ranges'],
+                is_builtin=True,
+                created_by='system'
+            )
+
+            if provider_id:
+                count += 1
+
+        self.logger.info(f"Initialized {count} builtin service providers")
+        return count
 
     def close(self):
         """Close all connections in the pool"""

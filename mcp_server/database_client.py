@@ -431,6 +431,331 @@ class MCPDatabaseClient:
                 'data': []
             }
 
+    # ==================== Device Classification Queries ====================
+
+    def get_device_templates(self, category: str = None,
+                            include_inactive: bool = False) -> List[Dict]:
+        """
+        Get all device templates
+
+        Args:
+            category: Filter by category (optional)
+            include_inactive: Include inactive templates
+
+        Returns:
+            List of device template dictionaries
+        """
+        try:
+            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+            query = 'SELECT * FROM device_templates WHERE 1=1'
+            params = []
+
+            if not include_inactive:
+                query += ' AND is_active = TRUE'
+
+            if category:
+                query += ' AND category = %s'
+                params.append(category)
+
+            query += ' ORDER BY is_builtin DESC, name ASC'
+            cursor.execute(query, params)
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            self.logger.error(f"Error getting device templates: {e}")
+            return []
+
+    def get_device_template_by_id(self, template_id: int) -> Optional[Dict]:
+        """
+        Get a specific device template with its behaviors
+
+        Args:
+            template_id: Template ID
+
+        Returns:
+            Device template dictionary with behaviors, or None
+        """
+        try:
+            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+
+            # Get template
+            cursor.execute('SELECT * FROM device_templates WHERE id = %s', (template_id,))
+            template = cursor.fetchone()
+            if not template:
+                return None
+
+            template = dict(template)
+
+            # Get behaviors
+            cursor.execute('''
+                SELECT * FROM template_behaviors
+                WHERE template_id = %s
+                ORDER BY behavior_type
+            ''', (template_id,))
+            template['behaviors'] = [dict(row) for row in cursor.fetchall()]
+
+            return template
+        except Exception as e:
+            self.logger.error(f"Error getting device template: {e}")
+            return None
+
+    def get_devices(self, sensor_id: str = None, template_id: int = None,
+                   include_inactive: bool = False) -> List[Dict]:
+        """
+        Get all registered devices
+
+        Args:
+            sensor_id: Filter by sensor ID (optional)
+            template_id: Filter by template ID (optional)
+            include_inactive: Include inactive devices
+
+        Returns:
+            List of device dictionaries
+        """
+        try:
+            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+            query = '''
+                SELECT d.*,
+                       d.ip_address::text as ip_address,
+                       d.mac_address::text as mac_address,
+                       t.name as template_name,
+                       t.icon as template_icon,
+                       t.category as template_category
+                FROM devices d
+                LEFT JOIN device_templates t ON d.template_id = t.id
+                WHERE 1=1
+            '''
+            params = []
+
+            if not include_inactive:
+                query += ' AND d.is_active = TRUE'
+
+            if sensor_id:
+                query += ' AND d.sensor_id = %s'
+                params.append(sensor_id)
+
+            if template_id:
+                query += ' AND d.template_id = %s'
+                params.append(template_id)
+
+            query += ' ORDER BY d.last_seen DESC'
+            cursor.execute(query, params)
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            self.logger.error(f"Error getting devices: {e}")
+            return []
+
+    def get_device_by_ip(self, ip_address: str, sensor_id: str = None) -> Optional[Dict]:
+        """
+        Get a specific device by IP address
+
+        Args:
+            ip_address: Device IP address
+            sensor_id: Sensor ID (optional)
+
+        Returns:
+            Device dictionary or None
+        """
+        try:
+            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+            query = '''
+                SELECT d.*,
+                       d.ip_address::text as ip_address,
+                       d.mac_address::text as mac_address,
+                       t.name as template_name,
+                       t.icon as template_icon
+                FROM devices d
+                LEFT JOIN device_templates t ON d.template_id = t.id
+                WHERE d.ip_address = %s
+            '''
+            params = [ip_address]
+
+            if sensor_id:
+                query += ' AND d.sensor_id = %s'
+                params.append(sensor_id)
+
+            cursor.execute(query, params)
+            result = cursor.fetchone()
+            return dict(result) if result else None
+        except Exception as e:
+            self.logger.error(f"Error getting device by IP: {e}")
+            return None
+
+    def get_service_providers(self, category: str = None,
+                             include_inactive: bool = False) -> List[Dict]:
+        """
+        Get all service providers
+
+        Args:
+            category: Filter by category (optional)
+            include_inactive: Include inactive providers
+
+        Returns:
+            List of service provider dictionaries
+        """
+        try:
+            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+            query = 'SELECT * FROM service_providers WHERE 1=1'
+            params = []
+
+            if not include_inactive:
+                query += ' AND is_active = TRUE'
+
+            if category:
+                query += ' AND category = %s'
+                params.append(category)
+
+            query += ' ORDER BY category, name'
+            cursor.execute(query, params)
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            self.logger.error(f"Error getting service providers: {e}")
+            return []
+
+    def get_service_provider_by_id(self, provider_id: int) -> Optional[Dict]:
+        """
+        Get a specific service provider
+
+        Args:
+            provider_id: Provider ID
+
+        Returns:
+            Service provider dictionary or None
+        """
+        try:
+            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute('SELECT * FROM service_providers WHERE id = %s', (provider_id,))
+            result = cursor.fetchone()
+            return dict(result) if result else None
+        except Exception as e:
+            self.logger.error(f"Error getting service provider: {e}")
+            return None
+
+    def check_ip_in_service_providers(self, ip_address: str,
+                                      category: str = None) -> Optional[Dict]:
+        """
+        Check if an IP belongs to any service provider
+
+        Args:
+            ip_address: IP address to check
+            category: Category to check (optional)
+
+        Returns:
+            Matching provider info or None
+        """
+        import ipaddress
+        import json
+
+        try:
+            ip = ipaddress.ip_address(ip_address)
+        except ValueError:
+            return None
+
+        providers = self.get_service_providers(category=category)
+
+        for provider in providers:
+            ip_ranges = provider.get('ip_ranges', [])
+            if isinstance(ip_ranges, str):
+                ip_ranges = json.loads(ip_ranges)
+
+            for ip_range in ip_ranges:
+                try:
+                    network = ipaddress.ip_network(ip_range, strict=False)
+                    if ip in network:
+                        return {
+                            'provider_id': provider['id'],
+                            'provider_name': provider['name'],
+                            'category': provider['category'],
+                            'matched_range': ip_range
+                        }
+                except ValueError:
+                    continue
+
+        return None
+
+    def get_device_classification_stats(self) -> Dict:
+        """
+        Get statistics about device classification
+
+        Returns:
+            Dictionary with classification statistics
+        """
+        try:
+            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+
+            # Total devices
+            cursor.execute('SELECT COUNT(*) as total FROM devices WHERE is_active = TRUE')
+            total_devices = cursor.fetchone()['total']
+
+            # Classified vs unclassified
+            cursor.execute('''
+                SELECT
+                    COUNT(*) FILTER (WHERE template_id IS NOT NULL) as classified,
+                    COUNT(*) FILTER (WHERE template_id IS NULL) as unclassified
+                FROM devices
+                WHERE is_active = TRUE
+            ''')
+            classification = dict(cursor.fetchone())
+
+            # By template category
+            cursor.execute('''
+                SELECT
+                    COALESCE(t.category, 'unclassified') as category,
+                    COUNT(*) as count
+                FROM devices d
+                LEFT JOIN device_templates t ON d.template_id = t.id
+                WHERE d.is_active = TRUE
+                GROUP BY t.category
+                ORDER BY count DESC
+            ''')
+            by_category = {row['category']: row['count'] for row in cursor.fetchall()}
+
+            # By template
+            cursor.execute('''
+                SELECT
+                    COALESCE(t.name, 'Unclassified') as template_name,
+                    COUNT(*) as count
+                FROM devices d
+                LEFT JOIN device_templates t ON d.template_id = t.id
+                WHERE d.is_active = TRUE
+                GROUP BY t.name
+                ORDER BY count DESC
+                LIMIT 10
+            ''')
+            by_template = [dict(row) for row in cursor.fetchall()]
+
+            # Active templates count
+            cursor.execute('SELECT COUNT(*) as total FROM device_templates WHERE is_active = TRUE')
+            total_templates = cursor.fetchone()['total']
+
+            # Service providers count
+            cursor.execute('SELECT COUNT(*) as total FROM service_providers WHERE is_active = TRUE')
+            total_providers = cursor.fetchone()['total']
+
+            return {
+                'total_devices': total_devices,
+                'classified_devices': classification['classified'],
+                'unclassified_devices': classification['unclassified'],
+                'classification_rate': round(
+                    (classification['classified'] / total_devices * 100) if total_devices > 0 else 0, 1
+                ),
+                'by_category': by_category,
+                'by_template': by_template,
+                'total_templates': total_templates,
+                'total_service_providers': total_providers
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting device classification stats: {e}")
+            return {
+                'total_devices': 0,
+                'classified_devices': 0,
+                'unclassified_devices': 0,
+                'classification_rate': 0,
+                'by_category': {},
+                'by_template': [],
+                'total_templates': 0,
+                'total_service_providers': 0
+            }
+
     def close(self):
         """Close database connection"""
         if hasattr(self, 'conn'):

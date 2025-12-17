@@ -448,6 +448,117 @@ class MCPHTTPServer:
                     }
                 },
                 "scope_required": "read_only"
+            },
+            # Device Classification Tools
+            {
+                "name": "get_device_templates",
+                "description": "Get all device templates (predefined device types like Camera, Smart TV, Server, etc.)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "category": {"type": "string", "enum": ["iot", "server", "endpoint", "other"], "description": "Filter by category"}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "get_device_template_details",
+                "description": "Get detailed information about a specific device template including its expected behaviors",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "template_id": {"type": "number", "description": "Template ID to retrieve"}
+                    },
+                    "required": ["template_id"]
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "get_devices",
+                "description": "Get all discovered/registered network devices with their classification status",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "sensor_id": {"type": "string", "description": "Filter by sensor ID"},
+                        "template_id": {"type": "number", "description": "Filter by template ID"},
+                        "include_inactive": {"type": "boolean", "default": False}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "get_device_by_ip",
+                "description": "Get detailed information about a specific device by its IP address",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "ip_address": {"type": "string", "description": "IP address of the device"},
+                        "sensor_id": {"type": "string", "description": "Sensor ID (optional)"}
+                    },
+                    "required": ["ip_address"]
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "get_service_providers",
+                "description": "Get all service providers (streaming services, CDN providers, etc.) used for filtering false positives",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "category": {"type": "string", "enum": ["streaming", "cdn", "cloud", "social", "gaming", "other"], "description": "Filter by category"}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "check_ip_service_provider",
+                "description": "Check if an IP address belongs to a known service provider (streaming, CDN, etc.)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "ip_address": {"type": "string", "description": "IP address to check"},
+                        "category": {"type": "string", "description": "Category to check (optional)"}
+                    },
+                    "required": ["ip_address"]
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "get_device_classification_stats",
+                "description": "Get statistics about device classification (total devices, classified vs unclassified, by category)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {}
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "assign_device_template",
+                "description": "Assign a device template to a device (requires write access)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "device_id": {"type": "number", "description": "Device ID"},
+                        "template_id": {"type": "number", "description": "Template ID to assign"}
+                    },
+                    "required": ["device_id", "template_id"]
+                },
+                "scope_required": "read_write"
+            },
+            {
+                "name": "create_service_provider",
+                "description": "Create a new service provider entry (requires write access)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Provider name"},
+                        "category": {"type": "string", "enum": ["streaming", "cdn", "cloud", "social", "gaming", "other"]},
+                        "ip_ranges": {"type": "array", "items": {"type": "string"}, "description": "List of IP ranges (CIDR notation)"},
+                        "description": {"type": "string", "description": "Description of the provider"}
+                    },
+                    "required": ["name", "category", "ip_ranges"]
+                },
+                "scope_required": "read_write"
             }
         ]
         return tools
@@ -472,6 +583,16 @@ class MCPHTTPServer:
             'get_sensor_status': self._tool_get_sensor_status,
             'set_config_parameter': self._tool_set_config_parameter,
             'get_config_parameters': self._tool_get_config_parameters,
+            # Device Classification Tools
+            'get_device_templates': self._tool_get_device_templates,
+            'get_device_template_details': self._tool_get_device_template_details,
+            'get_devices': self._tool_get_devices,
+            'get_device_by_ip': self._tool_get_device_by_ip,
+            'get_service_providers': self._tool_get_service_providers,
+            'check_ip_service_provider': self._tool_check_ip_service_provider,
+            'get_device_classification_stats': self._tool_get_device_classification_stats,
+            'assign_device_template': self._tool_assign_device_template,
+            'create_service_provider': self._tool_create_service_provider,
         }
 
         if tool_name not in tool_map:
@@ -705,6 +826,226 @@ class MCPHTTPServer:
                 'success': False,
                 'error': str(e),
                 'message': 'Failed to retrieve configuration. Ensure the dashboard API is running.'
+            }
+
+    # ==================== Device Classification Tool Implementations ====================
+
+    async def _tool_get_device_templates(self, params: Dict) -> Dict:
+        """Implement get_device_templates tool"""
+        category = params.get('category')
+
+        templates = self.db.get_device_templates(category=category)
+
+        return {
+            'success': True,
+            'templates': templates,
+            'count': len(templates)
+        }
+
+    async def _tool_get_device_template_details(self, params: Dict) -> Dict:
+        """Implement get_device_template_details tool"""
+        template_id = params.get('template_id')
+
+        if not template_id:
+            return {'success': False, 'error': 'template_id is required'}
+
+        template = self.db.get_device_template_by_id(template_id)
+
+        if not template:
+            return {'success': False, 'error': f'Template with ID {template_id} not found'}
+
+        return {
+            'success': True,
+            'template': template
+        }
+
+    async def _tool_get_devices(self, params: Dict) -> Dict:
+        """Implement get_devices tool"""
+        sensor_id = params.get('sensor_id')
+        template_id = params.get('template_id')
+        include_inactive = params.get('include_inactive', False)
+
+        devices = self.db.get_devices(
+            sensor_id=sensor_id,
+            template_id=template_id,
+            include_inactive=include_inactive
+        )
+
+        # Calculate summary
+        classified = len([d for d in devices if d.get('template_id')])
+        unclassified = len(devices) - classified
+
+        return {
+            'success': True,
+            'devices': devices,
+            'count': len(devices),
+            'summary': {
+                'total': len(devices),
+                'classified': classified,
+                'unclassified': unclassified
+            }
+        }
+
+    async def _tool_get_device_by_ip(self, params: Dict) -> Dict:
+        """Implement get_device_by_ip tool"""
+        ip_address = params.get('ip_address')
+        sensor_id = params.get('sensor_id')
+
+        if not ip_address:
+            return {'success': False, 'error': 'ip_address is required'}
+
+        device = self.db.get_device_by_ip(ip_address, sensor_id=sensor_id)
+
+        if not device:
+            # Check if IP belongs to a service provider
+            provider_match = self.db.check_ip_in_service_providers(ip_address)
+            if provider_match:
+                return {
+                    'success': True,
+                    'device': None,
+                    'service_provider': provider_match,
+                    'message': f"IP belongs to service provider: {provider_match['provider_name']}"
+                }
+
+            return {
+                'success': True,
+                'device': None,
+                'message': f'No device found with IP {ip_address}'
+            }
+
+        return {
+            'success': True,
+            'device': device
+        }
+
+    async def _tool_get_service_providers(self, params: Dict) -> Dict:
+        """Implement get_service_providers tool"""
+        category = params.get('category')
+
+        providers = self.db.get_service_providers(category=category)
+
+        # Group by category for summary
+        by_category = {}
+        for p in providers:
+            cat = p.get('category', 'other')
+            by_category[cat] = by_category.get(cat, 0) + 1
+
+        return {
+            'success': True,
+            'providers': providers,
+            'count': len(providers),
+            'by_category': by_category
+        }
+
+    async def _tool_check_ip_service_provider(self, params: Dict) -> Dict:
+        """Implement check_ip_service_provider tool"""
+        ip_address = params.get('ip_address')
+        category = params.get('category')
+
+        if not ip_address:
+            return {'success': False, 'error': 'ip_address is required'}
+
+        match = self.db.check_ip_in_service_providers(ip_address, category=category)
+
+        if match:
+            return {
+                'success': True,
+                'is_service_provider': True,
+                'provider': match,
+                'message': f"IP {ip_address} belongs to {match['provider_name']} ({match['category']})"
+            }
+        else:
+            return {
+                'success': True,
+                'is_service_provider': False,
+                'provider': None,
+                'message': f"IP {ip_address} does not match any known service provider"
+            }
+
+    async def _tool_get_device_classification_stats(self, params: Dict) -> Dict:
+        """Implement get_device_classification_stats tool"""
+        stats = self.db.get_device_classification_stats()
+
+        return {
+            'success': True,
+            'statistics': stats
+        }
+
+    async def _tool_assign_device_template(self, params: Dict) -> Dict:
+        """Implement assign_device_template tool (requires write access)"""
+        device_id = params.get('device_id')
+        template_id = params.get('template_id')
+
+        if not device_id or not template_id:
+            return {'success': False, 'error': 'device_id and template_id are required'}
+
+        # This requires write access to the main database
+        # Route through dashboard API or use write-enabled connection
+        import requests
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.post(
+                f"{dashboard_url}/api/devices/{device_id}/assign-template",
+                json={'template_id': template_id},
+                timeout=10
+            )
+
+            response.raise_for_status()
+            return {
+                'success': True,
+                'message': f'Template {template_id} assigned to device {device_id}'
+            }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error assigning device template: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to assign template. Ensure the dashboard API is running.'
+            }
+
+    async def _tool_create_service_provider(self, params: Dict) -> Dict:
+        """Implement create_service_provider tool (requires write access)"""
+        name = params.get('name')
+        category = params.get('category')
+        ip_ranges = params.get('ip_ranges', [])
+        description = params.get('description')
+
+        if not name or not category or not ip_ranges:
+            return {'success': False, 'error': 'name, category, and ip_ranges are required'}
+
+        # Route through dashboard API
+        import requests
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.post(
+                f"{dashboard_url}/api/service-providers",
+                json={
+                    'name': name,
+                    'category': category,
+                    'ip_ranges': ip_ranges,
+                    'description': description
+                },
+                timeout=10
+            )
+
+            response.raise_for_status()
+            data = response.json()
+
+            return {
+                'success': True,
+                'provider_id': data.get('id'),
+                'message': f'Service provider "{name}" created successfully'
+            }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error creating service provider: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to create service provider. Ensure the dashboard API is running.'
             }
 
     async def _get_dashboard_summary(self) -> str:
