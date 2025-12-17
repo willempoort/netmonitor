@@ -1283,14 +1283,23 @@ class DatabaseManager:
             # Group by sensor_id and get last 2 records for each
             sensor_packets = {}
             sensor_bandwidth = {}
+            sensor_latest_timestamp = {}
 
             for metric in recent_metrics:
                 sid = metric['sensor_id']
+
+                # Initialize structures for new sensors
                 if sid not in sensor_packets:
                     sensor_packets[sid] = []
-                    # Convert Decimal to float for JSON serialization
+                    sensor_bandwidth[sid] = 0
+                    sensor_latest_timestamp[sid] = metric['timestamp']
+
+                # Always use the MOST RECENT bandwidth (results are ordered DESC)
+                # Update bandwidth if this record is newer than previously seen
+                if metric['timestamp'] >= sensor_latest_timestamp[sid]:
                     bw = metric['bandwidth_mbps']
                     sensor_bandwidth[sid] = float(bw) if isinstance(bw, Decimal) else (bw or 0)
+                    sensor_latest_timestamp[sid] = metric['timestamp']
 
                 # Convert packets_captured to int
                 packets = metric['packets_captured']
