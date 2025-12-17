@@ -414,6 +414,25 @@
             margin: 0 0.25rem;
         }
 
+        /* ==================== Rotation Progress Bar ==================== */
+        .rotation-progress {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--border-color);
+            z-index: 999;
+            overflow: hidden;
+        }
+
+        .rotation-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-success));
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+
         /* ==================== Screen Indicator ==================== */
         .screen-indicator {
             display: flex;
@@ -433,6 +452,148 @@
         .screen-dot.active {
             background: var(--accent-primary);
             transform: scale(1.3);
+        }
+
+        /* ==================== Critical Alert Flash ==================== */
+        @keyframes criticalFlash {
+            0%, 100% { background: var(--bg-primary); }
+            50% { background: rgba(239, 68, 68, 0.2); }
+        }
+
+        body.critical-flash {
+            animation: criticalFlash 0.5s ease-in-out 3;
+        }
+
+        /* ==================== Trend Indicators ==================== */
+        .trend-indicator {
+            display: inline-block;
+            margin-left: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .trend-up {
+            color: var(--accent-success);
+        }
+
+        .trend-down {
+            color: var(--accent-danger);
+        }
+
+        .trend-stable {
+            color: var(--text-muted);
+        }
+
+        /* ==================== Location Groups ==================== */
+        .location-groups {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .location-group {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            padding: 1rem;
+        }
+
+        .location-group-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .location-name {
+            font-weight: 700;
+            font-size: 0.875rem;
+            color: var(--text-primary);
+        }
+
+        .location-count {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        /* ==================== Threat Breakdown ==================== */
+        .threat-breakdown {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .threat-breakdown-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+        }
+
+        .threat-list {
+            display: grid;
+            gap: 0.75rem;
+        }
+
+        .threat-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem;
+            background: var(--bg-secondary);
+            border-radius: 0.5rem;
+            transition: all 0.2s ease;
+        }
+
+        .threat-item:hover {
+            transform: translateX(4px);
+            background: var(--bg-primary);
+        }
+
+        .threat-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex: 1;
+        }
+
+        .threat-icon {
+            font-size: 1.5rem;
+        }
+
+        .threat-details {
+            flex: 1;
+        }
+
+        .threat-name {
+            font-weight: 600;
+            font-size: 0.875rem;
+            color: var(--text-primary);
+            margin-bottom: 0.25rem;
+        }
+
+        .threat-bar {
+            height: 4px;
+            background: var(--border-color);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 0.25rem;
+        }
+
+        .threat-bar-fill {
+            height: 100%;
+            background: var(--accent-danger);
+            transition: width 0.3s ease;
+        }
+
+        .threat-count {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--accent-danger);
+            min-width: 60px;
+            text-align: right;
         }
 
         /* ==================== Loading State ==================== */
@@ -529,6 +690,11 @@
     </style>
 </head>
 <body>
+    <!-- Rotation Progress Bar -->
+    <div class="rotation-progress">
+        <div class="rotation-progress-bar" id="rotation-progress-bar"></div>
+    </div>
+
     <div class="kiosk-container">
         <!-- Header -->
         <div class="header">
@@ -558,6 +724,19 @@
 
         <!-- Traffic Chart Screen - Page 1 Only -->
         <div id="screen-traffic" class="traffic-container active">
+            <!-- Top Threats Breakdown -->
+            <div class="threat-breakdown">
+                <h3 class="threat-breakdown-title">🎯 Top Threats - Last 24 Hours</h3>
+                <div class="threat-list" id="threat-list">
+                    <!-- Will be populated by JavaScript -->
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading threat data...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Traffic Chart -->
             <div class="traffic-chart-container">
                 <div class="traffic-chart-header">
                     <h3 class="traffic-chart-title">📊 Network Traffic - Last 24 Hours</h3>
@@ -587,6 +766,13 @@
         <!-- Sensors Screen -->
         <div id="screen-sensors" class="sensors-container">
             <h2 style="margin-bottom: 1rem; font-size: 1.5rem;">📡 Sensor Status</h2>
+
+            <!-- Location Groups -->
+            <div class="location-groups" id="location-groups">
+                <!-- Will be populated by JavaScript -->
+            </div>
+
+            <!-- Sensors Grid -->
             <div class="sensors-grid" id="sensors-grid">
                 <!-- Sensors will be populated by JavaScript -->
             </div>
@@ -612,13 +798,34 @@
         const CONFIG = {
             refreshInterval: 5000,      // 5 seconds
             rotationInterval: 30000,    // 30 seconds
-            hintDuration: 5000          // 5 seconds
+            hintDuration: 5000,         // 5 seconds
+            criticalAlertSound: true,   // Enable/disable sound
+            progressBarUpdate: 100      // Progress bar update interval (ms)
         };
 
         // ==================== State ====================
         let currentScreen = 0;
         let rotationTimer = null;
         let refreshTimer = null;
+        let progressTimer = null;
+        let rotationStartTime = Date.now();
+        let lastAlertCount = 0;
+        let previousMetrics = {};  // For trend calculation
+
+        // ==================== Alert Sound ====================
+        const alertSound = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYHGGS67OyXVA4NTann8rxkHAU3kdfw0H4yBSl+zPLaizsKFV6z6uykVxILSKDh8bllHgU1gMrw3Ik3Bxhku+zumlYODUypqeuZVRALRZ7f8btmIAU3kdfw0IIzBSh+zPLbjDsKFl205uqlWRILR5/h8bpmIAU2gcvx3os4BxlluuzunVkODUyrqOyXVRALRZ/g8L5mIAU3gtPx0YQ0BSh/zfPcjz0KFV605+unWhQJhqDi8rtnIgU4g9Xx0IU1BSh/zvPdjT0KFV605+uoXBQLSKLj87xnIwU6hNLx0IY1Byx/z/PejD0KFV+06eypYBUIh6Li8r1mIgU6hNLy0oY2Byx/z/XejD0KFV+06eupYhUGh6Lj8r5mIwU8hNHz0YY1Byx/z/Xej D0KFV+06eupYBUIh6Li8r1mIgU6hNLy0oY2Byx/z/XejD0KFV+06eupYhUGh6Lj8r5mIwU8hNHz0YY1Byx/z/Xej0');
+
+        // Threat type icons
+        const THREAT_ICONS = {
+            'Port Scan': '🔍',
+            'Brute Force': '🔨',
+            'DDoS': '💥',
+            'Malware': '🦠',
+            'Exploit': '⚡',
+            'Anomaly': '⚠️',
+            'Phishing': '🎣',
+            'Unknown': '❓'
+        };
 
         // ==================== Theme Management ====================
         function initTheme() {
@@ -682,7 +889,9 @@
         }
 
         function startRotation() {
+            rotationStartTime = Date.now();
             rotationTimer = setInterval(rotateScreen, CONFIG.rotationInterval);
+            startProgressBar();
         }
 
         function stopRotation() {
@@ -690,6 +899,86 @@
                 clearInterval(rotationTimer);
                 rotationTimer = null;
             }
+            stopProgressBar();
+        }
+
+        // ==================== Progress Bar ====================
+        function startProgressBar() {
+            const progressBar = document.getElementById('rotation-progress-bar');
+            if (!progressBar) return;
+
+            progressTimer = setInterval(() => {
+                const elapsed = Date.now() - rotationStartTime;
+                const progress = Math.min((elapsed / CONFIG.rotationInterval) * 100, 100);
+                progressBar.style.width = progress + '%';
+
+                // Reset on complete
+                if (progress >= 100) {
+                    rotationStartTime = Date.now();
+                }
+            }, CONFIG.progressBarUpdate);
+        }
+
+        function stopProgressBar() {
+            if (progressTimer) {
+                clearInterval(progressTimer);
+                progressTimer = null;
+            }
+        }
+
+        // ==================== Critical Alert Detection ====================
+        function checkForNewCriticalAlerts(alerts) {
+            const criticalCount = alerts.filter(a => a.severity === 'CRITICAL').length;
+
+            if (criticalCount > lastAlertCount && lastAlertCount > 0) {
+                // New critical alert detected!
+                triggerCriticalAlertNotification();
+            }
+
+            lastAlertCount = criticalCount;
+        }
+
+        function triggerCriticalAlertNotification() {
+            // Visual flash
+            document.body.classList.add('critical-flash');
+            setTimeout(() => {
+                document.body.classList.remove('critical-flash');
+            }, 1500);
+
+            // Play sound
+            if (CONFIG.criticalAlertSound) {
+                try {
+                    alertSound.play().catch(e => console.log('Sound play failed:', e));
+                } catch (e) {
+                    console.log('Alert sound error:', e);
+                }
+            }
+        }
+
+        // ==================== Trend Calculation ====================
+        function calculateTrend(currentValue, metricName) {
+            if (!previousMetrics[metricName]) {
+                previousMetrics[metricName] = currentValue;
+                return 'stable';
+            }
+
+            const previous = previousMetrics[metricName];
+            const diff = currentValue - previous;
+            const threshold = previous * 0.1; // 10% change threshold
+
+            previousMetrics[metricName] = currentValue;
+
+            if (Math.abs(diff) < threshold) return 'stable';
+            return diff > 0 ? 'up' : 'down';
+        }
+
+        function getTrendIndicator(trend) {
+            const icons = {
+                'up': '↗️',
+                'down': '↘️',
+                'stable': '➡️'
+            };
+            return `<span class="trend-indicator trend-${trend}">${icons[trend]}</span>`;
         }
 
         // ==================== Data Fetching ====================
@@ -701,6 +990,8 @@
                 if (data.success) {
                     updateMetrics(data);
                     updateAlerts(data.critical_alerts || []);
+                    updateThreatBreakdown(data.top_threats || {});
+                    checkForNewCriticalAlerts(data.critical_alerts || []);
                 }
             } catch (error) {
                 console.error('Error fetching metrics:', error);
@@ -714,6 +1005,7 @@
 
                 if (data.success) {
                     updateSensors(data.sensors || []);
+                    updateLocationGroups(data.sensors || []);
                 }
             } catch (error) {
                 console.error('Error fetching sensors:', error);
@@ -725,13 +1017,23 @@
             const metrics = data.metrics || {};
             const sensorHealth = data.sensor_health || {};
 
+            // Calculate trends
+            const bandwidthTrend = calculateTrend(metrics.bandwidth_mbps || 0, 'bandwidth');
+            const packetsTrend = calculateTrend(metrics.packets_per_sec || 0, 'packets');
+            const alertsTrend = calculateTrend(metrics.alerts_per_min || 0, 'alerts');
+            const cpuTrend = calculateTrend(metrics.avg_cpu_percent || 0, 'cpu');
+            const memoryTrend = calculateTrend(metrics.avg_memory_percent || 0, 'memory');
+
             const metricsHTML = `
                 <div class="card">
                     <div class="card-header">
                         <span class="card-title">Bandwidth</span>
                         <span class="card-icon">📊</span>
                     </div>
-                    <div class="card-value">${formatNumber(metrics.bandwidth_mbps || 0)}</div>
+                    <div class="card-value">
+                        ${formatNumber(metrics.bandwidth_mbps || 0)}
+                        ${getTrendIndicator(bandwidthTrend)}
+                    </div>
                     <div class="card-label">Mbps Total</div>
                 </div>
 
@@ -740,7 +1042,10 @@
                         <span class="card-title">Packets</span>
                         <span class="card-icon">📦</span>
                     </div>
-                    <div class="card-value">${formatNumber(metrics.packets_per_sec || 0)}</div>
+                    <div class="card-value">
+                        ${formatNumber(metrics.packets_per_sec || 0)}
+                        ${getTrendIndicator(packetsTrend)}
+                    </div>
                     <div class="card-label">per second</div>
                 </div>
 
@@ -751,6 +1056,7 @@
                     </div>
                     <div class="card-value status-${getAlertColor(metrics.alerts_per_min || 0)}">
                         ${formatNumber(metrics.alerts_per_min || 0, 2)}
+                        ${getTrendIndicator(alertsTrend)}
                     </div>
                     <div class="card-label">per minute</div>
                 </div>
@@ -773,6 +1079,7 @@
                     </div>
                     <div class="card-value status-${getResourceColor(metrics.avg_cpu_percent || 0)}">
                         ${formatNumber(metrics.avg_cpu_percent || 0, 1)}%
+                        ${getTrendIndicator(cpuTrend)}
                     </div>
                     <div class="card-label">Across all sensors</div>
                 </div>
@@ -784,6 +1091,7 @@
                     </div>
                     <div class="card-value status-${getResourceColor(metrics.avg_memory_percent || 0)}">
                         ${formatNumber(metrics.avg_memory_percent || 0, 1)}%
+                        ${getTrendIndicator(memoryTrend)}
                     </div>
                     <div class="card-label">Across all sensors</div>
                 </div>
@@ -865,6 +1173,108 @@
             `).join('');
 
             document.getElementById('sensors-grid').innerHTML = sensorsHTML;
+        }
+
+        function updateThreatBreakdown(threats) {
+            const threatList = document.getElementById('threat-list');
+            if (!threatList) return;
+
+            if (!threats || Object.keys(threats).length === 0) {
+                threatList.innerHTML = `
+                    <div class="card" style="text-align: center; padding: 2rem;">
+                        <div style="font-size: 3rem; margin-bottom: 1rem;">✅</div>
+                        <h3 style="color: var(--accent-success);">No Threats Detected</h3>
+                        <p style="color: var(--text-muted); margin-top: 0.5rem;">System operating normally</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Convert to array and sort by count
+            const threatArray = Object.entries(threats)
+                .map(([type, count]) => ({ type, count }))
+                .sort((a, b) => b.count - a.count)
+                .slice(0, 5);  // Top 5 threats
+
+            const maxCount = Math.max(...threatArray.map(t => t.count), 1);
+
+            const threatsHTML = threatArray.map(threat => {
+                const icon = THREAT_ICONS[threat.type] || THREAT_ICONS['Unknown'];
+                const barWidth = (threat.count / maxCount) * 100;
+
+                return `
+                    <div class="threat-item">
+                        <div class="threat-info">
+                            <div class="threat-icon">${icon}</div>
+                            <div class="threat-details">
+                                <div class="threat-name">${escapeHtml(threat.type)}</div>
+                                <div class="threat-bar">
+                                    <div class="threat-bar-fill" style="width: ${barWidth}%;"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="threat-count">${threat.count}</div>
+                    </div>
+                `;
+            }).join('');
+
+            threatList.innerHTML = threatsHTML;
+        }
+
+        function updateLocationGroups(sensors) {
+            const locationGroupsEl = document.getElementById('location-groups');
+            if (!locationGroupsEl) return;
+
+            if (sensors.length === 0) {
+                locationGroupsEl.innerHTML = '';
+                return;
+            }
+
+            // Group sensors by location
+            const locationMap = {};
+            sensors.forEach(sensor => {
+                const location = sensor.location || 'Unknown';
+                if (!locationMap[location]) {
+                    locationMap[location] = {
+                        total: 0,
+                        online: 0,
+                        warning: 0,
+                        offline: 0
+                    };
+                }
+                locationMap[location].total++;
+                locationMap[location][sensor.status]++;
+            });
+
+            // Generate HTML for location groups
+            const locationsHTML = Object.entries(locationMap).map(([location, stats]) => {
+                let statusColor = 'var(--accent-success)';
+                let statusText = 'All Online';
+
+                if (stats.offline > 0) {
+                    statusColor = 'var(--accent-danger)';
+                    statusText = `${stats.offline} Offline`;
+                } else if (stats.warning > 0) {
+                    statusColor = 'var(--accent-warning)';
+                    statusText = `${stats.warning} Warning`;
+                }
+
+                return `
+                    <div class="location-group">
+                        <div class="location-group-header">
+                            <div class="location-name">📍 ${escapeHtml(location)}</div>
+                            <div class="location-count" style="color: ${statusColor}; font-weight: 600;">
+                                ${stats.online}/${stats.total}
+                            </div>
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">
+                            ${statusText}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            locationGroupsEl.innerHTML = locationsHTML;
         }
 
         function updateTimestamp() {
