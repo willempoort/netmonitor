@@ -1375,6 +1375,31 @@
             }
         }
 
+        // Calculate a good Y-axis max for the traffic chart
+        function calculateSuggestedMax(inboundData, outboundData) {
+            // Find the maximum value in both datasets
+            const allValues = [...(inboundData || []), ...(outboundData || [])];
+            const maxValue = Math.max(...allValues, 0);
+
+            // If all values are 0 or very small, show a minimum scale
+            if (maxValue < 0.1) {
+                return 1; // Show 0-1 Mbps scale
+            }
+
+            // Round up to a nice number for the scale
+            // This creates nice intervals like 1, 2, 5, 10, 20, 50, 100, etc.
+            const magnitude = Math.pow(10, Math.floor(Math.log10(maxValue)));
+            const normalized = maxValue / magnitude;
+
+            let niceMax;
+            if (normalized <= 1) niceMax = 1;
+            else if (normalized <= 2) niceMax = 2;
+            else if (normalized <= 5) niceMax = 5;
+            else niceMax = 10;
+
+            return niceMax * magnitude * 1.1; // Add 10% padding
+        }
+
         function updateTrafficChart(data) {
             const ctx = document.getElementById('trafficChart');
             if (!ctx) return;
@@ -1464,6 +1489,7 @@
                         },
                         y: {
                             beginAtZero: true,
+                            suggestedMax: calculateSuggestedMax(data.datasets.bandwidth_in, data.datasets.bandwidth_out),
                             grid: {
                                 color: gridColor,
                                 drawBorder: false
