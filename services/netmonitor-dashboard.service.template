@@ -24,7 +24,8 @@ ExecStartPre=/bin/chown root:root ${LOG_DIR:-/var/log/netmonitor}
 
 # Start Gunicorn with eventlet workers for SocketIO support
 # Port and workers are configurable via .env file
-ExecStart=/usr/local/bin/gunicorn \
+# Gunicorn binary path is auto-detected during service generation
+ExecStart=__GUNICORN_BIN__ \
     --bind ${DASHBOARD_HOST:-0.0.0.0}:${DASHBOARD_PORT:-8080} \
     --workers ${DASHBOARD_WORKERS:-4} \
     --worker-class eventlet \

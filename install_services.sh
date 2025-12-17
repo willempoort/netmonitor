@@ -213,8 +213,29 @@ generate_service() {
 
     echo_info "Generating $service_name..."
 
-    # Replace __INSTALL_DIR__ placeholder
-    sed "s|__INSTALL_DIR__|$INSTALL_DIR|g" "$template_file" > "$output_file"
+    # Detect gunicorn binary path for dashboard service
+    local gunicorn_bin=""
+    if [[ "$template_file" == *"dashboard"* ]]; then
+        # Try to find gunicorn in common locations (priority order)
+        if [ -x "$INSTALL_DIR/venv/bin/gunicorn" ]; then
+            gunicorn_bin="$INSTALL_DIR/venv/bin/gunicorn"
+        elif [ -x "/usr/bin/gunicorn" ]; then
+            gunicorn_bin="/usr/bin/gunicorn"
+        elif [ -x "/usr/local/bin/gunicorn" ]; then
+            gunicorn_bin="/usr/local/bin/gunicorn"
+        elif command -v gunicorn >/dev/null 2>&1; then
+            gunicorn_bin="$(command -v gunicorn)"
+        else
+            echo_warning "Gunicorn not found! Install with: pip install gunicorn"
+            gunicorn_bin="/usr/bin/gunicorn"  # Fallback
+        fi
+        echo_info "Using gunicorn at: $gunicorn_bin"
+    fi
+
+    # Replace placeholders
+    sed -e "s|__INSTALL_DIR__|$INSTALL_DIR|g" \
+        -e "s|__GUNICORN_BIN__|$gunicorn_bin|g" \
+        "$template_file" > "$output_file"
 
     # Set permissions
     chmod 644 "$output_file"
