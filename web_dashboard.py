@@ -1512,7 +1512,7 @@ def api_get_devices():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/devices/<ip_address>')
+@app.route('/api/devices/<path:ip_address>')
 @login_required
 def api_get_device(ip_address):
     """Get details for a specific device by IP"""
@@ -1530,7 +1530,7 @@ def api_get_device(ip_address):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/devices/<ip_address>/template', methods=['PUT'])
+@app.route('/api/devices/<path:ip_address>/template', methods=['PUT'])
 @login_required
 def api_assign_device_template(ip_address):
     """Assign a template to a device"""
@@ -1567,7 +1567,7 @@ def api_assign_device_template(ip_address):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/devices/<ip_address>', methods=['DELETE'])
+@app.route('/api/devices/<path:ip_address>', methods=['DELETE'])
 @login_required
 def api_delete_device(ip_address):
     """Delete a device from the database"""
@@ -1582,7 +1582,7 @@ def api_delete_device(ip_address):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/devices/<ip_address>/traffic-stats')
+@app.route('/api/devices/<path:ip_address>/traffic-stats')
 @login_required
 def api_get_device_traffic_stats(ip_address):
     """
@@ -1616,7 +1616,7 @@ def api_get_device_traffic_stats(ip_address):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/devices/<ip_address>/classification-hints')
+@app.route('/api/devices/<path:ip_address>/classification-hints')
 @login_required
 def api_get_device_classification_hints(ip_address):
     """
@@ -1686,7 +1686,7 @@ def api_get_device_classification_hints(ip_address):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/devices/<ip_address>/save-learned-behavior', methods=['POST'])
+@app.route('/api/devices/<path:ip_address>/save-learned-behavior', methods=['POST'])
 @login_required
 def api_save_device_learned_behavior(ip_address):
     """
@@ -1721,7 +1721,7 @@ def api_save_device_learned_behavior(ip_address):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/devices/<ip_address>/learning-status')
+@app.route('/api/devices/<path:ip_address>/learning-status')
 @login_required
 def api_get_device_learning_status(ip_address):
     """
