@@ -1168,20 +1168,74 @@
                     </div>
 
                     <hr class="border-secondary">
-                    <h6><i class="bi bi-list-check"></i> Behavior Rules</h6>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0"><i class="bi bi-list-check"></i> Behavior Rules</h6>
+                        <button class="btn btn-sm btn-outline-success" onclick="showAddBehaviorForm()">
+                            <i class="bi bi-plus"></i> Add Rule
+                        </button>
+                    </div>
+
+                    <!-- Add Behavior Form (hidden by default) -->
+                    <div id="add-behavior-form" class="card bg-secondary mb-3" style="display: none;">
+                        <div class="card-body">
+                            <div class="row g-2">
+                                <div class="col-md-4">
+                                    <label class="form-label small">Behavior Type</label>
+                                    <select class="form-select form-select-sm bg-dark text-light border-secondary" id="new-behavior-type">
+                                        <option value="allowed_port">Allowed Port</option>
+                                        <option value="allowed_protocol">Allowed Protocol</option>
+                                        <option value="max_bandwidth">Max Bandwidth (MB/h)</option>
+                                        <option value="max_connections">Max Connections/min</option>
+                                        <option value="allowed_destination">Allowed Destination</option>
+                                        <option value="time_restriction">Time Restriction</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small">Value</label>
+                                    <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
+                                           id="new-behavior-value" placeholder="e.g., 443, TCP, 100">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small">Action</label>
+                                    <select class="form-select form-select-sm bg-dark text-light border-secondary" id="new-behavior-action">
+                                        <option value="allow">Allow (suppress alerts)</option>
+                                        <option value="alert">Alert (always notify)</option>
+                                        <option value="block">Block (future use)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="row g-2 mt-2">
+                                <div class="col-md-8">
+                                    <label class="form-label small">Description (optional)</label>
+                                    <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
+                                           id="new-behavior-description" placeholder="e.g., HTTPS traffic allowed">
+                                </div>
+                                <div class="col-md-4 d-flex align-items-end">
+                                    <button class="btn btn-sm btn-success me-2" onclick="addBehaviorRule()">
+                                        <i class="bi bi-check"></i> Add
+                                    </button>
+                                    <button class="btn btn-sm btn-secondary" onclick="hideAddBehaviorForm()">
+                                        <i class="bi bi-x"></i> Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="table-responsive">
                         <table class="table table-dark table-sm">
                             <thead>
                                 <tr>
                                     <th>Type</th>
-                                    <th>Parameters</th>
+                                    <th>Value</th>
                                     <th>Action</th>
                                     <th>Description</th>
+                                    <th style="width: 50px;"></th>
                                 </tr>
                             </thead>
                             <tbody id="template-behaviors-table">
                                 <tr>
-                                    <td colspan="4" class="text-center text-muted">No behaviors defined</td>
+                                    <td colspan="5" class="text-center text-muted">No behaviors defined</td>
                                 </tr>
                             </tbody>
                         </table>

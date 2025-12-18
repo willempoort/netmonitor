@@ -534,26 +534,15 @@ async function showTemplateDetails(templateId) {
         const deleteBtn = document.getElementById('delete-template-btn');
         deleteBtn.style.display = template.is_builtin ? 'none' : 'block';
 
-        // Populate behaviors table
-        const behaviorsTable = document.getElementById('template-behaviors-table');
-        const behaviors = template.behaviors || [];
+        // Store current template ID for behavior management
+        window.currentTemplateId = templateId;
+        window.currentTemplateBuiltin = template.is_builtin;
 
-        if (behaviors.length === 0) {
-            behaviorsTable.innerHTML = `
-                <tr>
-                    <td colspan="4" class="text-center text-muted">No behaviors defined</td>
-                </tr>
-            `;
-        } else {
-            behaviorsTable.innerHTML = behaviors.map(b => `
-                <tr>
-                    <td><code>${b.behavior_type}</code></td>
-                    <td><small>${JSON.stringify(b.parameters)}</small></td>
-                    <td><span class="badge bg-${b.action === 'allow' ? 'success' : 'warning'}">${b.action}</span></td>
-                    <td>${b.description || '-'}</td>
-                </tr>
-            `).join('');
-        }
+        // Hide the add behavior form when opening modal
+        hideAddBehaviorForm();
+
+        // Populate behaviors table
+        renderBehaviorsTable(template.behaviors || [], template.is_builtin);
 
         // Load devices using this template
         loadTemplateDevices(templateId);
@@ -820,6 +809,166 @@ async function loadClassificationStats() {
         }
     } catch (error) {
         console.error('Error loading classification stats:', error);
+    }
+}
+
+// ==================== Behavior Management Functions ====================
+
+function renderBehaviorsTable(behaviors, isBuiltin) {
+    const behaviorsTable = document.getElementById('template-behaviors-table');
+
+    if (behaviors.length === 0) {
+        behaviorsTable.innerHTML = `
+            <tr>
+                <td colspan="5" class="text-center text-muted">No behaviors defined</td>
+            </tr>
+        `;
+    } else {
+        behaviorsTable.innerHTML = behaviors.map(b => {
+            // Format parameters for display
+            let valueDisplay = '-';
+            if (b.parameters) {
+                if (b.parameters.port) valueDisplay = b.parameters.port;
+                else if (b.parameters.protocol) valueDisplay = b.parameters.protocol;
+                else if (b.parameters.max_mb_per_hour) valueDisplay = b.parameters.max_mb_per_hour + ' MB/h';
+                else if (b.parameters.max_per_minute) valueDisplay = b.parameters.max_per_minute + '/min';
+                else if (b.parameters.destination) valueDisplay = b.parameters.destination;
+                else if (b.parameters.hours) valueDisplay = b.parameters.hours;
+                else valueDisplay = JSON.stringify(b.parameters);
+            }
+
+            const deleteBtn = isBuiltin ? '' : `
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteBehaviorRule(${b.id})" title="Delete rule">
+                    <i class="bi bi-trash"></i>
+                </button>
+            `;
+
+            return `
+                <tr>
+                    <td><code>${b.behavior_type}</code></td>
+                    <td>${valueDisplay}</td>
+                    <td><span class="badge bg-${b.action === 'allow' ? 'success' : (b.action === 'alert' ? 'warning' : 'danger')}">${b.action}</span></td>
+                    <td>${b.description || '-'}</td>
+                    <td>${deleteBtn}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+}
+
+function showAddBehaviorForm() {
+    if (window.currentTemplateBuiltin) {
+        showError('Cannot modify built-in templates');
+        return;
+    }
+    document.getElementById('add-behavior-form').style.display = 'block';
+    document.getElementById('new-behavior-type').value = 'allowed_port';
+    document.getElementById('new-behavior-value').value = '';
+    document.getElementById('new-behavior-action').value = 'allow';
+    document.getElementById('new-behavior-description').value = '';
+}
+
+function hideAddBehaviorForm() {
+    const form = document.getElementById('add-behavior-form');
+    if (form) {
+        form.style.display = 'none';
+    }
+}
+
+async function addBehaviorRule() {
+    const templateId = window.currentTemplateId;
+    if (!templateId) {
+        showError('No template selected');
+        return;
+    }
+
+    const behaviorType = document.getElementById('new-behavior-type').value;
+    const value = document.getElementById('new-behavior-value').value.trim();
+    const action = document.getElementById('new-behavior-action').value;
+    const description = document.getElementById('new-behavior-description').value.trim();
+
+    if (!value) {
+        showError('Please enter a value for the behavior rule');
+        return;
+    }
+
+    // Build parameters based on type
+    let parameters = {};
+    switch (behaviorType) {
+        case 'allowed_port':
+            parameters = { port: parseInt(value) || value };
+            break;
+        case 'allowed_protocol':
+            parameters = { protocol: value.toUpperCase() };
+            break;
+        case 'max_bandwidth':
+            parameters = { max_mb_per_hour: parseFloat(value) };
+            break;
+        case 'max_connections':
+            parameters = { max_per_minute: parseInt(value) };
+            break;
+        case 'allowed_destination':
+            parameters = { destination: value };
+            break;
+        case 'time_restriction':
+            parameters = { hours: value };
+            break;
+        default:
+            parameters = { value: value };
+    }
+
+    try {
+        const response = await fetch(`/api/device-templates/${templateId}/behaviors`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                behavior_type: behaviorType,
+                parameters: parameters,
+                action: action,
+                description: description || null
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showSuccess('Behavior rule added');
+            hideAddBehaviorForm();
+            // Reload template details to refresh behaviors table
+            showTemplateDetails(templateId);
+        } else {
+            showError('Failed to add behavior: ' + (result.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error adding behavior:', error);
+        showError('Network error while adding behavior');
+    }
+}
+
+async function deleteBehaviorRule(behaviorId) {
+    if (!confirm('Are you sure you want to delete this behavior rule?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/device-templates/behaviors/${behaviorId}`, {
+            method: 'DELETE'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showSuccess('Behavior rule deleted');
+            // Reload template details to refresh behaviors table
+            if (window.currentTemplateId) {
+                showTemplateDetails(window.currentTemplateId);
+            }
+        } else {
+            showError('Failed to delete behavior: ' + (result.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error deleting behavior:', error);
+        showError('Network error while deleting behavior');
     }
 }
 
