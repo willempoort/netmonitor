@@ -12,6 +12,7 @@ import logging
 import threading
 import hashlib
 import json
+import traceback
 from pathlib import Path
 from datetime import datetime
 
@@ -2471,8 +2472,9 @@ def api_get_device_classification_stats():
         })
 
     except Exception as e:
-        logger.error(f"Error getting classification stats: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        error_trace = traceback.format_exc()
+        logger.error(f"Error getting classification stats: {e}\n{error_trace}")
+        return jsonify({'success': False, 'error': str(e), 'trace': error_trace}), 500
 
 
 # ==================== WebSocket Events ====================
