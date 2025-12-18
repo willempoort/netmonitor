@@ -2419,28 +2419,28 @@ def api_get_device_classification_stats():
         manual_classifications = len([d for d in devices if d.get('classification_method') == 'manual'])
         auto_classifications = len([d for d in devices if d.get('classification_method') in ('auto', 'learned')])
 
-        # Devices by template
+        # Devices by template (handle None values)
         by_template = {}
         for device in devices:
-            template_name = device.get('template_name', 'Unclassified')
+            template_name = device.get('template_name') or 'Unclassified'
             by_template[template_name] = by_template.get(template_name, 0) + 1
 
-        # Devices by vendor
+        # Devices by vendor (handle None values)
         by_vendor = {}
         for device in devices:
-            vendor = device.get('vendor', 'Unknown')
+            vendor = device.get('vendor') or 'Unknown'
             by_vendor[vendor] = by_vendor.get(vendor, 0) + 1
 
-        # Templates by category
+        # Templates by category (handle None values)
         templates_by_category = {}
         for template in templates:
-            cat = template.get('category', 'other')
+            cat = template.get('category') or 'other'
             templates_by_category[cat] = templates_by_category.get(cat, 0) + 1
 
-        # Service providers by category
+        # Service providers by category (handle None values)
         providers_by_category = {}
         for provider in providers:
-            cat = provider.get('category', 'other')
+            cat = provider.get('category') or 'other'
             providers_by_category[cat] = providers_by_category.get(cat, 0) + 1
 
         return jsonify({
