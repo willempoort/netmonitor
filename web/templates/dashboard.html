@@ -1181,26 +1181,28 @@
                             <div class="row g-2">
                                 <div class="col-md-4">
                                     <label class="form-label small">Behavior Type</label>
-                                    <select class="form-select form-select-sm bg-dark text-light border-secondary" id="new-behavior-type">
-                                        <option value="allowed_port">Allowed Port</option>
-                                        <option value="allowed_protocol">Allowed Protocol</option>
-                                        <option value="max_bandwidth">Max Bandwidth (MB/h)</option>
-                                        <option value="max_connections">Max Connections/min</option>
-                                        <option value="allowed_destination">Allowed Destination</option>
-                                        <option value="time_restriction">Time Restriction</option>
+                                    <select class="form-select form-select-sm bg-dark text-light border-secondary" id="new-behavior-type" onchange="updateBehaviorPlaceholder()">
+                                        <option value="allowed_ports">Allowed Port(s)</option>
+                                        <option value="allowed_protocols">Allowed Protocol</option>
+                                        <option value="bandwidth_limit">Bandwidth Limit (MB/h)</option>
+                                        <option value="connection_behavior">Connection Behavior</option>
+                                        <option value="expected_destinations">Expected Destination</option>
+                                        <option value="time_restrictions">Time Restriction</option>
+                                        <option value="dns_behavior">DNS Behavior</option>
+                                        <option value="traffic_pattern">Traffic Pattern</option>
                                     </select>
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label small">Value</label>
                                     <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
-                                           id="new-behavior-value" placeholder="e.g., 443, TCP, 100">
+                                           id="new-behavior-value" placeholder="e.g., 443 or 5060-5090">
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label small">Action</label>
                                     <select class="form-select form-select-sm bg-dark text-light border-secondary" id="new-behavior-action">
                                         <option value="allow">Allow (suppress alerts)</option>
+                                        <option value="suppress">Suppress (hide alerts)</option>
                                         <option value="alert">Alert (always notify)</option>
-                                        <option value="block">Block (future use)</option>
                                     </select>
                                 </div>
                             </div>
@@ -1208,7 +1210,7 @@
                                 <div class="col-md-8">
                                     <label class="form-label small">Description (optional)</label>
                                     <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
-                                           id="new-behavior-description" placeholder="e.g., HTTPS traffic allowed">
+                                           id="new-behavior-description" placeholder="e.g., SIP signaling ports">
                                 </div>
                                 <div class="col-md-4 d-flex align-items-end">
                                     <button class="btn btn-sm btn-success me-2" onclick="addBehaviorRule()">
@@ -1884,7 +1886,7 @@
     <!-- Custom JS - Load last with defer -->
     <script src="{{ url_for('static', filename='js/dashboard.js') }}?v=3" defer></script>
     <script src="{{ url_for('static', filename='js/config-management.js') }}?v=3" defer></script>
-    <script src="{{ url_for('static', filename='js/device-classification.js') }}?v=3" defer></script>
+    <script src="{{ url_for('static', filename='js/device-classification.js') }}?v=4" defer></script>
 
     <!-- Hide loading overlay when DOM is ready -->
     <script>

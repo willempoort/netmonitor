@@ -828,13 +828,27 @@ function renderBehaviorsTable(behaviors, isBuiltin) {
             // Format parameters for display
             let valueDisplay = '-';
             if (b.parameters) {
-                if (b.parameters.port) valueDisplay = b.parameters.port;
-                else if (b.parameters.protocol) valueDisplay = b.parameters.protocol;
-                else if (b.parameters.max_mb_per_hour) valueDisplay = b.parameters.max_mb_per_hour + ' MB/h';
-                else if (b.parameters.max_per_minute) valueDisplay = b.parameters.max_per_minute + '/min';
-                else if (b.parameters.destination) valueDisplay = b.parameters.destination;
-                else if (b.parameters.hours) valueDisplay = b.parameters.hours;
-                else valueDisplay = JSON.stringify(b.parameters);
+                if (b.parameters.ports) {
+                    valueDisplay = Array.isArray(b.parameters.ports)
+                        ? b.parameters.ports.join(', ')
+                        : b.parameters.ports;
+                }
+                else if (b.parameters.port_range) valueDisplay = b.parameters.port_range;
+                else if (b.parameters.protocols) {
+                    valueDisplay = Array.isArray(b.parameters.protocols)
+                        ? b.parameters.protocols.join(', ')
+                        : b.parameters.protocols;
+                }
+                else if (b.parameters.limit) valueDisplay = b.parameters.limit + ' MB/h';
+                else if (b.parameters.destinations) {
+                    valueDisplay = Array.isArray(b.parameters.destinations)
+                        ? b.parameters.destinations.join(', ')
+                        : b.parameters.destinations;
+                }
+                else if (b.parameters.schedule) valueDisplay = b.parameters.schedule;
+                else if (Object.keys(b.parameters).length > 0) {
+                    valueDisplay = JSON.stringify(b.parameters);
+                }
             }
 
             const deleteBtn = isBuiltin ? '' : `
@@ -843,11 +857,13 @@ function renderBehaviorsTable(behaviors, isBuiltin) {
                 </button>
             `;
 
+            const actionClass = b.action === 'allow' ? 'success' : (b.action === 'suppress' ? 'info' : 'warning');
+
             return `
                 <tr>
                     <td><code>${b.behavior_type}</code></td>
                     <td>${valueDisplay}</td>
-                    <td><span class="badge bg-${b.action === 'allow' ? 'success' : (b.action === 'alert' ? 'warning' : 'danger')}">${b.action}</span></td>
+                    <td><span class="badge bg-${actionClass}">${b.action}</span></td>
                     <td>${b.description || '-'}</td>
                     <td>${deleteBtn}</td>
                 </tr>
@@ -862,10 +878,11 @@ function showAddBehaviorForm() {
         return;
     }
     document.getElementById('add-behavior-form').style.display = 'block';
-    document.getElementById('new-behavior-type').value = 'allowed_port';
+    document.getElementById('new-behavior-type').value = 'allowed_ports';
     document.getElementById('new-behavior-value').value = '';
     document.getElementById('new-behavior-action').value = 'allow';
     document.getElementById('new-behavior-description').value = '';
+    updateBehaviorPlaceholder();
 }
 
 function hideAddBehaviorForm() {
@@ -873,6 +890,25 @@ function hideAddBehaviorForm() {
     if (form) {
         form.style.display = 'none';
     }
+}
+
+// Update placeholder text based on selected behavior type
+function updateBehaviorPlaceholder() {
+    const type = document.getElementById('new-behavior-type').value;
+    const input = document.getElementById('new-behavior-value');
+
+    const placeholders = {
+        'allowed_ports': 'e.g., 443 or 5060-5090 or 80,443,8080',
+        'allowed_protocols': 'e.g., TCP, UDP, ICMP',
+        'bandwidth_limit': 'e.g., 100 (MB per hour)',
+        'connection_behavior': 'e.g., max_connections:50',
+        'expected_destinations': 'e.g., 8.8.8.8 or google.com',
+        'time_restrictions': 'e.g., 08:00-18:00',
+        'dns_behavior': 'e.g., allowed_domains:*.google.com',
+        'traffic_pattern': 'e.g., bidirectional'
+    };
+
+    input.placeholder = placeholders[type] || 'Enter value';
 }
 
 async function addBehaviorRule() {
@@ -895,23 +931,39 @@ async function addBehaviorRule() {
     // Build parameters based on type
     let parameters = {};
     switch (behaviorType) {
-        case 'allowed_port':
-            parameters = { port: parseInt(value) || value };
+        case 'allowed_ports':
+            // Support: single port (443), range (5060-5090), or comma-separated (80,443,8080)
+            if (value.includes('-')) {
+                // Port range
+                parameters = { port_range: value };
+            } else if (value.includes(',')) {
+                // Multiple ports
+                parameters = { ports: value.split(',').map(p => parseInt(p.trim())).filter(p => !isNaN(p)) };
+            } else {
+                // Single port
+                parameters = { ports: [parseInt(value)] };
+            }
             break;
-        case 'allowed_protocol':
-            parameters = { protocol: value.toUpperCase() };
+        case 'allowed_protocols':
+            parameters = { protocols: value.toUpperCase().split(',').map(p => p.trim()) };
             break;
-        case 'max_bandwidth':
-            parameters = { max_mb_per_hour: parseFloat(value) };
+        case 'bandwidth_limit':
+            parameters = { limit: parseFloat(value) };
             break;
-        case 'max_connections':
-            parameters = { max_per_minute: parseInt(value) };
+        case 'connection_behavior':
+            parameters = { max_connections: parseInt(value) || value };
             break;
-        case 'allowed_destination':
-            parameters = { destination: value };
+        case 'expected_destinations':
+            parameters = { destinations: value.split(',').map(d => d.trim()) };
             break;
-        case 'time_restriction':
-            parameters = { hours: value };
+        case 'time_restrictions':
+            parameters = { schedule: value };
+            break;
+        case 'dns_behavior':
+            parameters = { pattern: value };
+            break;
+        case 'traffic_pattern':
+            parameters = { pattern: value };
             break;
         default:
             parameters = { value: value };
