@@ -117,7 +117,10 @@ function renderDevicesTable(devices) {
 
 function getLearningStatusBadge(device) {
     const behavior = device.learned_behavior || {};
-    const packetCount = behavior.packet_count || 0;
+    // Support both old format (packet_count) and new format (traffic_summary.total_packets)
+    const packetCount = behavior.packet_count ||
+                        behavior.traffic_summary?.total_packets ||
+                        0;
 
     if (packetCount === 0) {
         return `<span class="badge bg-secondary">Not Started</span>`;
@@ -199,10 +202,15 @@ async function showDeviceDetails(ipAddress) {
 
         // Learning status
         const behavior = device.learned_behavior || {};
-        document.getElementById('device-detail-packets').textContent = behavior.packet_count || 0;
-        document.getElementById('device-detail-ports').textContent = (behavior.typical_ports || []).length;
-
-        const packetCount = behavior.packet_count || 0;
+        // Support both old format (packet_count) and new format (traffic_summary.total_packets)
+        const packetCount = behavior.packet_count ||
+                            behavior.traffic_summary?.total_packets ||
+                            0;
+        const portsCount = behavior.typical_ports?.length ||
+                          behavior.ports?.outbound_destination_ports?.length ||
+                          0;
+        document.getElementById('device-detail-packets').textContent = packetCount;
+        document.getElementById('device-detail-ports').textContent = portsCount;
         let statusText = 'Not Started';
         if (packetCount > 0 && packetCount < 100) statusText = 'Learning';
         else if (packetCount >= 100) statusText = 'Ready';
