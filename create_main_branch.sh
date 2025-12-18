@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2025 Willem M. Poort
 # Script to create main branch via GitHub API
 # This bypasses the claude/ branch naming restriction
 

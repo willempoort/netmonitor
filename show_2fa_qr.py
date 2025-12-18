@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2025 Willem M. Poort
 """
 2FA QR Code Display Script
 Shows the 2FA QR code for a user who has 2FA enabled but hasn't set it up yet

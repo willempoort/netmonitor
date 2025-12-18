@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2025 Willem M. Poort
 #
 # NetMonitor - Bootstrap Assets + Database Defaults Updater
 # Voor bestaande installaties die deze nieuwe features willen toevoegen

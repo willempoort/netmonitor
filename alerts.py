@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2025 Willem M. Poort
 """
 Alert Management Module
 Handelt het versturen en loggen van security alerts

@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2025 Willem M. Poort
 # Download GeoLite2 Country Database
 # Note: MaxMind now requires a free account to download GeoLite2 databases
 

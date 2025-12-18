@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2025 Willem M. Poort
 """
 Configuration loader
 Supports both YAML (for SOC server) and .conf (for sensors)

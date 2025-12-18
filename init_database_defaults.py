@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2025 Willem M. Poort
 """
 NetMonitor - Database Default Configuration Initializer
 Loads default threshold values from config.yaml into the database

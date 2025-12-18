@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2025 Willem M. Poort
 #
 # Fix Bootstrap Icons CSS Font Paths
 # Changes relative paths (./fonts/) to absolute paths (/static/fonts/)

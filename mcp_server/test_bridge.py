@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2025 Willem M. Poort
 """
 CLI tool to test MCP HTTP Bridge
 Sends JSON-RPC messages to the bridge and shows responses

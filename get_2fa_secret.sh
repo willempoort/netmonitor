@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2025 Willem M. Poort
 ################################################################################
 # 2FA Secret Recovery Script
 # Use this if you enabled 2FA during setup but can't log in

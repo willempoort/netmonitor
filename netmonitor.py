@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2025 Willem M. Poort
 """
 Network Monitor - Detecteert verdacht netwerkverkeer
 Geschikt voor gebruik op een monitoring/span port

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2025 Willem M. Poort
 """
 Device Discovery Module
 Automatically discovers and tracks network devices based on observed traffic.

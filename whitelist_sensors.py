@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2025 Willem M. Poort
 """
 NetMonitor - Whitelist Sensor IPs
 Voegt alle bekende sensor IPs toe aan de database whitelist
