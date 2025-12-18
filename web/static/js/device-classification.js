@@ -10,7 +10,18 @@ let allProviders = [];
 
 // ==================== Initialization ====================
 
-document.addEventListener('DOMContentLoaded', function() {
+// Load badge counts immediately
+(function() {
+    // Try to load counts now, and also on DOMContentLoaded
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initDeviceClassification);
+    } else {
+        // DOM already loaded
+        initDeviceClassification();
+    }
+})();
+
+function initDeviceClassification() {
     // Load badge counts immediately on page load
     loadDeviceCountsOnly();
 
@@ -53,15 +64,27 @@ document.addEventListener('DOMContentLoaded', function() {
 async function loadDeviceCountsOnly() {
     try {
         const response = await fetch('/api/device-classification/stats');
+
+        // Check if response is OK (not a redirect to login)
+        if (!response.ok) {
+            console.warn('Device stats API returned:', response.status);
+            return;
+        }
+
         const result = await response.json();
 
-        if (result.success) {
+        if (result.success && result.stats && result.stats.devices) {
             const stats = result.stats;
-            document.getElementById('devices-count').textContent = stats.devices?.total || 0;
-            document.getElementById('devices-classified').textContent = stats.devices?.classified || 0;
+            const countEl = document.getElementById('devices-count');
+            const classifiedEl = document.getElementById('devices-classified');
+
+            if (countEl) countEl.textContent = stats.devices.total || 0;
+            if (classifiedEl) classifiedEl.textContent = stats.devices.classified || 0;
+
+            console.log('[DeviceClassification] Badge counts loaded:', stats.devices.total, stats.devices.classified);
         }
     } catch (error) {
-        console.error('Error loading device counts:', error);
+        console.error('[DeviceClassification] Error loading device counts:', error);
     }
 }
 
