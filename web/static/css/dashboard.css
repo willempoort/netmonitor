@@ -506,6 +506,36 @@ canvas {
     font-weight: 600;
 }
 
+/* Device Classification Tabs */
+#deviceClassificationCollapse .nav-tabs {
+    border-bottom: 2px solid #333;
+}
+
+#deviceClassificationCollapse .nav-tabs .nav-link {
+    color: #ccc;
+    background-color: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    padding: 10px 20px;
+    transition: all 0.2s;
+}
+
+#deviceClassificationCollapse .nav-tabs .nav-link:hover {
+    color: #fff;
+    background-color: #2a2a2a;
+}
+
+#deviceClassificationCollapse .nav-tabs .nav-link.active {
+    color: #fff;
+    background-color: #2a2a2a;
+    border-bottom-color: #17a2b8;
+    font-weight: 600;
+}
+
+#deviceClassificationCollapse .nav-tabs .nav-link i {
+    margin-right: 5px;
+}
+
 /* Tab Content */
 .tab-pane {
     min-height: 300px;
