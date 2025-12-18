@@ -1178,16 +1178,14 @@ Het dashboard biedt verschillende visualisatie types:
 Dit project is gelicenseerd onder de **GNU Affero General Public License v3.0 (AGPL-3.0-only)**.  
 Bij distributie of bij **netwerkgebruik van een gewijzigde versie** ben je verplicht de volledige
 broncode van die gewijzigde versie aan gebruikers beschikbaar te stellen (zie §13).  
-Zie het bestand [`LICENSE voor de volledige tekst.
-
-- Officiële licentietekst: https://www.gnu.org/licenses/agpl-3.0.en.html
-- Uitleg & metadata: https://choosealicense
-
+[Zie het bestand LICENSE voor de volledige tekst →](LICENSE)
 
 ## Contributing
 
-[Specificeer contribution guidelines]
+Als je wilt bijdrage of ideeen hebt neem gerust contact met me op.
 
 ## Contact
 
-[Contact informatie]
+Willem M. Poort
+willem@awimax.nl
++31 10 599 06 00 (09:00-17:00) (CET / Europe/Amsterdam)
