@@ -56,7 +56,7 @@ function initDeviceClassification() {
     if (providerCategoryFilter) {
         providerCategoryFilter.addEventListener('change', filterProvidersTable);
     }
-});
+}
 
 // ==================== Devices Functions ====================
 
