@@ -1175,7 +1175,14 @@ Het dashboard biedt verschillende visualisatie types:
 
 ## Licentie
 
-[Specificeer licentie]
+Dit project is gelicenseerd onder de **GNU Affero General Public License v3.0 (AGPL-3.0-only)**.  
+Bij distributie of bij **netwerkgebruik van een gewijzigde versie** ben je verplicht de volledige
+broncode van die gewijzigde versie aan gebruikers beschikbaar te stellen (zie §13).  
+Zie het bestand [`LICENSE voor de volledige tekst.
+
+- Officiële licentietekst: https://www.gnu.org/licenses/agpl-3.0.en.html
+- Uitleg & metadata: https://choosealicense
+
 
 ## Contributing
 
