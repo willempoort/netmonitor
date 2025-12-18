@@ -19,7 +19,7 @@ from datetime import datetime
 import eventlet
 eventlet.monkey_patch()
 
-from flask import Flask, render_template, jsonify, request, session, g, redirect, url_for
+from flask import Flask, render_template, jsonify, request, session, g, redirect, url_for, send_from_directory
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
@@ -539,6 +539,13 @@ def api_deactivate_user(user_id):
 def index():
     """Main dashboard page"""
     return render_template('dashboard.html', user=current_user)
+
+@app.route('/favicon.ico')
+def favicon():
+    """Serve favicon"""
+    return send_from_directory(app.static_folder, 'favicon.ico',
+                               mimetype='image/vnd.microsoft.icon')
+
 
 @app.route('/api/status')
 def api_status():
