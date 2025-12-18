@@ -1543,21 +1543,19 @@ def api_assign_device_template(ip_address):
         if template_id is None:
             return jsonify({'success': False, 'error': 'template_id is required'}), 400
 
+        # First get the device to get its ID
+        device = db.get_device_by_ip(ip_address)
+        if not device:
+            return jsonify({'success': False, 'error': 'Device not found'}), 404
+
         success = db.assign_device_template(
-            ip_address=ip_address,
+            device_id=device['id'],
             template_id=template_id if template_id != 0 else None,
             confidence=confidence,
             method=method
         )
 
         if success:
-            # Invalidate behavior matcher cache if available
-            try:
-                from behavior_matcher import BehaviorMatcher
-                # Access through netmonitor instance if available
-            except:
-                pass
-
             return jsonify({'success': True, 'message': 'Template assigned successfully'})
         else:
             return jsonify({'success': False, 'error': 'Failed to assign template'}), 500
