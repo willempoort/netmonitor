@@ -74,6 +74,12 @@ async function loadDeviceCountsOnly() {
         // Check if response is OK (not a redirect to login)
         if (!response.ok) {
             console.warn('[DeviceClassification] Device stats API returned:', response.status);
+            try {
+                const errorBody = await response.json();
+                console.error('[DeviceClassification] Error details:', errorBody);
+            } catch (e) {
+                console.error('[DeviceClassification] Could not parse error response');
+            }
             return;
         }
 
