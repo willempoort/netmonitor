@@ -11,6 +11,9 @@ let allProviders = [];
 // ==================== Initialization ====================
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Load badge counts immediately on page load
+    loadDeviceCountsOnly();
+
     // Load data when the Device Classification section is expanded
     const deviceClassificationCollapse = document.getElementById('deviceClassificationCollapse');
     if (deviceClassificationCollapse) {
@@ -45,6 +48,22 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ==================== Devices Functions ====================
+
+// Load just the counts for the header badges (lightweight, called on page load)
+async function loadDeviceCountsOnly() {
+    try {
+        const response = await fetch('/api/device-classification/stats');
+        const result = await response.json();
+
+        if (result.success) {
+            const stats = result.stats;
+            document.getElementById('devices-count').textContent = stats.devices?.total || 0;
+            document.getElementById('devices-classified').textContent = stats.devices?.classified || 0;
+        }
+    } catch (error) {
+        console.error('Error loading device counts:', error);
+    }
+}
 
 async function loadDevices() {
     try {

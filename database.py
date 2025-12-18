@@ -1950,21 +1950,27 @@ class DatabaseManager:
 
     def get_device_templates(self, include_inactive: bool = False,
                             category: str = None) -> List[Dict]:
-        """Get all device templates"""
+        """Get all device templates with device counts"""
         conn = self._get_connection()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-            query = 'SELECT * FROM device_templates WHERE 1=1'
+            query = '''
+                SELECT t.*,
+                       COUNT(d.id) as device_count
+                FROM device_templates t
+                LEFT JOIN devices d ON d.template_id = t.id
+                WHERE 1=1
+            '''
             params = []
 
             if not include_inactive:
-                query += ' AND is_active = TRUE'
+                query += ' AND t.is_active = TRUE'
 
             if category:
-                query += ' AND category = %s'
+                query += ' AND t.category = %s'
                 params.append(category)
 
-            query += ' ORDER BY is_builtin DESC, name ASC'
+            query += ' GROUP BY t.id ORDER BY t.is_builtin DESC, t.name ASC'
             cursor.execute(query, params)
             return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
