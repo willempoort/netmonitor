@@ -1956,11 +1956,11 @@ class DatabaseManager:
         conn = self._get_connection()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
+            # Use subquery for device count to avoid GROUP BY issues
             query = '''
                 SELECT t.*,
-                       COUNT(d.id) as device_count
+                       COALESCE((SELECT COUNT(*) FROM devices d WHERE d.template_id = t.id), 0) as device_count
                 FROM device_templates t
-                LEFT JOIN devices d ON d.template_id = t.id
                 WHERE 1=1
             '''
             params = []
@@ -1972,7 +1972,7 @@ class DatabaseManager:
                 query += ' AND t.category = %s'
                 params.append(category)
 
-            query += ' GROUP BY t.id ORDER BY t.is_builtin DESC, t.name ASC'
+            query += ' ORDER BY t.is_builtin DESC, t.name ASC'
             cursor.execute(query, params)
             return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
