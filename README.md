@@ -1182,7 +1182,7 @@ broncode van die gewijzigde versie aan gebruikers beschikbaar te stellen (zie §
 
 ## Contributing
 
-Als je wilt bijdrage of ideeen hebt neem gerust contact met me op.
+Als je wilt bijdragen of ideeen hebt neem gerust contact met me op.
 
 ## Contact
 
