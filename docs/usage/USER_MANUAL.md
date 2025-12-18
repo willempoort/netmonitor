@@ -2,8 +2,8 @@
 
 **SOC Operator Guide for Daily Operations**
 
-Version: 2.1
-Last Updated: December 2024
+Version: 2.2
+Last Updated: December 2025
 
 ---
 
@@ -15,9 +15,10 @@ Last Updated: December 2024
 4. [Managing Sensors](#managing-sensors)
 5. [Configuration](#configuration)
 6. [Whitelist Management](#whitelist-management)
-7. [AI Integration (MCP Server)](#ai-integration-mcp-server)
-8. [Common Tasks](#common-tasks)
-9. [Best Practices](#best-practices)
+7. [Device Classification](#device-classification)
+8. [AI Integration (MCP Server)](#ai-integration-mcp-server)
+9. [Common Tasks](#common-tasks)
+10. [Best Practices](#best-practices)
 
 ---
 
@@ -520,6 +521,449 @@ Sensor: office-vlan10-01
 - Click delete button
 - Confirms action
 - Sensor picks up within 5 minutes
+
+---
+
+## Device Classification
+
+### Wat is Device Classification?
+
+Device Classification is een intelligent systeem dat automatisch apparaten in uw netwerk herkent, hun gedrag leert en alerts onderdrukt voor verwacht verkeer. Dit vermindert "alert fatigue" door alleen te waarschuwen bij **afwijkend** gedrag.
+
+**Voordelen:**
+- 🔍 **Automatische herkenning** - Apparaten worden automatisch gedetecteerd via ARP/IP packets
+- 📚 **Gedrag leren** - Het systeem leert welk verkeer normaal is per apparaat
+- 🔇 **Alert suppressie** - Verwacht gedrag genereert geen alerts (behalve CRITICAL/C2)
+- 📺 **Streaming herkenning** - Netflix, YouTube, Teams verkeer wordt als normaal gezien
+- 🏷️ **Templates** - Groepeer apparaten per type (IP Camera, Smart TV, Server, etc.)
+
+### Device Classification Openen
+
+**Locatie:** Hoofddashboard → Sectie "Device Classification" (klik om uit te klappen)
+
+**Header badges:**
+- **Blauw getal**: Totaal aantal ontdekte apparaten
+- **Groen getal**: Aantal geclassificeerde apparaten (met template)
+
+### Tabbladen Overzicht
+
+De Device Classification sectie bevat 4 tabbladen:
+
+| Tab | Functie |
+|-----|---------|
+| **Devices** | Alle ontdekte apparaten bekijken en beheren |
+| **Templates** | Apparaatprofielen maken en beheren |
+| **Service Providers** | Streaming/CDN diensten configureren |
+| **Statistics** | Overzicht en statistieken |
+
+---
+
+### Devices Tab
+
+#### Apparatenlijst
+
+De apparatenlijst toont alle ontdekte apparaten met:
+
+| Kolom | Beschrijving |
+|-------|--------------|
+| **IP Address** | IP-adres van het apparaat (met CIDR notatie) |
+| **Hostname** | Hostname indien beschikbaar via DNS |
+| **MAC / Vendor** | MAC-adres en fabrikant (via OUI lookup) |
+| **Template** | Toegewezen template of "Unclassified" |
+| **Learning Status** | Voortgang van gedrag leren |
+| **Last Seen** | Wanneer het apparaat laatst verkeer genereerde |
+| **Actions** | Actieknoppen |
+
+#### Learning Status
+
+| Status | Betekenis | Actie |
+|--------|-----------|-------|
+| **Not Started** | Nog geen verkeer geanalyseerd | Wacht op verkeer |
+| **Learning (N)** | N packets geanalyseerd, <100 | Laat meer verkeer door |
+| **Ready** | 100+ packets, profiel compleet | Template kan worden gegenereerd |
+
+#### Zoeken en Filteren
+
+**Zoekbalk:**
+Zoek op IP-adres, hostname, MAC-adres of vendor naam.
+
+**Template Filter:**
+- **All Templates**: Toon alle apparaten
+- **Unclassified**: Alleen apparaten zonder template
+- **[Template naam]**: Alleen apparaten met specifieke template
+
+#### Apparaat Details Bekijken
+
+Klik op een rij om de apparaat details modal te openen:
+
+**Basisinformatie:**
+- IP-adres
+- Hostname
+- MAC-adres
+- Vendor/fabrikant
+
+**Template Toewijzen:**
+- Selecteer een template uit de dropdown
+- Klik "Apply Template"
+- Het apparaat wordt geclassificeerd
+
+**Learning Statistics:**
+- **Packets Analyzed**: Aantal geanalyseerde packets
+- **Unique Ports**: Aantal unieke poorten gezien
+- **Learning Status**: Huidige status
+
+**Classification Hints:**
+Tips gebaseerd op geobserveerd gedrag, bijvoorbeeld:
+- "Device uses port 554 (RTSP) - likely an IP Camera"
+- "High DNS traffic detected - could be a DNS server"
+
+**Template Genereren:**
+Als Learning Status "Ready" is (100+ packets):
+- Klik "Create Template from Learned Behavior"
+- Vul een naam in (bijv. "Woonkamer TV")
+- Het systeem genereert automatisch behavior rules
+
+---
+
+### Templates Tab
+
+#### Templates Overzicht
+
+Templates definiëren verwacht gedrag per apparaattype. Ze bevatten regels die bepalen welk verkeer normaal is.
+
+**Template Kaarten:**
+
+Elke template toont:
+- **Icoon**: Visuele representatie van het apparaattype
+- **Naam**: Template naam
+- **Categorie**: IoT, Network, Server, Workstation, etc.
+- **Type badge**: "Built-in" (standaard) of "Custom" (zelfgemaakt)
+- **Device count**: Aantal apparaten met deze template
+
+**Filteren op Categorie:**
+Gebruik de category dropdown om templates te filteren:
+- All Categories
+- IoT (cameras, smart home)
+- Network (routers, switches)
+- Server (web servers, databases)
+- Workstation (PCs, laptops)
+- Mobile (telefoons, tablets)
+
+#### Built-in Templates
+
+NetMonitor wordt geleverd met standaard templates:
+
+| Template | Categorie | Typisch Gedrag |
+|----------|-----------|----------------|
+| **IP Camera** | IoT | RTSP (554), ONVIF, beperkte bestemmingen |
+| **Smart TV** | IoT | Streaming poorten, Netflix/YouTube |
+| **Network Printer** | IoT | Poort 9100, IPP, SMB |
+| **Router/Firewall** | Network | Alle poorten, management interfaces |
+| **DNS Server** | Server | Poort 53, hoge DNS traffic |
+| **Web Server** | Server | Poort 80, 443, hoge HTTP traffic |
+| **Workstation** | Workstation | Brede poortrange, diverse bestemmingen |
+
+**Let op:** Built-in templates kunnen niet worden gewijzigd of verwijderd.
+
+#### Template Details
+
+Klik op een template kaart om details te bekijken:
+
+**Template Info:**
+- Naam
+- Categorie
+- Type (Built-in/Custom)
+- Beschrijving
+
+**Behavior Rules:**
+Lijst van regels die bepalen wat "normaal" gedrag is:
+- Type regel
+- Waarde/parameters
+- Actie (Allow/Suppress/Alert)
+- Beschrijving
+
+**Apparaten met deze Template:**
+Lijst van alle apparaten die deze template gebruiken.
+
+#### Custom Template Maken
+
+**Methode 1: Handmatig**
+
+1. Klik "Create Template" knop
+2. Vul in:
+   - **Name**: Unieke naam (bijv. "VoIP Telefoon")
+   - **Category**: Selecteer categorie
+   - **Icon**: Kies een icoon
+   - **Description**: Omschrijving van het apparaattype
+3. Klik "Create"
+4. Open de nieuwe template om Behavior Rules toe te voegen
+
+**Methode 2: Vanuit Geleerd Gedrag**
+
+1. Ga naar Devices tab
+2. Klik op een apparaat met "Ready" learning status
+3. Klik "Create Template from Learned Behavior"
+4. Het systeem genereert automatisch rules gebaseerd op geobserveerd verkeer
+5. Geef de template een naam
+6. Pas rules aan indien nodig
+
+#### Template Verwijderen
+
+1. Open template details
+2. Klik "Delete Template" (rode knop)
+3. Bevestig verwijdering
+
+**Let op:**
+- Built-in templates kunnen niet worden verwijderd
+- Apparaten met deze template worden "Unclassified"
+
+---
+
+### Behavior Rules
+
+Behavior Rules definiëren wat "normaal" gedrag is voor een apparaattype. Verkeer dat matcht met deze regels genereert geen alerts.
+
+#### Rule Types
+
+| Type | Beschrijving | Voorbeeld Waarde |
+|------|--------------|------------------|
+| **allowed_ports** | Toegestane poorten | `443` of `5060-5090` of `80,443,8080` |
+| **allowed_protocols** | Toegestane protocollen | `TCP`, `UDP`, `ICMP` |
+| **bandwidth_limit** | Maximum bandbreedte | `100` (MB per uur) |
+| **connection_behavior** | Connectie gedrag | `50` (max connecties) |
+| **expected_destinations** | Verwachte bestemmingen | `8.8.8.8` of `*.google.com` |
+| **time_restrictions** | Tijdsbeperkingen | `08:00-18:00` |
+| **dns_behavior** | DNS gedrag | `*.netflix.com` |
+| **traffic_pattern** | Verkeerspatroon | `bidirectional` |
+
+#### Rule Actions
+
+| Actie | Effect |
+|-------|--------|
+| **Allow** | Verkeer wordt als normaal beschouwd, alerts worden onderdrukt |
+| **Suppress** | Alerts worden volledig verborgen |
+| **Alert** | Altijd een alert genereren (voor monitoring) |
+
+**Belangrijk:** CRITICAL en C2/Threat alerts worden **NOOIT** onderdrukt, ongeacht de rules.
+
+#### Behavior Rule Toevoegen
+
+1. Open een template (niet Built-in)
+2. Klik "Add Rule" knop
+3. Selecteer **Behavior Type**
+4. Voer **Value** in:
+   - Enkele poort: `443`
+   - Poort range: `5060-5090`
+   - Meerdere poorten: `80,443,8080`
+   - Protocol: `TCP`
+   - IP/domein: `192.168.1.0/24` of `*.example.com`
+5. Selecteer **Action**
+6. (Optioneel) Voeg **Description** toe
+7. Klik "Add"
+
+#### Voorbeelden
+
+**VoIP Telefoon Template:**
+```
+Type: allowed_ports     Value: 5060-5090      Action: Allow    Desc: SIP signaling
+Type: allowed_ports     Value: 10000-20000    Action: Allow    Desc: RTP media
+Type: allowed_protocols Value: UDP            Action: Allow    Desc: VoIP protocol
+```
+
+**IP Camera Template:**
+```
+Type: allowed_ports     Value: 554            Action: Allow    Desc: RTSP streaming
+Type: allowed_ports     Value: 80,443,8080    Action: Allow    Desc: Web interface
+Type: bandwidth_limit   Value: 500            Action: Alert    Desc: Max 500MB/hour
+```
+
+**Smart TV Template:**
+```
+Type: allowed_ports     Value: 443,8080       Action: Allow    Desc: HTTPS streaming
+Type: expected_destinations  Value: *.netflix.com,*.youtube.com  Action: Allow
+```
+
+#### Behavior Rule Verwijderen
+
+1. Open template details
+2. Klik op het prullenbak-icoon naast de regel
+3. Bevestig verwijdering
+
+---
+
+### Service Providers Tab
+
+Service Providers zijn bekende streaming- en CDN-diensten. Verkeer naar deze providers wordt als "normaal entertainment/zakelijk verkeer" beschouwd.
+
+#### Waarom Service Providers?
+
+Zonder Service Providers zou verkeer naar Netflix, YouTube of Microsoft 365 alerts kunnen genereren voor:
+- Hoog bandbreedtegebruik
+- Vele verbindingen
+- Onbekende bestemmingen
+
+Door providers te definiëren weet NetMonitor dat dit legitiem verkeer is.
+
+#### Provider Lijst
+
+De lijst toont:
+- **Provider naam** (Netflix, YouTube, Microsoft 365, etc.)
+- **Category** (Streaming, CDN, Cloud, Gaming, etc.)
+- **IP Ranges**: Bekende IP-reeksen van de provider
+- **Domains**: Bekende domeinen
+
+**Filteren:**
+Gebruik de category dropdown om te filteren op type provider.
+
+#### Built-in Providers
+
+NetMonitor bevat standaard providers:
+
+| Provider | Category | Voorbeelden |
+|----------|----------|-------------|
+| Netflix | Streaming | *.netflix.com, Netflix CDN IPs |
+| YouTube | Streaming | *.youtube.com, *.googlevideo.com |
+| Spotify | Streaming | *.spotify.com, *.scdn.co |
+| Microsoft 365 | Cloud | *.office365.com, *.microsoft.com |
+| AWS | CDN | *.amazonaws.com |
+| Cloudflare | CDN | Cloudflare IP ranges |
+
+#### Custom Provider Toevoegen
+
+1. Klik "Add Provider" knop
+2. Vul in:
+   - **Name**: Naam van de dienst
+   - **Category**: Selecteer type
+   - **IP Ranges**: IP-reeksen (één per regel, CIDR notatie)
+   - **Domains**: Domeinen (één per regel, wildcards toegestaan)
+   - **Description**: Omschrijving
+3. Klik "Create"
+
+**Voorbeeld: Zoom toevoegen**
+```
+Name: Zoom
+Category: Cloud
+IP Ranges:
+  3.7.35.0/25
+  3.21.137.128/25
+  3.22.11.0/24
+Domains:
+  *.zoom.us
+  *.zoomgov.com
+Description: Zoom video conferencing
+```
+
+#### Provider Verwijderen
+
+1. Klik op het prullenbak-icoon naast de provider
+2. Bevestig verwijdering
+
+**Let op:** Built-in providers kunnen niet worden verwijderd.
+
+---
+
+### Statistics Tab
+
+De Statistics tab geeft een overzicht van uw device classification.
+
+#### Overzicht Kaarten
+
+| Metric | Beschrijving |
+|--------|--------------|
+| **Total Devices** | Totaal ontdekte apparaten |
+| **Classified** | Apparaten met een template |
+| **Unclassified** | Apparaten zonder template |
+
+#### Devices by Template
+
+Grafiek/lijst die toont hoeveel apparaten per template zijn gecategoriseerd.
+
+#### Devices by Vendor
+
+Top 10 fabrikanten in uw netwerk, gebaseerd op MAC-adres OUI lookup.
+
+---
+
+### Praktische Voorbeelden
+
+#### Voorbeeld 1: Nieuwe IP Camera Toevoegen
+
+**Situatie:** U installeert een nieuwe IP camera en wilt voorkomen dat het RTSP verkeer alerts genereert.
+
+**Stappen:**
+1. Wacht tot de camera in de Devices lijst verschijnt
+2. Klik op het apparaat
+3. Selecteer template "IP Camera" uit de dropdown
+4. Klik "Apply Template"
+5. ✅ Camera verkeer wordt nu als normaal beschouwd
+
+#### Voorbeeld 2: Custom Template voor VoIP
+
+**Situatie:** U heeft VoIP telefoons die SIP/RTP gebruiken op non-standard poorten.
+
+**Stappen:**
+1. Ga naar Templates tab
+2. Klik "Create Template"
+3. Naam: "Office VoIP Phone"
+4. Category: "IoT"
+5. Klik "Create"
+6. Open de nieuwe template
+7. Klik "Add Rule"
+8. Voeg toe:
+   - Type: `allowed_ports`, Value: `5060-5090`, Desc: "SIP signaling"
+   - Type: `allowed_ports`, Value: `10000-20000`, Desc: "RTP media"
+   - Type: `allowed_protocols`, Value: `UDP`, Desc: "Voice protocol"
+9. Ga naar Devices, wijs de template toe aan uw VoIP telefoons
+
+#### Voorbeeld 3: Streaming Dienst Toevoegen
+
+**Situatie:** Medewerkers gebruiken een specifieke streaming dienst die niet in de standaard providers zit.
+
+**Stappen:**
+1. Ga naar Service Providers tab
+2. Klik "Add Provider"
+3. Vul in:
+   - Name: "Internal Video Platform"
+   - Category: "Streaming"
+   - IP Ranges: `10.100.50.0/24`
+   - Domains: `video.company.internal`
+4. Klik "Create"
+5. ✅ Verkeer naar deze dienst wordt als normaal beschouwd
+
+#### Voorbeeld 4: Template Genereren uit Geleerd Gedrag
+
+**Situatie:** U heeft een nieuw IoT apparaat waarvan u niet precies weet welke poorten het gebruikt.
+
+**Stappen:**
+1. Sluit het apparaat aan en laat het een paar uur draaien
+2. Ga naar Devices tab
+3. Vind het apparaat (zoek op IP of MAC)
+4. Wacht tot Learning Status "Ready" is (100+ packets)
+5. Klik op het apparaat
+6. Klik "Create Template from Learned Behavior"
+7. Geef de template een naam
+8. Review de automatisch gegenereerde rules
+9. Pas aan indien nodig
+10. ✅ Template is klaar voor gebruik
+
+---
+
+### Tips en Best Practices
+
+#### Do's ✅
+
+- **Classificeer apparaten zo snel mogelijk** - Hoe sneller geclassificeerd, hoe minder false positives
+- **Gebruik templates voor groepen** - Maak één template voor alle apparaten van hetzelfde type
+- **Review geleerde gedrag** - Controleer automatisch gegenereerde rules voor je ze accepteert
+- **Houd Service Providers up-to-date** - Voeg nieuwe diensten toe als ze worden gebruikt
+- **Monitor de Statistics** - Houd bij hoeveel apparaten nog ongeclass zijn
+
+#### Don'ts ❌
+
+- **Classificeer niet te ruim** - Een template met "alle poorten allowed" is zinloos
+- **Negeer unclassified apparaten niet** - Deze genereren de meeste false positives
+- **Wijzig geen Built-in templates** - Maak een custom template als je andere rules nodig hebt
+- **Suppress geen CRITICAL alerts** - Deze worden sowieso niet onderdrukt
 
 ---
 

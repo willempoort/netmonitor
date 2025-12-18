@@ -2,8 +2,8 @@
 
 **Complete Installation & Administration Guide**
 
-Version: 2.1
-Last Updated: December 2024
+Version: 2.2
+Last Updated: December 2025
 
 ---
 
@@ -15,11 +15,12 @@ Last Updated: December 2024
 4. [SOC Server Installation](#soc-server-installation)
 5. [Sensor Deployment](#sensor-deployment)
 6. [Configuration Management](#configuration-management)
-7. [MCP Server](#mcp-server)
-8. [Maintenance & Troubleshooting](#maintenance--troubleshooting)
-9. [Web Dashboard Authentication & User Management](#web-dashboard-authentication--user-management)
-10. [Security Best Practices](#security-best-practices)
-11. [Advanced Topics](#advanced-topics)
+7. [Device Classification Administration](#device-classification-administration)
+8. [MCP Server](#mcp-server)
+9. [Maintenance & Troubleshooting](#maintenance--troubleshooting)
+10. [Web Dashboard Authentication & User Management](#web-dashboard-authentication--user-management)
+11. [Security Best Practices](#security-best-practices)
+12. [Advanced Topics](#advanced-topics)
 
 ---
 
@@ -418,6 +419,198 @@ Add trusted IP ranges:
 ```
 
 Whitelisted IPs/ranges won't trigger alerts.
+
+---
+
+## Device Classification Administration
+
+Device Classification is a ML-based system that automatically discovers devices, learns their behavior patterns, and suppresses expected alerts. This section covers the administrative aspects.
+
+### Database Tables
+
+Device Classification uses the following database tables:
+
+| Table | Purpose |
+|-------|---------|
+| `devices` | Discovered devices with IP, MAC, hostname, learned behavior |
+| `device_templates` | Templates defining expected behavior per device type |
+| `template_behaviors` | Behavior rules for each template |
+| `service_providers` | Known streaming/CDN providers |
+
+### Database Migration
+
+If upgrading from a version without Device Classification, run the migration:
+
+```bash
+cd /opt/netmonitor
+python3 migrate_device_classification.py
+```
+
+This creates the necessary tables and indexes.
+
+### Built-in Templates
+
+NetMonitor includes built-in templates that cannot be modified:
+
+```bash
+# View built-in templates in database
+psql -U netmonitor -d netmonitor -c "SELECT name, category FROM device_templates WHERE is_builtin = true;"
+```
+
+Built-in templates include: IP Camera, Smart TV, Network Printer, Router/Firewall, DNS Server, Web Server, Workstation.
+
+### Template Management via CLI
+
+**List all templates:**
+```bash
+psql -U netmonitor -d netmonitor -c "SELECT id, name, category, is_builtin, (SELECT COUNT(*) FROM devices WHERE template_id = device_templates.id) as device_count FROM device_templates;"
+```
+
+**Create custom template via SQL:**
+```sql
+INSERT INTO device_templates (name, category, description, is_builtin)
+VALUES ('Custom VoIP Phone', 'iot', 'Office VoIP telephones', false);
+```
+
+**Add behavior rule:**
+```sql
+INSERT INTO template_behaviors (template_id, behavior_type, parameters, action, description)
+VALUES (
+    (SELECT id FROM device_templates WHERE name = 'Custom VoIP Phone'),
+    'allowed_ports',
+    '{"ports": [5060, 5061]}',
+    'allow',
+    'SIP signaling ports'
+);
+```
+
+### Service Provider Management
+
+**List built-in providers:**
+```bash
+psql -U netmonitor -d netmonitor -c "SELECT name, category FROM service_providers WHERE is_builtin = true;"
+```
+
+**Add custom provider:**
+```sql
+INSERT INTO service_providers (name, category, ip_ranges, domains, description, is_builtin)
+VALUES (
+    'Zoom',
+    'cloud',
+    ARRAY['3.7.35.0/25', '3.21.137.128/25'],
+    ARRAY['*.zoom.us', '*.zoomgov.com'],
+    'Zoom video conferencing',
+    false
+);
+```
+
+### Device Discovery Configuration
+
+Device discovery runs as part of the sensor and is controlled by these settings:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `ENABLE_DEVICE_DISCOVERY` | true | Enable/disable discovery |
+| `OUI_DATABASE_PATH` | `/opt/netmonitor/oui.txt` | Path to OUI database |
+| `DEVICE_LEARNING_MIN_PACKETS` | 100 | Packets needed for "Ready" status |
+
+**Update OUI database:**
+```bash
+cd /opt/netmonitor
+wget -O oui.txt https://standards-oui.ieee.org/oui/oui.txt
+```
+
+### Alert Suppression Logic
+
+Device Classification suppresses alerts based on:
+
+1. **Device Template Match**: If device has a template assigned
+2. **Behavior Rule Match**: If traffic matches an "allow" rule
+3. **Service Provider Match**: If destination is a known provider
+
+**Never suppressed (regardless of rules):**
+- CRITICAL severity alerts
+- C2 (Command & Control) detection
+- Known malware communication
+- Threat intelligence matches
+
+### API Endpoints
+
+Device Classification exposes these API endpoints:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/devices` | GET | List all devices |
+| `/api/devices/<ip>` | GET | Get device details |
+| `/api/devices/<ip>/template` | PUT | Assign template |
+| `/api/device-templates` | GET | List templates |
+| `/api/device-templates` | POST | Create template |
+| `/api/device-templates/<id>` | GET | Get template details |
+| `/api/device-templates/<id>/behaviors` | POST | Add behavior rule |
+| `/api/service-providers` | GET | List providers |
+| `/api/device-classification/stats` | GET | Get statistics |
+
+### MCP Tools for Device Classification
+
+The MCP server includes these tools for AI integration:
+
+| Tool | Scope | Description |
+|------|-------|-------------|
+| `get_devices` | read_only | List discovered devices |
+| `get_device_templates` | read_only | List device templates |
+| `get_service_providers` | read_only | List service providers |
+| `get_device_learning_status` | read_only | Get learning status for device |
+| `assign_device_template` | read_write | Assign template to device |
+| `create_device_template` | read_write | Create new template |
+| `save_device_learned_behavior` | read_write | Save learned behavior |
+
+### Performance Considerations
+
+**Database indexes:**
+The migration creates indexes for optimal performance:
+```sql
+CREATE INDEX idx_devices_template ON devices(template_id);
+CREATE INDEX idx_devices_sensor ON devices(sensor_id);
+CREATE INDEX idx_template_behaviors_template ON template_behaviors(template_id);
+```
+
+**Cleanup old devices:**
+```sql
+-- Remove devices not seen in 30 days
+DELETE FROM devices WHERE last_seen < NOW() - INTERVAL '30 days';
+```
+
+### Troubleshooting
+
+**Devices not appearing:**
+1. Check sensor is running with device discovery enabled
+2. Verify network interface captures ARP/IP traffic
+3. Check sensor logs: `journalctl -u netmonitor-sensor -f`
+
+**Learning status stuck at "Not Started":**
+1. Device may not be generating traffic
+2. Check if device IP is in internal_networks range
+3. Verify sensor is processing packets
+
+**Alert suppression not working:**
+1. Verify device has template assigned
+2. Check behavior rules match the traffic
+3. Ensure alert is not CRITICAL severity
+4. Check service provider domains/IPs
+
+**Debug device classification:**
+```bash
+# Check device in database
+psql -U netmonitor -d netmonitor -c "SELECT * FROM devices WHERE ip_address = '192.168.1.100';"
+
+# Check template behaviors
+psql -U netmonitor -d netmonitor -c "
+SELECT t.name, b.behavior_type, b.parameters, b.action
+FROM device_templates t
+JOIN template_behaviors b ON b.template_id = t.id
+WHERE t.id = 1;
+"
+```
 
 ---
 
