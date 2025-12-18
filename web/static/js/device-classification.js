@@ -62,26 +62,38 @@ function initDeviceClassification() {
 
 // Load just the counts for the header badges (lightweight, called on page load)
 async function loadDeviceCountsOnly() {
+    console.log('[DeviceClassification] loadDeviceCountsOnly called');
+
     try {
-        const response = await fetch('/api/device-classification/stats');
+        const response = await fetch('/api/device-classification/stats', {
+            credentials: 'same-origin'  // Include cookies for authentication
+        });
+
+        console.log('[DeviceClassification] API response status:', response.status);
 
         // Check if response is OK (not a redirect to login)
         if (!response.ok) {
-            console.warn('Device stats API returned:', response.status);
+            console.warn('[DeviceClassification] Device stats API returned:', response.status);
             return;
         }
 
         const result = await response.json();
+        console.log('[DeviceClassification] API result:', result);
 
         if (result.success && result.stats && result.stats.devices) {
             const stats = result.stats;
             const countEl = document.getElementById('devices-count');
             const classifiedEl = document.getElementById('devices-classified');
 
+            console.log('[DeviceClassification] Elements found:', !!countEl, !!classifiedEl);
+            console.log('[DeviceClassification] Stats:', stats.devices.total, stats.devices.classified);
+
             if (countEl) countEl.textContent = stats.devices.total || 0;
             if (classifiedEl) classifiedEl.textContent = stats.devices.classified || 0;
 
-            console.log('[DeviceClassification] Badge counts loaded:', stats.devices.total, stats.devices.classified);
+            console.log('[DeviceClassification] Badge counts updated');
+        } else {
+            console.warn('[DeviceClassification] Invalid response structure:', result);
         }
     } catch (error) {
         console.error('[DeviceClassification] Error loading device counts:', error);
