@@ -1943,20 +1943,41 @@ class DatabaseManager:
 
     def create_device_template(self, name: str, description: str = None,
                                icon: str = 'device', category: str = 'other',
-                               is_builtin: bool = False, created_by: str = None) -> Optional[int]:
-        """Create a new device template"""
+                               is_builtin: bool = False, created_by: str = None,
+                               return_existing: bool = False) -> Optional[int]:
+        """Create a new device template
+
+        Args:
+            return_existing: If True, return existing template ID when name conflicts.
+                           If False, return None when name conflicts (default).
+        """
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
+            # Use ON CONFLICT DO NOTHING to handle race conditions with multiple workers
             cursor.execute('''
                 INSERT INTO device_templates (name, description, icon, category, is_builtin, created_by)
                 VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (name) DO NOTHING
                 RETURNING id
             ''', (name, description, icon, category, is_builtin, created_by))
-            template_id = cursor.fetchone()[0]
+            result = cursor.fetchone()
             conn.commit()
-            self.logger.info(f"Device template created: {name} (ID: {template_id})")
-            return template_id
+            if result:
+                template_id = result[0]
+                self.logger.info(f"Device template created: {name} (ID: {template_id})")
+                return template_id
+            else:
+                # Template already exists
+                if return_existing:
+                    cursor.execute('SELECT id FROM device_templates WHERE name = %s', (name,))
+                    existing = cursor.fetchone()
+                    if existing:
+                        self.logger.debug(f"Device template already exists: {name} (ID: {existing[0]})")
+                        return existing[0]
+                else:
+                    self.logger.debug(f"Device template already exists, skipping: {name}")
+                return None
         except Exception as e:
             conn.rollback()
             self.logger.error(f"Error creating device template: {e}")
