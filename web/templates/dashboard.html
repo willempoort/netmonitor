@@ -13,7 +13,7 @@
     <!-- Bootstrap Icons Fallback (Unicode symbols) -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons-fallback.css') }}">
     <!-- Custom Dashboard CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}?v=3">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}?v=4">
 
     <style>
         /* Loading overlay */
@@ -496,9 +496,15 @@
                                         <table class="table table-dark table-sm table-hover mb-0">
                                             <thead>
                                                 <tr>
-                                                    <th>IP Address</th>
-                                                    <th>Hostname</th>
-                                                    <th>MAC / Vendor</th>
+                                                    <th class="device-sort-header" data-sort="ip_address" style="cursor: pointer;" onclick="sortDevices('ip_address')">
+                                                        IP Address<span class="sort-indicator"> ▲</span>
+                                                    </th>
+                                                    <th class="device-sort-header" data-sort="hostname" style="cursor: pointer;" onclick="sortDevices('hostname')">
+                                                        Hostname<span class="sort-indicator"></span>
+                                                    </th>
+                                                    <th class="device-sort-header" data-sort="mac_vendor" style="cursor: pointer;" onclick="sortDevices('mac_vendor')">
+                                                        MAC / Vendor<span class="sort-indicator"></span>
+                                                    </th>
                                                     <th>Template</th>
                                                     <th>Learning Status</th>
                                                     <th>Last Seen</th>
@@ -1886,7 +1892,7 @@
     <!-- Custom JS - Load last with defer -->
     <script src="{{ url_for('static', filename='js/dashboard.js') }}?v=3" defer></script>
     <script src="{{ url_for('static', filename='js/config-management.js') }}?v=3" defer></script>
-    <script src="{{ url_for('static', filename='js/device-classification.js') }}?v=9" defer></script>
+    <script src="{{ url_for('static', filename='js/device-classification.js') }}?v=10" defer></script>
 
     <!-- Hide loading overlay when DOM is ready -->
     <script>

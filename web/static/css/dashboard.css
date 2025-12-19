@@ -536,6 +536,27 @@ canvas {
     margin-right: 5px;
 }
 
+/* Sortable Table Headers */
+.device-sort-header {
+    user-select: none;
+    transition: background-color 0.2s;
+}
+
+.device-sort-header:hover {
+    background-color: #2a2a2a;
+}
+
+.device-sort-header .sort-indicator {
+    opacity: 0.5;
+    font-size: 0.8em;
+}
+
+.device-sort-header.sort-asc .sort-indicator,
+.device-sort-header.sort-desc .sort-indicator {
+    opacity: 1;
+    color: #17a2b8;
+}
+
 /* Tab Content */
 .tab-pane {
     min-height: 300px;

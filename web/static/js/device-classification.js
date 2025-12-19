@@ -8,6 +8,10 @@ let allDevices = [];
 let allTemplates = [];
 let allProviders = [];
 
+// Sorting state for devices table
+let deviceSortColumn = 'ip_address';
+let deviceSortDirection = 'asc';
+
 // ==================== Initialization ====================
 
 // Load badge counts immediately
@@ -191,6 +195,80 @@ function getLearningStatusBadge(device) {
     }
 }
 
+// ==================== Sorting Functions ====================
+
+function sortDevices(column) {
+    // Toggle direction if same column, otherwise default to ascending
+    if (deviceSortColumn === column) {
+        deviceSortDirection = deviceSortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+        deviceSortColumn = column;
+        deviceSortDirection = 'asc';
+    }
+
+    // Update sort indicators in headers
+    updateSortIndicators();
+
+    // Re-render with current filter applied
+    filterDevicesTable();
+}
+
+function updateSortIndicators() {
+    // Remove all existing sort indicators
+    document.querySelectorAll('.device-sort-header').forEach(header => {
+        header.classList.remove('sort-asc', 'sort-desc');
+        const indicator = header.querySelector('.sort-indicator');
+        if (indicator) indicator.textContent = '';
+    });
+
+    // Add indicator to current sort column
+    const currentHeader = document.querySelector(`.device-sort-header[data-sort="${deviceSortColumn}"]`);
+    if (currentHeader) {
+        currentHeader.classList.add(`sort-${deviceSortDirection}`);
+        const indicator = currentHeader.querySelector('.sort-indicator');
+        if (indicator) {
+            indicator.textContent = deviceSortDirection === 'asc' ? ' ▲' : ' ▼';
+        }
+    }
+}
+
+function compareDevices(a, b, column) {
+    let valA, valB;
+
+    switch (column) {
+        case 'ip_address':
+            // Sort IP addresses numerically
+            valA = ipToNumber(a.ip_address || '');
+            valB = ipToNumber(b.ip_address || '');
+            break;
+        case 'hostname':
+            valA = (a.hostname || '').toLowerCase();
+            valB = (b.hostname || '').toLowerCase();
+            break;
+        case 'mac_vendor':
+            // Sort by vendor first, then MAC
+            valA = ((a.vendor || '') + (a.mac_address || '')).toLowerCase();
+            valB = ((b.vendor || '') + (b.mac_address || '')).toLowerCase();
+            break;
+        default:
+            valA = a[column] || '';
+            valB = b[column] || '';
+    }
+
+    if (valA < valB) return -1;
+    if (valA > valB) return 1;
+    return 0;
+}
+
+function ipToNumber(ip) {
+    // Convert IP address to number for proper sorting
+    // Handle CIDR notation by stripping it
+    const cleanIp = ip.split('/')[0];
+    const parts = cleanIp.split('.');
+    if (parts.length !== 4) return 0;
+    return parts.reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0;
+}
+
 function filterDevicesTable() {
     const searchTerm = (document.getElementById('device-search')?.value || '').toLowerCase();
     const templateFilter = document.getElementById('device-filter-template')?.value || '';
@@ -211,6 +289,12 @@ function filterDevicesTable() {
     } else if (templateFilter) {
         filtered = filtered.filter(d => d.template_id == templateFilter);
     }
+
+    // Apply sorting
+    filtered = [...filtered].sort((a, b) => {
+        const result = compareDevices(a, b, deviceSortColumn);
+        return deviceSortDirection === 'asc' ? result : -result;
+    });
 
     renderDevicesTable(filtered);
 }

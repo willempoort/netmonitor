@@ -197,6 +197,7 @@ class DeviceDiscovery:
 
     def _background_worker(self):
         """Background worker for periodic tasks"""
+        learning_counter = 0  # Counter for less frequent learning updates
         while self._running:
             try:
                 # Flush stale DNS cache entries
@@ -204,6 +205,12 @@ class DeviceDiscovery:
 
                 # Persist cached devices to database periodically
                 self._flush_device_cache()
+
+                # Save learned behavior every 5 minutes (every 5th iteration)
+                learning_counter += 1
+                if learning_counter >= 5:
+                    self._save_all_learned_behavior()
+                    learning_counter = 0
 
             except Exception as e:
                 self.logger.error(f"Error in background worker: {e}")
@@ -254,6 +261,37 @@ class DeviceDiscovery:
             )
         except Exception as e:
             self.logger.error(f"Error registering device: {e}")
+
+    def _save_all_learned_behavior(self):
+        """
+        Periodically save learned behavior for all devices with traffic stats.
+        This populates the learned_behavior field in the devices table.
+        """
+        if not self.db:
+            return
+
+        saved_count = 0
+        for ip_address in list(self.traffic_stats.keys()):
+            try:
+                # Generate learned behavior from traffic stats
+                learned = self.generate_learned_behavior(ip_address)
+                if not learned:
+                    continue  # Not enough data yet
+
+                # Get device from database
+                device = self.db.get_device_by_ip(ip_address)
+                if not device:
+                    continue  # Device not in database
+
+                # Save the learned behavior
+                self.db.update_device_learned_behavior(device['id'], learned)
+                saved_count += 1
+
+            except Exception as e:
+                self.logger.error(f"Error saving learned behavior for {ip_address}: {e}")
+
+        if saved_count > 0:
+            self.logger.info(f"Saved learned behavior for {saved_count} devices")
 
     def _is_internal_ip(self, ip_str: str) -> bool:
         """Check if IP is in internal networks"""
