@@ -28,6 +28,7 @@ RuntimeDirectoryMode=0755
 
 # Start Gunicorn with eventlet workers for SocketIO support
 # Note: Environment variables from EnvironmentFile override the defaults above
+# PID file not needed - systemd tracks the process directly
 ExecStart=__GUNICORN_BIN__ \
     --bind $DASHBOARD_HOST:$DASHBOARD_PORT \
     --workers $DASHBOARD_WORKERS \
@@ -38,7 +39,6 @@ ExecStart=__GUNICORN_BIN__ \
     --access-logfile $LOG_DIR/dashboard_access.log \
     --error-logfile $LOG_DIR/dashboard_error.log \
     --log-level $LOG_LEVEL \
-    --pid $RUN_DIR/dashboard.pid \
     wsgi:application
 
 # Restart behavior
