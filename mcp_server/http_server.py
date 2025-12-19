@@ -1087,29 +1087,50 @@ class MCPHTTPServer:
 
     async def _tool_assign_device_template(self, params: Dict) -> Dict:
         """Implement assign_device_template tool (requires write access)"""
+        # Accept either device_id (legacy) or ip_address
         device_id = params.get('device_id')
+        ip_address = params.get('ip_address')
         template_id = params.get('template_id')
 
-        if not device_id or not template_id:
-            return {'success': False, 'error': 'device_id and template_id are required'}
+        if not template_id:
+            return {'success': False, 'error': 'template_id is required'}
 
-        # This requires write access to the main database
-        # Route through dashboard API or use write-enabled connection
+        if not device_id and not ip_address:
+            return {'success': False, 'error': 'device_id or ip_address is required'}
+
+        # If device_id provided, look up the IP address
+        if device_id and not ip_address:
+            # Try to find device by ID in our read-only DB
+            devices = self.db.get_devices()
+            device = next((d for d in devices if d.get('id') == device_id), None)
+            if device:
+                ip_address = device.get('ip_address')
+            else:
+                return {'success': False, 'error': f'Device with ID {device_id} not found'}
+
+        # Route through internal dashboard API (localhost access without auth)
         import requests
         dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
 
         try:
-            response = requests.post(
-                f"{dashboard_url}/api/devices/{device_id}/assign-template",
+            response = requests.put(
+                f"{dashboard_url}/api/internal/devices/{ip_address}/template",
                 json={'template_id': template_id},
                 timeout=10
             )
 
-            response.raise_for_status()
-            return {
-                'success': True,
-                'message': f'Template {template_id} assigned to device {device_id}'
-            }
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    'success': True,
+                    'message': data.get('message', f'Template {template_id} assigned to device {ip_address}')
+                }
+            else:
+                data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
+                return {
+                    'success': False,
+                    'error': data.get('error', f'API returned status {response.status_code}')
+                }
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Error assigning device template: {e}")
@@ -1124,35 +1145,45 @@ class MCPHTTPServer:
         name = params.get('name')
         category = params.get('category')
         ip_ranges = params.get('ip_ranges', [])
-        description = params.get('description')
+        domains = params.get('domains', [])
+        description = params.get('description', '')
 
-        if not name or not category or not ip_ranges:
-            return {'success': False, 'error': 'name, category, and ip_ranges are required'}
+        if not name or not category:
+            return {'success': False, 'error': 'name and category are required'}
 
-        # Route through dashboard API
+        if not ip_ranges and not domains:
+            return {'success': False, 'error': 'At least ip_ranges or domains is required'}
+
+        # Route through internal dashboard API (localhost access without auth)
         import requests
         dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
 
         try:
             response = requests.post(
-                f"{dashboard_url}/api/service-providers",
+                f"{dashboard_url}/api/internal/service-providers",
                 json={
                     'name': name,
                     'category': category,
                     'ip_ranges': ip_ranges,
+                    'domains': domains,
                     'description': description
                 },
                 timeout=10
             )
 
-            response.raise_for_status()
-            data = response.json()
-
-            return {
-                'success': True,
-                'provider_id': data.get('id'),
-                'message': f'Service provider "{name}" created successfully'
-            }
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    'success': True,
+                    'provider_id': data.get('provider_id'),
+                    'message': data.get('message', f'Service provider "{name}" created')
+                }
+            else:
+                data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
+                return {
+                    'success': False,
+                    'error': data.get('error', f'API returned status {response.status_code}')
+                }
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Error creating service provider: {e}")
@@ -1268,20 +1299,24 @@ class MCPHTTPServer:
         ip_address = params.get('ip_address')
         template_name = params.get('template_name')
         category = params.get('category', 'other')
+        description = params.get('description')
+        assign_to_device = params.get('assign_to_device', True)
 
         if not ip_address or not template_name:
             return {'success': False, 'error': 'ip_address and template_name are required'}
 
-        # Create template via dashboard API
+        # Create template via internal dashboard API (localhost access without auth)
         dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
 
         try:
             response = requests.post(
-                f"{dashboard_url}/api/device-templates/from-device",
+                f"{dashboard_url}/api/internal/device-templates/from-device",
                 json={
                     'ip_address': ip_address,
                     'template_name': template_name,
-                    'category': category
+                    'category': category,
+                    'description': description,
+                    'assign_to_device': assign_to_device
                 },
                 timeout=15
             )
@@ -1292,7 +1327,7 @@ class MCPHTTPServer:
                     'success': True,
                     'template_id': data.get('template_id'),
                     'template_name': template_name,
-                    'message': f'Template "{template_name}" created from device {ip_address}',
+                    'message': data.get('message', f'Template "{template_name}" created from device {ip_address}'),
                     'behaviors_added': data.get('behaviors_added', 0)
                 }
             else:
