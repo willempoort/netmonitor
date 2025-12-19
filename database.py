@@ -2700,6 +2700,139 @@ class DatabaseManager:
                     {'type': 'traffic_pattern', 'params': {'low_bandwidth': True}, 'action': 'allow'},
                 ]
             },
+            # Network Infrastructure
+            {
+                'name': 'Access Point',
+                'description': 'WiFi access point or wireless controller',
+                'icon': 'router',
+                'category': 'infrastructure',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [22, 80, 443, 8080, 8443]}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'ICMP', 'RADIUS']}, 'action': 'allow'},
+                    {'type': 'traffic_pattern', 'params': {'high_bandwidth': True, 'continuous': True}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'high_connection_rate': True}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Network Switch',
+                'description': 'Managed network switch',
+                'icon': 'hub',
+                'category': 'infrastructure',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [22, 23, 80, 161, 443, 830]}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'ICMP', 'SNMP', 'LLDP', 'STP']}, 'action': 'allow'},
+                    {'type': 'expected_destinations', 'params': {'internal_only': True}, 'action': 'allow'},
+                ]
+            },
+            # Server types
+            {
+                'name': 'DNS Server',
+                'description': 'Domain Name System server',
+                'icon': 'dns',
+                'category': 'server',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [53, 853, 5353], 'direction': 'inbound'}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'DNS']}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'high_connection_rate': True}, 'action': 'allow'},
+                    {'type': 'expected_destinations', 'params': {'internal_only': True}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'DHCP Server',
+                'description': 'Dynamic Host Configuration Protocol server',
+                'icon': 'settings_ethernet',
+                'category': 'server',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [67, 68, 546, 547]}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['UDP', 'DHCP']}, 'action': 'allow'},
+                    {'type': 'expected_destinations', 'params': {'internal_only': True}, 'action': 'allow'},
+                    {'type': 'traffic_pattern', 'params': {'low_bandwidth': True}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'PBX Server',
+                'description': 'VoIP/SIP telephone exchange (Asterisk, FreePBX, 3CX)',
+                'icon': 'phone_in_talk',
+                'category': 'server',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 5060, 5061, 5080, 5443, 8089, 10000, 20000]}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'SIP', 'RTP', 'SRTP']}, 'action': 'allow'},
+                    {'type': 'traffic_pattern', 'params': {'continuous': True, 'voice_traffic': True}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Remote Desktop Server',
+                'description': 'Remote desktop/terminal server (RDP, VNC, SSH)',
+                'icon': 'desktop_windows',
+                'category': 'server',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [22, 3389, 5900, 5901, 5902], 'direction': 'inbound'}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'RDP']}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'long_sessions': True}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Windows/Samba Server',
+                'description': 'Windows file sharing or Samba server (SMB/CIFS)',
+                'icon': 'folder_shared',
+                'category': 'server',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [135, 137, 138, 139, 445, 3268, 3269], 'direction': 'inbound'}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'SMB', 'NetBIOS']}, 'action': 'allow'},
+                    {'type': 'traffic_pattern', 'params': {'high_bandwidth': True, 'internal_only': True}, 'action': 'allow'},
+                    {'type': 'expected_destinations', 'params': {'internal_only': True}, 'action': 'allow'},
+                ]
+            },
+            # Domotica / Home Automation
+            {
+                'name': 'Smart Plug',
+                'description': 'WiFi-controlled power outlet (Tuya, Shelly, TP-Link Kasa)',
+                'icon': 'power',
+                'category': 'iot',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 6668, 8883]}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'MQTT']}, 'action': 'allow'},
+                    {'type': 'traffic_pattern', 'params': {'low_bandwidth': True, 'periodic': True}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'low_frequency': True, 'periodic': True, 'small_packets': True}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Smart Light',
+                'description': 'WiFi/Zigbee smart bulb or light controller (Philips Hue, LIFX, Yeelight)',
+                'icon': 'lightbulb',
+                'category': 'iot',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 8080, 8443, 56700]}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'mDNS', 'SSDP']}, 'action': 'allow'},
+                    {'type': 'traffic_pattern', 'params': {'low_bandwidth': True, 'bursty': True}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'low_frequency': True, 'event_driven': True}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Smart Thermostat',
+                'description': 'WiFi thermostat (Nest, Ecobee, Tado, Honeywell)',
+                'icon': 'thermostat',
+                'category': 'iot',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 8883]}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'MQTT']}, 'action': 'allow'},
+                    {'type': 'traffic_pattern', 'params': {'low_bandwidth': True, 'periodic': True}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'periodic': True, 'cloud_connected': True}, 'action': 'allow'},
+                    {'type': 'dns_behavior', 'params': {'allow_cloud_dns': True}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Home Automation Hub',
+                'description': 'Smart home controller (Home Assistant, Hubitat, SmartThings)',
+                'icon': 'home',
+                'category': 'iot',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 1883, 8080, 8123, 8883]}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'MQTT', 'mDNS', 'SSDP', 'CoAP']}, 'action': 'allow'},
+                    {'type': 'traffic_pattern', 'params': {'moderate_bandwidth': True, 'continuous': True}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'high_connection_rate': True, 'local_network': True}, 'action': 'allow'},
+                ]
+            },
         ]
 
         count = 0
