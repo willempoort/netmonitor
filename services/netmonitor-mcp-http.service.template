@@ -1,9 +1,7 @@
 [Unit]
 Description=NetMonitor MCP HTTP API Server (AI Integration)
 Documentation=https://github.com/willempoort/netmonitor
-After=network.target
-# Only require PostgreSQL if using it
-After=postgresql.service
+After=network.target postgresql.service
 Wants=postgresql.service
 
 [Service]
@@ -11,18 +9,21 @@ Type=simple
 User=root
 WorkingDirectory=__INSTALL_DIR__
 
-# Load environment variables
+# Load environment variables from .env
 EnvironmentFile=-__INSTALL_DIR__/.env
 EnvironmentFile=-/etc/netmonitor/netmonitor.env
 
-# Additional environment for MCP HTTP API
+# Set defaults for MCP API (used if not defined in .env)
+# These MUST be set here because systemd doesn't support ${VAR:-default} in ExecStart
+Environment="MCP_API_HOST=0.0.0.0"
+Environment="MCP_API_PORT=8000"
 Environment="PYTHONUNBUFFERED=1"
 
 # Start MCP HTTP API server
-# Port and host are configurable via .env
+# Note: Environment variables from EnvironmentFile override the defaults above
 ExecStart=__INSTALL_DIR__/venv/bin/python3 __INSTALL_DIR__/mcp_server/http_server.py \
-    --host ${MCP_API_HOST:-0.0.0.0} \
-    --port ${MCP_API_PORT:-8000}
+    --host $MCP_API_HOST \
+    --port $MCP_API_PORT
 
 # Restart behavior
 Restart=always
@@ -31,7 +32,7 @@ RestartSec=10
 # Security hardening
 NoNewPrivileges=true
 PrivateTmp=true
-ReadWritePaths=/var/log/netmonitor
+ReadWritePaths=/var/log/netmonitor __INSTALL_DIR__
 
 # Logging
 StandardOutput=journal

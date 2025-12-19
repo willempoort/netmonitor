@@ -7,7 +7,11 @@ This directory contains systemd service file templates for NetMonitor.
 Service files in this directory use placeholders that are replaced during installation:
 
 - `__INSTALL_DIR__` - Installation directory (default: `/opt/netmonitor`)
-- `${VARIABLE}` - Environment variables from `.env` file
+- `__GUNICORN_BIN__` - Path to gunicorn binary (auto-detected)
+
+**Important:** Environment variables in ExecStart use `$VAR` syntax (not `${VAR:-default}`).
+Default values are set via `Environment=` directives in the template, which get overridden
+by values from `EnvironmentFile` (`.env`).
 
 ## Available Templates
 
@@ -16,6 +20,7 @@ Service files in this directory use placeholders that are replaced during instal
 | `netmonitor.service.template` | Main monitoring engine + embedded dashboard | Yes |
 | `netmonitor-dashboard.service.template` | Separate Gunicorn dashboard (production) | Only if `DASHBOARD_SERVER=gunicorn` |
 | `netmonitor-mcp-http.service.template` | MCP HTTP API for AI integration | Only if `MCP_API_ENABLED=true` |
+| `netmonitor-mcp-sse.service.template` | MCP SSE Server (legacy Claude Desktop) | Manual install |
 | `netmonitor-sensor.service.template` | Remote sensor client | Remote sensors only |
 | `netmonitor-feed-update.service.template` | Threat feed updates (timer-based) | Yes |
 
@@ -52,11 +57,30 @@ sudo systemctl enable netmonitor
 sudo systemctl start netmonitor
 ```
 
+### MCP SSE Server (Manual)
+
+The SSE server is not auto-installed. To use it for Claude Desktop:
+
+```bash
+# Generate service file
+sed 's|__INSTALL_DIR__|/opt/netmonitor|g' \
+    services/netmonitor-mcp-sse.service.template \
+    > /etc/systemd/system/netmonitor-mcp-sse.service
+
+# Enable and start
+sudo systemctl daemon-reload
+sudo systemctl enable netmonitor-mcp-sse
+sudo systemctl start netmonitor-mcp-sse
+```
+
 ## Environment Variables
 
 Service templates use `EnvironmentFile` directive to load variables from:
 - `/opt/netmonitor/.env` (primary)
 - `/etc/netmonitor/netmonitor.env` (optional system-wide override)
+
+Default values are set in the template via `Environment=` directives.
+Values from `.env` override these defaults.
 
 See `.env.example` for all available variables.
 
@@ -74,8 +98,15 @@ netmonitor-dashboard.service (Optional - Gunicorn)
 
 netmonitor-mcp-http.service (Optional - AI Integration)
 ├── Starts: mcp_server/http_server.py
-├── Requires: postgresql.service (if DB_TYPE=postgresql)
+├── Wants: postgresql.service
+├── Port: MCP_API_PORT (default 8000)
 └── Enabled only if: MCP_API_ENABLED=true
+
+netmonitor-mcp-sse.service (Optional - Legacy Claude Desktop)
+├── Starts: mcp_server/legacy_stdio_sse/server.py
+├── Wants: postgresql.service
+├── Port: MCP_SSE_PORT (default 3000)
+└── Manual installation only
 
 netmonitor-feed-update.service (Threat Feeds)
 ├── Starts: update_feeds.py
@@ -102,7 +133,7 @@ sudo bash install_services.sh
 **Port conflicts:**
 ```bash
 # Check which ports are in use
-sudo netstat -tlnp | grep -E ':(8000|8080)'
+sudo netstat -tlnp | grep -E ':(8000|8080|3000)'
 
 # Verify .env port configuration
 grep PORT /opt/netmonitor/.env
@@ -115,6 +146,13 @@ sudo chown root:root /etc/systemd/system/netmonitor*.service
 
 # Reload systemd
 sudo systemctl daemon-reload
+```
+
+**Environment variable not working:**
+```bash
+# Systemd doesn't support ${VAR:-default} in ExecStart
+# Instead, set defaults via Environment= directives in the template
+# Values from EnvironmentFile (.env) will override these defaults
 ```
 
 ## See Also

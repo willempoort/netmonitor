@@ -1,0 +1,42 @@
+[Unit]
+Description=NetMonitor MCP SSE Server (Legacy - Claude Desktop)
+Documentation=https://github.com/willempoort/netmonitor
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=__INSTALL_DIR__/mcp_server/legacy_stdio_sse
+
+# Load environment variables from .env
+EnvironmentFile=-__INSTALL_DIR__/.env
+EnvironmentFile=-/etc/netmonitor/netmonitor.env
+
+# Set defaults for MCP SSE (used if not defined in .env)
+Environment="MCP_SSE_HOST=0.0.0.0"
+Environment="MCP_SSE_PORT=3000"
+Environment="PYTHONUNBUFFERED=1"
+
+# Start MCP SSE server (legacy transport for Claude Desktop)
+ExecStart=__INSTALL_DIR__/venv/bin/python3 __INSTALL_DIR__/mcp_server/legacy_stdio_sse/server.py \
+    --transport sse \
+    --host $MCP_SSE_HOST \
+    --port $MCP_SSE_PORT
+
+# Restart behavior
+Restart=always
+RestartSec=10
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ReadWritePaths=/var/log/netmonitor __INSTALL_DIR__
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=netmonitor-mcp-sse
+
+[Install]
+WantedBy=multi-user.target
