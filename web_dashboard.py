@@ -277,6 +277,33 @@ def require_sensor_token_or_login():
     return decorator
 
 
+def is_local_request():
+    """Check if request is from localhost (for internal API access)"""
+    remote_addr = request.remote_addr
+    return remote_addr in ('127.0.0.1', '::1', 'localhost')
+
+
+def local_or_login_required(f):
+    """
+    Decorator that allows access from localhost without login,
+    or requires login for external requests.
+    Used for internal API endpoints accessed by MCP server.
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if is_local_request():
+            # Local request - allow without authentication
+            logger.debug(f"Internal API access from localhost: {request.path}")
+            return f(*args, **kwargs)
+        elif current_user.is_authenticated:
+            # External request with valid session
+            return f(*args, **kwargs)
+        else:
+            # External request without authentication
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+    return decorated_function
+
+
 # ==================== Authentication Routes ====================
 
 @app.route('/login')
@@ -1956,6 +1983,202 @@ def api_create_template_from_device():
 
     except Exception as e:
         logger.error(f"Error creating template from device: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==================== Internal API for MCP Server ====================
+# These endpoints allow localhost access without authentication
+# for the MCP HTTP API server to call
+
+@app.route('/api/internal/devices/<path:ip_address>/template', methods=['PUT'])
+@local_or_login_required
+def api_internal_assign_device_template(ip_address):
+    """
+    Internal API: Assign a template to a device
+    Allows localhost access for MCP server
+    """
+    try:
+        data = request.get_json()
+        template_id = data.get('template_id')
+        confidence = data.get('confidence', 1.0)
+        method = data.get('method', 'mcp')
+
+        if template_id is None:
+            return jsonify({'success': False, 'error': 'template_id is required'}), 400
+
+        # Get device by IP
+        device = db.get_device_by_ip(ip_address)
+        if not device:
+            return jsonify({'success': False, 'error': 'Device not found'}), 404
+
+        success = db.assign_device_template(
+            device_id=device['id'],
+            template_id=template_id if template_id != 0 else None,
+            confidence=confidence,
+            method=method
+        )
+
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Template {template_id} assigned to device {ip_address}'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to assign template'}), 500
+
+    except Exception as e:
+        logger.error(f"Error assigning template to {ip_address}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/internal/device-templates/from-device', methods=['POST'])
+@local_or_login_required
+def api_internal_create_template_from_device():
+    """
+    Internal API: Create a template from a device's learned behavior
+    Allows localhost access for MCP server
+    """
+    try:
+        data = request.get_json()
+
+        ip_address = data.get('ip_address')
+        template_name = data.get('template_name')
+        category = data.get('category', 'other')
+        description = data.get('description')
+
+        if not ip_address or not template_name:
+            return jsonify({
+                'success': False,
+                'error': 'ip_address and template_name are required'
+            }), 400
+
+        # Get device and its learned behavior
+        device = db.get_device_by_ip(ip_address)
+        if not device:
+            return jsonify({'success': False, 'error': 'Device not found'}), 404
+
+        learned_behavior = device.get('learned_behavior', {})
+        if not learned_behavior:
+            return jsonify({
+                'success': False,
+                'error': 'No learned behavior available for this device'
+            }), 400
+
+        # Check if enough data
+        packet_count = learned_behavior.get('packet_count', 0)
+        if packet_count < 50:
+            return jsonify({
+                'success': False,
+                'error': f'Insufficient data ({packet_count} packets). Need at least 50 packets.'
+            }), 400
+
+        # Create the template
+        if not description:
+            description = f"Auto-generated from device {ip_address}"
+            if device.get('hostname'):
+                description += f" ({device['hostname']})"
+
+        template_id = db.create_device_template(
+            name=template_name,
+            description=description,
+            category=category,
+            created_by='mcp'
+        )
+
+        if not template_id:
+            return jsonify({'success': False, 'error': 'Failed to create template'}), 500
+
+        # Add behaviors based on learned data
+        behaviors_added = 0
+
+        # Add port behaviors
+        dst_ports = learned_behavior.get('common_dst_ports', [])
+        if dst_ports:
+            db.add_template_behavior(
+                template_id=template_id,
+                behavior_type='allowed_ports',
+                parameters={'ports': dst_ports[:20]},
+                action='allow',
+                description=f"Learned destination ports"
+            )
+            behaviors_added += 1
+
+        # Add protocol behaviors
+        protocols = learned_behavior.get('protocols_used', [])
+        if protocols:
+            db.add_template_behavior(
+                template_id=template_id,
+                behavior_type='allowed_protocols',
+                parameters={'protocols': protocols},
+                action='allow',
+                description=f"Learned protocols: {', '.join(protocols)}"
+            )
+            behaviors_added += 1
+
+        # Optionally assign the template to the source device
+        if data.get('assign_to_device', True):
+            db.assign_device_template(
+                device_id=device['id'],
+                template_id=template_id,
+                confidence=0.8,
+                method='learned'
+            )
+
+        return jsonify({
+            'success': True,
+            'template_id': template_id,
+            'template_name': template_name,
+            'behaviors_added': behaviors_added,
+            'message': f'Template "{template_name}" created with {behaviors_added} behavior rules'
+        })
+
+    except Exception as e:
+        logger.error(f"Error creating template from device: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/internal/service-providers', methods=['POST'])
+@local_or_login_required
+def api_internal_create_service_provider():
+    """
+    Internal API: Create a service provider
+    Allows localhost access for MCP server
+    """
+    try:
+        data = request.get_json()
+
+        name = data.get('name')
+        category = data.get('category')
+        ip_ranges = data.get('ip_ranges', [])
+        domains = data.get('domains', [])
+        description = data.get('description', '')
+
+        if not name or not category:
+            return jsonify({
+                'success': False,
+                'error': 'name and category are required'
+            }), 400
+
+        provider_id = db.create_service_provider(
+            name=name,
+            category=category,
+            ip_ranges=ip_ranges,
+            domains=domains,
+            description=description,
+            created_by='mcp'
+        )
+
+        if provider_id:
+            return jsonify({
+                'success': True,
+                'provider_id': provider_id,
+                'message': f'Service provider "{name}" created'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to create provider'}), 500
+
+    except Exception as e:
+        logger.error(f"Error creating service provider: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
