@@ -9,20 +9,18 @@ Type=notify
 User=root
 WorkingDirectory=__INSTALL_DIR__
 
-# Load environment variables from .env
-EnvironmentFile=-__INSTALL_DIR__/.env
-EnvironmentFile=-/etc/netmonitor/netmonitor.env
-
-# Set defaults (used if not defined in .env)
-# These MUST be set here because systemd doesn't support ${VAR:-default} in ExecStart
+# Set defaults first - these can be overridden by EnvironmentFile
 Environment="DASHBOARD_HOST=0.0.0.0"
 Environment="DASHBOARD_PORT=8080"
 Environment="DASHBOARD_WORKERS=4"
 Environment="LOG_DIR=/var/log/netmonitor"
 Environment="LOG_LEVEL=info"
-Environment="RUN_DIR=/var/run/netmonitor"
 
-# Create runtime directory for PID files
+# Load environment variables from .env (overrides defaults above)
+EnvironmentFile=-__INSTALL_DIR__/.env
+EnvironmentFile=-/etc/netmonitor/netmonitor.env
+
+# Create runtime directory
 RuntimeDirectory=netmonitor
 RuntimeDirectoryMode=0755
 
