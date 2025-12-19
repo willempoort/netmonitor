@@ -352,6 +352,7 @@ class DatabaseManager:
                     ip_address INET NOT NULL,
                     mac_address MACADDR,
                     hostname VARCHAR(255),
+                    vendor VARCHAR(100),
                     template_id INTEGER REFERENCES device_templates(id) ON DELETE SET NULL,
                     sensor_id TEXT REFERENCES sensors(sensor_id) ON DELETE CASCADE,
                     learned_behavior JSONB DEFAULT '{}',
@@ -471,6 +472,19 @@ class DatabaseManager:
                         WHERE table_name = 'sensor_metrics' AND column_name = 'bandwidth_mbps'
                     ) THEN
                         ALTER TABLE sensor_metrics ADD COLUMN bandwidth_mbps REAL;
+                    END IF;
+                END $$;
+            """)
+
+            # Migration: Add vendor column to devices table
+            cursor.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'devices' AND column_name = 'vendor'
+                    ) THEN
+                        ALTER TABLE devices ADD COLUMN vendor VARCHAR(100);
                     END IF;
                 END $$;
             """)
@@ -2174,23 +2188,25 @@ class DatabaseManager:
 
     def register_device(self, ip_address: str, sensor_id: str = None,
                        mac_address: str = None, hostname: str = None,
-                       template_id: int = None, created_by: str = None) -> Optional[int]:
+                       vendor: str = None, template_id: int = None,
+                       created_by: str = None) -> Optional[int]:
         """Register a new device or update if exists"""
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT INTO devices
-                (ip_address, sensor_id, mac_address, hostname, template_id, created_by)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                (ip_address, sensor_id, mac_address, hostname, vendor, template_id, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (ip_address, sensor_id)
                 DO UPDATE SET
                     mac_address = COALESCE(EXCLUDED.mac_address, devices.mac_address),
                     hostname = COALESCE(EXCLUDED.hostname, devices.hostname),
+                    vendor = COALESCE(EXCLUDED.vendor, devices.vendor),
                     last_seen = NOW(),
                     is_active = TRUE
                 RETURNING id
-            ''', (ip_address, sensor_id, mac_address, hostname, template_id, created_by))
+            ''', (ip_address, sensor_id, mac_address, hostname, vendor, template_id, created_by))
             device_id = cursor.fetchone()[0]
             conn.commit()
             return device_id
@@ -2267,6 +2283,42 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"Error getting device by IP: {e}")
             return None
+        finally:
+            self._return_connection(conn)
+
+    def update_device_vendor(self, device_id: int, vendor: str) -> bool:
+        """Update the vendor for a device"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE devices
+                SET vendor = %s
+                WHERE id = %s
+            ''', (vendor, device_id))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error updating device vendor: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    def get_devices_without_vendor(self) -> List[Dict]:
+        """Get all devices that have a MAC address but no vendor"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute('''
+                SELECT id, ip_address::text as ip_address, mac_address::text as mac_address
+                FROM devices
+                WHERE mac_address IS NOT NULL AND vendor IS NULL
+            ''')
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            self.logger.error(f"Error getting devices without vendor: {e}")
+            return []
         finally:
             self._return_connection(conn)
 

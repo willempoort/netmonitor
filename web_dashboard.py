@@ -1729,6 +1729,32 @@ def api_save_device_learned_behavior(ip_address):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/devices/update-vendors', methods=['POST'])
+@login_required
+def api_update_device_vendors():
+    """
+    Update vendor information for all devices that have a MAC address but no vendor.
+    Uses the OUI database to look up vendor names from MAC addresses.
+    """
+    try:
+        # Get device discovery instance
+        from device_discovery import DeviceDiscovery
+        device_discovery = DeviceDiscovery(db_manager=db)
+
+        # Update missing vendors
+        updated_count = device_discovery.update_missing_vendors()
+
+        return jsonify({
+            'success': True,
+            'updated_count': updated_count,
+            'message': f'Updated vendor information for {updated_count} devices'
+        })
+
+    except Exception as e:
+        logger.error(f"Error updating device vendors: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/devices/<path:ip_address>/learning-status')
 @login_required
 def api_get_device_learning_status(ip_address):

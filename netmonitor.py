@@ -149,6 +149,10 @@ class NetworkMonitor:
                     config=self.config
                 )
                 self.logger.info("Device Discovery enabled")
+                # Update vendor info for existing devices without vendor
+                updated = self.device_discovery.update_missing_vendors()
+                if updated > 0:
+                    self.logger.info(f"Updated vendor info for {updated} existing devices")
             except Exception as e:
                 self.logger.error(f"Fout bij initialiseren device discovery: {e}")
 

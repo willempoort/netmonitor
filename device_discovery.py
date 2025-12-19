@@ -13,7 +13,9 @@ Features:
 - OUI (Organizationally Unique Identifier) lookup for vendor detection
 """
 
+import json
 import logging
+import os
 import socket
 import threading
 import time
@@ -119,9 +121,22 @@ class DeviceDiscovery:
         Load OUI database for vendor identification.
         Returns dict mapping MAC prefix to vendor name.
 
-        Common vendors included by default, can be extended with full OUI file.
+        First tries to load from external JSON file, falls back to built-in database.
         """
-        # Common OUI prefixes (first 6 hex chars, no separators)
+        # Try to load external OUI database first
+        oui_file_path = os.path.join(os.path.dirname(__file__), 'data', 'oui_database.json')
+        if os.path.exists(oui_file_path):
+            try:
+                with open(oui_file_path, 'r') as f:
+                    data = json.load(f)
+                    if 'oui' in data:
+                        self.logger.info(f"Loaded OUI database with {len(data['oui'])} entries from {oui_file_path}")
+                        return data['oui']
+            except Exception as e:
+                self.logger.warning(f"Failed to load OUI database from {oui_file_path}: {e}")
+
+        # Fallback to built-in common OUI prefixes (first 6 hex chars, no separators)
+        self.logger.info("Using built-in OUI database (limited)")
         oui_db = {
             # Apple
             '000A95': 'Apple', '000D93': 'Apple', '001451': 'Apple',
@@ -252,11 +267,17 @@ class DeviceDiscovery:
             return
 
         try:
+            # Look up vendor from MAC address if not already set
+            vendor = device_info.get('vendor')
+            if not vendor and device_info.get('mac_address'):
+                vendor = self.get_vendor_from_mac(device_info['mac_address'])
+
             self.db.register_device(
                 ip_address=device_info['ip_address'],
                 sensor_id=device_info.get('sensor_id'),
                 mac_address=device_info.get('mac_address'),
                 hostname=device_info.get('hostname'),
+                vendor=vendor,
                 created_by='device_discovery'
             )
         except Exception as e:
@@ -292,6 +313,33 @@ class DeviceDiscovery:
 
         if saved_count > 0:
             self.logger.info(f"Saved learned behavior for {saved_count} devices")
+
+    def update_missing_vendors(self) -> int:
+        """
+        Update vendor information for all devices that have a MAC address but no vendor.
+        Returns the number of devices updated.
+        """
+        if not self.db:
+            return 0
+
+        updated_count = 0
+        try:
+            devices = self.db.get_devices_without_vendor()
+            for device in devices:
+                mac_address = device.get('mac_address')
+                if mac_address:
+                    vendor = self.get_vendor_from_mac(mac_address)
+                    if vendor:
+                        self.db.update_device_vendor(device['id'], vendor)
+                        updated_count += 1
+                        self.logger.debug(f"Updated vendor for {device['ip_address']}: {vendor}")
+
+            if updated_count > 0:
+                self.logger.info(f"Updated vendor information for {updated_count} devices")
+        except Exception as e:
+            self.logger.error(f"Error updating missing vendors: {e}")
+
+        return updated_count
 
     def _is_internal_ip(self, ip_str: str) -> bool:
         """Check if IP is in internal networks"""
