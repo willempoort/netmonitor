@@ -1575,12 +1575,12 @@ class MCPHTTPServer:
         if not ip_address:
             return {'success': False, 'error': 'ip_address is required'}
 
-        # Call dashboard API to save learned behavior
+        # Call dashboard internal API to save learned behavior
         dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
 
         try:
             response = requests.post(
-                f"{dashboard_url}/api/devices/{ip_address}/save-learned-behavior",
+                f"{dashboard_url}/api/internal/devices/{ip_address}/save-learned-behavior",
                 timeout=15
             )
 

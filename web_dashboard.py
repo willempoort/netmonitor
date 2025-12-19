@@ -2064,8 +2064,9 @@ def api_internal_create_template_from_device():
                 'error': 'No learned behavior available for this device'
             }), 400
 
-        # Check if enough data
-        packet_count = learned_behavior.get('packet_count', 0)
+        # Check if enough data - look in traffic_summary for packet count
+        traffic_summary = learned_behavior.get('traffic_summary', {})
+        packet_count = traffic_summary.get('total_packets', 0)
         if packet_count < 50:
             return jsonify({
                 'success': False,
@@ -2090,28 +2091,55 @@ def api_internal_create_template_from_device():
 
         # Add behaviors based on learned data
         behaviors_added = 0
+        ports_data = learned_behavior.get('ports', {})
 
-        # Add port behaviors
-        dst_ports = learned_behavior.get('common_dst_ports', [])
+        # Add outbound port behaviors
+        dst_ports = ports_data.get('outbound_destination_ports', [])
         if dst_ports:
             db.add_template_behavior(
                 template_id=template_id,
                 behavior_type='allowed_ports',
-                parameters={'ports': dst_ports[:20]},
+                parameters={'ports': dst_ports[:20], 'direction': 'outbound'},
                 action='allow',
-                description=f"Learned destination ports"
+                description=f"Learned outbound destination ports"
             )
             behaviors_added += 1
 
-        # Add protocol behaviors
-        protocols = learned_behavior.get('protocols_used', [])
-        if protocols:
+        # Add inbound port behaviors (server ports)
+        src_ports = ports_data.get('inbound_source_ports', [])
+        if src_ports:
+            db.add_template_behavior(
+                template_id=template_id,
+                behavior_type='allowed_ports',
+                parameters={'ports': src_ports[:20], 'direction': 'inbound'},
+                action='allow',
+                description=f"Learned inbound server ports"
+            )
+            behaviors_added += 1
+
+        # Add protocol behaviors (convert protocol numbers to names)
+        protocol_numbers = ports_data.get('protocols', [])
+        if protocol_numbers:
+            protocol_map = {1: 'ICMP', 6: 'TCP', 17: 'UDP'}
+            protocol_names = [protocol_map.get(p, str(p)) for p in protocol_numbers]
             db.add_template_behavior(
                 template_id=template_id,
                 behavior_type='allowed_protocols',
-                parameters={'protocols': protocols},
+                parameters={'protocols': protocol_names},
                 action='allow',
-                description=f"Learned protocols: {', '.join(protocols)}"
+                description=f"Learned protocols: {', '.join(protocol_names)}"
+            )
+            behaviors_added += 1
+
+        # Add any suggested behaviors from the learning system
+        suggested = learned_behavior.get('suggested_behaviors', [])
+        for behavior in suggested[:5]:  # Limit to 5 suggested behaviors
+            db.add_template_behavior(
+                template_id=template_id,
+                behavior_type=behavior.get('behavior_type', 'custom'),
+                parameters=behavior.get('parameters', {}),
+                action=behavior.get('action', 'allow'),
+                description=behavior.get('description', 'Suggested behavior')
             )
             behaviors_added += 1
 
@@ -2134,6 +2162,41 @@ def api_internal_create_template_from_device():
 
     except Exception as e:
         logger.error(f"Error creating template from device: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/internal/devices/<path:ip_address>/save-learned-behavior', methods=['POST'])
+@local_or_login_required
+def api_internal_save_device_learned_behavior(ip_address):
+    """
+    Internal API: Save learned behavior to the database.
+    Allows localhost access for MCP server.
+    """
+    try:
+        device = db.get_device_by_ip(ip_address)
+        if not device:
+            return jsonify({'success': False, 'error': 'Device not found'}), 404
+
+        # Get current learned behavior from the device record
+        learned_behavior = device.get('learned_behavior', {})
+
+        if not learned_behavior:
+            return jsonify({
+                'success': False,
+                'error': 'No learned behavior available. Device needs active monitoring to collect data.'
+            }), 400
+
+        # The learned behavior is already stored in the database via device_discovery
+        # This endpoint confirms it's saved and returns the current state
+        return jsonify({
+            'success': True,
+            'ip_address': ip_address,
+            'message': 'Learned behavior is stored in database',
+            'learned_behavior': learned_behavior
+        })
+
+    except Exception as e:
+        logger.error(f"Error saving learned behavior for {ip_address}: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
