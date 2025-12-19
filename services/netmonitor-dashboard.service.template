@@ -25,19 +25,18 @@ RuntimeDirectory=netmonitor
 RuntimeDirectoryMode=0755
 
 # Start Gunicorn with eventlet workers for SocketIO support
-# Note: Environment variables from EnvironmentFile override the defaults above
-# PID file not needed - systemd tracks the process directly
-ExecStart=__GUNICORN_BIN__ \
-    --bind $DASHBOARD_HOST:$DASHBOARD_PORT \
-    --workers $DASHBOARD_WORKERS \
+# Note: We use /bin/bash -c to expand environment variables
+ExecStart=/bin/bash -c 'exec __GUNICORN_BIN__ \
+    --bind ${DASHBOARD_HOST}:${DASHBOARD_PORT} \
+    --workers ${DASHBOARD_WORKERS} \
     --worker-class eventlet \
     --worker-connections 1000 \
     --timeout 30 \
     --graceful-timeout 30 \
-    --access-logfile $LOG_DIR/dashboard_access.log \
-    --error-logfile $LOG_DIR/dashboard_error.log \
-    --log-level $LOG_LEVEL \
-    wsgi:application
+    --access-logfile ${LOG_DIR}/dashboard_access.log \
+    --error-logfile ${LOG_DIR}/dashboard_error.log \
+    --log-level ${LOG_LEVEL} \
+    wsgi:application'
 
 # Restart behavior
 Restart=on-failure
