@@ -1,0 +1,46 @@
+# NetMonitor MCP HTTP API Server
+#
+# Installation:
+#   sudo cp netmonitor-mcp.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable netmonitor-mcp
+#   sudo systemctl start netmonitor-mcp
+#
+# Prerequisites:
+#   - PostgreSQL database with netmonitor schema
+#   - MCP API token created via: python3 mcp_server/manage_tokens.py create
+#   - .env file configured with DB_* settings
+
+[Unit]
+Description=NetMonitor MCP HTTP API Server
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/netmonitor
+EnvironmentFile=/opt/netmonitor/.env
+
+# MCP HTTP Server (FastAPI/Uvicorn)
+ExecStart=/opt/netmonitor/venv/bin/python3 /opt/netmonitor/mcp_server/http_server.py \
+    --host ${MCP_API_HOST:-0.0.0.0} \
+    --port ${MCP_API_PORT:-8000}
+
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=netmonitor-mcp
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/netmonitor /var/log/netmonitor
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
