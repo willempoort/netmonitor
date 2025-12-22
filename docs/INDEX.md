@@ -59,6 +59,14 @@ Feature-specifieke documentatie:
 - **[MCP HTTP API](features/MCP_HTTP_API.md)** - AI integration via HTTP API
 - **[MCP Nginx Setup](features/MCP_NGINX_SETUP.md)** - Reverse proxy voor MCP API
 
+### 🔗 Integrations
+
+SIEM en Threat Intelligence integraties:
+
+- **[Integrations Overview](features/INTEGRATIONS.md)** - SIEM & Threat Intel configuratie overzicht
+- **[Wazuh Setup](features/WAZUH_SETUP.md)** - Wazuh SIEM installatie en configuratie
+- **[MISP Setup](features/MISP_SETUP.md)** - MISP Threat Intelligence Platform setup
+
 ### 🧪 Testing
 
 Test documentatie en procedures:
@@ -88,6 +96,9 @@ Architectuur en best practices:
 | Switch to Gunicorn | [Dashboard Server Comparison](deployment/DASHBOARD_SERVER_COMPARISON.md) |
 | Setup threat feeds | [Threat Feeds](features/THREAT_FEEDS.md) |
 | Configure MCP API | [MCP HTTP API](features/MCP_HTTP_API.md) |
+| Setup SIEM integration | [Integrations Overview](features/INTEGRATIONS.md) |
+| Setup Wazuh | [Wazuh Setup](features/WAZUH_SETUP.md) |
+| Setup MISP | [MISP Setup](features/MISP_SETUP.md) |
 | Production deployment | [Production](deployment/PRODUCTION.md) |
 | Troubleshooting | [Admin Manual](usage/ADMIN_MANUAL.md) |
 

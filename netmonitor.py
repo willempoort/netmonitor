@@ -34,6 +34,14 @@ from metrics_collector import MetricsCollector
 from web_dashboard import DashboardServer
 from device_discovery import DeviceDiscovery
 
+# Optional integrations (SIEM, Threat Intel)
+try:
+    from integrations.base import IntegrationManager
+    from integrations.threat_intel import ThreatIntelManager
+    INTEGRATIONS_AVAILABLE = True
+except ImportError:
+    INTEGRATIONS_AVAILABLE = False
+
 
 class NetworkMonitor:
     """Hoofd netwerk monitor class"""
@@ -155,6 +163,53 @@ class NetworkMonitor:
                     self.logger.info(f"Updated vendor info for {updated} existing devices")
             except Exception as e:
                 self.logger.error(f"Fout bij initialiseren device discovery: {e}")
+
+        # Initialiseer integrations (SIEM, Threat Intel) - optioneel
+        self.integration_manager = None
+        self.threat_intel_manager = None
+
+        if INTEGRATIONS_AVAILABLE:
+            integrations_config = self.config.get('integrations', {})
+
+            if integrations_config.get('enabled', False):
+                try:
+                    # Initialize Integration Manager
+                    self.integration_manager = IntegrationManager(integrations_config)
+                    self.integration_manager.initialize_from_config(self.config)
+
+                    enabled_count = len(self.integration_manager.get_all(enabled_only=True))
+                    self.logger.info(f"Integration Manager enabled with {enabled_count} active integration(s)")
+
+                    # Log which integrations are active
+                    for integration in self.integration_manager.get_all(enabled_only=True):
+                        self.logger.info(f"  - {integration.display_name}: enabled")
+
+                except Exception as e:
+                    self.logger.error(f"Error initializing Integration Manager: {e}")
+                    self.integration_manager = None
+
+                # Initialize Threat Intel Manager (separate from SIEM integrations)
+                threat_intel_config = integrations_config.get('threat_intel', {})
+                if threat_intel_config.get('enabled', False):
+                    try:
+                        self.threat_intel_manager = ThreatIntelManager(
+                            config=threat_intel_config,
+                            db_manager=self.db
+                        )
+
+                        # Register threat intel sources
+                        self._init_threat_intel_sources(threat_intel_config)
+
+                        sources = self.threat_intel_manager.get_sources(enabled_only=True)
+                        self.logger.info(f"Threat Intel Manager enabled with {len(sources)} source(s)")
+
+                    except Exception as e:
+                        self.logger.error(f"Error initializing Threat Intel Manager: {e}")
+                        self.threat_intel_manager = None
+            else:
+                self.logger.debug("Integrations disabled in config")
+        else:
+            self.logger.debug("Integrations module not available")
 
         # Initialiseer web dashboard (alleen embedded mode)
         # Als DASHBOARD_SERVER=gunicorn, dan draait dashboard als separate service
@@ -291,6 +346,62 @@ class NetworkMonitor:
             except Exception as e:
                 self.logger.error(f"Error in config sync loop: {e}")
 
+    def _init_threat_intel_sources(self, config):
+        """Initialize and register threat intelligence sources"""
+        if not self.threat_intel_manager:
+            return
+
+        # Import sources dynamically to avoid import errors if not needed
+        try:
+            from integrations.threat_intel.misp_source import MISPSource
+            from integrations.threat_intel.otx_source import OTXSource
+            from integrations.threat_intel.abuseipdb_source import AbuseIPDBSource
+        except ImportError as e:
+            self.logger.error(f"Failed to import threat intel sources: {e}")
+            return
+
+        # Register MISP source
+        misp_config = config.get('misp', {})
+        if misp_config.get('enabled', False):
+            try:
+                misp = MISPSource(misp_config)
+                valid, error = misp.validate_config()
+                if valid:
+                    self.threat_intel_manager.register_source(misp)
+                    self.logger.info("  - MISP: registered")
+                else:
+                    self.logger.warning(f"  - MISP: config invalid - {error}")
+            except Exception as e:
+                self.logger.error(f"  - MISP: failed to initialize - {e}")
+
+        # Register OTX source
+        otx_config = config.get('otx', {})
+        if otx_config.get('enabled', False):
+            try:
+                otx = OTXSource(otx_config)
+                valid, error = otx.validate_config()
+                if valid:
+                    self.threat_intel_manager.register_source(otx)
+                    self.logger.info("  - OTX: registered")
+                else:
+                    self.logger.warning(f"  - OTX: config invalid - {error}")
+            except Exception as e:
+                self.logger.error(f"  - OTX: failed to initialize - {e}")
+
+        # Register AbuseIPDB source
+        abuseipdb_config = config.get('abuseipdb', {})
+        if abuseipdb_config.get('enabled', False):
+            try:
+                abuseipdb = AbuseIPDBSource(abuseipdb_config)
+                valid, error = abuseipdb.validate_config()
+                if valid:
+                    self.threat_intel_manager.register_source(abuseipdb)
+                    self.logger.info("  - AbuseIPDB: registered")
+                else:
+                    self.logger.warning(f"  - AbuseIPDB: config invalid - {error}")
+            except Exception as e:
+                self.logger.error(f"  - AbuseIPDB: failed to initialize - {e}")
+
     def setup_logging(self):
         """Setup logging configuratie"""
         log_level = getattr(logging, self.config['logging']['level'], logging.INFO)
@@ -384,6 +495,13 @@ class NetworkMonitor:
             # Als threats gevonden, stuur alerts
             if threats:
                 for threat in threats:
+                    # Enrich with threat intelligence (before storing)
+                    if self.threat_intel_manager:
+                        try:
+                            threat = self.threat_intel_manager.enrich_alert(threat)
+                        except Exception as ti_error:
+                            self.logger.debug(f"Threat intel enrichment error: {ti_error}")
+
                     # Send to alert manager (console/file)
                     self.alert_manager.send_alert(threat, packet)
 
@@ -396,6 +514,14 @@ class NetworkMonitor:
                             self.db.add_alert(threat)
                         except Exception as db_error:
                             self.logger.error(f"Error saving alert to database: {db_error}")
+
+                    # Send to SIEM integrations
+                    if self.integration_manager:
+                        try:
+                            for siem in self.integration_manager.get_all(category='siem', enabled_only=True):
+                                siem.send_alert(threat)
+                        except Exception as siem_error:
+                            self.logger.debug(f"SIEM output error: {siem_error}")
 
                     # Broadcast to dashboard
                     if self.dashboard:
