@@ -274,3 +274,73 @@ database:
   # Legacy SQLite (only used if type=sqlite)
   sqlite:
     path: /var/lib/netmonitor/netmonitor.db
+
+
+# =============================================================================
+# PERFORMANCE - Timing and intervals
+# =============================================================================
+performance:
+  metrics_interval: 60
+  heartbeat_interval: 30
+  command_poll_interval: 30
+  config_sync_interval: 300
+  whitelist_sync_interval: 300
+
+# =============================================================================
+# INTEGRATIONS - SIEM & Threat Intelligence (optional)
+# =============================================================================
+# All integrations are disabled by default.
+# Credentials come from .env file (MISP_API_KEY, WAZUH_API_PASSWORD, etc.)
+# See: docs/features/INTEGRATIONS.md
+integrations:
+  enabled: false
+  siem:
+    enabled: false
+    syslog:
+      enabled: false
+      host: localhost
+      port: 514
+      protocol: udp
+      format: cef
+      facility: local0
+      forward_severities:
+        - HIGH
+        - CRITICAL
+      forward_all: false
+    wazuh:
+      enabled: false
+      api_url: ""  # Set in .env: WAZUH_API_URL / MISP_URL
+      api_user: ""  # Set in .env: WAZUH_API_USER
+      api_password: ""  # Set in .env: WAZUH_API_PASSWORD
+      verify_ssl: true
+      use_api: true
+      syslog_fallback: true
+  threat_intel:
+    enabled: false
+    cache_ttl_hours: 24
+    misp:
+      enabled: false
+      url: ""  # Set in .env: MISP_URL
+      api_key: ""  # Set in .env: MISP_API_KEY / OTX_API_KEY / ABUSEIPDB_API_KEY
+      verify_ssl: true
+      timeout: 30
+    otx:
+      enabled: false
+      api_key: ""  # Set in .env: MISP_API_KEY / OTX_API_KEY / ABUSEIPDB_API_KEY
+      timeout: 30
+    abuseipdb:
+      enabled: false
+      api_key: ""  # Set in .env: MISP_API_KEY / OTX_API_KEY / ABUSEIPDB_API_KEY
+      max_age_days: 90
+      min_confidence: 50
+      timeout: 30
+  notifications:
+    enabled: false
+    webhook:
+      enabled: false
+      url: ""  # Set in .env: MISP_URL
+      method: POST
+      headers:
+
+      forward_severities:
+        - CRITICAL
