@@ -3,11 +3,29 @@
 """
 Configuration loader
 Supports both YAML (for SOC server) and .conf (for sensors)
+
+Configuration hierarchy (highest priority first):
+1. Database config (runtime, via dashboard)
+2. User's config.yaml
+3. Best practice defaults (config_defaults.py)
 """
 
 import yaml
 import os
+import logging
 from pathlib import Path
+from typing import Dict, Any, List, Tuple
+
+# Import defaults - uses try/except to handle import from different contexts
+try:
+    from config_defaults import BEST_PRACTICE_CONFIG
+except ImportError:
+    try:
+        from .config_defaults import BEST_PRACTICE_CONFIG
+    except ImportError:
+        BEST_PRACTICE_CONFIG = {}
+
+logger = logging.getLogger('NetMonitor.ConfigLoader')
 
 
 def _parse_conf_file(config_file):
@@ -211,12 +229,93 @@ def _build_sensor_config(conf_dict):
     return config
 
 
-def load_config(config_file):
+def _deep_merge(base: Dict, override: Dict, path: str = "") -> Dict:
     """
-    Load configuration from file
+    Deep merge two dictionaries.
+    Values from 'override' take precedence over 'base'.
+    Returns a new merged dict without modifying originals.
+    """
+    result = base.copy()
+
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            # Recursive merge for nested dicts
+            result[key] = _deep_merge(result[key], value, f"{path}.{key}" if path else key)
+        else:
+            # Override value
+            result[key] = value
+
+    return result
+
+
+def _find_added_keys(base: Dict, merged: Dict, path: str = "") -> List[str]:
+    """
+    Find keys that were added from defaults (present in merged but not in base).
+    Returns list of dotted key paths.
+    """
+    added = []
+
+    for key, value in merged.items():
+        current_path = f"{path}.{key}" if path else key
+
+        if key not in base:
+            # This key was added from defaults
+            added.append(current_path)
+        elif isinstance(value, dict) and isinstance(base.get(key), dict):
+            # Recurse into nested dicts
+            added.extend(_find_added_keys(base[key], value, current_path))
+
+    return added
+
+
+def _log_config_status(user_config: Dict, merged_config: Dict):
+    """
+    Log information about configuration merging.
+    """
+    added_keys = _find_added_keys(user_config, merged_config)
+
+    if added_keys:
+        # Group by top-level section
+        sections = {}
+        for key in added_keys:
+            section = key.split('.')[0]
+            if section not in sections:
+                sections[section] = []
+            sections[section].append(key)
+
+        logger.info(f"Config: {len(added_keys)} parameter(s) auto-populated from defaults")
+
+        # Log sections with most additions
+        for section, keys in sorted(sections.items(), key=lambda x: -len(x[1])):
+            if len(keys) > 3:
+                logger.debug(f"  {section}: {len(keys)} defaults applied")
+            else:
+                for key in keys:
+                    logger.debug(f"  {key}: using default value")
+    else:
+        logger.debug("Config: all parameters specified in config file")
+
+
+def load_config(config_file, apply_defaults: bool = True):
+    """
+    Load configuration from file with automatic default population.
+
     Supports:
     - .yaml / .yml: Full configuration (SOC server)
     - .conf: Minimal sensor configuration (sensors)
+
+    Args:
+        config_file: Path to configuration file
+        apply_defaults: If True, merge with BEST_PRACTICE_CONFIG defaults
+
+    Configuration hierarchy (highest to lowest priority):
+    1. Database config (applied later at runtime)
+    2. User's config file
+    3. Best practice defaults (config_defaults.py)
+
+    This allows users to maintain a minimal config.yaml with only
+    the settings they want to override. All other settings come
+    from sensible defaults and can be further tuned via the database.
     """
     config_path = Path(config_file)
 
@@ -226,22 +325,119 @@ def load_config(config_file):
     # Determine file type by extension
     if config_path.suffix.lower() in ['.conf', '.env']:
         # Sensor configuration (minimal .conf format)
+        # Sensors have their own defaults in _build_sensor_config
         conf_dict = _parse_conf_file(config_path)
         config = _build_sensor_config(conf_dict)
 
     elif config_path.suffix.lower() in ['.yaml', '.yml']:
         # SOC server configuration (full YAML format)
         with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
+            user_config = yaml.safe_load(f) or {}
+
+        # Merge with defaults if enabled
+        if apply_defaults and BEST_PRACTICE_CONFIG:
+            config = _deep_merge(BEST_PRACTICE_CONFIG, user_config)
+            _log_config_status(user_config, config)
+        else:
+            config = user_config
 
         # Validate minimal configuration for SOC server
+        # With defaults applied, these should always be present
         required_keys = ['interface', 'thresholds', 'logging']
-        for key in required_keys:
-            if key not in config:
-                raise ValueError(f"Vereiste configuratie key ontbreekt: {key}")
+        missing_keys = [key for key in required_keys if key not in config]
+
+        if missing_keys:
+            # If using defaults, only 'interface' truly needs to be specified
+            if 'interface' in missing_keys:
+                raise ValueError(
+                    f"Required config key 'interface' not found. "
+                    f"Please specify the network interface to monitor in {config_file}"
+                )
+            # Other keys should come from defaults
+            for key in missing_keys:
+                if key != 'interface':
+                    logger.warning(f"Config key '{key}' missing and not in defaults")
 
     else:
         raise ValueError(f"Unsupported config file format: {config_path.suffix}. Use .yaml or .conf")
 
     return config
+
+
+def check_env_config(env_file: str = ".env", example_file: str = ".env.example") -> List[Tuple[str, str]]:
+    """
+    Check for missing environment variables by comparing .env with .env.example.
+
+    Returns:
+        List of tuples (variable_name, default_value) for missing variables
+    """
+    env_path = Path(env_file)
+    example_path = Path(example_file)
+
+    if not example_path.exists():
+        return []
+
+    # Parse both files
+    def parse_env(filepath):
+        variables = {}
+        if filepath.exists():
+            with open(filepath, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, value = line.split('=', 1)
+                        variables[key.strip()] = value.strip()
+        return variables
+
+    example_vars = parse_env(example_path)
+    current_vars = parse_env(env_path) if env_path.exists() else {}
+
+    # Find missing variables
+    missing = []
+    for key, default_value in example_vars.items():
+        if key not in current_vars:
+            missing.append((key, default_value))
+
+    return missing
+
+
+def sync_env_config(env_file: str = ".env", example_file: str = ".env.example",
+                    dry_run: bool = True) -> List[str]:
+    """
+    Sync missing environment variables from .env.example to .env.
+
+    Args:
+        env_file: Path to .env file
+        example_file: Path to .env.example file
+        dry_run: If True, only report what would be added (default)
+
+    Returns:
+        List of variable names that were (or would be) added
+    """
+    missing = check_env_config(env_file, example_file)
+
+    if not missing:
+        logger.info("Environment: all variables from .env.example are present in .env")
+        return []
+
+    added = []
+    env_path = Path(env_file)
+
+    if dry_run:
+        logger.info(f"Environment: {len(missing)} variable(s) missing from .env")
+        for key, value in missing:
+            # Hide sensitive values
+            display_value = "***" if any(s in key.lower() for s in ['password', 'key', 'secret', 'token']) else value
+            logger.info(f"  {key}={display_value} (from .env.example)")
+            added.append(key)
+    else:
+        # Actually append to .env file
+        with open(env_path, 'a') as f:
+            f.write(f"\n# Auto-added from .env.example\n")
+            for key, value in missing:
+                f.write(f"{key}={value}\n")
+                added.append(key)
+                logger.info(f"Added to .env: {key}")
+
+    return added
 

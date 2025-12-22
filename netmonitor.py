@@ -245,7 +245,29 @@ class NetworkMonitor:
         signal.signal(signal.SIGINT, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)
 
+        # Check for missing environment variables (informational only)
+        self._check_env_config()
+
         self.logger.info("Network Monitor geïnitialiseerd")
+
+    def _check_env_config(self):
+        """Check for missing environment variables from .env.example"""
+        try:
+            from config_loader import check_env_config
+            from pathlib import Path
+
+            # Find .env.example relative to config file or current dir
+            base_dir = Path(__file__).parent
+            env_file = base_dir / ".env"
+            example_file = base_dir / ".env.example"
+
+            if example_file.exists():
+                missing = check_env_config(str(env_file), str(example_file))
+                if missing:
+                    # Only log at debug level - not critical for operation
+                    self.logger.debug(f"Environment: {len(missing)} optional variable(s) not set in .env")
+        except Exception as e:
+            self.logger.debug(f"Could not check environment config: {e}")
 
     def _deep_merge_config(self, base: dict, override: dict) -> dict:
         """Deep merge two config dicts (override takes precedence), in-place on base"""
