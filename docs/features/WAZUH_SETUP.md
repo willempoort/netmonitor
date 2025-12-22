@@ -47,13 +47,26 @@ docker-compose logs -f
 # Open Wazuh manager container
 docker exec -it single-node-wazuh.manager-1 bash
 
-# Maak API gebruiker voor NetMonitor
-/var/ossec/framework/python/bin/python3 /var/ossec/api/scripts/wazuh-apid.py \
-    add-user netmonitor <<< 'SecureApiPassword123!'
+# Methode 1: Via Wazuh API (aanbevolen)
+# Eerst authenticeren met admin credentials
+TOKEN=$(curl -s -u wazuh:wazuh -k -X POST "https://localhost:55000/security/user/authenticate" | \
+    python3 -c "import sys,json; print(json.load(sys.stdin)['data']['token'])")
+
+# Maak nieuwe gebruiker aan
+curl -s -k -X POST "https://localhost:55000/security/users" \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"username":"netmonitor","password":"SecureApiPassword123!"}'
+
+# Methode 2: Via wazuh-user tool (oudere versies)
+# /var/ossec/framework/python/bin/python3 /var/ossec/api/scripts/wazuh-apid.py
 
 # Verlaat container
 exit
 ```
+
+> **Note:** De default admin credentials zijn `wazuh:wazuh` of `wazuh-wui:wazuh-wui`.
+> Wijzig deze direct na installatie!
 
 ### 2. Custom Decoder Toevoegen
 
@@ -476,13 +489,18 @@ Configureer email/Slack alerts in Wazuh:
 
 1. Check API status:
    ```bash
-   curl -k -u netmonitor:password https://wazuh-server:55000/
+   curl -k -u netmonitor:password -X POST https://wazuh-server:55000/security/user/authenticate
    ```
 
-2. Check credentials:
+2. List users via API:
    ```bash
-   docker exec -it single-node-wazuh.manager-1 bash
-   /var/ossec/framework/python/bin/python3 /var/ossec/api/scripts/wazuh-apid.py list-users
+   # Authenticeer eerst
+   TOKEN=$(curl -s -u wazuh:wazuh -k -X POST "https://wazuh-server:55000/security/user/authenticate" | \
+       python3 -c "import sys,json; print(json.load(sys.stdin)['data']['token'])")
+
+   # List users
+   curl -s -k -X GET "https://wazuh-server:55000/security/users" \
+       -H "Authorization: Bearer $TOKEN"
    ```
 
 ---

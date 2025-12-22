@@ -2205,22 +2205,22 @@ function renderIntegrationCard(integration, type) {
 
     let details = '';
     if (integration.url) {
-        details = `<small class="text-muted">${integration.url}</small>`;
+        details = `<small class="text-light opacity-75">${integration.url}</small>`;
     } else if (integration.host) {
-        details = `<small class="text-muted">${integration.host}:${integration.port} (${integration.format})</small>`;
+        details = `<small class="text-light opacity-75">${integration.host}:${integration.port} (${integration.format})</small>`;
     } else if (integration.api_url) {
-        details = `<small class="text-muted">${integration.api_url}</small>`;
+        details = `<small class="text-light opacity-75">${integration.api_url}</small>`;
     }
 
     return `
-        <div class="d-flex align-items-center justify-content-between mb-2 p-2 bg-dark rounded">
+        <div class="d-flex align-items-center justify-content-between mb-2 p-2 bg-dark rounded border border-secondary">
             <div>
-                <strong>${integration.display_name}</strong><br>
+                <strong class="text-white">${integration.display_name}</strong><br>
                 ${details}
             </div>
             <div class="text-end">
                 <i class="bi ${statusIcon}" title="${statusText}"></i>
-                <button class="btn btn-sm btn-outline-secondary ms-2" onclick="testIntegration('${integration.name}')" title="Test connection">
+                <button class="btn btn-sm btn-outline-light ms-2" onclick="testIntegration('${integration.name}')" title="Test connection">
                     <i class="bi bi-arrow-repeat"></i>
                 </button>
             </div>
