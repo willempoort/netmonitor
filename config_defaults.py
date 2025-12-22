@@ -149,7 +149,90 @@ BEST_PRACTICE_CONFIG = {
         "224.0.0.0/4",      # Multicast (mDNS, SSDP, etc.)
         "239.0.0.0/8",      # Administratively scoped multicast
         # Add your DNS servers, gateways, and trusted services here
-    ]
+    ],
+
+    # ==========================================================================
+    # INTEGRATIONS - Optional connections to external security systems
+    # All integrations are disabled by default for simple deployments
+    # ==========================================================================
+
+    "integrations": {
+        # Master switch for all integrations
+        "enabled": False,
+
+        # SIEM Integration - Send alerts to external SIEM
+        "siem": {
+            "enabled": False,
+
+            # Syslog output (supports CEF, LEEF, JSON)
+            "syslog": {
+                "enabled": False,
+                "host": "localhost",
+                "port": 514,
+                "protocol": "udp",         # udp, tcp, tls
+                "format": "cef",           # cef, leef, json
+                "facility": "local0",
+                "forward_severities": ["HIGH", "CRITICAL"],
+                "forward_all": False
+            },
+
+            # Wazuh SIEM native integration
+            "wazuh": {
+                "enabled": False,
+                "api_url": "",             # e.g., https://wazuh-manager:55000
+                "api_user": "",
+                "api_password": "",
+                "verify_ssl": True,
+                "use_api": True,           # Use Wazuh API (recommended)
+                "syslog_fallback": True    # Fall back to syslog if API fails
+            }
+        },
+
+        # Threat Intelligence - Enrich alerts with external threat data
+        "threat_intel": {
+            "enabled": False,
+            "cache_ttl_hours": 24,
+
+            # MISP - Malware Information Sharing Platform
+            "misp": {
+                "enabled": False,
+                "url": "",                 # e.g., https://misp.local
+                "api_key": "",
+                "verify_ssl": True,
+                "timeout": 30
+            },
+
+            # AlienVault OTX - Open Threat Exchange
+            "otx": {
+                "enabled": False,
+                "api_key": "",             # Get free key at otx.alienvault.com
+                "timeout": 30
+            },
+
+            # AbuseIPDB
+            "abuseipdb": {
+                "enabled": False,
+                "api_key": "",
+                "max_age_days": 90,
+                "min_confidence": 50,
+                "timeout": 30
+            }
+        },
+
+        # Notifications - External alerting (future)
+        "notifications": {
+            "enabled": False,
+
+            # Webhook notifications
+            "webhook": {
+                "enabled": False,
+                "url": "",
+                "method": "POST",
+                "headers": {},
+                "forward_severities": ["CRITICAL"]
+            }
+        }
+    }
 }
 
 # Parameter descriptions for dashboard UI
@@ -268,6 +351,16 @@ PARAMETER_CATEGORIES = {
     "Threat Intelligence": [
         "threat_feeds.enabled",
         "threat_feeds.update_interval"
+    ],
+    "Integrations": [
+        "integrations.enabled",
+        "integrations.siem.enabled",
+        "integrations.siem.syslog",
+        "integrations.siem.wazuh",
+        "integrations.threat_intel.enabled",
+        "integrations.threat_intel.misp",
+        "integrations.threat_intel.otx",
+        "integrations.threat_intel.abuseipdb"
     ]
 }
 
