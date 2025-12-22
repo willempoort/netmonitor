@@ -584,6 +584,204 @@ def api_status():
         'version': '2.0.0'
     })
 
+
+@app.route('/api/integrations/status')
+@login_required
+def api_integrations_status():
+    """Get status of all configured integrations (SIEM, Threat Intel)"""
+    try:
+        # Try to get integration manager from the running monitor
+        # If not available, return empty status
+        integration_status = {
+            'enabled': False,
+            'siem': [],
+            'threat_intel': [],
+            'timestamp': datetime.now().isoformat()
+        }
+
+        # Check if integrations are configured
+        from config_loader import load_config
+        try:
+            config = load_config('config.yaml')
+            integrations_config = config.get('integrations', {})
+            integration_status['enabled'] = integrations_config.get('enabled', False)
+
+            # Build status for configured integrations
+            if integration_status['enabled']:
+                # SIEM integrations
+                siem_config = integrations_config.get('siem', {})
+                if siem_config.get('enabled', False):
+                    # Syslog
+                    syslog_config = siem_config.get('syslog', {})
+                    if syslog_config.get('enabled', False):
+                        integration_status['siem'].append({
+                            'name': 'syslog',
+                            'display_name': 'Syslog Output',
+                            'enabled': True,
+                            'host': syslog_config.get('host', 'localhost'),
+                            'port': syslog_config.get('port', 514),
+                            'format': syslog_config.get('format', 'cef'),
+                            'healthy': None  # Would need connection test
+                        })
+
+                    # Wazuh
+                    wazuh_config = siem_config.get('wazuh', {})
+                    if wazuh_config.get('enabled', False):
+                        import os
+                        api_url = os.environ.get('WAZUH_API_URL') or wazuh_config.get('api_url', '')
+                        integration_status['siem'].append({
+                            'name': 'wazuh',
+                            'display_name': 'Wazuh SIEM',
+                            'enabled': True,
+                            'api_url': api_url,
+                            'has_credentials': bool(os.environ.get('WAZUH_API_PASSWORD') or wazuh_config.get('api_password')),
+                            'healthy': None  # Would need connection test
+                        })
+
+                # Threat Intel integrations
+                ti_config = integrations_config.get('threat_intel', {})
+                if ti_config.get('enabled', False):
+                    import os
+
+                    # MISP
+                    misp_config = ti_config.get('misp', {})
+                    if misp_config.get('enabled', False):
+                        url = os.environ.get('MISP_URL') or misp_config.get('url', '')
+                        integration_status['threat_intel'].append({
+                            'name': 'misp',
+                            'display_name': 'MISP',
+                            'enabled': True,
+                            'url': url,
+                            'has_credentials': bool(os.environ.get('MISP_API_KEY') or misp_config.get('api_key')),
+                            'healthy': None
+                        })
+
+                    # OTX
+                    otx_config = ti_config.get('otx', {})
+                    if otx_config.get('enabled', False):
+                        integration_status['threat_intel'].append({
+                            'name': 'otx',
+                            'display_name': 'AlienVault OTX',
+                            'enabled': True,
+                            'has_credentials': bool(os.environ.get('OTX_API_KEY') or otx_config.get('api_key')),
+                            'healthy': None
+                        })
+
+                    # AbuseIPDB
+                    abuseipdb_config = ti_config.get('abuseipdb', {})
+                    if abuseipdb_config.get('enabled', False):
+                        integration_status['threat_intel'].append({
+                            'name': 'abuseipdb',
+                            'display_name': 'AbuseIPDB',
+                            'enabled': True,
+                            'has_credentials': bool(os.environ.get('ABUSEIPDB_API_KEY') or abuseipdb_config.get('api_key')),
+                            'healthy': None
+                        })
+
+        except Exception as config_error:
+            logger.debug(f"Could not load integration config: {config_error}")
+
+        return jsonify({
+            'success': True,
+            'data': integration_status
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting integration status: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/integrations/test/<integration_name>', methods=['POST'])
+@login_required
+def api_integration_test(integration_name):
+    """Test connection to a specific integration"""
+    try:
+        from config_loader import load_config
+        import os
+
+        config = load_config('config.yaml')
+        integrations_config = config.get('integrations', {})
+
+        result = {
+            'name': integration_name,
+            'success': False,
+            'message': 'Unknown integration'
+        }
+
+        # Test based on integration type
+        if integration_name == 'misp':
+            misp_config = integrations_config.get('threat_intel', {}).get('misp', {})
+            from integrations.threat_intel.misp_source import MISPSource
+            source = MISPSource(misp_config)
+            valid, error = source.validate_config()
+            if valid:
+                healthy = source.health_check()
+                result = {
+                    'name': 'misp',
+                    'success': healthy,
+                    'message': 'Connection successful' if healthy else 'Connection failed'
+                }
+            else:
+                result = {'name': 'misp', 'success': False, 'message': error}
+
+        elif integration_name == 'otx':
+            otx_config = integrations_config.get('threat_intel', {}).get('otx', {})
+            from integrations.threat_intel.otx_source import OTXSource
+            source = OTXSource(otx_config)
+            valid, error = source.validate_config()
+            if valid:
+                healthy = source.health_check()
+                result = {
+                    'name': 'otx',
+                    'success': healthy,
+                    'message': 'Connection successful' if healthy else 'Connection failed'
+                }
+            else:
+                result = {'name': 'otx', 'success': False, 'message': error}
+
+        elif integration_name == 'abuseipdb':
+            abuseipdb_config = integrations_config.get('threat_intel', {}).get('abuseipdb', {})
+            from integrations.threat_intel.abuseipdb_source import AbuseIPDBSource
+            source = AbuseIPDBSource(abuseipdb_config)
+            valid, error = source.validate_config()
+            if valid:
+                healthy = source.health_check()
+                result = {
+                    'name': 'abuseipdb',
+                    'success': healthy,
+                    'message': 'Connection successful' if healthy else 'Connection failed'
+                }
+            else:
+                result = {'name': 'abuseipdb', 'success': False, 'message': error}
+
+        elif integration_name == 'wazuh':
+            wazuh_config = integrations_config.get('siem', {}).get('wazuh', {})
+            from integrations.siem.wazuh_output import WazuhOutput
+            output = WazuhOutput(wazuh_config)
+            valid, error = output.validate_config()
+            if valid:
+                success, message = output.test_connection()
+                result = {'name': 'wazuh', 'success': success, 'message': message}
+            else:
+                result = {'name': 'wazuh', 'success': False, 'message': error}
+
+        return jsonify(result)
+
+    except ImportError as e:
+        return jsonify({
+            'name': integration_name,
+            'success': False,
+            'message': f'Integration module not available: {e}'
+        })
+    except Exception as e:
+        logger.error(f"Error testing integration {integration_name}: {e}")
+        return jsonify({
+            'name': integration_name,
+            'success': False,
+            'message': str(e)
+        }), 500
+
+
 @app.route('/api/dashboard')
 @login_required
 def api_dashboard():

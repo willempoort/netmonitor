@@ -2148,6 +2148,135 @@ document.addEventListener('DOMContentLoaded', function() {
     setInterval(loadWhitelist, 60000);
 });
 
+// ==================== Integrations Status ====================
+
+function loadIntegrationStatus() {
+    fetch('/api/integrations/status')
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) return;
+
+            const status = data.data;
+            const integrationsRow = document.getElementById('integrations-row');
+
+            // Only show if integrations are enabled
+            if (!status.enabled) {
+                if (integrationsRow) integrationsRow.style.display = 'none';
+                return;
+            }
+
+            // Show the integrations row
+            if (integrationsRow) integrationsRow.style.display = '';
+
+            // Update count badge
+            const countBadge = document.getElementById('integrations-count');
+            const totalCount = (status.siem?.length || 0) + (status.threat_intel?.length || 0);
+            if (countBadge) countBadge.textContent = totalCount;
+
+            // Render SIEM integrations
+            const siemContainer = document.getElementById('siem-integrations');
+            if (siemContainer) {
+                if (status.siem && status.siem.length > 0) {
+                    siemContainer.innerHTML = status.siem.map(int => renderIntegrationCard(int, 'siem')).join('');
+                } else {
+                    siemContainer.innerHTML = '<span class="text-muted">No SIEM integrations enabled</span>';
+                }
+            }
+
+            // Render Threat Intel integrations
+            const tiContainer = document.getElementById('threat-intel-integrations');
+            if (tiContainer) {
+                if (status.threat_intel && status.threat_intel.length > 0) {
+                    tiContainer.innerHTML = status.threat_intel.map(int => renderIntegrationCard(int, 'threat_intel')).join('');
+                } else {
+                    tiContainer.innerHTML = '<span class="text-muted">No threat intel integrations enabled</span>';
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error loading integration status:', error);
+        });
+}
+
+function renderIntegrationCard(integration, type) {
+    const hasCredentials = integration.has_credentials;
+    const statusIcon = hasCredentials ? 'bi-check-circle-fill text-success' : 'bi-exclamation-circle-fill text-warning';
+    const statusText = hasCredentials ? 'Configured' : 'Missing credentials';
+
+    let details = '';
+    if (integration.url) {
+        details = `<small class="text-muted">${integration.url}</small>`;
+    } else if (integration.host) {
+        details = `<small class="text-muted">${integration.host}:${integration.port} (${integration.format})</small>`;
+    } else if (integration.api_url) {
+        details = `<small class="text-muted">${integration.api_url}</small>`;
+    }
+
+    return `
+        <div class="d-flex align-items-center justify-content-between mb-2 p-2 bg-dark rounded">
+            <div>
+                <strong>${integration.display_name}</strong><br>
+                ${details}
+            </div>
+            <div class="text-end">
+                <i class="bi ${statusIcon}" title="${statusText}"></i>
+                <button class="btn btn-sm btn-outline-secondary ms-2" onclick="testIntegration('${integration.name}')" title="Test connection">
+                    <i class="bi bi-arrow-repeat"></i>
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+window.testIntegration = function(name) {
+    const btn = event.target.closest('button');
+    const originalContent = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    btn.disabled = true;
+
+    fetch(`/api/integrations/test/${name}`, { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            btn.innerHTML = originalContent;
+            btn.disabled = false;
+
+            if (data.success) {
+                showToast(`${name}: ${data.message}`, 'success');
+            } else {
+                showToast(`${name}: ${data.message}`, 'danger');
+            }
+        })
+        .catch(error => {
+            btn.innerHTML = originalContent;
+            btn.disabled = false;
+            showToast(`${name}: ${error.message}`, 'danger');
+        });
+};
+
+function showToast(message, type = 'info') {
+    // Simple toast notification
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type} position-fixed`;
+    toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    toast.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" onclick="this.parentElement.remove()"></button>
+    `;
+    document.body.appendChild(toast);
+
+    // Auto-remove after 5 seconds
+    setTimeout(() => toast.remove(), 5000);
+}
+
+// Load integrations on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Load integration status (with slight delay to avoid blocking main dashboard)
+    setTimeout(loadIntegrationStatus, 1500);
+
+    // Refresh integration status every 60 seconds
+    setInterval(loadIntegrationStatus, 60000);
+});
+
 // ==================== Export for debugging ====================
 
 window.dashboardDebug = {
@@ -2156,5 +2285,6 @@ window.dashboardDebug = {
     alertPieChart,
     loadDashboardData,
     updateMetrics,
-    loadSensors
+    loadSensors,
+    loadIntegrationStatus
 };

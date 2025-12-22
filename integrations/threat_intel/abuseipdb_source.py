@@ -60,14 +60,19 @@ class AbuseIPDBSource(ThreatIntelSource):
         Initialize AbuseIPDB source.
 
         Config options:
-            api_key: AbuseIPDB API key
+            api_key: AbuseIPDB API key (or ABUSEIPDB_API_KEY env var)
             max_age_days: Maximum age of reports to consider (default: 90)
             min_confidence: Minimum confidence score (0-100) to consider malicious (default: 50)
             timeout: Request timeout in seconds (default: 30)
+
+        Environment variables (take precedence over config):
+            ABUSEIPDB_API_KEY: AbuseIPDB API key
         """
         super().__init__(config)
 
-        self.api_key = config.get('api_key', '')
+        from ..base import get_config_value
+
+        self.api_key = get_config_value(config, 'api_key', 'ABUSEIPDB_API_KEY', '')
         self.max_age_days = config.get('max_age_days', 90)
         self.min_confidence = config.get('min_confidence', 50)
         self.timeout = config.get('timeout', 30)

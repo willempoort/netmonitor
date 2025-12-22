@@ -39,24 +39,32 @@ class WazuhOutput(SIEMOutput):
         Initialize Wazuh integration.
 
         Config options:
-            api_url: Wazuh API URL (e.g., https://wazuh-manager:55000)
-            api_user: API username
-            api_password: API password
+            api_url: Wazuh API URL (or WAZUH_API_URL env var)
+            api_user: API username (or WAZUH_API_USER env var)
+            api_password: API password (or WAZUH_API_PASSWORD env var)
             verify_ssl: Verify SSL certificate (default: True)
             use_api: Use API for sending events (default: True)
             syslog_fallback: Fall back to syslog if API fails (default: True)
-            syslog_host: Syslog host (default: same as API host)
+            syslog_host: Syslog host (or SYSLOG_HOST env var)
             syslog_port: Syslog port (default: 514)
+
+        Environment variables (take precedence over config):
+            WAZUH_API_URL: Wazuh API URL
+            WAZUH_API_USER: Wazuh API username
+            WAZUH_API_PASSWORD: Wazuh API password
+            SYSLOG_HOST: Syslog host for fallback
         """
         super().__init__(config)
 
-        self.api_url = config.get('api_url', '').rstrip('/')
-        self.api_user = config.get('api_user', '')
-        self.api_password = config.get('api_password', '')
+        from ..base import get_config_value
+
+        self.api_url = get_config_value(config, 'api_url', 'WAZUH_API_URL', '').rstrip('/')
+        self.api_user = get_config_value(config, 'api_user', 'WAZUH_API_USER', '')
+        self.api_password = get_config_value(config, 'api_password', 'WAZUH_API_PASSWORD', '')
         self.verify_ssl = config.get('verify_ssl', True)
         self.use_api = config.get('use_api', True)
         self.syslog_fallback = config.get('syslog_fallback', True)
-        self.syslog_host = config.get('syslog_host') or self._extract_host(self.api_url)
+        self.syslog_host = get_config_value(config, 'syslog_host', 'SYSLOG_HOST') or self._extract_host(self.api_url)
         self.syslog_port = config.get('syslog_port', 514)
 
         # API token (obtained during authentication)

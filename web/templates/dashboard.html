@@ -195,6 +195,41 @@
             </div>
         </div>
 
+        <!-- Integrations Status Row (only shown if integrations enabled) -->
+        <div class="row mb-3" id="integrations-row" style="display: none;">
+            <div class="col-12">
+                <div class="card bg-secondary">
+                    <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#integrationsCollapse">
+                        <h5 class="mb-0">
+                            <i class="bi bi-plug"></i> Integrations
+                            <span class="badge bg-info ms-2" id="integrations-count">0</span>
+                        </h5>
+                        <i class="bi bi-chevron-down"></i>
+                    </div>
+                    <div class="collapse" id="integrationsCollapse">
+                        <div class="card-body">
+                            <div class="row">
+                                <!-- SIEM Integrations -->
+                                <div class="col-md-6">
+                                    <h6 class="text-muted mb-2"><i class="bi bi-shield-check"></i> SIEM</h6>
+                                    <div id="siem-integrations">
+                                        <span class="text-muted">No SIEM integrations enabled</span>
+                                    </div>
+                                </div>
+                                <!-- Threat Intel Integrations -->
+                                <div class="col-md-6">
+                                    <h6 class="text-muted mb-2"><i class="bi bi-database-check"></i> Threat Intelligence</h6>
+                                    <div id="threat-intel-integrations">
+                                        <span class="text-muted">No threat intel integrations enabled</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Sensor Command Center Row -->
         <div class="row mb-3">
             <div class="col-12">

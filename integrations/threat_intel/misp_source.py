@@ -52,15 +52,21 @@ class MISPSource(ThreatIntelSource):
         Initialize MISP source.
 
         Config options:
-            url: MISP instance URL
-            api_key: MISP API key
+            url: MISP instance URL (or MISP_URL env var)
+            api_key: MISP API key (or MISP_API_KEY env var)
             verify_ssl: Verify SSL certificate (default: True)
             timeout: Request timeout in seconds (default: 30)
+
+        Environment variables (take precedence over config):
+            MISP_URL: MISP instance URL
+            MISP_API_KEY: MISP API key
         """
         super().__init__(config)
 
-        self.url = config.get('url', '').rstrip('/')
-        self.api_key = config.get('api_key', '')
+        from ..base import get_config_value
+
+        self.url = get_config_value(config, 'url', 'MISP_URL', '').rstrip('/')
+        self.api_key = get_config_value(config, 'api_key', 'MISP_API_KEY', '')
         self.verify_ssl = config.get('verify_ssl', True)
         self.timeout = config.get('timeout', 30)
 

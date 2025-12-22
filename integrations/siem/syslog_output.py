@@ -55,20 +55,28 @@ class SyslogOutput(SIEMOutput):
         Initialize syslog output.
 
         Config options:
-            host: Syslog server hostname/IP (default: localhost)
-            port: Syslog server port (default: 514)
-            protocol: udp, tcp, or tls (default: udp)
-            format: cef, leef, or json (default: cef)
+            host: Syslog server hostname/IP (or SYSLOG_HOST env var)
+            port: Syslog server port (or SYSLOG_PORT env var)
+            protocol: udp, tcp, or tls (or SYSLOG_PROTOCOL env var)
+            format: cef, leef, or json (or SYSLOG_FORMAT env var)
             facility: Syslog facility (default: local0)
             tls_cert: Path to TLS certificate (for tls protocol)
             tls_verify: Verify TLS certificate (default: True)
+
+        Environment variables (take precedence over config):
+            SYSLOG_HOST: Syslog server hostname/IP
+            SYSLOG_PORT: Syslog server port
+            SYSLOG_PROTOCOL: Protocol (udp, tcp, tls)
+            SYSLOG_FORMAT: Output format (cef, leef, json)
         """
         super().__init__(config)
 
-        self.host = config.get('host', 'localhost')
-        self.port = config.get('port', 514)
-        self.protocol = config.get('protocol', 'udp').lower()
-        self.format = config.get('format', 'cef').lower()
+        from ..base import get_config_value
+
+        self.host = get_config_value(config, 'host', 'SYSLOG_HOST', 'localhost')
+        self.port = int(get_config_value(config, 'port', 'SYSLOG_PORT', 514))
+        self.protocol = get_config_value(config, 'protocol', 'SYSLOG_PROTOCOL', 'udp').lower()
+        self.format = get_config_value(config, 'format', 'SYSLOG_FORMAT', 'cef').lower()
         self.facility = config.get('facility', 'local0')
         self.tls_cert = config.get('tls_cert')
         self.tls_verify = config.get('tls_verify', True)

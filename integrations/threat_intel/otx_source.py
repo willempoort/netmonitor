@@ -33,12 +33,17 @@ class OTXSource(ThreatIntelSource):
         Initialize OTX source.
 
         Config options:
-            api_key: OTX API key (get free at https://otx.alienvault.com)
+            api_key: OTX API key (or OTX_API_KEY env var)
             timeout: Request timeout in seconds (default: 30)
+
+        Environment variables (take precedence over config):
+            OTX_API_KEY: AlienVault OTX API key
         """
         super().__init__(config)
 
-        self.api_key = config.get('api_key', '')
+        from ..base import get_config_value
+
+        self.api_key = get_config_value(config, 'api_key', 'OTX_API_KEY', '')
         self.timeout = config.get('timeout', 30)
 
     def validate_config(self) -> Tuple[bool, Optional[str]]:

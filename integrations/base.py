@@ -9,13 +9,43 @@ with support for:
 - Configuration validation
 - Health checks
 - Metrics collection
+- Environment variable fallback for sensitive settings
 """
 
 import logging
+import os
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from dataclasses import dataclass, field
+
+
+def get_config_value(config: Dict, key: str, env_var: str = None, default: Any = None) -> Any:
+    """
+    Get configuration value with environment variable fallback.
+
+    Priority:
+    1. Environment variable (if env_var specified)
+    2. Config dictionary value
+    3. Default value
+
+    Args:
+        config: Configuration dictionary
+        key: Key to look up in config
+        env_var: Environment variable name to check first
+        default: Default value if neither env nor config has the value
+
+    Returns:
+        The configuration value
+    """
+    # Check environment variable first
+    if env_var:
+        env_value = os.environ.get(env_var)
+        if env_value:
+            return env_value
+
+    # Fall back to config, then default
+    return config.get(key, default)
 
 
 @dataclass
