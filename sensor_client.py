@@ -121,6 +121,15 @@ def _load_bash_config(config_file):
                     # Comma-separated list of IPs/CIDRs to whitelist
                     if value:
                         config['whitelist'] = [ip.strip() for ip in value.split(',')]
+                # PCAP Forensics local overrides (NIS2 compliance)
+                elif key == 'PCAP_ENABLED':
+                    config.setdefault('thresholds', {}).setdefault('pcap_export', {})['enabled'] = value.lower() in ('true', 'yes', '1')
+                elif key == 'PCAP_UPLOAD_TO_SOC':
+                    config.setdefault('thresholds', {}).setdefault('pcap_export', {})['upload_to_soc'] = value.lower() in ('true', 'yes', '1')
+                elif key == 'PCAP_KEEP_LOCAL':
+                    config.setdefault('thresholds', {}).setdefault('pcap_export', {})['keep_local_copy'] = value.lower() in ('true', 'yes', '1')
+                elif key == 'PCAP_OUTPUT_DIR':
+                    config.setdefault('thresholds', {}).setdefault('pcap_export', {})['output_dir'] = value
 
     return config
 

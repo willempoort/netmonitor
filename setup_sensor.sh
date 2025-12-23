@@ -208,6 +208,25 @@ SSL_VERIFY=$SSL_VERIFY
 SENSOR_SECRET_KEY=$SENSOR_SECRET_KEY
 
 # ============================================
+# PCAP Forensics (NIS2 Compliance)
+# ============================================
+#
+# PCAP capture is ENABLED BY DEFAULT for NIS2 compliance.
+# Packets are captured around HIGH/CRITICAL alerts and
+# automatically uploaded to the SOC server.
+#
+# Override defaults only if needed (e.g., limited storage):
+#
+# PCAP_ENABLED=true              # Enable/disable PCAP capture
+# PCAP_UPLOAD_TO_SOC=true        # Upload PCAP to SOC server (NIS2 required)
+# PCAP_KEEP_LOCAL=false          # Keep local copy after upload
+# PCAP_OUTPUT_DIR=/var/log/netmonitor/pcap  # Local storage directory
+#
+# WARNING: Disabling PCAP upload may impact NIS2 compliance!
+#
+# ============================================
+
+# ============================================
 # All Other Settings From SOC Server
 # ============================================
 #
@@ -227,8 +246,10 @@ SENSOR_SECRET_KEY=$SENSOR_SECRET_KEY
 #   - Whitelist / Allowlist
 #
 # DETECTION SETTINGS:
-#   - All detection rules (13 rules)
+#   - All detection rules (15+ rules)
 #   - All thresholds
+#   - TLS/HTTPS analysis (JA3 fingerprinting)
+#   - PCAP forensics settings
 #   - Alert sensitivity
 #   - Batch intervals
 #
@@ -284,16 +305,18 @@ SyslogIdentifier=netmonitor-sensor
 NoNewPrivileges=false
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=/var/log/netmonitor
+ReadWritePaths=/var/log/netmonitor /var/log/netmonitor/pcap
 CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# Create log directory
+# Create log and PCAP directories
 mkdir -p /var/log/netmonitor
+mkdir -p /var/log/netmonitor/pcap
 chmod 755 /var/log/netmonitor
+chmod 750 /var/log/netmonitor/pcap
 
 # Reload systemd
 echo "Reloading systemd daemon..."
@@ -344,8 +367,15 @@ echo ""
 echo "Additional configuration (managed via SOC Dashboard):"
 echo "  • Sensor ID & Location"
 echo "  • Internal Networks"
-echo "  • Detection Rules & Thresholds"
+echo "  • Detection Rules & Thresholds (15+ rules)"
+echo "  • TLS/HTTPS Analysis (JA3 fingerprinting)"
+echo "  • PCAP Forensics (NIS2 compliant)"
 echo "  • Performance Settings"
+echo ""
+echo "NIS2 Compliance:"
+echo "  • PCAP capture:   ENABLED (default)"
+echo "  • Upload to SOC:  ENABLED (default)"
+echo "  • Evidence is centralized on SOC server automatically"
 echo "============================================"
 echo ""
 echo "Useful Commands:"
