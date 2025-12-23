@@ -62,6 +62,25 @@ SENSOR_TOKEN=
 SENSOR_WHITELIST=
 
 # ============================================
+# PCAP Forensics (NIS2 Compliance)
+# ============================================
+#
+# PCAP capture is ENABLED BY DEFAULT for NIS2 compliance.
+# Packets are captured around HIGH/CRITICAL alerts and
+# automatically uploaded to the SOC server.
+#
+# Override defaults only if needed (e.g., limited storage):
+#
+# PCAP_ENABLED=true              # Enable/disable PCAP capture
+# PCAP_UPLOAD_TO_SOC=true        # Upload PCAP to SOC server (NIS2 required)
+# PCAP_KEEP_LOCAL=false          # Keep local copy after upload
+# PCAP_OUTPUT_DIR=/var/log/netmonitor/pcap  # Local storage directory
+#
+# WARNING: Disabling PCAP upload may impact NIS2 compliance!
+#
+# ============================================
+
+# ============================================
 # All Other Settings From SOC Server
 # ============================================
 #
@@ -81,8 +100,10 @@ SENSOR_WHITELIST=
 #   - Whitelist / Allowlist
 #
 # DETECTION SETTINGS:
-#   - All detection rules (13 rules)
+#   - All detection rules (15+ rules)
 #   - All thresholds
+#   - TLS/HTTPS analysis (JA3 fingerprinting)
+#   - PCAP forensics settings
 #   - Alert sensitivity
 #   - Batch intervals
 #
