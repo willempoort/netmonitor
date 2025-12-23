@@ -20,7 +20,8 @@ Last Updated: December 2025
 9. [Maintenance & Troubleshooting](#maintenance--troubleshooting)
 10. [Web Dashboard Authentication & User Management](#web-dashboard-authentication--user-management)
 11. [Security Best Practices](#security-best-practices)
-12. [Advanced Topics](#advanced-topics)
+12. [NIS2 Compliance](#nis2-compliance)
+13. [Advanced Topics](#advanced-topics)
 
 ---
 
@@ -1578,6 +1579,159 @@ Before deploying to production:
 
 ---
 
+## NIS2 Compliance
+
+The **NIS2 Directive** (Network and Information Security Directive 2) is EU legislation requiring enhanced cybersecurity measures for essential and important entities. NetMonitor includes features specifically designed to help meet NIS2 requirements.
+
+### NIS2 Requirements Overview
+
+NetMonitor helps address these NIS2 requirements:
+
+| NIS2 Requirement | NetMonitor Feature |
+|------------------|-------------------|
+| **Incident Detection** | 15+ detection rules, TLS analysis, threat intelligence |
+| **Incident Reporting** | Alert system with severity levels, automated notifications |
+| **Evidence Retention** | PCAP forensics with configurable retention |
+| **Centralized Logging** | Sensor-to-SOC PCAP upload, audit logs |
+| **Risk Management** | Device classification, behavior learning |
+| **Supply Chain Security** | JA3 fingerprinting, certificate validation |
+
+### Enabling NIS2 Features
+
+**1. Enable PCAP Forensics (Required)**
+
+PCAP capture is enabled by default. Verify settings in config.yaml:
+
+```yaml
+thresholds:
+  pcap_export:
+    enabled: true                # Must be true for NIS2
+    alert_capture_enabled: true  # Capture packets around alerts
+    upload_to_soc: true          # Centralize evidence
+    max_age_hours: 720           # 30 days minimum retention
+```
+
+**2. Configure Sensor PCAP Upload**
+
+For remote sensors, ensure PCAP data is centralized:
+
+```yaml
+# In sensor configuration or via dashboard
+pcap_export:
+  enabled: true
+  upload_to_soc: true         # Upload to SOC server
+  keep_local_copy: false      # Delete after successful upload
+```
+
+**3. Enable TLS Analysis**
+
+Monitor encrypted traffic for compliance:
+
+```yaml
+thresholds:
+  tls_analysis:
+    enabled: true
+    ja3_detection: true           # Identify client applications
+    certificate_validation: true  # Detect rogue certificates
+    detect_expired_certs: true    # Certificate hygiene
+```
+
+**4. Configure Audit Logging**
+
+Enable comprehensive audit trails:
+
+```bash
+# Check MCP audit logs are enabled
+psql -U netmonitor -d netmonitor -c "SELECT COUNT(*) FROM mcp_audit_log;"
+
+# Check web user audit logs
+psql -U netmonitor -d netmonitor -c "SELECT COUNT(*) FROM web_user_audit;"
+```
+
+### NIS2 Compliance Checklist
+
+Use this checklist for NIS2 readiness:
+
+**Incident Detection & Response:**
+- [ ] All detection rules enabled (port scan, brute force, DDoS, etc.)
+- [ ] TLS analysis enabled for encrypted traffic
+- [ ] Threat intelligence feeds configured
+- [ ] Alert notifications configured (email/webhook)
+- [ ] Incident response procedures documented
+
+**Evidence & Forensics:**
+- [ ] PCAP forensics enabled on all sensors
+- [ ] Sensor PCAP upload enabled (`upload_to_soc: true`)
+- [ ] 30+ day retention configured (`max_age_hours: 720`)
+- [ ] Sufficient storage provisioned (estimate 5GB/day/10 sensors)
+- [ ] Backup procedures for PCAP files
+
+**Access Control & Audit:**
+- [ ] Admin accounts with strong passwords (12+ chars)
+- [ ] 2FA enabled for all admin users
+- [ ] MCP API tokens with minimal scope
+- [ ] Audit logging enabled and reviewed
+- [ ] User access logs retained
+
+**Network Monitoring:**
+- [ ] Sensors deployed at network boundaries
+- [ ] Internal networks properly configured
+- [ ] Device discovery enabled
+- [ ] Whitelist maintained (reduce false positives)
+
+### NIS2 Reporting
+
+Generate compliance reports using MCP tools:
+
+```bash
+# Generate security report
+curl -X POST http://localhost:8000/mcp/tools/execute \
+  -H "Authorization: Bearer <token>" \
+  -d '{
+    "tool_name": "generate_security_report",
+    "parameters": {"time_range_hours": 720}
+  }'
+
+# Export alerts for incident timeline
+curl -X POST http://localhost:8000/mcp/tools/execute \
+  -H "Authorization: Bearer <token>" \
+  -d '{
+    "tool_name": "export_alerts_csv",
+    "parameters": {"time_range_hours": 720}
+  }' > monthly_alerts.csv
+
+# List PCAP evidence files
+curl http://localhost:8000/mcp/tools/execute \
+  -H "Authorization: Bearer <token>" \
+  -d '{
+    "tool_name": "get_pcap_captures",
+    "parameters": {}
+  }'
+```
+
+### Storage Planning for NIS2
+
+Calculate storage requirements:
+
+```
+PCAP Storage = Alerts/day × Days × Average_PCAP_size
+
+Example:
+- 10 sensors × 50 HIGH/CRITICAL alerts/day = 500 alerts/day
+- 30 days retention
+- Average 2MB per PCAP
+- Total: 500 × 30 × 2MB = 30GB
+
+Recommended: Plan for 2x estimate = 60GB for PCAP storage
+```
+
+**Storage locations:**
+- SOC server PCAPs: `/var/log/netmonitor/pcap/`
+- Sensor uploads: `/var/log/netmonitor/pcap/sensors/<sensor_id>/`
+- Database: PostgreSQL data directory
+
+---
+
 ## Advanced Topics
 
 ### TimescaleDB Optimization
@@ -1649,9 +1803,16 @@ thresholds:
 add_ja3_blacklist --ja3_hash "your_hash" --malware_family "MalwareName"
 ```
 
-### PCAP Forensics Configuration
+### PCAP Forensics Configuration (NIS2 Compliant)
 
-PCAP export saves packets for forensic analysis.
+PCAP export saves packets for forensic analysis. This feature is designed to meet **NIS2 Directive** requirements for incident evidence retention.
+
+**NIS2 Compliance Features:**
+- ✅ Automatic packet capture around security alerts
+- ✅ Centralized PCAP storage on SOC server
+- ✅ Sensor PCAP upload for distributed environments
+- ✅ Configurable retention policies
+- ✅ Audit trail for forensic investigations
 
 **Configuration in config.yaml or via Dashboard:**
 ```yaml
@@ -1666,6 +1827,64 @@ thresholds:
     flow_buffer_size: 500           # Per-flow buffer size
     max_captures: 100               # Maximum stored PCAP files
     max_age_hours: 24               # Auto-delete PCAPs after 24 hours
+    # NIS2 Sensor Options (for remote sensors)
+    upload_to_soc: true             # Upload PCAP to SOC server (required for NIS2)
+    keep_local_copy: false          # Keep local copy after upload (saves disk)
+```
+
+#### NIS2 Sensor PCAP Architecture
+
+For distributed sensor deployments, PCAP data is automatically uploaded to the central SOC server:
+
+```
+┌─────────────────┐                      ┌─────────────────────────────┐
+│  Remote Sensor  │                      │        SOC Server           │
+│                 │                      │                             │
+│  ┌───────────┐  │     Alert + PCAP     │  ┌───────────────────────┐  │
+│  │ PCAP      │  │ ──────────────────── │  │ /var/log/netmonitor/  │  │
+│  │ Exporter  │  │    (Base64 JSON)     │  │ pcap/sensors/         │  │
+│  └───────────┘  │                      │  │   └── sensor_id/      │  │
+│                 │                      │  │        └── alert.pcap │  │
+└─────────────────┘                      │  └───────────────────────┘  │
+                                         │                             │
+                                         │  ┌───────────────────────┐  │
+                                         │  │ Dashboard PCAP API    │  │
+                                         │  │ GET /api/pcap/sensors │  │
+                                         │  └───────────────────────┘  │
+                                         └─────────────────────────────┘
+```
+
+**How Sensor PCAP Upload Works:**
+1. Sensor detects HIGH/CRITICAL alert
+2. Captures packets around alert (pre/post)
+3. Base64 encodes PCAP data
+4. Uploads with alert JSON to SOC server
+5. SOC server stores in `/var/log/netmonitor/pcap/sensors/<sensor_id>/`
+6. Optional: sensor deletes local copy after successful upload
+
+**Sensor PCAP API Endpoints:**
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/pcap/sensors` | GET | List all sensor PCAP files |
+| `/api/pcap/sensors/<filename>` | GET | Download specific PCAP |
+| `/api/pcap/sensors/<filename>` | DELETE | Delete specific PCAP |
+| `/api/alerts/<alert_id>/pcap` | GET | Get PCAP for specific alert |
+
+**Storage Considerations for NIS2:**
+- Plan for 100KB-5MB per alert PCAP
+- With 10 sensors × 100 alerts/day = ~5GB/day
+- Configure retention based on compliance requirements
+- NIS2 typically requires 30-90 days retention
+
+**Recommended NIS2 Settings:**
+```yaml
+thresholds:
+  pcap_export:
+    enabled: true
+    upload_to_soc: true       # Centralize all evidence
+    keep_local_copy: false    # Save sensor disk space
+    max_age_hours: 720        # 30 days retention (NIS2 minimum)
+    max_captures: 5000        # Adjust based on storage
 ```
 
 **How Alert-Triggered Capture Works:**
@@ -1769,5 +1988,5 @@ See [USER_MANUAL.md](USER_MANUAL.md) for daily usage guide.
 
 ---
 
-*Last updated: December 2024*
-*NetMonitor SOC v2.1 - Centralized Security Operations with AI Integration*
+*Last updated: December 2025*
+*NetMonitor SOC v2.2 - Centralized Security Operations with NIS2 Compliance*

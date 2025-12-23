@@ -1067,7 +1067,13 @@ def api_submit_sensor_metrics(sensor_id):
 
 @app.route('/api/sensors/<sensor_id>/alerts', methods=['POST'])
 def api_submit_sensor_alerts(sensor_id):
-    """Submit alerts from remote sensor (batch)"""
+    """Submit alerts from remote sensor (batch)
+
+    Supports optional PCAP data for forensic evidence (NIS2 compliance).
+    PCAP data should be base64 encoded in alert['pcap_data'].
+    """
+    import base64
+
     try:
         data = request.get_json()
 
@@ -1079,8 +1085,13 @@ def api_submit_sensor_alerts(sensor_id):
         # Update heartbeat
         db.update_sensor_heartbeat(sensor_id)
 
+        # Ensure PCAP directory exists for sensor captures
+        pcap_dir = Path('/var/log/netmonitor/pcap/sensors')
+        pcap_dir.mkdir(parents=True, exist_ok=True)
+
         # Insert all alerts
         success_count = 0
+        pcap_count = 0
         for alert in alerts:
             # Parse timestamp if provided
             timestamp = None
@@ -1090,6 +1101,39 @@ def api_submit_sensor_alerts(sensor_id):
                 except:
                     pass
 
+            # Handle PCAP data if present (NIS2 forensic evidence)
+            pcap_filename = None
+            if alert.get('pcap_data'):
+                try:
+                    pcap_data = base64.b64decode(alert['pcap_data'])
+                    # Generate filename: sensor_alerttype_srcip_timestamp.pcap
+                    ts_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    src_ip = (alert.get('source_ip') or 'unknown').replace('.', '_')
+                    alert_type = (alert.get('threat_type') or 'unknown').lower()
+                    pcap_filename = f"{sensor_id}_{alert_type}_{src_ip}_{ts_str}.pcap"
+                    pcap_path = pcap_dir / pcap_filename
+
+                    # Write PCAP file
+                    with open(pcap_path, 'wb') as f:
+                        f.write(pcap_data)
+
+                    pcap_count += 1
+                    logger.info(f"Received PCAP from sensor {sensor_id}: {pcap_filename} ({len(pcap_data)} bytes)")
+                except Exception as pcap_err:
+                    logger.warning(f"Failed to save PCAP from sensor {sensor_id}: {pcap_err}")
+                    pcap_filename = None
+
+            # Add PCAP reference to metadata
+            metadata = alert.get('metadata') or {}
+            if isinstance(metadata, str):
+                try:
+                    metadata = json.loads(metadata)
+                except:
+                    metadata = {}
+            if pcap_filename:
+                metadata['pcap_file'] = pcap_filename
+                metadata['pcap_source'] = 'sensor'
+
             success = db.insert_alert_from_sensor(
                 sensor_id=sensor_id,
                 severity=alert.get('severity', 'INFO'),
@@ -1097,7 +1141,7 @@ def api_submit_sensor_alerts(sensor_id):
                 source_ip=alert.get('source_ip'),
                 destination_ip=alert.get('destination_ip'),
                 description=alert.get('description', ''),
-                metadata=alert.get('metadata'),
+                metadata=metadata,
                 timestamp=timestamp
             )
 
@@ -1113,7 +1157,8 @@ def api_submit_sensor_alerts(sensor_id):
                         'destination_ip': alert.get('destination_ip'),
                         'description': alert.get('description'),
                         'sensor_id': sensor_id,
-                        'timestamp': alert.get('timestamp', datetime.now().isoformat())
+                        'timestamp': alert.get('timestamp', datetime.now().isoformat()),
+                        'has_pcap': pcap_filename is not None
                     })
                 except:
                     pass  # Don't fail if broadcast fails
@@ -1121,7 +1166,8 @@ def api_submit_sensor_alerts(sensor_id):
         return jsonify({
             'success': True,
             'received': len(alerts),
-            'inserted': success_count
+            'inserted': success_count,
+            'pcap_received': pcap_count
         })
 
     except Exception as e:
@@ -2668,6 +2714,168 @@ def api_internal_packet_buffer_summary():
 
     except Exception as e:
         logger.error(f"Error getting packet buffer summary: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==================== Sensor PCAP API (NIS2 Compliance) ====================
+
+@app.route('/api/pcap/sensors')
+@login_required
+def api_get_sensor_pcap_list():
+    """
+    Get list of PCAP files received from sensors (NIS2 forensic evidence).
+    """
+    try:
+        pcap_dir = Path('/var/log/netmonitor/pcap/sensors')
+        if not pcap_dir.exists():
+            return jsonify({
+                'success': True,
+                'captures': [],
+                'count': 0
+            })
+
+        captures = []
+        for pcap_file in pcap_dir.glob('*.pcap'):
+            stat = pcap_file.stat()
+            # Parse filename: sensor_alerttype_srcip_timestamp.pcap
+            parts = pcap_file.stem.split('_')
+            sensor_id = parts[0] if len(parts) > 0 else 'unknown'
+
+            captures.append({
+                'filename': pcap_file.name,
+                'sensor_id': sensor_id,
+                'size_bytes': stat.st_size,
+                'created': datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                'modified': datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            })
+
+        # Sort by creation time, newest first
+        captures.sort(key=lambda x: x['created'], reverse=True)
+
+        return jsonify({
+            'success': True,
+            'captures': captures,
+            'count': len(captures)
+        })
+
+    except Exception as e:
+        logger.error(f"Error listing sensor PCAP files: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/pcap/sensors/<filename>')
+@login_required
+def api_download_sensor_pcap(filename):
+    """
+    Download a specific sensor PCAP file for analysis.
+    """
+    try:
+        pcap_dir = Path('/var/log/netmonitor/pcap/sensors')
+        pcap_path = pcap_dir / filename
+
+        # Security: prevent path traversal
+        if not pcap_path.resolve().is_relative_to(pcap_dir.resolve()):
+            return jsonify({'success': False, 'error': 'Invalid filename'}), 400
+
+        if not pcap_path.exists():
+            return jsonify({'success': False, 'error': 'File not found'}), 404
+
+        return send_from_directory(
+            pcap_dir,
+            filename,
+            as_attachment=True,
+            mimetype='application/vnd.tcpdump.pcap'
+        )
+
+    except Exception as e:
+        logger.error(f"Error downloading sensor PCAP: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/pcap/sensors/<filename>', methods=['DELETE'])
+@login_required
+def api_delete_sensor_pcap(filename):
+    """
+    Delete a sensor PCAP file (admin only).
+    """
+    try:
+        pcap_dir = Path('/var/log/netmonitor/pcap/sensors')
+        pcap_path = pcap_dir / filename
+
+        # Security: prevent path traversal
+        if not pcap_path.resolve().is_relative_to(pcap_dir.resolve()):
+            return jsonify({'success': False, 'error': 'Invalid filename'}), 400
+
+        if not pcap_path.exists():
+            return jsonify({'success': False, 'error': 'File not found'}), 404
+
+        pcap_path.unlink()
+        logger.info(f"Deleted sensor PCAP: {filename}")
+
+        return jsonify({
+            'success': True,
+            'message': f'Deleted {filename}'
+        })
+
+    except Exception as e:
+        logger.error(f"Error deleting sensor PCAP: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/alerts/<int:alert_id>/pcap')
+@login_required
+def api_get_alert_pcap(alert_id):
+    """
+    Get PCAP file associated with an alert (if available).
+    Checks both local SOC captures and sensor uploads.
+    """
+    try:
+        # Get alert from database
+        alert = db.get_alert_by_id(alert_id)
+        if not alert:
+            return jsonify({'success': False, 'error': 'Alert not found'}), 404
+
+        # Check if alert has PCAP reference in metadata
+        metadata = alert.get('metadata', {})
+        if isinstance(metadata, str):
+            try:
+                metadata = json.loads(metadata)
+            except:
+                metadata = {}
+
+        pcap_file = metadata.get('pcap_file')
+        if not pcap_file:
+            return jsonify({
+                'success': True,
+                'has_pcap': False,
+                'message': 'No PCAP available for this alert'
+            })
+
+        # Determine PCAP location based on source
+        pcap_source = metadata.get('pcap_source', 'local')
+        if pcap_source == 'sensor':
+            pcap_dir = Path('/var/log/netmonitor/pcap/sensors')
+        else:
+            pcap_dir = Path('/var/log/netmonitor/pcap')
+
+        pcap_path = pcap_dir / pcap_file
+
+        if not pcap_path.exists():
+            return jsonify({
+                'success': True,
+                'has_pcap': False,
+                'message': f'PCAP file {pcap_file} no longer available (may have been cleaned up)'
+            })
+
+        return send_from_directory(
+            pcap_dir,
+            pcap_file,
+            as_attachment=True,
+            mimetype='application/vnd.tcpdump.pcap'
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting alert PCAP: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

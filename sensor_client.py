@@ -355,22 +355,29 @@ class SensorClient:
         )
         self.logger.info("Threat Detector initialized")
 
-        # Initialize PCAP exporter (optional, disabled by default on lightweight sensors)
+        # Initialize PCAP exporter for NIS2 forensic evidence
+        # Default: enabled for compliance, uploads to SOC server
         self.pcap_exporter = None
         pcap_config = self.config.get('thresholds', {}).get('pcap_export', {})
-        # Default to disabled on sensors to save storage
-        pcap_enabled = pcap_config.get('enabled', False)
+        # Default to ENABLED on sensors for NIS2 compliance
+        pcap_enabled = pcap_config.get('enabled', True)
+        # Upload PCAP to SOC server (default: True for centralized forensics)
+        self.pcap_upload_enabled = pcap_config.get('upload_to_soc', True)
+        # Keep local copy after upload (default: False to save storage)
+        self.pcap_keep_local = pcap_config.get('keep_local_copy', False)
+
         if PCAP_AVAILABLE and pcap_enabled:
             try:
                 self.pcap_exporter = PCAPExporter(config=self.config)
-                self.logger.info("PCAP Exporter enabled for local forensic capture")
+                upload_msg = "upload to SOC" if self.pcap_upload_enabled else "local only"
+                self.logger.info(f"PCAP Exporter enabled for NIS2 forensic capture ({upload_msg})")
             except Exception as e:
                 self.logger.warning(f"Could not initialize PCAP Exporter: {e}")
                 self.pcap_exporter = None
         elif not PCAP_AVAILABLE:
             self.logger.debug("PCAP Exporter module not available")
         else:
-            self.logger.debug("PCAP export disabled on sensor (enable in config if needed)")
+            self.logger.debug("PCAP export disabled on sensor")
 
         # Fetch and cache server whitelist
         self._update_whitelist()
@@ -907,21 +914,41 @@ class SensorClient:
         except Exception as e:
             self.logger.error(f"Error sending metrics: {e}")
 
-    def _upload_alert_immediate(self, alert):
-        """Upload a single high-priority alert immediately"""
+    def _upload_alert_immediate(self, alert, pcap_path=None):
+        """Upload a single high-priority alert immediately
+
+        Args:
+            alert: Alert dict with threat details
+            pcap_path: Optional path to PCAP file for forensic evidence (NIS2)
+        """
+        import base64
+
         try:
+            # Include PCAP data if available (NIS2 forensic evidence)
+            alert_with_pcap = alert.copy()
+            if pcap_path:
+                try:
+                    with open(pcap_path, 'rb') as f:
+                        pcap_data = f.read()
+                    # Base64 encode for JSON transport
+                    alert_with_pcap['pcap_data'] = base64.b64encode(pcap_data).decode('utf-8')
+                    self.logger.debug(f"Including PCAP ({len(pcap_data)} bytes) with alert upload")
+                except Exception as read_err:
+                    self.logger.warning(f"Could not read PCAP for upload: {read_err}")
+
             response = requests.post(
                 f"{self.server_url}/api/sensors/{self.sensor_id}/alerts",
                 headers=self._get_headers(),
-                json={'alerts': [alert]},
-                timeout=10,
+                json={'alerts': [alert_with_pcap]},
+                timeout=30,  # Longer timeout for PCAP upload
                 verify=self.ssl_verify
             )
 
             if response.status_code == 200:
                 result = response.json()
                 self.alerts_sent += result.get('inserted', 0)
-                self.logger.info(f"⚡ Immediate upload: [{alert['severity']}] {alert['threat_type']}")
+                pcap_msg = f" + PCAP" if result.get('pcap_received', 0) > 0 else ""
+                self.logger.info(f"⚡ Immediate upload: [{alert['severity']}] {alert['threat_type']}{pcap_msg}")
                 return True
             else:
                 self.logger.warning(f"Failed to upload immediate alert: {response.text}")
@@ -1012,9 +1039,9 @@ class SensorClient:
                 if severity in ['CRITICAL', 'HIGH']:
                     # Upload immediately for high-priority alerts
                     self.logger.warning(f"⚠️  [{severity}] {threat.get('type')}: {threat.get('description')}")
-                    success = self._upload_alert_immediate(alert)
 
-                    # Capture PCAP for high-severity alerts (if enabled)
+                    # Capture PCAP FIRST for high-severity alerts (NIS2 compliance)
+                    pcap_path = None
                     if self.pcap_exporter:
                         try:
                             pcap_path = self.pcap_exporter.capture_alert(threat, packet)
@@ -1022,6 +1049,20 @@ class SensorClient:
                                 self.logger.info(f"PCAP captured: {pcap_path}")
                         except Exception as pcap_err:
                             self.logger.debug(f"PCAP capture error: {pcap_err}")
+
+                    # Upload alert with PCAP data (if upload enabled)
+                    upload_pcap = pcap_path if self.pcap_upload_enabled else None
+                    success = self._upload_alert_immediate(alert, upload_pcap)
+
+                    # Delete local PCAP after successful upload (unless keep_local is set)
+                    if success and pcap_path and not self.pcap_keep_local:
+                        try:
+                            import os
+                            if os.path.exists(pcap_path):
+                                os.remove(pcap_path)
+                                self.logger.debug(f"Local PCAP deleted after upload: {pcap_path}")
+                        except Exception as del_err:
+                            self.logger.debug(f"Could not delete local PCAP: {del_err}")
 
                     # If immediate upload fails, add to buffer as fallback
                     if not success:

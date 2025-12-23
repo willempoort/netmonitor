@@ -100,7 +100,7 @@ BEST_PRACTICE_CONFIG = {
             "detect_missing_sni": False,    # Alert on missing SNI (noisy)
             "ja3_blacklist": {}             # Custom JA3 fingerprints to block
         },
-        # PCAP Export - Forensic packet capture
+        # PCAP Export - Forensic packet capture (NIS2 compliant)
         "pcap_export": {
             "enabled": True,
             "output_dir": "/var/log/netmonitor/pcap",
@@ -110,7 +110,10 @@ BEST_PRACTICE_CONFIG = {
             "post_alert_packets": 50,       # Packets after alert
             "flow_buffer_size": 500,        # Per-flow buffer size
             "max_captures": 100,            # Max saved PCAP files
-            "max_age_hours": 24             # Delete captures after 24 hours
+            "max_age_hours": 24,            # Delete captures after 24 hours
+            # Sensor-specific options (NIS2 compliance)
+            "upload_to_soc": True,          # Upload PCAP to SOC server (required for NIS2)
+            "keep_local_copy": False        # Keep local copy after upload (saves disk space)
         },
         # Performance thresholds
         "packet_rate_warning": 10000,   # Packets/sec warning threshold
@@ -326,6 +329,31 @@ PARAMETER_DESCRIPTIONS = {
     "thresholds.smtp_ftp_transfer.size_threshold_mb": "Transfer size (MB) that triggers alert",
     "thresholds.smtp_ftp_transfer.time_window": "Time window (seconds) for transfer detection",
 
+    # TLS/SSL Analysis
+    "thresholds.tls_analysis.enabled": "Enable TLS/SSL analysis (JA3 fingerprinting)",
+    "thresholds.tls_analysis.ja3_detection": "Extract JA3 fingerprints from TLS handshakes",
+    "thresholds.tls_analysis.ja3s_detection": "Extract JA3S server fingerprints",
+    "thresholds.tls_analysis.sni_extraction": "Extract Server Name Indication from TLS",
+    "thresholds.tls_analysis.certificate_validation": "Validate certificate chains",
+    "thresholds.tls_analysis.detect_weak_ciphers": "Alert on weak cipher suites",
+    "thresholds.tls_analysis.detect_deprecated_tls": "Alert on TLS 1.0/1.1 usage",
+    "thresholds.tls_analysis.detect_expired_certs": "Alert on expired certificates",
+    "thresholds.tls_analysis.detect_missing_sni": "Alert on missing SNI (can be noisy)",
+    "thresholds.tls_analysis.ja3_blacklist": "Custom JA3 fingerprints to block (dict of hash:name)",
+
+    # PCAP Export (NIS2 Forensics)
+    "thresholds.pcap_export.enabled": "Enable PCAP forensic capture",
+    "thresholds.pcap_export.output_dir": "Directory for PCAP file storage",
+    "thresholds.pcap_export.buffer_size": "Ring buffer size (packets) for recent traffic",
+    "thresholds.pcap_export.alert_capture_enabled": "Save packets around alerts for forensics",
+    "thresholds.pcap_export.pre_alert_packets": "Number of packets to save before alert",
+    "thresholds.pcap_export.post_alert_packets": "Number of packets to save after alert",
+    "thresholds.pcap_export.flow_buffer_size": "Per-flow buffer size for targeted export",
+    "thresholds.pcap_export.max_captures": "Maximum number of PCAP files to retain",
+    "thresholds.pcap_export.max_age_hours": "Delete PCAP files older than this (hours)",
+    "thresholds.pcap_export.upload_to_soc": "Upload PCAP to SOC server (NIS2 requirement)",
+    "thresholds.pcap_export.keep_local_copy": "Keep local PCAP copy after upload",
+
     "thresholds.bandwidth_warning_mbps": "Bandwidth utilization (Mbps) for warning alerts",
     "thresholds.bandwidth_critical_mbps": "Bandwidth utilization (Mbps) for critical alerts",
 
@@ -354,7 +382,11 @@ PARAMETER_CATEGORIES = {
         "thresholds.protocol_mismatch",
         "thresholds.icmp_tunnel",
         "thresholds.http_anomaly",
-        "thresholds.smtp_ftp_transfer"
+        "thresholds.smtp_ftp_transfer",
+        "thresholds.tls_analysis"
+    ],
+    "Forensics (NIS2)": [
+        "thresholds.pcap_export"
     ],
     "Thresholds": [
         "thresholds.packet_rate_warning",
