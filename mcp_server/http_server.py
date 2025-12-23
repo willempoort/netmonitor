@@ -662,6 +662,108 @@ class MCPHTTPServer:
                     "required": ["ip_address"]
                 },
                 "scope_required": "read_only"
+            },
+            # TLS Analysis Tools
+            {
+                "name": "get_tls_metadata",
+                "description": "Get recent TLS handshake metadata including JA3 fingerprints, SNI hostnames, and certificate info",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "number", "description": "Maximum number of records to return", "default": 100},
+                        "ip_filter": {"type": "string", "description": "Filter by IP address (source or destination)"},
+                        "sni_filter": {"type": "string", "description": "Filter by SNI hostname (partial match)"}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "get_tls_stats",
+                "description": "Get TLS analysis statistics (handshakes analyzed, malicious JA3 detected, etc.)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {}
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "check_ja3_fingerprint",
+                "description": "Check if a JA3 fingerprint is known to be malicious",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "ja3_hash": {"type": "string", "description": "JA3 MD5 hash to check"}
+                    },
+                    "required": ["ja3_hash"]
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "add_ja3_blacklist",
+                "description": "Add a JA3 fingerprint to the malware blacklist (requires write access)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "ja3_hash": {"type": "string", "description": "JA3 MD5 hash to blacklist"},
+                        "malware_family": {"type": "string", "description": "Name of malware family"}
+                    },
+                    "required": ["ja3_hash", "malware_family"]
+                },
+                "scope_required": "read_write"
+            },
+            # PCAP Export Tools
+            {
+                "name": "get_pcap_captures",
+                "description": "List all saved PCAP capture files with metadata",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {}
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "get_pcap_stats",
+                "description": "Get PCAP exporter statistics (buffer size, captures saved, etc.)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {}
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "export_flow_pcap",
+                "description": "Export packets for a specific network flow to a PCAP file (requires write access)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "src_ip": {"type": "string", "description": "Source IP address"},
+                        "dst_ip": {"type": "string", "description": "Destination IP address"},
+                        "dst_port": {"type": "number", "description": "Destination port (optional)"}
+                    },
+                    "required": ["src_ip", "dst_ip"]
+                },
+                "scope_required": "read_write"
+            },
+            {
+                "name": "get_packet_buffer_summary",
+                "description": "Get summary of packets in the ring buffer (count, time span, protocol breakdown)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {}
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "delete_pcap_capture",
+                "description": "Delete a PCAP capture file (requires write access)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "filename": {"type": "string", "description": "Name of the PCAP file to delete"}
+                    },
+                    "required": ["filename"]
+                },
+                "scope_required": "read_write"
             }
         ]
         return tools
@@ -707,6 +809,17 @@ class MCPHTTPServer:
             'get_device_learning_status': self._tool_get_device_learning_status,
             'save_device_learned_behavior': self._tool_save_device_learned_behavior,
             'get_device_learned_behavior': self._tool_get_device_learned_behavior,
+            # TLS Analysis Tools
+            'get_tls_metadata': self._tool_get_tls_metadata,
+            'get_tls_stats': self._tool_get_tls_stats,
+            'check_ja3_fingerprint': self._tool_check_ja3_fingerprint,
+            'add_ja3_blacklist': self._tool_add_ja3_blacklist,
+            # PCAP Export Tools
+            'get_pcap_captures': self._tool_get_pcap_captures,
+            'get_pcap_stats': self._tool_get_pcap_stats,
+            'export_flow_pcap': self._tool_export_flow_pcap,
+            'get_packet_buffer_summary': self._tool_get_packet_buffer_summary,
+            'delete_pcap_capture': self._tool_delete_pcap_capture,
         }
 
         if tool_name not in tool_map:
@@ -1672,6 +1785,359 @@ class MCPHTTPServer:
             'learned_behavior': formatted_behavior,
             'can_create_template': learned_behavior.get('packet_count', 0) >= 100
         }
+
+    # ==================== TLS Analysis Tool Implementations ====================
+
+    async def _tool_get_tls_metadata(self, params: Dict) -> Dict:
+        """Implement get_tls_metadata tool"""
+        import requests
+
+        limit = params.get('limit', 100)
+        ip_filter = params.get('ip_filter')
+        sni_filter = params.get('sni_filter')
+
+        # Get TLS metadata from dashboard API
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.get(
+                f"{dashboard_url}/api/internal/tls-metadata",
+                params={'limit': limit, 'ip_filter': ip_filter, 'sni_filter': sni_filter},
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    'success': True,
+                    'metadata': data.get('metadata', []),
+                    'count': len(data.get('metadata', [])),
+                    'filters_applied': {
+                        'ip_filter': ip_filter,
+                        'sni_filter': sni_filter,
+                        'limit': limit
+                    }
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': f'API returned status {response.status_code}'
+                }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error getting TLS metadata: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to retrieve TLS metadata. Ensure the dashboard API is running and TLS analysis is enabled.'
+            }
+
+    async def _tool_get_tls_stats(self, params: Dict) -> Dict:
+        """Implement get_tls_stats tool"""
+        import requests
+
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.get(
+                f"{dashboard_url}/api/internal/tls-stats",
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    'success': True,
+                    'stats': data.get('stats', {}),
+                    'message': 'TLS analysis statistics retrieved successfully'
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': f'API returned status {response.status_code}'
+                }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error getting TLS stats: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to retrieve TLS stats. TLS analysis may not be enabled.'
+            }
+
+    async def _tool_check_ja3_fingerprint(self, params: Dict) -> Dict:
+        """Implement check_ja3_fingerprint tool"""
+        import requests
+
+        ja3_hash = params.get('ja3_hash')
+
+        if not ja3_hash:
+            return {'success': False, 'error': 'ja3_hash is required'}
+
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.get(
+                f"{dashboard_url}/api/internal/ja3-check/{ja3_hash}",
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    'success': True,
+                    'ja3_hash': ja3_hash,
+                    'is_malicious': data.get('is_malicious', False),
+                    'malware_family': data.get('malware_family'),
+                    'message': 'Known malicious fingerprint' if data.get('is_malicious') else 'Not in blacklist'
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': f'API returned status {response.status_code}'
+                }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error checking JA3: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to check JA3 fingerprint.'
+            }
+
+    async def _tool_add_ja3_blacklist(self, params: Dict) -> Dict:
+        """Implement add_ja3_blacklist tool (requires write access)"""
+        import requests
+
+        ja3_hash = params.get('ja3_hash')
+        malware_family = params.get('malware_family')
+
+        if not ja3_hash or not malware_family:
+            return {'success': False, 'error': 'ja3_hash and malware_family are required'}
+
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.post(
+                f"{dashboard_url}/api/internal/ja3-blacklist",
+                json={'ja3_hash': ja3_hash, 'malware_family': malware_family},
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    'success': True,
+                    'ja3_hash': ja3_hash,
+                    'malware_family': malware_family,
+                    'message': f'JA3 fingerprint added to blacklist: {malware_family}'
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': f'API returned status {response.status_code}'
+                }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error adding JA3 to blacklist: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to add JA3 to blacklist.'
+            }
+
+    # ==================== PCAP Export Tool Implementations ====================
+
+    async def _tool_get_pcap_captures(self, params: Dict) -> Dict:
+        """Implement get_pcap_captures tool"""
+        import requests
+
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.get(
+                f"{dashboard_url}/api/internal/pcap-captures",
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                captures = data.get('captures', [])
+                return {
+                    'success': True,
+                    'captures': captures,
+                    'count': len(captures),
+                    'message': f'Found {len(captures)} PCAP captures'
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': f'API returned status {response.status_code}'
+                }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error listing PCAP captures: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to list PCAP captures. PCAP export may not be enabled.'
+            }
+
+    async def _tool_get_pcap_stats(self, params: Dict) -> Dict:
+        """Implement get_pcap_stats tool"""
+        import requests
+
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.get(
+                f"{dashboard_url}/api/internal/pcap-stats",
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    'success': True,
+                    'stats': data.get('stats', {}),
+                    'message': 'PCAP exporter statistics retrieved successfully'
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': f'API returned status {response.status_code}'
+                }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error getting PCAP stats: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to retrieve PCAP stats. PCAP export may not be enabled.'
+            }
+
+    async def _tool_export_flow_pcap(self, params: Dict) -> Dict:
+        """Implement export_flow_pcap tool (requires write access)"""
+        import requests
+
+        src_ip = params.get('src_ip')
+        dst_ip = params.get('dst_ip')
+        dst_port = params.get('dst_port')
+
+        if not src_ip or not dst_ip:
+            return {'success': False, 'error': 'src_ip and dst_ip are required'}
+
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.post(
+                f"{dashboard_url}/api/internal/pcap-export-flow",
+                json={'src_ip': src_ip, 'dst_ip': dst_ip, 'dst_port': dst_port},
+                timeout=30  # Longer timeout for PCAP export
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    'success': True,
+                    'filepath': data.get('filepath'),
+                    'packet_count': data.get('packet_count'),
+                    'message': f'Flow exported to {data.get("filepath")}'
+                }
+            elif response.status_code == 404:
+                return {
+                    'success': True,
+                    'filepath': None,
+                    'message': f'No packets found for flow {src_ip} -> {dst_ip}'
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': f'API returned status {response.status_code}'
+                }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error exporting flow PCAP: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to export flow PCAP.'
+            }
+
+    async def _tool_get_packet_buffer_summary(self, params: Dict) -> Dict:
+        """Implement get_packet_buffer_summary tool"""
+        import requests
+
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.get(
+                f"{dashboard_url}/api/internal/packet-buffer-summary",
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    'success': True,
+                    'summary': data.get('summary', {}),
+                    'message': 'Packet buffer summary retrieved successfully'
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': f'API returned status {response.status_code}'
+                }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error getting packet buffer summary: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to retrieve packet buffer summary. PCAP export may not be enabled.'
+            }
+
+    async def _tool_delete_pcap_capture(self, params: Dict) -> Dict:
+        """Implement delete_pcap_capture tool (requires write access)"""
+        import requests
+
+        filename = params.get('filename')
+
+        if not filename:
+            return {'success': False, 'error': 'filename is required'}
+
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.delete(
+                f"{dashboard_url}/api/internal/pcap-captures/{filename}",
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                return {
+                    'success': True,
+                    'filename': filename,
+                    'message': f'PCAP capture {filename} deleted'
+                }
+            elif response.status_code == 404:
+                return {
+                    'success': False,
+                    'error': f'PCAP capture {filename} not found'
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': f'API returned status {response.status_code}'
+                }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error deleting PCAP capture: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to delete PCAP capture.'
+            }
 
     async def _get_dashboard_summary(self) -> str:
         """Get dashboard summary text"""

@@ -2443,6 +2443,259 @@ def api_internal_create_service_provider():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ==================== TLS Analysis Internal API ====================
+
+@app.route('/api/internal/tls-metadata')
+@local_or_login_required
+def api_internal_tls_metadata():
+    """
+    Internal API: Get TLS metadata from detector
+    Allows localhost access for MCP server
+    """
+    try:
+        limit = request.args.get('limit', 100, type=int)
+        ip_filter = request.args.get('ip_filter')
+        sni_filter = request.args.get('sni_filter')
+
+        # Get TLS metadata from detector if available
+        metadata = []
+        if hasattr(app, 'monitor') and app.monitor and hasattr(app.monitor, 'detector'):
+            detector = app.monitor.detector
+            if hasattr(detector, 'get_tls_metadata'):
+                metadata = detector.get_tls_metadata(limit=limit)
+
+                # Apply filters
+                if ip_filter:
+                    metadata = [m for m in metadata if ip_filter in m.get('src_ip', '') or ip_filter in m.get('dst_ip', '')]
+                if sni_filter:
+                    metadata = [m for m in metadata if sni_filter.lower() in (m.get('sni') or '').lower()]
+
+        return jsonify({
+            'success': True,
+            'metadata': metadata,
+            'count': len(metadata)
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting TLS metadata: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/internal/tls-stats')
+@local_or_login_required
+def api_internal_tls_stats():
+    """
+    Internal API: Get TLS analyzer statistics
+    Allows localhost access for MCP server
+    """
+    try:
+        stats = {}
+        if hasattr(app, 'monitor') and app.monitor and hasattr(app.monitor, 'detector'):
+            detector = app.monitor.detector
+            if hasattr(detector, 'get_tls_stats'):
+                stats = detector.get_tls_stats()
+
+        return jsonify({
+            'success': True,
+            'stats': stats
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting TLS stats: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/internal/ja3-check/<ja3_hash>')
+@local_or_login_required
+def api_internal_ja3_check(ja3_hash):
+    """
+    Internal API: Check if JA3 fingerprint is malicious
+    Allows localhost access for MCP server
+    """
+    try:
+        is_malicious = False
+        malware_family = None
+
+        if hasattr(app, 'monitor') and app.monitor and hasattr(app.monitor, 'detector'):
+            detector = app.monitor.detector
+            if hasattr(detector, 'tls_analyzer') and detector.tls_analyzer:
+                is_malicious, malware_family = detector.tls_analyzer.check_ja3(ja3_hash)
+
+        return jsonify({
+            'success': True,
+            'ja3_hash': ja3_hash,
+            'is_malicious': is_malicious,
+            'malware_family': malware_family
+        })
+
+    except Exception as e:
+        logger.error(f"Error checking JA3: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/internal/ja3-blacklist', methods=['POST'])
+@local_or_login_required
+def api_internal_ja3_blacklist():
+    """
+    Internal API: Add JA3 fingerprint to blacklist
+    Allows localhost access for MCP server
+    """
+    try:
+        data = request.get_json()
+        ja3_hash = data.get('ja3_hash')
+        malware_family = data.get('malware_family')
+
+        if not ja3_hash or not malware_family:
+            return jsonify({'success': False, 'error': 'ja3_hash and malware_family required'}), 400
+
+        if hasattr(app, 'monitor') and app.monitor and hasattr(app.monitor, 'detector'):
+            detector = app.monitor.detector
+            if hasattr(detector, 'tls_analyzer') and detector.tls_analyzer:
+                detector.tls_analyzer.add_ja3_blacklist(ja3_hash, malware_family)
+                return jsonify({
+                    'success': True,
+                    'ja3_hash': ja3_hash,
+                    'malware_family': malware_family
+                })
+
+        return jsonify({'success': False, 'error': 'TLS analyzer not available'}), 503
+
+    except Exception as e:
+        logger.error(f"Error adding JA3 to blacklist: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==================== PCAP Export Internal API ====================
+
+@app.route('/api/internal/pcap-captures')
+@local_or_login_required
+def api_internal_pcap_captures():
+    """
+    Internal API: List PCAP captures
+    Allows localhost access for MCP server
+    """
+    try:
+        captures = []
+        if hasattr(app, 'pcap_exporter') and app.pcap_exporter:
+            captures = app.pcap_exporter.list_captures()
+
+        return jsonify({
+            'success': True,
+            'captures': captures,
+            'count': len(captures)
+        })
+
+    except Exception as e:
+        logger.error(f"Error listing PCAP captures: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/internal/pcap-stats')
+@local_or_login_required
+def api_internal_pcap_stats():
+    """
+    Internal API: Get PCAP exporter statistics
+    Allows localhost access for MCP server
+    """
+    try:
+        stats = {}
+        if hasattr(app, 'pcap_exporter') and app.pcap_exporter:
+            stats = app.pcap_exporter.get_stats()
+
+        return jsonify({
+            'success': True,
+            'stats': stats
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting PCAP stats: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/internal/pcap-export-flow', methods=['POST'])
+@local_or_login_required
+def api_internal_pcap_export_flow():
+    """
+    Internal API: Export flow to PCAP
+    Allows localhost access for MCP server
+    """
+    try:
+        data = request.get_json()
+        src_ip = data.get('src_ip')
+        dst_ip = data.get('dst_ip')
+        dst_port = data.get('dst_port')
+
+        if not src_ip or not dst_ip:
+            return jsonify({'success': False, 'error': 'src_ip and dst_ip required'}), 400
+
+        if hasattr(app, 'pcap_exporter') and app.pcap_exporter:
+            filepath = app.pcap_exporter.export_flow(src_ip, dst_ip, dst_port=dst_port)
+            if filepath:
+                return jsonify({
+                    'success': True,
+                    'filepath': filepath
+                })
+            else:
+                return jsonify({
+                    'success': True,
+                    'filepath': None,
+                    'message': f'No packets found for flow {src_ip} -> {dst_ip}'
+                }), 404
+
+        return jsonify({'success': False, 'error': 'PCAP exporter not available'}), 503
+
+    except Exception as e:
+        logger.error(f"Error exporting flow PCAP: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/internal/packet-buffer-summary')
+@local_or_login_required
+def api_internal_packet_buffer_summary():
+    """
+    Internal API: Get packet buffer summary
+    Allows localhost access for MCP server
+    """
+    try:
+        summary = {}
+        if hasattr(app, 'pcap_exporter') and app.pcap_exporter:
+            summary = app.pcap_exporter.get_buffer_summary()
+
+        return jsonify({
+            'success': True,
+            'summary': summary
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting packet buffer summary: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/internal/pcap-captures/<filename>', methods=['DELETE'])
+@local_or_login_required
+def api_internal_delete_pcap_capture(filename):
+    """
+    Internal API: Delete a PCAP capture
+    Allows localhost access for MCP server
+    """
+    try:
+        if hasattr(app, 'pcap_exporter') and app.pcap_exporter:
+            success = app.pcap_exporter.delete_capture(filename)
+            if success:
+                return jsonify({
+                    'success': True,
+                    'message': f'Deleted {filename}'
+                })
+            else:
+                return jsonify({'success': False, 'error': 'File not found'}), 404
+
+        return jsonify({'success': False, 'error': 'PCAP exporter not available'}), 503
+
+    except Exception as e:
+        logger.error(f"Error deleting PCAP capture: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ==================== Device Templates API ====================
 
 @app.route('/api/device-templates')

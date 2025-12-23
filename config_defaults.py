@@ -87,6 +87,31 @@ BEST_PRACTICE_CONFIG = {
             "size_threshold_mb": 50,    # Alert if >50MB transferred
             "time_window": 300          # Within 5 minutes
         },
+        # TLS/SSL Analysis - JA3 fingerprinting and certificate validation
+        "tls_analysis": {
+            "enabled": True,
+            "ja3_detection": True,          # Extract JA3 fingerprints
+            "ja3s_detection": True,         # Extract JA3S fingerprints
+            "sni_extraction": True,         # Extract Server Name Indication
+            "certificate_validation": True,  # Validate certificate chains
+            "detect_weak_ciphers": True,    # Alert on weak cipher suites
+            "detect_deprecated_tls": True,  # Alert on TLS 1.0/1.1
+            "detect_expired_certs": True,   # Alert on expired certificates
+            "detect_missing_sni": False,    # Alert on missing SNI (noisy)
+            "ja3_blacklist": {}             # Custom JA3 fingerprints to block
+        },
+        # PCAP Export - Forensic packet capture
+        "pcap_export": {
+            "enabled": True,
+            "output_dir": "/var/log/netmonitor/pcap",
+            "buffer_size": 10000,           # Ring buffer size (packets)
+            "alert_capture_enabled": True,  # Save packets around alerts
+            "pre_alert_packets": 100,       # Packets before alert
+            "post_alert_packets": 50,       # Packets after alert
+            "flow_buffer_size": 500,        # Per-flow buffer size
+            "max_captures": 100,            # Max saved PCAP files
+            "max_age_hours": 24             # Delete captures after 24 hours
+        },
         # Performance thresholds
         "packet_rate_warning": 10000,   # Packets/sec warning threshold
         "packet_rate_critical": 50000,  # Packets/sec critical threshold

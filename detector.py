@@ -30,6 +30,13 @@ try:
 except ImportError:
     BehaviorMatcher = None
 
+# Import TLS analyzer for JA3 fingerprinting and metadata extraction
+try:
+    from tls_analyzer import TLSAnalyzer, detect_tls_anomalies
+except ImportError:
+    TLSAnalyzer = None
+    detect_tls_anomalies = None
+
 
 class ThreatDetector:
     """Detecteert verschillende soorten verdacht netwerkverkeer"""
@@ -53,6 +60,15 @@ class ThreatDetector:
                 self.logger.info("BehaviorMatcher initialized for template-based alert suppression")
             except Exception as e:
                 self.logger.warning(f"Could not initialize BehaviorMatcher: {e}")
+
+        # Initialize TLS analyzer for JA3 fingerprinting
+        self.tls_analyzer = None
+        if TLSAnalyzer and config.get('thresholds', {}).get('tls_analysis', {}).get('enabled', True):
+            try:
+                self.tls_analyzer = TLSAnalyzer(config)
+                self.logger.info("TLSAnalyzer initialized for JA3 fingerprinting and metadata extraction")
+            except Exception as e:
+                self.logger.warning(f"Could not initialize TLSAnalyzer: {e}")
 
         # Tracking data structures
         self.port_scan_tracker = defaultdict(lambda: {
@@ -80,6 +96,11 @@ class ThreatDetector:
         # Protocol mismatch detection tracker
         # Track suspicious protocols on non-standard ports
         self.protocol_mismatch_tracker = defaultdict(lambda: deque(maxlen=50))
+
+        # TLS metadata tracker - stores recent TLS handshake data
+        # Key: (src_ip, dst_ip, dst_port), Value: TLS metadata dict
+        self.tls_metadata_cache = defaultdict(dict)
+        self.tls_metadata_history = deque(maxlen=1000)  # Recent TLS connections
 
         # Parsed whitelist/blacklist from config
         # Defensive check: ensure they are lists
@@ -296,6 +317,11 @@ class ThreatDetector:
         if self.config['thresholds'].get('protocol_mismatch', {}).get('enabled', True):
             protocol_threats = self._detect_protocol_mismatch(packet)
             threats.extend(protocol_threats)
+
+        # TLS analysis (JA3 fingerprinting, certificate validation, anomaly detection)
+        if self.tls_analyzer:
+            tls_threats = self._detect_tls_threats(packet)
+            threats.extend(tls_threats)
 
         # Behavior-based detection (beaconing, lateral movement, etc.)
         if self.behavior_detector:
@@ -1039,6 +1065,94 @@ class ThreatDetector:
                 pass
 
         return threats
+
+    def _detect_tls_threats(self, packet):
+        """
+        Analyze TLS handshakes for security threats.
+
+        Detects:
+        - Known malicious JA3 fingerprints (malware, C2 frameworks)
+        - Weak cipher suites
+        - Deprecated TLS versions
+        - Expired certificates
+        - Missing SNI (potential C2)
+        """
+        threats = []
+
+        if not self.tls_analyzer:
+            return threats
+
+        # Analyze TLS handshake
+        tls_metadata = self.tls_analyzer.analyze_packet(packet)
+        if not tls_metadata:
+            return threats
+
+        ip_layer = packet[IP]
+        src_ip = ip_layer.src
+        dst_ip = ip_layer.dst
+
+        # Store metadata for MCP access
+        conn_key = (src_ip, dst_ip, tls_metadata.get('dst_port'))
+        self.tls_metadata_cache[conn_key].update(tls_metadata)
+        self.tls_metadata_history.append(tls_metadata)
+
+        # Check for known malicious JA3 fingerprint
+        if tls_metadata.get('malicious'):
+            threats.append({
+                'type': 'MALICIOUS_JA3_FINGERPRINT',
+                'severity': 'CRITICAL',
+                'source_ip': src_ip,
+                'destination_ip': dst_ip,
+                'destination_port': tls_metadata.get('dst_port'),
+                'description': f'Bekende malware TLS fingerprint gedetecteerd: {tls_metadata.get("malware_family", "Unknown")}',
+                'ja3': tls_metadata.get('ja3'),
+                'malware_family': tls_metadata.get('malware_family'),
+                'sni': tls_metadata.get('sni'),
+                'metadata': json.dumps({
+                    'ja3': tls_metadata.get('ja3'),
+                    'ja3_string': tls_metadata.get('ja3_string'),
+                    'malware_family': tls_metadata.get('malware_family'),
+                    'sni': tls_metadata.get('sni'),
+                    'tls_version': tls_metadata.get('tls_version'),
+                })
+            })
+
+        # Run anomaly detection if available
+        if detect_tls_anomalies:
+            anomalies = detect_tls_anomalies(tls_metadata)
+            for anomaly in anomalies:
+                threats.append({
+                    'type': f'TLS_{anomaly["type"]}',
+                    'severity': anomaly['severity'],
+                    'source_ip': src_ip,
+                    'destination_ip': dst_ip,
+                    'destination_port': tls_metadata.get('dst_port'),
+                    'description': anomaly['description'],
+                    'sni': tls_metadata.get('sni'),
+                    'metadata': json.dumps({
+                        'anomaly_type': anomaly['type'],
+                        'tls_version': tls_metadata.get('tls_version'),
+                        'ja3': tls_metadata.get('ja3'),
+                        'sni': tls_metadata.get('sni'),
+                        **{k: v for k, v in anomaly.items() if k not in ['type', 'severity', 'description']}
+                    })
+                })
+
+        return threats
+
+    def get_tls_metadata(self, limit: int = 100) -> list:
+        """
+        Get recent TLS metadata for MCP access.
+
+        Returns list of TLS handshake metadata dicts.
+        """
+        return list(self.tls_metadata_history)[-limit:]
+
+    def get_tls_stats(self) -> dict:
+        """Get TLS analyzer statistics."""
+        if self.tls_analyzer:
+            return self.tls_analyzer.get_stats()
+        return {}
 
     def cleanup_old_data(self):
         """Cleanup oude tracking data (call periodiek)"""
