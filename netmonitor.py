@@ -42,6 +42,14 @@ try:
 except ImportError:
     INTEGRATIONS_AVAILABLE = False
 
+# Optional PCAP exporter for forensics
+try:
+    from pcap_exporter import PCAPExporter
+    PCAP_AVAILABLE = True
+except ImportError:
+    PCAPExporter = None
+    PCAP_AVAILABLE = False
+
 
 class NetworkMonitor:
     """Hoofd netwerk monitor class"""
@@ -211,6 +219,22 @@ class NetworkMonitor:
         else:
             self.logger.debug("Integrations module not available")
 
+        # Initialize PCAP exporter for forensic packet capture
+        self.pcap_exporter = None
+        if PCAP_AVAILABLE:
+            pcap_config = self.config.get('thresholds', {}).get('pcap_export', {})
+            if pcap_config.get('enabled', True):
+                try:
+                    self.pcap_exporter = PCAPExporter(config=self.config)
+                    self.logger.info("PCAP Exporter enabled for forensic capture")
+                except Exception as e:
+                    self.logger.error(f"Error initializing PCAP Exporter: {e}")
+                    self.pcap_exporter = None
+            else:
+                self.logger.debug("PCAP export disabled in config")
+        else:
+            self.logger.debug("PCAP Exporter module not available")
+
         # Initialiseer web dashboard (alleen embedded mode)
         # Als DASHBOARD_SERVER=gunicorn, dan draait dashboard als separate service
         self.dashboard = None
@@ -224,6 +248,9 @@ class NetworkMonitor:
                     host = self.config.get('dashboard', {}).get('host', '0.0.0.0')
                     port = self.config.get('dashboard', {}).get('port', 8080)
                     self.dashboard = DashboardServer(config_file=config_file, host=host, port=port)
+                    # Pass monitor reference for PCAP and TLS access
+                    self.dashboard.app.monitor = self
+                    self.dashboard.app.pcap_exporter = self.pcap_exporter
                     self.logger.info("Web Dashboard enabled (embedded Flask mode)")
                 except Exception as e:
                     self.logger.error(f"Fout bij initialiseren dashboard: {e}")
@@ -237,6 +264,9 @@ class NetworkMonitor:
                     host = self.config.get('dashboard', {}).get('host', '0.0.0.0')
                     port = self.config.get('dashboard', {}).get('port', 8080)
                     self.dashboard = DashboardServer(config_file=config_file, host=host, port=port)
+                    # Pass monitor reference for PCAP and TLS access
+                    self.dashboard.app.monitor = self
+                    self.dashboard.app.pcap_exporter = self.pcap_exporter
                     self.logger.info("Web Dashboard enabled (embedded Flask mode)")
                 except Exception as e:
                     self.logger.error(f"Fout bij initialiseren dashboard: {e}")
@@ -507,6 +537,13 @@ class NetworkMonitor:
             if not packet.haslayer(IP):
                 return
 
+            # Add packet to PCAP buffer for forensic capture
+            if self.pcap_exporter:
+                try:
+                    self.pcap_exporter.add_packet(packet)
+                except Exception as pcap_error:
+                    self.logger.debug(f"PCAP buffer error: {pcap_error}")
+
             # Track packet in metrics
             if self.metrics:
                 self.metrics.track_packet(packet)
@@ -536,6 +573,17 @@ class NetworkMonitor:
                             self.db.add_alert(threat)
                         except Exception as db_error:
                             self.logger.error(f"Error saving alert to database: {db_error}")
+
+                    # Capture PCAP for high-severity alerts
+                    if self.pcap_exporter:
+                        severity = threat.get('severity', 'LOW')
+                        if severity in ('CRITICAL', 'HIGH'):
+                            try:
+                                pcap_path = self.pcap_exporter.capture_alert(threat, packet)
+                                if pcap_path:
+                                    self.logger.info(f"PCAP captured for {threat.get('type')}: {pcap_path}")
+                            except Exception as pcap_error:
+                                self.logger.debug(f"PCAP capture error: {pcap_error}")
 
                     # Send to SIEM integrations
                     if self.integration_manager:
