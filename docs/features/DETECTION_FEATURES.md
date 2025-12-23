@@ -204,6 +204,151 @@ findings = analyzer.scan_for_sensitive_data(payload)
 
 ---
 
+### 6. 🔐 **TLS/HTTPS Analysis** (NEW)
+
+Analyseert TLS handshakes **zonder decryptie** voor threat detection.
+
+#### JA3 Fingerprinting
+JA3 is een MD5 hash van TLS Client Hello parameters die uniek is per applicatie/malware.
+
+```
+JA3 = MD5(TLSVersion,Ciphers,Extensions,EllipticCurves,EllipticCurvePointFormats)
+```
+
+**Waarom nuttig?**
+- Malware heeft vaak unieke JA3 fingerprints
+- Zelfs bij encrypted traffic kun je de client identificeren
+- Cobalt Strike, Metasploit, etc. hebben bekende signatures
+
+**Ingebouwde Blacklist:**
+```python
+KNOWN_MALICIOUS_JA3 = {
+    "72a589da586844d7f0818ce684948eea": "Cobalt Strike",
+    "6734f37431670b3ab4292b8f60f29984": "Metasploit Meterpreter",
+    "e7d705a3286e19ea42f587b344ee6865": "Empire",
+    "51c64c77e60f3980eea90869b68c58a8": "TrickBot",
+    "4d7a28d6f2263ed61de88ca66eb2e04b": "Emotet",
+}
+```
+
+#### Features:
+- ✅ **JA3/JA3S Fingerprinting** - Client en server identificatie
+- ✅ **SNI Extraction** - Server Name Indication (welke hostname)
+- ✅ **Certificate Metadata** - Subject, issuer, validity, chain
+- ✅ **TLS Version Detection** - Detecteert verouderde SSL 3.0, TLS 1.0/1.1
+- ✅ **Weak Cipher Detection** - Alert bij NULL, RC4, 3DES ciphers
+- ✅ **Certificate Validation** - Expired/invalid certificates
+
+**Alert Types:**
+- `MALICIOUS_JA3_FINGERPRINT` (CRITICAL) - Bekende malware fingerprint
+- `TLS_WEAK_CIPHER_OFFERED` (MEDIUM) - Client biedt zwakke cipher aan
+- `TLS_WEAK_CIPHER_SELECTED` (HIGH) - Server selecteert zwakke cipher
+- `TLS_DEPRECATED_TLS_VERSION` (MEDIUM) - Verouderde TLS versie
+- `TLS_EXPIRED_CERTIFICATE` (HIGH) - Verlopen certificaat
+- `TLS_MISSING_SNI` (LOW) - Geen SNI (mogelijk C2)
+
+**Configuratie:**
+```yaml
+thresholds:
+  tls_analysis:
+    enabled: true
+    ja3_detection: true           # Extract JA3 fingerprints
+    ja3s_detection: true          # Extract JA3S fingerprints
+    sni_extraction: true          # Extract Server Name Indication
+    certificate_validation: true   # Validate certificate chains
+    detect_weak_ciphers: true     # Alert on weak cipher suites
+    detect_deprecated_tls: true   # Alert on TLS 1.0/1.1
+    detect_expired_certs: true    # Alert on expired certificates
+    detect_missing_sni: false     # Alert on missing SNI (noisy)
+    ja3_blacklist: {}             # Custom JA3 fingerprints to block
+```
+
+**MCP Tools:**
+```bash
+# Check TLS metadata voor recent verkeer
+get_tls_metadata --limit 100 --sni_filter "suspicious.com"
+
+# Check of een JA3 hash bekend malicious is
+check_ja3_fingerprint --ja3_hash "72a589da586844d7f0818ce684948eea"
+
+# Voeg custom JA3 toe aan blacklist
+add_ja3_blacklist --ja3_hash "abc123..." --malware_family "CustomMalware"
+```
+
+---
+
+### 7. 📦 **PCAP Forensics** (NEW)
+
+Selectieve packet capture voor forensische analyse.
+
+#### Features:
+- ✅ **Ring Buffer** - Houdt laatste 10.000 packets in memory
+- ✅ **Alert-Triggered Capture** - Automatisch packets opslaan rond alerts
+- ✅ **Flow Export** - Export specifieke netwerk flows on-demand
+- ✅ **Automatic Cleanup** - Verwijdert oude captures na 24 uur
+
+#### Alert-Triggered Capture
+Bij elke CRITICAL/HIGH alert worden automatisch packets opgeslagen:
+- 100 packets **vóór** de alert (context)
+- 50 packets **na** de alert (follow-up)
+
+```
+Timeline:
+... [100 packets] [ALERT] [50 packets] ...
+         ↓           ↓         ↓
+    pre-alert    trigger  post-alert
+         └─────────┬─────────┘
+              PCAP file
+```
+
+**Output locatie:** `/var/log/netmonitor/pcap/`
+
+**Bestandsnaam formaat:**
+```
+alert_malicious_ja3_fingerprint_192_168_1_100_to_45_33_32_156_20231215_143022.pcap
+```
+
+**Configuratie:**
+```yaml
+thresholds:
+  pcap_export:
+    enabled: true
+    output_dir: "/var/log/netmonitor/pcap"
+    buffer_size: 10000            # Ring buffer size (packets)
+    alert_capture_enabled: true   # Save packets around alerts
+    pre_alert_packets: 100        # Packets before alert
+    post_alert_packets: 50        # Packets after alert
+    flow_buffer_size: 500         # Per-flow buffer size
+    max_captures: 100             # Max saved PCAP files
+    max_age_hours: 24             # Delete captures after 24 hours
+```
+
+**MCP Tools:**
+```bash
+# Lijst alle opgeslagen PCAP captures
+get_pcap_captures
+
+# Export specifieke flow naar PCAP
+export_flow_pcap --src_ip "192.168.1.100" --dst_ip "45.33.32.156" --dst_port 443
+
+# Bekijk ring buffer status
+get_packet_buffer_summary
+
+# Verwijder oude capture
+delete_pcap_capture --filename "alert_port_scan_192_168_1_50_20231215.pcap"
+```
+
+**Wireshark analyse:**
+```bash
+# Download PCAP via dashboard of kopieer direct
+scp user@netmonitor:/var/log/netmonitor/pcap/alert_*.pcap ./
+
+# Open in Wireshark
+wireshark alert_malicious_ja3_fingerprint_*.pcap
+```
+
+---
+
 ## 🔐 **Sensor Authentication** (NEW)
 
 Token-based authenticatie voor remote sensors.

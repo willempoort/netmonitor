@@ -245,6 +245,14 @@ Authorization: Bearer a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9
 - get_device_learned_behavior
 - get_alert_suppression_stats
 - test_alert_suppression
+# TLS Analysis (read_only):
+- get_tls_metadata            # Recent TLS handshakes met JA3, SNI
+- get_tls_stats               # TLS analyse statistieken
+- check_ja3_fingerprint       # Check of JA3 hash malicious is
+# PCAP Forensics (read_only):
+- get_pcap_captures           # Lijst opgeslagen PCAP files
+- get_pcap_stats              # PCAP exporter statistieken
+- get_packet_buffer_summary   # Ring buffer status
 
 # read_write kan alles van read_only + :
 - set_config_parameter
@@ -256,6 +264,11 @@ Authorization: Bearer a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9
 - create_service_provider
 - create_template_from_device
 - save_device_learned_behavior
+# TLS Analysis (read_write):
+- add_ja3_blacklist           # Voeg JA3 toe aan blacklist
+# PCAP Forensics (read_write):
+- export_flow_pcap            # Export specifieke flow naar PCAP
+- delete_pcap_capture         # Verwijder PCAP file
 
 # admin kan alles + :
 - Token management

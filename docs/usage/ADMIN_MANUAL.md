@@ -267,12 +267,14 @@ Sensors maintain minimal local configuration (only connection settings). All ope
 
 **What you can configure globally:**
 
-1. **Detection Rules** (13 rules):
+1. **Detection Rules** (15+ rules):
    - Port scan detection
    - Brute force detection
    - DNS tunneling detection
    - DDoS detection
    - Protocol anomalies
+   - **TLS/HTTPS analysis** (JA3 fingerprinting, certificate validation)
+   - **PCAP forensics** (automatic capture around alerts)
    - And more...
 
 2. **Thresholds**:
@@ -945,6 +947,51 @@ The MCP server provides 23+ specialized tools organized into categories:
 - Parameters: time_range_hours
 - Returns: Related alerts and attack chains
 
+#### 7. TLS Analysis Tools
+
+**get_tls_metadata:** (read_only)
+- Get recent TLS handshake metadata
+- Parameters: limit, ip_filter, sni_filter
+- Returns: JA3 fingerprints, SNI hostnames, certificate info
+
+**get_tls_stats:** (read_only)
+- Get TLS analyzer statistics
+- Returns: Handshakes analyzed, malicious JA3 detected, etc.
+
+**check_ja3_fingerprint:** (read_only)
+- Check if JA3 fingerprint is known malicious
+- Parameters: ja3_hash
+- Returns: is_malicious, malware_family
+
+**add_ja3_blacklist:** (read_write)
+- Add JA3 fingerprint to malware blacklist
+- Parameters: ja3_hash, malware_family
+- Returns: Confirmation
+
+#### 8. PCAP Forensics Tools
+
+**get_pcap_captures:** (read_only)
+- List all saved PCAP capture files
+- Returns: Filename, size, created date
+
+**get_pcap_stats:** (read_only)
+- Get PCAP exporter statistics
+- Returns: Buffer size, captures saved, pending captures
+
+**get_packet_buffer_summary:** (read_only)
+- Get summary of packets in ring buffer
+- Returns: Count, time span, protocol breakdown
+
+**export_flow_pcap:** (read_write)
+- Export packets for specific flow to PCAP
+- Parameters: src_ip, dst_ip, dst_port
+- Returns: Filepath to saved PCAP
+
+**delete_pcap_capture:** (read_write)
+- Delete a PCAP capture file
+- Parameters: filename
+- Returns: Confirmation
+
 ### Usage Examples
 
 **Example 1: Analyze Suspicious IP**
@@ -1556,6 +1603,101 @@ SELECT add_retention_policy('sensor_metrics', INTERVAL '365 days');
 
 -- Auto-delete MCP audit logs older than 30 days
 SELECT add_retention_policy('mcp_audit_log', INTERVAL '30 days');
+```
+
+### TLS/HTTPS Analysis Configuration
+
+TLS analysis extracts metadata from encrypted traffic without decryption.
+
+**Configuration in config.yaml or via Dashboard:**
+```yaml
+thresholds:
+  tls_analysis:
+    enabled: true                   # Master switch for TLS analysis
+    ja3_detection: true             # Extract JA3 fingerprints (client ID)
+    ja3s_detection: true            # Extract JA3S fingerprints (server ID)
+    sni_extraction: true            # Extract Server Name Indication
+    certificate_validation: true     # Validate certificate chains
+    detect_weak_ciphers: true       # Alert on weak cipher suites
+    detect_deprecated_tls: true     # Alert on SSL 3.0, TLS 1.0/1.1
+    detect_expired_certs: true      # Alert on expired certificates
+    detect_missing_sni: false       # Alert on missing SNI (can be noisy)
+    ja3_blacklist:                  # Custom JA3 fingerprints to block
+      "abc123...": "CustomMalware"
+```
+
+**Alert Types Generated:**
+| Alert Type | Severity | Description |
+|------------|----------|-------------|
+| MALICIOUS_JA3_FINGERPRINT | CRITICAL | Known malware TLS fingerprint |
+| TLS_WEAK_CIPHER_SELECTED | HIGH | Server selected weak cipher |
+| TLS_EXPIRED_CERTIFICATE | HIGH | Expired SSL certificate |
+| TLS_WEAK_CIPHER_OFFERED | MEDIUM | Client offers weak cipher |
+| TLS_DEPRECATED_TLS_VERSION | MEDIUM | Old TLS version (1.0/1.1) |
+| TLS_MISSING_SNI | LOW | No SNI extension (possible C2) |
+
+**Built-in JA3 Blacklist:**
+- Cobalt Strike: `72a589da586844d7f0818ce684948eea`
+- Metasploit Meterpreter: `6734f37431670b3ab4292b8f60f29984`
+- Empire: `e7d705a3286e19ea42f587b344ee6865`
+- TrickBot: `51c64c77e60f3980eea90869b68c58a8`
+- Emotet: `4d7a28d6f2263ed61de88ca66eb2e04b`
+
+**Adding Custom JA3 via MCP:**
+```bash
+# Via AI assistant or API
+add_ja3_blacklist --ja3_hash "your_hash" --malware_family "MalwareName"
+```
+
+### PCAP Forensics Configuration
+
+PCAP export saves packets for forensic analysis.
+
+**Configuration in config.yaml or via Dashboard:**
+```yaml
+thresholds:
+  pcap_export:
+    enabled: true                   # Master switch for PCAP export
+    output_dir: "/var/log/netmonitor/pcap"  # Where to save PCAPs
+    buffer_size: 10000              # Ring buffer size (packets)
+    alert_capture_enabled: true     # Auto-save packets around alerts
+    pre_alert_packets: 100          # Packets to capture before alert
+    post_alert_packets: 50          # Packets to capture after alert
+    flow_buffer_size: 500           # Per-flow buffer size
+    max_captures: 100               # Maximum stored PCAP files
+    max_age_hours: 24               # Auto-delete PCAPs after 24 hours
+```
+
+**How Alert-Triggered Capture Works:**
+```
+Timeline:
+... [100 packets] [ALERT] [50 packets] ...
+         ↓           ↓         ↓
+    pre-alert    trigger  post-alert
+         └─────────┬─────────┘
+              PCAP file saved
+```
+
+**PCAP File Naming:**
+```
+alert_{type}_{src_ip}_to_{dst_ip}_{timestamp}.pcap
+
+Examples:
+alert_malicious_ja3_fingerprint_192_168_1_100_to_45_33_32_156_20231215_143022.pcap
+alert_port_scan_10_0_0_50_20231214_091532.pcap
+```
+
+**Storage Requirements:**
+- Average PCAP size: 100KB - 5MB per alert
+- With 100 max captures × 5MB = 500MB max storage
+- Auto-cleanup runs on capture and deletes old files
+
+**Permissions:**
+```bash
+# Ensure output directory exists and is writable
+sudo mkdir -p /var/log/netmonitor/pcap
+sudo chown netmonitor:netmonitor /var/log/netmonitor/pcap
+sudo chmod 750 /var/log/netmonitor/pcap
 ```
 
 ### High Availability

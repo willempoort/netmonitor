@@ -1095,6 +1095,73 @@ sudo ./setup_sensor.sh
    - Enable additional rules
    - Review whitelist (too broad?)
 
+### Investigating TLS/Malware Alerts
+
+**MALICIOUS_JA3_FINGERPRINT Alert:**
+
+Dit is een **CRITICAL** alert - de TLS fingerprint komt overeen met bekende malware.
+
+**1. Identificeer het device:**
+- Noteer source IP uit de alert
+- Ga naar Devices tab, zoek het device
+- Check of het device geclassificeerd is
+
+**2. Analyseer TLS metadata via AI:**
+```
+# Vraag aan Claude via MCP:
+"Analyseer de TLS metadata voor IP 192.168.1.100"
+"Welke hostnames (SNI) heeft dit device recent bezocht?"
+"Zijn er andere verdachte JA3 fingerprints van dit device?"
+```
+
+**3. Download PCAP voor deep analysis:**
+- PCAP files worden automatisch opgeslagen bij critical alerts
+- Locatie: `/var/log/netmonitor/pcap/`
+- Open in Wireshark voor packet-level analyse
+
+**4. Neem actie:**
+- Isoleer het device van het netwerk
+- Scan met antivirus/EDR
+- Check voor lateral movement naar andere devices
+
+### Using PCAP Forensics
+
+**Wanneer PCAP gebruiken:**
+- Bij CRITICAL/HIGH alerts voor deep packet analysis
+- Bij vermoeden van data exfiltration
+- Voor incident response en bewijs
+
+**PCAP bestanden vinden:**
+```bash
+# Op de NetMonitor server
+ls -la /var/log/netmonitor/pcap/
+
+# Voorbeeld output:
+alert_malicious_ja3_fingerprint_192_168_1_100_to_45_33_32_156_20231215_143022.pcap
+alert_port_scan_10_0_0_50_20231214_091532.pcap
+```
+
+**Analyse met Wireshark:**
+```bash
+# Download PCAP
+scp user@netmonitor:/var/log/netmonitor/pcap/alert_*.pcap ./
+
+# Open in Wireshark
+wireshark alert_malicious_ja3_fingerprint_*.pcap
+
+# Useful Wireshark filters:
+# - TLS handshakes: tls.handshake
+# - JA3 fingerprints: tls.handshake.ja3
+# - Specific IP: ip.addr == 192.168.1.100
+# - Certificate info: tls.handshake.certificate
+```
+
+**Export specifieke flow via AI:**
+```
+# Vraag aan Claude via MCP:
+"Export de PCAP voor verkeer tussen 192.168.1.100 en 45.33.32.156 port 443"
+```
+
 ### Weekly Maintenance
 
 **Monday Morning Checklist:**
