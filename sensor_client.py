@@ -30,6 +30,14 @@ from threat_feeds import ThreatFeedManager
 from behavior_detector import BehaviorDetector
 from abuseipdb_client import AbuseIPDBClient
 
+# Optional PCAP exporter (may not be needed on lightweight sensors)
+try:
+    from pcap_exporter import PCAPExporter
+    PCAP_AVAILABLE = True
+except ImportError:
+    PCAPExporter = None
+    PCAP_AVAILABLE = False
+
 
 def load_sensor_config(config_file):
     """
@@ -346,6 +354,23 @@ class SensorClient:
             abuseipdb_client=self.abuseipdb
         )
         self.logger.info("Threat Detector initialized")
+
+        # Initialize PCAP exporter (optional, disabled by default on lightweight sensors)
+        self.pcap_exporter = None
+        pcap_config = self.config.get('thresholds', {}).get('pcap_export', {})
+        # Default to disabled on sensors to save storage
+        pcap_enabled = pcap_config.get('enabled', False)
+        if PCAP_AVAILABLE and pcap_enabled:
+            try:
+                self.pcap_exporter = PCAPExporter(config=self.config)
+                self.logger.info("PCAP Exporter enabled for local forensic capture")
+            except Exception as e:
+                self.logger.warning(f"Could not initialize PCAP Exporter: {e}")
+                self.pcap_exporter = None
+        elif not PCAP_AVAILABLE:
+            self.logger.debug("PCAP Exporter module not available")
+        else:
+            self.logger.debug("PCAP export disabled on sensor (enable in config if needed)")
 
         # Fetch and cache server whitelist
         self._update_whitelist()
@@ -960,6 +985,13 @@ class SensorClient:
                 pps = self.packets_captured / elapsed if elapsed > 0 else 0
                 self.logger.debug(f"Captured {self.packets_captured} packets, avg {pps:.0f} pps")
 
+            # Add packet to PCAP buffer (if enabled)
+            if self.pcap_exporter:
+                try:
+                    self.pcap_exporter.add_packet(packet)
+                except Exception:
+                    pass  # Don't log every packet error
+
             # Detect threats
             threats = self.detector.analyze_packet(packet)
 
@@ -981,6 +1013,15 @@ class SensorClient:
                     # Upload immediately for high-priority alerts
                     self.logger.warning(f"⚠️  [{severity}] {threat.get('type')}: {threat.get('description')}")
                     success = self._upload_alert_immediate(alert)
+
+                    # Capture PCAP for high-severity alerts (if enabled)
+                    if self.pcap_exporter:
+                        try:
+                            pcap_path = self.pcap_exporter.capture_alert(threat, packet)
+                            if pcap_path:
+                                self.logger.info(f"PCAP captured: {pcap_path}")
+                        except Exception as pcap_err:
+                            self.logger.debug(f"PCAP capture error: {pcap_err}")
 
                     # If immediate upload fails, add to buffer as fallback
                     if not success:
