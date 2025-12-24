@@ -558,6 +558,43 @@ abuseipdb:
 
 Zie [THREAT_FEEDS.md](docs/features/THREAT_FEEDS.md) voor gedetailleerde documentatie.
 
+### GeoIP Database (Aanbevolen)
+
+Voor land-identificatie van IP-adressen in alerts. Zonder lokale database wordt een online API gebruikt (rate-limited).
+
+**Optie 1: Automatisch script (db-ip.com - gratis)**
+
+```bash
+./download_geoip_db.sh
+```
+
+**Optie 2: MaxMind GeoLite2 (gratis account vereist)**
+
+1. Registreer gratis: https://dev.maxmind.com/geoip/geolite2-free-geolocation-data
+2. Download `GeoLite2-Country.mmdb`
+3. Installeer:
+
+```bash
+sudo mkdir -p /var/lib/GeoIP
+sudo mv GeoLite2-Country.mmdb /var/lib/GeoIP/
+sudo chmod 644 /var/lib/GeoIP/GeoLite2-Country.mmdb
+```
+
+**Optie 3: geoipupdate (automatische updates)**
+
+```bash
+sudo apt-get install geoipupdate
+# Configureer /etc/GeoIP.conf met MaxMind account ID en license key
+sudo geoipupdate
+# Voeg toe aan cron voor automatische updates
+```
+
+Na installatie: `sudo systemctl restart netmonitor-dashboard`
+
+De database wordt automatisch gevonden in:
+- `/var/lib/GeoIP/GeoLite2-Country.mmdb`
+- `/usr/share/GeoIP/GeoLite2-Country.mmdb`
+
 ### Detection Thresholds Aanpassen
 
 Je kunt de gevoeligheid van elke detector aanpassen:
