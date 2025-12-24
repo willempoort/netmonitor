@@ -893,7 +893,18 @@ def api_threat_details(threat_type):
         details = db.get_threat_type_details(threat_type, hours=hours, limit=limit)
 
         # Add geolocation for IPs
-        from geoip_helper import get_country_for_ips
+        from geoip_helper import get_country_for_ips, set_internal_networks
+
+        # Configure internal networks for Local/Private distinction
+        internal_nets = config.get('internal_networks', []) if config else []
+        if not internal_nets:
+            # Try to get from config_defaults
+            try:
+                from config_defaults import BEST_PRACTICE_CONFIG
+                internal_nets = BEST_PRACTICE_CONFIG.get('internal_networks', [])
+            except:
+                pass
+        set_internal_networks(internal_nets)
 
         # Collect all unique IPs
         all_ips = set()

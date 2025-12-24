@@ -66,6 +66,27 @@ _API_RATE_LIMIT = 45  # ip-api.com allows 45 requests/minute for free
 _api_calls_this_minute = 0
 _api_minute_start = 0
 
+# Configured internal networks (set by set_internal_networks)
+_internal_networks: list = []
+
+
+def set_internal_networks(networks: list):
+    """
+    Set the list of internal/local networks from configuration.
+    These IPs will be labeled as 'Local' instead of 'Private'.
+
+    Args:
+        networks: List of CIDR strings, e.g., ['192.168.1.0/24', '10.0.0.0/8']
+    """
+    global _internal_networks
+    _internal_networks = []
+    for net_str in networks:
+        try:
+            _internal_networks.append(ipaddress.ip_network(net_str, strict=False))
+        except ValueError as e:
+            logger.warning(f"Invalid internal network '{net_str}': {e}")
+    logger.debug(f"Internal networks configured: {len(_internal_networks)} networks")
+
 
 def _get_geoip_reader():
     """Get or create GeoIP reader instance"""
@@ -80,19 +101,35 @@ def _get_geoip_reader():
 
 
 def is_private_ip(ip_str: str) -> bool:
-    """Check if IP is private/internal (RFC1918)"""
+    """Check if IP is private/internal (RFC1918) but NOT in configured internal networks"""
     try:
         ip = ipaddress.ip_address(ip_str)
-        return ip.is_private and not ip.is_loopback and not ip.is_link_local
+        if not (ip.is_private and not ip.is_loopback and not ip.is_link_local):
+            return False
+        # If internal networks are configured, check if IP is NOT in them
+        # (those will be labeled "Local" instead)
+        if _internal_networks:
+            for network in _internal_networks:
+                if ip in network:
+                    return False  # This is "Local", not "Private"
+        return True
     except:
         return False
 
 
 def is_local_ip(ip_str: str) -> bool:
-    """Check if IP is local (loopback or link-local)"""
+    """Check if IP is local (loopback, link-local, or in configured internal networks)"""
     try:
         ip = ipaddress.ip_address(ip_str)
-        return ip.is_loopback or ip.is_link_local
+        # Always local: loopback and link-local
+        if ip.is_loopback or ip.is_link_local:
+            return True
+        # Check if in configured internal networks
+        if _internal_networks and ip.is_private:
+            for network in _internal_networks:
+                if ip in network:
+                    return True
+        return False
     except:
         return False
 
