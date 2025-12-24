@@ -909,13 +909,21 @@ def api_threat_details(threat_type):
         logger.debug(f"GeoIP using internal_networks: {internal_nets}")
         set_internal_networks(internal_nets)
 
-        # Collect all unique IPs
+        # Collect all unique IPs (from alerts, top_sources, and top_targets)
         all_ips = set()
         for alert in details.get('alerts', []):
             if alert.get('source_ip'):
                 all_ips.add(alert['source_ip'])
             if alert.get('destination_ip'):
                 all_ips.add(alert['destination_ip'])
+
+        # Also collect from top_sources and top_targets (may have different format)
+        for source in details.get('top_sources', []):
+            if source.get('ip'):
+                all_ips.add(source['ip'])
+        for target in details.get('top_targets', []):
+            if target.get('ip'):
+                all_ips.add(target['ip'])
 
         # Get country information
         ip_countries = get_country_for_ips(list(all_ips))
