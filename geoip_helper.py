@@ -299,9 +299,12 @@ def get_country_for_ip(ip_str: str) -> str:
     if reader:
         try:
             response = reader.country(ip_str)
-            country_name = response.country.name or 'Unknown'
-            country_code = response.country.iso_code or '??'
-            return f"{country_name} ({country_code})"
+            country_name = response.country.name
+            country_code = response.country.iso_code
+            # Only return if we actually got country data
+            if country_code and country_name:
+                return f"{country_name} ({country_code})"
+            # Otherwise fall through to API fallback
         except geoip2.errors.AddressNotFoundError:
             # IP not in database, try API fallback
             pass
