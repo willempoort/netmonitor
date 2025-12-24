@@ -904,6 +904,9 @@ def api_threat_details(threat_type):
                 internal_nets = BEST_PRACTICE_CONFIG.get('internal_networks', [])
             except:
                 pass
+
+        # Log what networks we're using
+        logger.debug(f"GeoIP using internal_networks: {internal_nets}")
         set_internal_networks(internal_nets)
 
         # Collect all unique IPs

@@ -305,11 +305,26 @@ THREAT_FEED_UPDATE_INTERVAL=3600  # 1 uur (default)
 | **Service Provider Detection** | ✅ | Streaming/CDN verkeer herkennen (Netflix, Spotify, YouTube, etc.) |
 | **Auto Template Generation** | ✅ | Templates automatisch genereren uit geleerd apparaatgedrag |
 
-### ❌ Niet Geïmplementeerd (Future Roadmap)
+### 🔐 TLS/HTTPS Analysis (Metadata, geen decryptie)
 
-| Feature | Status | Reden |
-|---------|--------|-------|
-| **TLS/SSL Inspection** | ❌ | Encrypted traffic analysis beperkt tot metadata |
+| Feature | Status | Beschrijving |
+|---------|--------|--------------|
+| **JA3 Fingerprinting** | ✅ | Unieke TLS client fingerprints voor malware detectie (Cobalt Strike, Metasploit, etc.) |
+| **JA3S Fingerprinting** | ✅ | Server-side TLS fingerprints voor C2 server detectie |
+| **SNI Extraction** | ✅ | Server Name Indication uit TLS handshake voor domain visibility |
+| **Certificate Validation** | ✅ | Expired, self-signed en verdachte certificaten detecteren |
+| **Deprecated TLS Detection** | ✅ | TLS 1.0/1.1 en zwakke cipher suites detecteren |
+| **Malware JA3 Blacklist** | ✅ | Ingebouwde blacklist voor bekende malware fingerprints |
+
+### 📦 PCAP Forensics (NIS2 Compliant)
+
+| Feature | Status | Beschrijving |
+|---------|--------|--------------|
+| **Ring Buffer** | ✅ | Continue packet buffer voor forensische capture |
+| **Alert-Triggered Capture** | ✅ | Automatisch PCAP opslaan rond HIGH/CRITICAL alerts |
+| **Sensor PCAP Upload** | ✅ | Sensors uploaden PCAP evidence naar centrale SOC server |
+| **Flow Export** | ✅ | Specifieke flows exporteren naar PCAP |
+| **Retention Management** | ✅ | Automatische cleanup met configureerbare retentie |
 
 ### 🎛️ Management & Monitoring Features
 

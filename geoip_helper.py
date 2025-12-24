@@ -101,7 +101,10 @@ def _get_geoip_reader():
 
 
 def is_private_ip(ip_str: str) -> bool:
-    """Check if IP is private/internal (RFC1918) but NOT in configured internal networks"""
+    """
+    Check if IP is private/internal (RFC1918) but NOT in configured internal networks.
+    If no internal_networks are configured, returns False (all private IPs are Local).
+    """
     try:
         ip = ipaddress.ip_address(ip_str)
         if not (ip.is_private and not ip.is_loopback and not ip.is_link_local):
@@ -112,25 +115,40 @@ def is_private_ip(ip_str: str) -> bool:
             for network in _internal_networks:
                 if ip in network:
                     return False  # This is "Local", not "Private"
-        return True
-    except:
+            # IP is private but NOT in configured internal_networks
+            return True
+        else:
+            # No internal networks configured - all private IPs are treated as "Local"
+            return False
+    except Exception as e:
+        logger.debug(f"is_private_ip error for {ip_str}: {e}")
         return False
 
 
 def is_local_ip(ip_str: str) -> bool:
-    """Check if IP is local (loopback, link-local, or in configured internal networks)"""
+    """
+    Check if IP is local (loopback, link-local, or in configured internal networks).
+    If no internal_networks are configured, ALL private IPs are considered Local.
+    """
     try:
         ip = ipaddress.ip_address(ip_str)
         # Always local: loopback and link-local
         if ip.is_loopback or ip.is_link_local:
             return True
-        # Check if in configured internal networks
-        if _internal_networks and ip.is_private:
-            for network in _internal_networks:
-                if ip in network:
-                    return True
+        # Private IP handling
+        if ip.is_private:
+            if _internal_networks:
+                # Check if in configured internal networks
+                for network in _internal_networks:
+                    if ip in network:
+                        return True
+                return False  # Private but not in our networks
+            else:
+                # No internal networks configured - treat ALL private IPs as Local
+                return True
         return False
-    except:
+    except Exception as e:
+        logger.debug(f"is_local_ip error for {ip_str}: {e}")
         return False
 
 
