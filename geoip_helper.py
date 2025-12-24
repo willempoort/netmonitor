@@ -100,12 +100,26 @@ def _get_geoip_reader():
     return _geoip_reader
 
 
+def _normalize_ip(ip_str: str) -> str:
+    """
+    Normalize IP address string by removing CIDR notation if present.
+    Example: '10.100.0.7/32' -> '10.100.0.7'
+    """
+    if not ip_str:
+        return ip_str
+    # Strip CIDR notation if present
+    if '/' in ip_str:
+        ip_str = ip_str.split('/')[0]
+    return ip_str.strip()
+
+
 def is_private_ip(ip_str: str) -> bool:
     """
     Check if IP is private/internal (RFC1918) but NOT in configured internal networks.
     If no internal_networks are configured, returns False (all private IPs are Local).
     """
     try:
+        ip_str = _normalize_ip(ip_str)
         ip = ipaddress.ip_address(ip_str)
         if not (ip.is_private and not ip.is_loopback and not ip.is_link_local):
             return False
@@ -131,6 +145,7 @@ def is_local_ip(ip_str: str) -> bool:
     If no internal_networks are configured, ALL private IPs are considered Local.
     """
     try:
+        ip_str = _normalize_ip(ip_str)
         ip = ipaddress.ip_address(ip_str)
         # Always local: loopback and link-local
         if ip.is_loopback or ip.is_link_local:
@@ -155,6 +170,7 @@ def is_local_ip(ip_str: str) -> bool:
 def is_reserved_ip(ip_str: str) -> bool:
     """Check if IP is reserved/special purpose"""
     try:
+        ip_str = _normalize_ip(ip_str)
         ip = ipaddress.ip_address(ip_str)
         return ip.is_reserved or ip.is_multicast or ip.is_unspecified
     except:
@@ -262,6 +278,9 @@ def get_country_for_ip(ip_str: str) -> str:
     """
     if not ip_str:
         return None
+
+    # Normalize IP (strip CIDR notation like /32)
+    ip_str = _normalize_ip(ip_str)
 
     # Check for local IPs first (loopback, link-local)
     if is_local_ip(ip_str):
