@@ -595,6 +595,31 @@ De database wordt automatisch gevonden in:
 - `/var/lib/GeoIP/GeoLite2-Country.mmdb`
 - `/usr/share/GeoIP/GeoLite2-Country.mmdb`
 
+### MAC Vendor Database (OUI)
+
+Voor betere apparaatherkenning kan de OUI (Organizationally Unique Identifier) database worden bijgewerkt naar de volledige IEEE database met 30.000+ vendors.
+
+**Update de OUI database:**
+
+```bash
+cd /opt/netmonitor
+source venv/bin/activate
+python update_oui_database.py
+```
+
+Dit script:
+- Download de officiële IEEE OUI database
+- Valt terug naar Wireshark's manuf file als backup
+- Voegt extra IoT vendors toe (Sonos, Philips Hue, Shelly, etc.)
+- Slaat op naar `data/oui_database.json`
+
+**Automatische updates (optioneel):**
+
+```bash
+# Voeg toe aan crontab voor maandelijkse updates
+0 3 1 * * cd /opt/netmonitor && ./venv/bin/python update_oui_database.py --quiet
+```
+
 ### Detection Thresholds Aanpassen
 
 Je kunt de gevoeligheid van elke detector aanpassen:
