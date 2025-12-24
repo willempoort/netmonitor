@@ -3,14 +3,17 @@
 # Copyright (c) 2025 Willem M. Poort
 """
 GeoIP Helper
-Provides country lookup for IP addresses
+Provides country lookup for IP addresses with multiple fallback sources
 """
 
 import ipaddress
 import logging
 import socket
 import os
+import time
+import threading
 from pathlib import Path
+from typing import Optional, Dict
 
 logger = logging.getLogger('NetMonitor.GeoIP')
 
@@ -22,6 +25,13 @@ try:
 except ImportError:
     GEOIP2_AVAILABLE = False
     logger.warning("geoip2 library not installed. Run: pip install geoip2")
+
+# Try to import requests for API fallback
+try:
+    import requests
+    REQUESTS_AVAILABLE = True
+except ImportError:
+    REQUESTS_AVAILABLE = False
 
 # Search for GeoIP database
 GEOIP_DB_PATHS = [
@@ -48,6 +58,14 @@ if not GEOIP_DB_PATH and GEOIP2_AVAILABLE:
 # Initialize GeoIP reader (lazy loading)
 _geoip_reader = None
 
+# Cache for API lookups (thread-safe)
+_api_cache: Dict[str, tuple] = {}  # ip -> (country, timestamp)
+_cache_lock = threading.Lock()
+_CACHE_TTL = 3600 * 24  # 24 hours cache
+_API_RATE_LIMIT = 45  # ip-api.com allows 45 requests/minute for free
+_api_calls_this_minute = 0
+_api_minute_start = 0
+
 
 def _get_geoip_reader():
     """Get or create GeoIP reader instance"""
@@ -62,31 +80,147 @@ def _get_geoip_reader():
 
 
 def is_private_ip(ip_str: str) -> bool:
-    """Check if IP is private/internal"""
+    """Check if IP is private/internal (RFC1918)"""
     try:
         ip = ipaddress.ip_address(ip_str)
-        return ip.is_private or ip.is_loopback or ip.is_link_local
+        return ip.is_private and not ip.is_loopback and not ip.is_link_local
     except:
         return False
 
 
+def is_local_ip(ip_str: str) -> bool:
+    """Check if IP is local (loopback or link-local)"""
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        return ip.is_loopback or ip.is_link_local
+    except:
+        return False
+
+
+def is_reserved_ip(ip_str: str) -> bool:
+    """Check if IP is reserved/special purpose"""
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        return ip.is_reserved or ip.is_multicast or ip.is_unspecified
+    except:
+        return False
+
+
+def _lookup_ip_api(ip_str: str) -> Optional[str]:
+    """
+    Lookup IP using multiple free APIs (no API key required)
+    Tries ip-api.com first, then ipwho.is as fallback
+    Rate limited to 45 requests/minute
+    """
+    global _api_calls_this_minute, _api_minute_start
+
+    if not REQUESTS_AVAILABLE:
+        return None
+
+    # Check cache first
+    with _cache_lock:
+        if ip_str in _api_cache:
+            country, timestamp = _api_cache[ip_str]
+            if time.time() - timestamp < _CACHE_TTL:
+                return country
+
+    # Rate limiting
+    current_minute = int(time.time() / 60)
+    if current_minute != _api_minute_start:
+        _api_calls_this_minute = 0
+        _api_minute_start = current_minute
+
+    if _api_calls_this_minute >= _API_RATE_LIMIT:
+        logger.debug(f"IP API rate limit reached for {ip_str}")
+        return None
+
+    # List of free IP geolocation APIs to try
+    apis = [
+        {
+            'url': f"http://ip-api.com/json/{ip_str}?fields=status,country,countryCode",
+            'country_field': 'country',
+            'code_field': 'countryCode',
+            'success_check': lambda d: d.get('status') == 'success'
+        },
+        {
+            'url': f"https://ipwho.is/{ip_str}",
+            'country_field': 'country',
+            'code_field': 'country_code',
+            'success_check': lambda d: d.get('success', False)
+        },
+        {
+            'url': f"https://ipapi.co/{ip_str}/json/",
+            'country_field': 'country_name',
+            'code_field': 'country_code',
+            'success_check': lambda d: 'error' not in d
+        }
+    ]
+
+    for api in apis:
+        try:
+            response = requests.get(api['url'], timeout=3)
+            _api_calls_this_minute += 1
+
+            if response.status_code == 200:
+                data = response.json()
+                if api['success_check'](data):
+                    country_name = data.get(api['country_field'], 'Unknown')
+                    country_code = data.get(api['code_field'], '??')
+
+                    if country_name and country_name != 'Unknown':
+                        result = f"{country_name} ({country_code})"
+
+                        # Cache the result
+                        with _cache_lock:
+                            _api_cache[ip_str] = (result, time.time())
+
+                        logger.debug(f"IP API lookup: {ip_str} -> {result}")
+                        return result
+            elif response.status_code == 403:
+                # API blocked or rate limited, try next
+                continue
+
+        except requests.exceptions.Timeout:
+            logger.debug(f"IP API timeout for {ip_str}")
+            continue
+        except Exception as e:
+            logger.debug(f"IP API lookup failed for {ip_str}: {e}")
+            continue
+
+    return None
+
+
 def get_country_for_ip(ip_str: str) -> str:
     """
-    Get country for a single IP address using GeoIP2 MaxMind database
+    Get country for a single IP address using multiple sources:
+    1. Check for local/private/reserved IPs
+    2. GeoIP2 MaxMind database (if available)
+    3. Online API fallback (ip-api.com)
+    4. DNS TLD lookup (last resort)
 
     Returns:
-    - 'Private Network' for private IPs
-    - 'Country Name (CC)' for public IPs (if database available)
-    - 'Unknown' if lookup fails
+    - 'Local' for loopback/link-local IPs (127.0.0.1, ::1, 169.254.x.x)
+    - 'Private' for RFC1918 private IPs (10.x, 172.16-31.x, 192.168.x)
+    - 'Reserved' for reserved/multicast IPs
+    - 'Country Name (CC)' for public IPs
+    - 'Unknown' if all lookups fail
     """
     if not ip_str:
         return None
 
-    # Check if private
-    if is_private_ip(ip_str):
-        return 'Private Network'
+    # Check for local IPs first (loopback, link-local)
+    if is_local_ip(ip_str):
+        return 'Local'
 
-    # Try GeoIP2 lookup first (most accurate)
+    # Check for private IPs (RFC1918)
+    if is_private_ip(ip_str):
+        return 'Private'
+
+    # Check for reserved/multicast IPs
+    if is_reserved_ip(ip_str):
+        return 'Reserved'
+
+    # Try GeoIP2 lookup first (most accurate, no rate limits)
     reader = _get_geoip_reader()
     if reader:
         try:
@@ -95,12 +229,17 @@ def get_country_for_ip(ip_str: str) -> str:
             country_code = response.country.iso_code or '??'
             return f"{country_name} ({country_code})"
         except geoip2.errors.AddressNotFoundError:
-            # IP not in database (possibly new/uncategorized)
+            # IP not in database, try API fallback
             pass
         except Exception as e:
             logger.debug(f"GeoIP lookup failed for {ip_str}: {e}")
 
-    # Fallback: Try to determine country from hostname TLD (less accurate)
+    # Fallback: Try online API (ip-api.com)
+    api_result = _lookup_ip_api(ip_str)
+    if api_result:
+        return api_result
+
+    # Last resort: Try to determine country from hostname TLD
     try:
         hostname = socket.gethostbyaddr(ip_str)[0]
         if hostname and '.' in hostname:
@@ -129,7 +268,20 @@ def get_country_for_ip(ip_str: str) -> str:
                 'FI': 'Finland',
                 'PL': 'Poland',
                 'AT': 'Austria',
-                'CZ': 'Czech Republic'
+                'CZ': 'Czech Republic',
+                'IE': 'Ireland',
+                'PT': 'Portugal',
+                'GR': 'Greece',
+                'HU': 'Hungary',
+                'RO': 'Romania',
+                'BG': 'Bulgaria',
+                'HR': 'Croatia',
+                'SK': 'Slovakia',
+                'SI': 'Slovenia',
+                'LT': 'Lithuania',
+                'LV': 'Latvia',
+                'EE': 'Estonia',
+                'LU': 'Luxembourg',
             }
             if tld in country_tlds:
                 return f"{country_tlds[tld]} ({tld})"
