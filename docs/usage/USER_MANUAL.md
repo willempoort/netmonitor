@@ -126,6 +126,7 @@ After logging in, the dashboard opens automatically to the main monitoring view 
    - IPs with most traffic
    - Shows hostname when available
    - Inbound/outbound breakdown
+   - Country flags for external IPs (GeoIP lookup)
 
 ### Navigation Tabs
 
@@ -216,6 +217,25 @@ Action: Investigate protocol usage
 - Add notes (if available)
 - Track in incident log
 
+### GeoIP Country Information
+
+External IP addresses in alerts and top talkers display country information:
+
+**Display Format:**
+- Country flag emoji + country code (e.g., 🇺🇸 US, 🇳🇱 NL, 🇩🇪 DE)
+- "Local" for internal/private IP ranges
+- "Unknown" if GeoIP lookup fails
+
+**How It Works:**
+- NetMonitor looks up IP addresses in a local GeoIP database (if installed)
+- Falls back to online API if no local database
+- Internal IPs (10.x.x.x, 192.168.x.x, etc.) are marked as "Local"
+
+**Using Country Information:**
+- Identify attacks from specific regions
+- Spot unusual traffic patterns (e.g., connections to unexpected countries)
+- Correlate with threat intelligence
+
 ### Filtering Alerts
 
 **By Severity:**
@@ -230,6 +250,7 @@ Action: Investigate protocol usage
 - Filter by sensor
 - Filter by source IP
 - Filter by alert type
+- Filter by country
 
 ---
 
@@ -568,11 +589,13 @@ De apparatenlijst toont alle ontdekte apparaten met:
 |-------|--------------|
 | **IP Address** | IP-adres van het apparaat (met CIDR notatie) |
 | **Hostname** | Hostname indien beschikbaar via DNS |
-| **MAC / Vendor** | MAC-adres en fabrikant (via OUI lookup) |
+| **MAC / Vendor** | MAC-adres en fabrikant (via OUI lookup uit 30.000+ entries) |
 | **Template** | Toegewezen template of "Unclassified" |
 | **Learning Status** | Voortgang van gedrag leren |
 | **Last Seen** | Wanneer het apparaat laatst verkeer genereerde |
 | **Actions** | Actieknoppen |
+
+**Tip:** De MAC vendor database bevat 30.000+ fabrikanten inclusief populaire IoT merken zoals Sonos, Philips Hue, Shelly, Tuya, en meer. Administrators kunnen de database bijwerken met `python3 update_oui_database.py`.
 
 #### Learning Status
 
@@ -971,7 +994,7 @@ Top 10 fabrikanten in uw netwerk, gebaseerd op MAC-adres OUI lookup.
 
 ### Overview
 
-NetMonitor SOC includes an MCP (Model Context Protocol) server that enables AI assistants like Claude to monitor and interact with your SOC platform through a modern HTTP API.
+NetMonitor SOC includes an MCP (Model Context Protocol) server that enables AI assistants like Claude to monitor and interact with your SOC platform through a modern HTTP API with **37 specialized security tools**.
 
 **What is MCP?**
 
@@ -982,6 +1005,10 @@ MCP is a standardized protocol that allows AI assistants to access external syst
 - **Threat Analysis**: "Claude, analyze the last 24 hours of critical alerts and identify patterns"
 - **Incident Response**: "What are the top 3 priority incidents I should handle first?"
 - **Security Queries**: "Show me all port scan alerts from external sources this week"
+- **TLS/HTTPS Analysis**: "Check if any devices have malicious JA3 fingerprints"
+- **PCAP Forensics**: "Export the PCAP file for the latest critical alert"
+- **Device Classification**: "Show me all unclassified IoT devices"
+- **Whitelist Management**: "Add 10.0.0.0/8 to the whitelist as internal network"
 - **Operational Insights**: "Which sensors have performance issues?"
 - **Custom Reports**: "Generate a summary of all brute force attempts by source country"
 
@@ -1009,6 +1036,21 @@ Claude: *retrieves and analyzes alerts*
         10.0.0.50. Pattern suggests volumetric attack.
         Recommendation: Enable rate limiting and contact ISP."
 ```
+
+**Available Tool Categories:**
+
+The MCP server provides 37 tools organized into categories:
+
+| Category | Tools | Description |
+|----------|-------|-------------|
+| **Security Analysis** | 6 | Analyze IPs, threats, attackers, patterns |
+| **Exports & Reporting** | 4 | Export alerts/traffic to CSV, generate reports |
+| **Configuration** | 4 | Get/set detection rules and thresholds |
+| **Sensor Management** | 4 | Monitor sensors, send commands, update settings |
+| **Whitelist** | 4 | Add/remove/check whitelist entries |
+| **TLS Analysis** | 4 | JA3 fingerprints, TLS metadata, certificate info |
+| **PCAP Forensics** | 5 | List/export/manage packet captures |
+| **Device Classification** | 6 | Manage devices, templates, behaviors |
 
 **Security Note:**
 
@@ -1397,5 +1439,5 @@ wireshark alert_malicious_ja3_fingerprint_*.pcap
 
 ---
 
-*Last updated: December 2024*
-*NetMonitor SOC v2.1 - Stay Vigilant, Stay Secure*
+*Last updated: December 2025*
+*NetMonitor SOC v2.2 - Stay Vigilant, Stay Secure*

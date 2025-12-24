@@ -629,7 +629,7 @@ The MCP server enables AI-powered security operations by exposing SOC functional
 - **Token-based authentication**: Secure Bearer token system
 - **Permission scopes**: read_only, read_write, admin
 - **Rate limiting**: Per-token request limits
-- **23+ specialized tools**: Security analysis, reporting, management
+- **37 specialized tools**: Security analysis, reporting, management, whitelist, PCAP
 - **Auto-documentation**: Swagger/OpenAPI interface
 - **Audit logging**: Complete request history
 
@@ -651,13 +651,16 @@ The MCP server enables AI-powered security operations by exposing SOC functional
 │  │  - Rate limiting                        │  │
 │  └─────────────────────────────────────────┘  │
 │  ┌─────────────────────────────────────────┐  │
-│  │  23+ MCP Tools                          │  │
+│  │  37 MCP Tools                           │  │
 │  │  - Security Analysis                    │  │
 │  │  - Exports & Reporting                  │  │
 │  │  - Configuration Management             │  │
 │  │  - Sensor Management                    │  │
 │  │  - Whitelist Management                 │  │
 │  │  - AI-Powered Analysis                  │  │
+│  │  - TLS/HTTPS Analysis                   │  │
+│  │  - PCAP Forensics                       │  │
+│  │  - Device Classification                │  │
 │  └─────────────────────────────────────────┘  │
 └────────┬──────────────────────────────────────┘
          │
@@ -822,7 +825,7 @@ Content-Type: application/json
 
 ### Tool Categories
 
-The MCP server provides 23+ specialized tools organized into categories:
+The MCP server provides 37 specialized tools organized into categories:
 
 #### 1. Security Analysis Tools (read_only)
 
@@ -1733,6 +1736,101 @@ Recommended: Plan for 2x estimate = 60GB for PCAP storage
 ---
 
 ## Advanced Topics
+
+### GeoIP Database Configuration
+
+NetMonitor can show country information for external IP addresses. For optimal performance and accuracy, install the MaxMind GeoLite2 database locally.
+
+**Option 1: Automatic Script (db-ip.com)**
+
+```bash
+cd /opt/netmonitor
+sudo ./install_geoip_db.sh
+```
+
+This downloads a free GeoIP database from db-ip.com (no account required).
+
+**Option 2: MaxMind GeoLite2 (Manual)**
+
+1. Create a free account at https://www.maxmind.com/en/geolite2/signup
+2. Download GeoLite2-Country.mmdb
+3. Place the file in one of these locations:
+   - `/var/lib/GeoIP/GeoLite2-Country.mmdb` (recommended)
+   - `/usr/share/GeoIP/GeoLite2-Country.mmdb`
+   - `/opt/GeoIP/GeoLite2-Country.mmdb`
+
+**Option 3: geoipupdate (Automatic Updates)**
+
+```bash
+# Install geoipupdate
+sudo apt install geoipupdate
+
+# Configure with your MaxMind license key
+sudo nano /etc/GeoIP.conf
+
+# Add:
+# AccountID YOUR_ACCOUNT_ID
+# LicenseKey YOUR_LICENSE_KEY
+# EditionIDs GeoLite2-Country
+
+# Run update
+sudo geoipupdate
+
+# Schedule weekly updates
+echo "0 3 * * 0 root /usr/bin/geoipupdate" | sudo tee /etc/cron.d/geoipupdate
+```
+
+**Verification:**
+
+```bash
+# Run the diagnostic script
+python3 /opt/netmonitor/diagnose_geoip.py
+
+# Expected output shows:
+# ✓ geoip2 imported successfully
+# ✓ Database found and readable
+# ✓ IP lookups return country codes
+```
+
+**Fallback Behavior:**
+
+If no local database is available, NetMonitor falls back to the ip-api.com web service. This works but is slower and has rate limits (45 requests/minute for free tier).
+
+### MAC Vendor Database (OUI)
+
+NetMonitor identifies device manufacturers using MAC address OUI (Organizationally Unique Identifier) lookup. The default database contains ~450 entries. For better device recognition, update to the full IEEE database with 30,000+ entries.
+
+**Update OUI Database:**
+
+```bash
+cd /opt/netmonitor
+python3 update_oui_database.py
+```
+
+This script:
+- Downloads the official IEEE OUI database (30,000+ entries)
+- Falls back to Wireshark's manuf file if IEEE is unavailable
+- Adds common IoT vendor entries (Sonos, Hue, Shelly, ESP32, etc.)
+- Saves to `data/oui_database.json`
+
+**Schedule Monthly Updates:**
+
+```bash
+echo "0 4 1 * * root cd /opt/netmonitor && python3 update_oui_database.py --quiet" | sudo tee /etc/cron.d/netmonitor-oui
+```
+
+**Options:**
+
+```bash
+# Custom output path
+python3 update_oui_database.py --output /path/to/oui.json
+
+# Quiet mode (no progress output)
+python3 update_oui_database.py --quiet
+
+# Only use Wireshark manuf (faster)
+python3 update_oui_database.py --wireshark-only
+```
 
 ### TimescaleDB Optimization
 
