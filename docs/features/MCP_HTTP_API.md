@@ -230,7 +230,10 @@ Authorization: Bearer a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9
 - analyze_ip
 - get_recent_threats
 - get_sensor_status
-- export_alerts_csv
+- get_config_parameters
+- export_alerts_csv           # Export alerts naar CSV formaat
+- get_sensor_command_history  # Bekijk command historie voor sensor
+- get_whitelist_entries       # Bekijk whitelist entries
 # Device Classification (read_only):
 - get_devices
 - get_device_by_ip
@@ -256,9 +259,9 @@ Authorization: Bearer a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9
 
 # read_write kan alles van read_only + :
 - set_config_parameter
-- send_sensor_command
-- add_whitelist_entry
-- remove_whitelist_entry
+- send_sensor_command         # Stuur commando naar sensor (restart, update_config, etc.)
+- add_whitelist_entry         # Voeg IP/CIDR/domain toe aan whitelist
+- remove_whitelist_entry      # Verwijder whitelist entry
 # Device Classification (read_write):
 - assign_device_template
 - create_service_provider

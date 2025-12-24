@@ -764,6 +764,88 @@ class MCPHTTPServer:
                     "required": ["filename"]
                 },
                 "scope_required": "read_write"
+            },
+            # Export Tools
+            {
+                "name": "export_alerts_csv",
+                "description": "Export security alerts to CSV format for reporting or SIEM integration",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "hours": {"type": "integer", "description": "Lookback period in hours (default: 24)"},
+                        "severity": {"type": "string", "description": "Filter by severity (CRITICAL, HIGH, MEDIUM, LOW)"},
+                        "threat_type": {"type": "string", "description": "Filter by threat type"}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            # Sensor Command Tools
+            {
+                "name": "send_sensor_command",
+                "description": "Send a command to a remote sensor (restart, update_config, update_whitelist)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "sensor_id": {"type": "string", "description": "Target sensor ID"},
+                        "command_type": {"type": "string", "description": "Command: restart, update_config, update_whitelist, run_diagnostics"},
+                        "parameters": {"type": "object", "description": "Optional command parameters"}
+                    },
+                    "required": ["sensor_id", "command_type"]
+                },
+                "scope_required": "read_write"
+            },
+            {
+                "name": "get_sensor_command_history",
+                "description": "Get command history for a sensor",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "sensor_id": {"type": "string", "description": "Sensor ID"},
+                        "limit": {"type": "integer", "description": "Maximum number of commands to return (default: 20)"}
+                    },
+                    "required": ["sensor_id"]
+                },
+                "scope_required": "read_only"
+            },
+            # Whitelist Management Tools
+            {
+                "name": "add_whitelist_entry",
+                "description": "Add an IP, CIDR range, or domain to the whitelist",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "ip_cidr": {"type": "string", "description": "IP address, CIDR range (e.g., 192.168.1.0/24), or domain"},
+                        "description": {"type": "string", "description": "Reason for whitelisting (e.g., 'Office network', 'Trusted partner')"},
+                        "scope": {"type": "string", "description": "'global' for all sensors or 'sensor' for specific sensor (default: global)"},
+                        "sensor_id": {"type": "string", "description": "Sensor ID (required if scope is 'sensor')"}
+                    },
+                    "required": ["ip_cidr", "description"]
+                },
+                "scope_required": "read_write"
+            },
+            {
+                "name": "get_whitelist_entries",
+                "description": "Get all whitelist entries or filter by scope/sensor",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "scope": {"type": "string", "description": "Filter by 'global' or 'sensor'"},
+                        "sensor_id": {"type": "string", "description": "Filter by sensor ID"}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "remove_whitelist_entry",
+                "description": "Remove a whitelist entry by ID",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "entry_id": {"type": "integer", "description": "Whitelist entry ID to remove"}
+                    },
+                    "required": ["entry_id"]
+                },
+                "scope_required": "read_write"
             }
         ]
         return tools
@@ -820,6 +902,15 @@ class MCPHTTPServer:
             'export_flow_pcap': self._tool_export_flow_pcap,
             'get_packet_buffer_summary': self._tool_get_packet_buffer_summary,
             'delete_pcap_capture': self._tool_delete_pcap_capture,
+            # Export Tools
+            'export_alerts_csv': self._tool_export_alerts_csv,
+            # Sensor Command Tools
+            'send_sensor_command': self._tool_send_sensor_command,
+            'get_sensor_command_history': self._tool_get_sensor_command_history,
+            # Whitelist Management Tools
+            'add_whitelist_entry': self._tool_add_whitelist_entry,
+            'get_whitelist_entries': self._tool_get_whitelist_entries,
+            'remove_whitelist_entry': self._tool_remove_whitelist_entry,
         }
 
         if tool_name not in tool_map:
@@ -2138,6 +2229,279 @@ class MCPHTTPServer:
                 'error': str(e),
                 'message': 'Failed to delete PCAP capture.'
             }
+
+    # ==================== Export Tool Implementations ====================
+
+    async def _tool_export_alerts_csv(self, params: Dict) -> Dict:
+        """Export security alerts to CSV format"""
+        import csv
+        import io
+
+        hours = params.get('hours', 24)
+        severity = params.get('severity')
+        threat_type = params.get('threat_type')
+
+        logger.info(f"Exporting alerts to CSV (hours={hours}, severity={severity}, threat_type={threat_type})")
+
+        try:
+            alerts = self.db.get_recent_alerts(
+                limit=10000,  # High limit for exports
+                hours=hours,
+                severity=severity,
+                threat_type=threat_type
+            )
+
+            # Generate CSV
+            output = io.StringIO()
+            writer = csv.writer(output)
+
+            # Write header
+            writer.writerow(['Timestamp', 'Severity', 'Threat Type', 'Source IP', 'Destination IP',
+                            'Description', 'Sensor ID', 'Acknowledged'])
+
+            # Write data
+            for alert in alerts:
+                writer.writerow([
+                    alert.get('timestamp', ''),
+                    alert.get('severity', ''),
+                    alert.get('threat_type', ''),
+                    alert.get('source_ip', ''),
+                    alert.get('destination_ip', ''),
+                    alert.get('description', ''),
+                    alert.get('sensor_id', ''),
+                    'Yes' if alert.get('acknowledged') else 'No'
+                ])
+
+            csv_data = output.getvalue()
+            output.close()
+
+            return {
+                'success': True,
+                'format': 'csv',
+                'rows': len(alerts),
+                'filters': {
+                    'hours': hours,
+                    'severity': severity,
+                    'threat_type': threat_type
+                },
+                'csv_data': csv_data,
+                'message': f'Exported {len(alerts)} alerts to CSV'
+            }
+
+        except Exception as e:
+            logger.error(f"Error exporting alerts to CSV: {e}")
+            return {'success': False, 'error': str(e)}
+
+    # ==================== Sensor Command Tool Implementations ====================
+
+    async def _tool_send_sensor_command(self, params: Dict) -> Dict:
+        """Send a command to a remote sensor"""
+        sensor_id = params.get('sensor_id')
+        command_type = params.get('command_type')
+        parameters = params.get('parameters', {})
+
+        if not sensor_id or not command_type:
+            return {'success': False, 'error': 'sensor_id and command_type are required'}
+
+        valid_commands = ['restart', 'update_config', 'update_whitelist', 'run_diagnostics']
+        if command_type not in valid_commands:
+            return {
+                'success': False,
+                'error': f"Invalid command_type. Must be one of: {', '.join(valid_commands)}"
+            }
+
+        logger.info(f"Sending command '{command_type}' to sensor {sensor_id}")
+
+        try:
+            # Verify sensor exists
+            sensor = self.db.get_sensor_by_id(sensor_id)
+            if not sensor:
+                return {'success': False, 'error': f"Sensor '{sensor_id}' not found"}
+
+            # Create command in database
+            command_id = self.db.create_sensor_command(
+                sensor_id=sensor_id,
+                command_type=command_type,
+                parameters=parameters
+            )
+
+            if command_id:
+                return {
+                    'success': True,
+                    'command_id': command_id,
+                    'sensor_id': sensor_id,
+                    'command_type': command_type,
+                    'parameters': parameters,
+                    'message': f"Command '{command_type}' queued for sensor '{sensor_id}' (ID: {command_id})",
+                    'note': 'Sensor will poll for this command within 30 seconds'
+                }
+            else:
+                return {'success': False, 'error': 'Failed to create command'}
+
+        except Exception as e:
+            logger.error(f"Error sending sensor command: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def _tool_get_sensor_command_history(self, params: Dict) -> Dict:
+        """Get command history for a sensor"""
+        sensor_id = params.get('sensor_id')
+        limit = params.get('limit', 20)
+
+        if not sensor_id:
+            return {'success': False, 'error': 'sensor_id is required'}
+
+        logger.info(f"Getting command history for sensor {sensor_id} (limit={limit})")
+
+        try:
+            commands = self.db.get_sensor_command_history(sensor_id, limit=limit)
+
+            return {
+                'success': True,
+                'sensor_id': sensor_id,
+                'total_commands': len(commands),
+                'commands': commands,
+                'message': f'Found {len(commands)} commands for sensor {sensor_id}'
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting sensor command history: {e}")
+            return {'success': False, 'error': str(e)}
+
+    # ==================== Whitelist Management Tool Implementations ====================
+
+    async def _tool_add_whitelist_entry(self, params: Dict) -> Dict:
+        """Add an IP, CIDR range, or domain to the whitelist"""
+        import requests
+
+        ip_cidr = params.get('ip_cidr')
+        description = params.get('description')
+        scope = params.get('scope', 'global')
+        sensor_id = params.get('sensor_id')
+
+        if not ip_cidr or not description:
+            return {'success': False, 'error': 'ip_cidr and description are required'}
+
+        if scope == 'sensor' and not sensor_id:
+            return {'success': False, 'error': "sensor_id required when scope is 'sensor'"}
+
+        logger.info(f"Adding whitelist entry: {ip_cidr} (scope: {scope})")
+
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.post(
+                f"{dashboard_url}/api/whitelist",
+                json={
+                    'ip_cidr': ip_cidr,
+                    'description': description,
+                    'scope': scope,
+                    'sensor_id': sensor_id,
+                    'created_by': 'mcp'
+                },
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success'):
+                    return {
+                        'success': True,
+                        'message': f"Added {ip_cidr} to whitelist",
+                        'entry_id': result.get('entry_id'),
+                        'ip_cidr': ip_cidr,
+                        'description': description,
+                        'scope': scope,
+                        'sensor_id': sensor_id
+                    }
+                else:
+                    return {'success': False, 'error': result.get('error', 'Unknown error')}
+            else:
+                return {'success': False, 'error': f'API returned status {response.status_code}'}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error adding whitelist entry: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def _tool_get_whitelist_entries(self, params: Dict) -> Dict:
+        """Get whitelist entries, optionally filtered by scope or sensor"""
+        import requests
+
+        scope = params.get('scope')
+        sensor_id = params.get('sensor_id')
+
+        logger.info(f"Getting whitelist entries (scope: {scope}, sensor: {sensor_id})")
+
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            req_params = {}
+            if scope:
+                req_params['scope'] = scope
+            if sensor_id:
+                req_params['sensor_id'] = sensor_id
+
+            response = requests.get(
+                f"{dashboard_url}/api/whitelist",
+                params=req_params,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success'):
+                    entries = result.get('entries', [])
+                    return {
+                        'success': True,
+                        'total_entries': len(entries),
+                        'scope_filter': scope,
+                        'sensor_filter': sensor_id,
+                        'entries': entries
+                    }
+                else:
+                    return {'success': False, 'error': result.get('error', 'Unknown error')}
+            else:
+                return {'success': False, 'error': f'API returned status {response.status_code}'}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error getting whitelist entries: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def _tool_remove_whitelist_entry(self, params: Dict) -> Dict:
+        """Remove a whitelist entry by ID"""
+        import requests
+
+        entry_id = params.get('entry_id')
+
+        if not entry_id:
+            return {'success': False, 'error': 'entry_id is required'}
+
+        logger.info(f"Removing whitelist entry: {entry_id}")
+
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.delete(
+                f"{dashboard_url}/api/whitelist/{entry_id}",
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success'):
+                    return {
+                        'success': True,
+                        'message': f'Removed whitelist entry {entry_id}'
+                    }
+                else:
+                    return {'success': False, 'error': result.get('error', 'Unknown error')}
+            elif response.status_code == 404:
+                return {'success': False, 'error': f'Whitelist entry {entry_id} not found'}
+            else:
+                return {'success': False, 'error': f'API returned status {response.status_code}'}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error removing whitelist entry: {e}")
+            return {'success': False, 'error': str(e)}
 
     async def _get_dashboard_summary(self) -> str:
         """Get dashboard summary text"""
