@@ -64,7 +64,7 @@ Een krachtig netwerk monitoring platform voor Linux met **real-time web dashboar
   - **Token-based authentication** - Veilige Bearer tokens per AI client
   - **Permission scopes** - read_only, read_write, admin
   - **Rate limiting** - Bescherming tegen misbruik
-  - **23+ AI tools** - Van monitoring tot configuratie
+  - **37 AI tools** - Van monitoring tot configuratie en whitelist beheer
   - **Auto-documentatie** - OpenAPI/Swagger docs
   - **Multi-client support** - Meerdere AI's tegelijk
   - AI-assisted sensor management via natuurlijke taal
@@ -343,7 +343,7 @@ THREAT_FEED_UPDATE_INTERVAL=3600  # 1 uur (default)
 | **Self-Monitoring** | ✅ | SOC server kan zichzelf monitoren (detecteert compromise) |
 | **WebSocket Updates** | ✅ | Sub-seconde real-time dashboard updates zonder polling |
 | **Database Support** | ✅ | SQLite (standaard) en PostgreSQL/TimescaleDB (enterprise) |
-| **MCP AI Integration** | ✅ | 23+ AI tools via HTTP API met token auth en rate limiting |
+| **MCP AI Integration** | ✅ | 37 AI tools via HTTP API met token auth en rate limiting |
 | **Multi-Sensor Support** | ✅ | Centralized management van remote sensors |
 | **Config as Code** | ✅ | YAML configuratie met validation en defaults |
 | **Service Templates** | ✅ | Systemd service generation vanuit templates + .env |
