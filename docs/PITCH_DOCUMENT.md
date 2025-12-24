@@ -80,13 +80,120 @@ Perfect voor een dedicated beveiligingsscherm in uw serverruimte of bij de IT-af
 - Duidelijke visuele waarschuwingen
 - Geschikt voor wandmontage
 
-### 5. AI-Integratie
+### 5. TLS/HTTPS Analyse
 
-NetMonitor werkt samen met moderne AI-assistenten voor **intelligente analyse**.
+NetMonitor analyseert versleuteld verkeer **zonder decryptie** - privacy-vriendelijk maar effectief.
 
-- Vraag in gewone taal: *"Welke verdachte activiteiten waren er gisteren?"*
-- Automatische rapportage
-- Trends en patronen herkennen
+**Wat we detecteren:**
+- **JA3/JA3S fingerprints**: Identificeert malware aan TLS handshake patronen
+- **SNI analyse**: Ziet welke domeinen bezocht worden, ook via HTTPS
+- **Certificate monitoring**: Detecteert verdachte of verlopen certificaten
+- **Bekende malware signatures**: JA3 hashes van Emotet, Cobalt Strike, etc.
+
+### 6. PCAP Forensics (NIS2 Compliant)
+
+Volledige netwerkopname voor incident response en compliance.
+
+**Mogelijkheden:**
+- Ring buffer voor continue opname (configureerbare retentie)
+- Export specifieke flows voor forensisch onderzoek
+- Per-alert PCAP bestanden voor bewijsvoering
+- Voldoet aan NIS2 logging vereisten
+
+### 7. GeoIP Intelligence
+
+Geografische context voor elke IP-verbinding.
+
+- Land-identificatie voor alle externe IP's
+- Onderscheid tussen Local (uw netwerk) en Private (andere RFC1918)
+- MaxMind database of online API fallback
+- Detecteer onverwachte verbindingen naar high-risk landen
+
+---
+
+## 🤖 AI-Powered Security met MCP Integratie
+
+NetMonitor is een van de eerste security monitoring tools met native **Model Context Protocol (MCP)** integratie voor AI-assistenten zoals Claude.
+
+### Wat Maakt Dit Uniek?
+
+De MCP HTTP API biedt **37 gespecialiseerde security tools** die AI-assistenten direct kunnen aanroepen:
+
+| Categorie | Tools | Mogelijkheden |
+|-----------|-------|---------------|
+| **Analyse** | 5 | IP analyse, threat lookup, sensor status |
+| **Device Classification** | 13 | Apparaat herkenning, behavior learning, templates |
+| **TLS Analysis** | 3 | JA3 checks, TLS statistieken, blacklist beheer |
+| **PCAP Forensics** | 5 | Capture listing, flow export, buffer status |
+| **Sensor Beheer** | 2 | Remote commands, command history |
+| **Whitelist** | 3 | Entries toevoegen, bekijken, verwijderen |
+| **Export** | 1 | CSV export voor SIEM integratie |
+| **Configuratie** | 5 | Parameters lezen en schrijven |
+
+### Concrete AI Use Cases
+
+**1. Natuurlijke Taal Security Queries**
+
+In plaats van complexe SQL queries of dashboard navigatie:
+
+```
+Gebruiker: "Welke verdachte activiteiten waren er vannacht?"
+
+AI analyseert via MCP:
+→ get_recent_threats (hours=8, severity=HIGH)
+→ analyze_ip (voor top verdachte IPs)
+→ check_ja3_fingerprint (voor TLS anomalies)
+
+Resultaat: Samenvatting in begrijpelijke taal met actie-advies
+```
+
+**2. Geautomatiseerde Incident Response**
+
+```
+AI detecteert via MCP: Nieuwe CRITICAL alert voor IP 185.220.101.50
+
+AI onderzoekt automatisch:
+→ analyze_ip: Threat score 92, 47 alerts in 24 uur
+→ get_country_for_ip: Russia (RU)
+→ check_ip_service_provider: Geen bekende provider
+
+AI actie (met goedkeuring):
+→ add_whitelist_entry (action=block): IP geblokkeerd
+→ send_sensor_command: Alle sensoren geüpdatet
+```
+
+**3. Proactieve Threat Hunting**
+
+```
+AI periodieke scan via MCP:
+→ get_devices: 127 apparaten bekend
+→ get_device_classification_hints: 3 nieuwe apparaten
+→ get_tls_metadata: Onbekende JA3 hash gedetecteerd
+
+Rapportage: "3 nieuwe apparaten ontdekt, 1 met verdachte TLS fingerprint"
+```
+
+### Technische Voordelen van MCP
+
+| Aspect | Voordeel |
+|--------|----------|
+| **Token-based Auth** | Veilige Bearer tokens per AI client |
+| **Permission Scopes** | read_only, read_write, admin granulariteit |
+| **Rate Limiting** | Bescherming tegen misbruik |
+| **Audit Trail** | Volledige logging van alle AI acties |
+| **Multi-Client** | Meerdere AI's tegelijk ondersteunen |
+
+### Waarom AI + NetMonitor Effectief Is
+
+1. **Contextuele Analyse**: AI kan meerdere databronnen combineren (alerts, device info, GeoIP, TLS) voor betere conclusies
+
+2. **Patroonherkenning**: AI herkent subtiele patronen in grote datasets die mensen missen
+
+3. **24/7 Beschikbaarheid**: AI kan continu monitoren en reageren, ook buiten kantooruren
+
+4. **Kennisverrijking**: AI koppelt NetMonitor data aan externe threat intelligence kennis
+
+5. **Natuurlijke Rapportage**: Technische data vertaald naar begrijpelijke taal voor management
 
 ---
 
@@ -129,10 +236,12 @@ NetMonitor werkt samen met moderne AI-assistenten voor **intelligente analyse**.
 | Platform | Linux (Ubuntu/Debian) |
 | Database | PostgreSQL + TimescaleDB |
 | Interface | Modern Web Dashboard |
-| API | REST + WebSocket |
-| Integratie | MCP voor AI-assistenten |
+| API | REST + WebSocket + MCP HTTP API |
+| AI Integratie | 37 MCP tools met token auth |
 | Schaalbaarheid | Multi-sensor architectuur |
 | Performance | 1Gbps+ netwerkverkeer |
+| Forensics | PCAP capture met ring buffer |
+| TLS Analyse | JA3/JA3S fingerprinting |
 
 ---
 
@@ -143,18 +252,27 @@ NetMonitor werkt samen met moderne AI-assistenten voor **intelligente analyse**.
 - Malware download herkenning
 - Bekende kwaadaardige IP-adressen
 - Real-time reputation checks
+- JA3 malware fingerprint database
 
 ### Gedragsanalyse
 - Data exfiltratie (grote uploads)
 - Beaconing (regelmatige "check-ins" naar hackers)
 - Lateral movement (verspreiding binnen netwerk)
 - Ongebruikelijke verkeerspatronen
+- Device behavior learning
 
 ### Protocol Analyse
 - DNS tunneling (data verstopt in DNS)
 - Verdachte HTTP/HTTPS patronen
+- TLS/SSL anomalies (certificate issues, unusual ciphers)
 - Brute force aanvallen (wachtwoord raden)
 - Poortscanning
+
+### Netwerk Context
+- GeoIP locatie per verbinding
+- Service provider identificatie
+- Internal vs External traffic classificatie
+- Automatische device discovery
 
 ![Screenshot: Infographic met de verschillende detectie-types in een visueel aantrekkelijke layout - iconen voor elke categorie](./images/netmonitor-afb2.png)
 
@@ -174,7 +292,7 @@ NetMonitor werkt samen met moderne AI-assistenten voor **intelligente analyse**.
 - Centrale NetMonitor server
 - Sensoren op elke locatie/VLAN
 - Kiosk display bij IT-afdeling
-- AI-integratie voor rapportage
+- AI-integratie voor analyse en rapportage
 - **Investering:** 1-2 dagen implementatie
 
 ### Scenario 3: Enterprise (500+ medewerkers)
@@ -183,19 +301,8 @@ NetMonitor werkt samen met moderne AI-assistenten voor **intelligente analyse**.
 - Meerdere sensoren per locatie
 - PostgreSQL cluster voor high availability
 - Integratie met bestaande SIEM
+- PCAP forensics voor compliance
 - **Investering:** Projectmatige aanpak
-
----
-
-## Wat Klanten Zeggen
-
-> *"Na implementatie van NetMonitor ontdekten we binnen een week drie computers die communiceerden met verdachte servers. Zonder deze tool hadden we dit nooit geweten."*
->
-> — IT Manager, Productiebedrijf
-
-> *"De device classification bespaart ons enorm veel tijd. Geen vals alarm meer door streaming verkeer van smart TV's."*
->
-> — Security Officer, Retail organisatie
 
 ---
 
@@ -229,16 +336,19 @@ Onze experts helpen bij de productie-implementatie.
 | Categorie | Features |
 |-----------|----------|
 | **Monitoring** | Real-time packet analyse, Traffic visualisatie, Top talkers, System metrics |
-| **Detectie** | 30+ detectie types, Threat feeds, IP reputation, Behavior analysis |
+| **Detectie** | 30+ detectie types, Threat feeds, IP reputation, Behavior analysis, JA3 fingerprinting |
+| **TLS/HTTPS** | JA3/JA3S analyse, SNI monitoring, Certificate checks, Malware fingerprints |
+| **Forensics** | PCAP capture, Ring buffer, Flow export, Per-alert opname (NIS2 compliant) |
 | **Classificatie** | Device discovery, Behavior learning, Template matching, Alert suppression |
+| **GeoIP** | Land identificatie, Local/Private onderscheid, MaxMind database |
 | **Beheer** | Central dashboard, Multi-sensor, Remote config, Whitelist management |
-| **Integratie** | REST API, WebSocket, MCP AI tools, Database export |
+| **AI Integratie** | 37 MCP tools, Token auth, Permission scopes, Audit logging |
 
 ### B. Compliance & Security
 
 NetMonitor ondersteunt compliance met:
 - **AVG/GDPR**: Data blijft binnen uw eigen infrastructuur
-- **NIS2**: Incident detectie en rapportage capabilities
+- **NIS2**: Incident detectie, PCAP forensics en rapportage capabilities
 - **ISO 27001**: Onderdeel van security monitoring controls
 
 ### C. ROI Berekening
@@ -251,6 +361,20 @@ NetMonitor ondersteunt compliance met:
 | **Risicoreductie** | **€62.500/jaar** |
 
 *Exclusief reputatieschade, omzetverlies en herstelkosten.*
+
+### D. MCP API Tool Categorieën
+
+| Categorie | Aantal | Scope |
+|-----------|--------|-------|
+| Core Analysis | 5 | read_only |
+| Device Classification | 13 | mixed |
+| TLS Analysis | 3 | mixed |
+| PCAP Forensics | 5 | mixed |
+| Sensor Commands | 2 | mixed |
+| Whitelist Management | 3 | mixed |
+| Export Tools | 1 | read_only |
+| Config Management | 5 | mixed |
+| **Totaal** | **37** | - |
 
 ---
 
