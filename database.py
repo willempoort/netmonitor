@@ -2327,14 +2327,15 @@ class DatabaseManager:
             self._return_connection(conn)
 
     def get_devices_without_vendor(self) -> List[Dict]:
-        """Get all devices that have a MAC address but no vendor"""
+        """Get all devices that have a MAC address but no/unknown vendor"""
         conn = self._get_connection()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             cursor.execute('''
                 SELECT id, ip_address::text as ip_address, mac_address::text as mac_address
                 FROM devices
-                WHERE mac_address IS NOT NULL AND vendor IS NULL
+                WHERE mac_address IS NOT NULL
+                  AND (vendor IS NULL OR vendor = '' OR vendor = 'Unknown')
             ''')
             return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
