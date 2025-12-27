@@ -2258,12 +2258,14 @@ def api_create_template_from_device():
 
         # Optionally assign the template to the source device
         if data.get('assign_to_device', True):
-            db.assign_device_template(
-                ip_address=ip_address,
-                template_id=template_id,
-                confidence=0.8,
-                method='learned'
-            )
+            device_id = device.get('id')
+            if device_id:
+                db.assign_device_template(
+                    device_id=device_id,
+                    template_id=template_id,
+                    confidence=0.8,
+                    method='learned'
+                )
 
         return jsonify({
             'success': True,
