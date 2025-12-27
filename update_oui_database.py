@@ -55,6 +55,11 @@ OUI_TXT_URLS = [
 # Backup: Wireshark's manuf file
 WIRESHARK_URL = 'https://www.wireshark.org/download/automated/data/manuf'
 
+# User-Agent header to avoid 418 "I'm a teapot" bot detection
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (compatible; NetMonitor OUI Updater/1.0; +https://github.com/netmonitor)'
+}
+
 
 def download_ieee_csv(quiet: bool = False) -> str:
     """Download OUI database from IEEE in CSV format (preferred, daily updated)"""
@@ -65,7 +70,7 @@ def download_ieee_csv(quiet: bool = False) -> str:
     try:
         if not quiet:
             print(f"Downloading IEEE CSV from {OUI_CSV_URL}...")
-        response = requests.get(OUI_CSV_URL, timeout=120)
+        response = requests.get(OUI_CSV_URL, timeout=120, headers=HEADERS)
         response.raise_for_status()
         if not quiet:
             print(f"Downloaded {len(response.text):,} bytes")
@@ -84,7 +89,7 @@ def download_ieee_txt(quiet: bool = False) -> str:
         try:
             if not quiet:
                 print(f"Downloading from {url}...")
-            response = requests.get(url, timeout=120)
+            response = requests.get(url, timeout=120, headers=HEADERS)
             response.raise_for_status()
             if not quiet:
                 print(f"Downloaded {len(response.text):,} bytes")
@@ -106,7 +111,7 @@ def download_wireshark_manuf(quiet: bool = False) -> str:
     try:
         if not quiet:
             print(f"Downloading Wireshark manuf from {WIRESHARK_URL}...")
-        response = requests.get(WIRESHARK_URL, timeout=60)
+        response = requests.get(WIRESHARK_URL, timeout=60, headers=HEADERS)
         response.raise_for_status()
         if not quiet:
             print(f"Downloaded {len(response.text):,} bytes")
