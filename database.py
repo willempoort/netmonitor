@@ -1950,15 +1950,51 @@ class DatabaseManager:
         Args:
             return_existing: If True, return existing template ID when name conflicts.
                            If False, return None when name conflicts (default).
+
+        Note: If an inactive template with the same name exists, it will be
+              reactivated and updated with the new properties.
         """
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            # Use ON CONFLICT DO NOTHING to handle race conditions with multiple workers
+
+            # First check if an inactive template with this name exists
+            cursor.execute('''
+                SELECT id, is_active FROM device_templates
+                WHERE LOWER(name) = LOWER(%s)
+            ''', (name,))
+            existing = cursor.fetchone()
+
+            if existing:
+                template_id, is_active = existing
+                if not is_active:
+                    # Reactivate the inactive template and update its properties
+                    cursor.execute('''
+                        UPDATE device_templates
+                        SET is_active = TRUE,
+                            description = %s,
+                            icon = %s,
+                            category = %s,
+                            created_by = %s,
+                            updated_at = NOW()
+                        WHERE id = %s
+                    ''', (description, icon, category, created_by, template_id))
+                    conn.commit()
+                    self.logger.info(f"Device template reactivated: {name} (ID: {template_id})")
+                    return template_id
+                else:
+                    # Active template already exists
+                    if return_existing:
+                        self.logger.debug(f"Device template already exists: {name} (ID: {template_id})")
+                        return template_id
+                    else:
+                        self.logger.debug(f"Device template already exists, skipping: {name}")
+                        return None
+
+            # No existing template, create new one
             cursor.execute('''
                 INSERT INTO device_templates (name, description, icon, category, is_builtin, created_by)
                 VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT (name) DO NOTHING
                 RETURNING id
             ''', (name, description, icon, category, is_builtin, created_by))
             result = cursor.fetchone()
@@ -1967,17 +2003,7 @@ class DatabaseManager:
                 template_id = result[0]
                 self.logger.info(f"Device template created: {name} (ID: {template_id})")
                 return template_id
-            else:
-                # Template already exists
-                if return_existing:
-                    cursor.execute('SELECT id FROM device_templates WHERE name = %s', (name,))
-                    existing = cursor.fetchone()
-                    if existing:
-                        self.logger.debug(f"Device template already exists: {name} (ID: {existing[0]})")
-                        return existing[0]
-                else:
-                    self.logger.debug(f"Device template already exists, skipping: {name}")
-                return None
+            return None
         except Exception as e:
             conn.rollback()
             self.logger.error(f"Error creating device template: {e}")
