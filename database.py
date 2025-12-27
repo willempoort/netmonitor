@@ -2390,7 +2390,7 @@ class DatabaseManager:
             self._return_connection(conn)
 
     def delete_device(self, device_id: int) -> bool:
-        """Delete a device (soft delete)"""
+        """Delete a device by ID (soft delete)"""
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
@@ -2404,6 +2404,28 @@ class DatabaseManager:
         except Exception as e:
             conn.rollback()
             self.logger.error(f"Error deleting device: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    def delete_device_by_ip(self, ip_address: str) -> bool:
+        """Delete a device by IP address (soft delete)"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            # Handle both with and without CIDR notation
+            # Try exact match first, then with /32 suffix
+            cursor.execute('''
+                UPDATE devices
+                SET is_active = FALSE
+                WHERE (ip_address = %s OR ip_address = %s OR ip_address::text = %s)
+                  AND is_active = TRUE
+            ''', (ip_address, f"{ip_address}/32", ip_address.rstrip('/32')))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error deleting device by IP {ip_address}: {e}")
             return False
         finally:
             self._return_connection(conn)

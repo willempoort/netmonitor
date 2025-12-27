@@ -1873,7 +1873,7 @@ def api_assign_device_template(ip_address):
 def api_delete_device(ip_address):
     """Delete a device from the database"""
     try:
-        success = db.delete_device(ip_address)
+        success = db.delete_device_by_ip(ip_address)
         if success:
             return jsonify({'success': True, 'message': 'Device deleted'})
         else:
