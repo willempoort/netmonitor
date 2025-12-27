@@ -2413,16 +2413,23 @@ class DatabaseManager:
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            # Handle both with and without CIDR notation
-            # Try exact match first, then with /32 suffix
+            # Normalize IP address - remove /32 suffix if present
+            ip_clean = ip_address.replace('/32', '')
+
+            # Use host() function to compare just the IP without CIDR mask
             cursor.execute('''
                 UPDATE devices
                 SET is_active = FALSE
-                WHERE (ip_address = %s OR ip_address = %s OR ip_address::text = %s)
+                WHERE (host(ip_address) = %s OR ip_address::text = %s OR ip_address::text = %s)
                   AND is_active = TRUE
-            ''', (ip_address, f"{ip_address}/32", ip_address.rstrip('/32')))
+            ''', (ip_clean, ip_clean, f"{ip_clean}/32"))
             conn.commit()
-            return cursor.rowcount > 0
+            deleted = cursor.rowcount > 0
+            if deleted:
+                self.logger.info(f"Deleted device: {ip_address}")
+            else:
+                self.logger.warning(f"Device not found for deletion: {ip_address}")
+            return deleted
         except Exception as e:
             conn.rollback()
             self.logger.error(f"Error deleting device by IP {ip_address}: {e}")
