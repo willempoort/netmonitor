@@ -1798,7 +1798,7 @@ If no local database is available, NetMonitor falls back to the ip-api.com web s
 
 ### MAC Vendor Database (OUI)
 
-NetMonitor identifies device manufacturers using MAC address OUI (Organizationally Unique Identifier) lookup. The default database contains ~450 entries. For better device recognition, update to the full IEEE database with 30,000+ entries.
+NetMonitor identifies device manufacturers using MAC address OUI (Organizationally Unique Identifier) lookup. The default database contains ~450 entries. For better device recognition, update to the full IEEE database with 35,000+ entries.
 
 **Update OUI Database:**
 
@@ -1808,9 +1808,11 @@ python3 update_oui_database.py
 ```
 
 This script:
-- Downloads the official IEEE OUI database (30,000+ entries)
-- Falls back to Wireshark's manuf file if IEEE is unavailable
-- Adds common IoT vendor entries (Sonos, Hue, Shelly, ESP32, etc.)
+- Downloads the official IEEE OUI CSV database (35,000+ entries, **daily updated**)
+- Primary source: https://standards-oui.ieee.org/oui/oui.csv
+- Falls back to IEEE TXT format if CSV unavailable
+- Falls back to Wireshark's manuf file as last resort
+- Adds common IoT vendor entries (Sonos, Hue, Shelly, ESP32, Tuya, etc.)
 - Saves to `data/oui_database.json`
 
 **Schedule Monthly Updates:**

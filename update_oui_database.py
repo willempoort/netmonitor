@@ -8,21 +8,26 @@ Downloads the official IEEE OUI database and converts it to JSON format
 for use with NetMonitor's device discovery module.
 
 The IEEE maintains three registries:
-- MA-L (OUI): 24-bit prefix (most common, ~30,000 entries)
+- MA-L (OUI): 24-bit prefix (most common, ~35,000 entries)
 - MA-M: 28-bit prefix (~5,000 entries)
 - MA-S (OUI-36): 36-bit prefix (~3,000 entries)
 
 This script downloads MA-L which covers the vast majority of devices.
 
-Sources:
-- Official: https://standards-oui.ieee.org/oui/oui.txt
-- CSV format: https://standards-oui.ieee.org/oui/oui.csv
+Primary source: IEEE CSV (daily updated)
+- https://standards-oui.ieee.org/oui/oui.csv
+
+Fallback sources:
+- IEEE TXT: https://standards-oui.ieee.org/oui/oui.txt
+- Wireshark manuf: https://www.wireshark.org/download/automated/data/manuf
 
 Usage:
     python update_oui_database.py [--output PATH] [--quiet]
 """
 
 import argparse
+import csv
+import io
 import json
 import os
 import re
@@ -38,27 +43,48 @@ except ImportError:
     REQUESTS_AVAILABLE = False
 
 
-# IEEE OUI database URLs
-OUI_URLS = [
+# IEEE OUI database URLs - CSV is preferred (daily updated, easier to parse)
+OUI_CSV_URL = 'https://standards-oui.ieee.org/oui/oui.csv'
+
+# Fallback: TXT format
+OUI_TXT_URLS = [
     'https://standards-oui.ieee.org/oui/oui.txt',
     'http://standards-oui.ieee.org/oui/oui.txt',
 ]
 
-# Backup: Wireshark's manuf file (more frequently updated)
+# Backup: Wireshark's manuf file
 WIRESHARK_URL = 'https://www.wireshark.org/download/automated/data/manuf'
 
 
-def download_ieee_oui(quiet: bool = False) -> str:
-    """Download OUI database from IEEE"""
+def download_ieee_csv(quiet: bool = False) -> str:
+    """Download OUI database from IEEE in CSV format (preferred, daily updated)"""
     if not REQUESTS_AVAILABLE:
         print("ERROR: requests library not installed. Run: pip install requests")
         sys.exit(1)
 
-    for url in OUI_URLS:
+    try:
+        if not quiet:
+            print(f"Downloading IEEE CSV from {OUI_CSV_URL}...")
+        response = requests.get(OUI_CSV_URL, timeout=120)
+        response.raise_for_status()
+        if not quiet:
+            print(f"Downloaded {len(response.text):,} bytes")
+        return response.text
+    except requests.RequestException as e:
+        raise Exception(f"Failed to download IEEE CSV: {e}")
+
+
+def download_ieee_txt(quiet: bool = False) -> str:
+    """Download OUI database from IEEE in TXT format (fallback)"""
+    if not REQUESTS_AVAILABLE:
+        print("ERROR: requests library not installed. Run: pip install requests")
+        sys.exit(1)
+
+    for url in OUI_TXT_URLS:
         try:
             if not quiet:
                 print(f"Downloading from {url}...")
-            response = requests.get(url, timeout=60)
+            response = requests.get(url, timeout=120)
             response.raise_for_status()
             if not quiet:
                 print(f"Downloaded {len(response.text):,} bytes")
@@ -68,7 +94,7 @@ def download_ieee_oui(quiet: bool = False) -> str:
                 print(f"  Failed: {e}")
             continue
 
-    raise Exception("Failed to download OUI database from all sources")
+    raise Exception("Failed to download OUI TXT from all sources")
 
 
 def download_wireshark_manuf(quiet: bool = False) -> str:
@@ -89,9 +115,52 @@ def download_wireshark_manuf(quiet: bool = False) -> str:
         raise Exception(f"Failed to download Wireshark manuf: {e}")
 
 
-def parse_ieee_oui(content: str, quiet: bool = False) -> dict:
+def parse_ieee_csv(content: str, quiet: bool = False) -> dict:
     """
-    Parse IEEE OUI format.
+    Parse IEEE OUI CSV format (preferred, daily updated).
+
+    CSV columns:
+    Registry,Assignment,Organization Name,Organization Address
+
+    Example:
+    MA-L,000000,XEROX CORPORATION,"XEROX CORPORATION..."
+    MA-L,000001,XEROX CORPORATION,"M/S 105-50C..."
+    """
+    oui_dict = {}
+
+    # Use csv reader to handle quoted fields properly
+    reader = csv.reader(io.StringIO(content))
+
+    # Skip header row
+    try:
+        header = next(reader)
+        if not quiet:
+            print(f"CSV columns: {header}")
+    except StopIteration:
+        return oui_dict
+
+    for row in reader:
+        if len(row) >= 3:
+            # Column 1 is Assignment (OUI hex), Column 2 is Organization Name
+            oui = row[1].strip().upper()
+            vendor = row[2].strip()
+
+            # Validate OUI format (should be 6 hex chars)
+            if len(oui) == 6 and all(c in '0123456789ABCDEF' for c in oui):
+                # Clean up vendor name
+                vendor = re.sub(r'\s+', ' ', vendor)  # Normalize whitespace
+                if vendor:  # Only add if vendor name is not empty
+                    oui_dict[oui] = vendor
+
+    if not quiet:
+        print(f"Parsed {len(oui_dict):,} OUI entries from IEEE CSV")
+
+    return oui_dict
+
+
+def parse_ieee_txt(content: str, quiet: bool = False) -> dict:
+    """
+    Parse IEEE OUI TXT format (fallback).
 
     Format example:
     00-00-00   (hex)		XEROX CORPORATION
@@ -113,7 +182,7 @@ def parse_ieee_oui(content: str, quiet: bool = False) -> dict:
             oui_dict[oui] = vendor
 
     if not quiet:
-        print(f"Parsed {len(oui_dict):,} OUI entries from IEEE format")
+        print(f"Parsed {len(oui_dict):,} OUI entries from IEEE TXT")
 
     return oui_dict
 
@@ -278,7 +347,7 @@ def add_common_vendors(oui_dict: dict) -> dict:
     return oui_dict
 
 
-def save_oui_database(oui_dict: dict, output_path: str, quiet: bool = False) -> None:
+def save_oui_database(oui_dict: dict, output_path: str, quiet: bool = False, source: str = None) -> None:
     """Save OUI database to JSON file"""
 
     # Sort by OUI for consistency
@@ -286,14 +355,17 @@ def save_oui_database(oui_dict: dict, output_path: str, quiet: bool = False) -> 
 
     data = {
         "_comment": "MAC Address OUI Database - Organizationally Unique Identifiers",
-        "_updated": datetime.now().strftime("%Y-%m-%d"),
+        "_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "_entries": len(sorted_oui),
-        "_source": "IEEE Standards Association + Wireshark manuf",
+        "_source": source or "IEEE Standards Association + Wireshark manuf",
+        "_url": "https://standards-oui.ieee.org/oui/oui.csv",
         "oui": sorted_oui
     }
 
     # Ensure directory exists
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
 
     with open(output_path, 'w') as f:
         json.dump(data, f, indent=2)
@@ -331,16 +403,28 @@ def main():
 
     try:
         oui_data = {}
+        source_used = None
 
-        # Try IEEE first (unless wireshark-only)
+        # Try IEEE CSV first (daily updated, preferred)
         if not args.wireshark_only:
             try:
-                ieee_content = download_ieee_oui(args.quiet)
-                oui_data = parse_ieee_oui(ieee_content, args.quiet)
+                csv_content = download_ieee_csv(args.quiet)
+                oui_data = parse_ieee_csv(csv_content, args.quiet)
+                source_used = "IEEE CSV (daily updated)"
             except Exception as e:
                 if not args.quiet:
-                    print(f"IEEE download failed: {e}")
-                    print("Falling back to Wireshark manuf file...")
+                    print(f"IEEE CSV download failed: {e}")
+                    print("Trying IEEE TXT format...")
+
+                # Try TXT format as fallback
+                try:
+                    txt_content = download_ieee_txt(args.quiet)
+                    oui_data = parse_ieee_txt(txt_content, args.quiet)
+                    source_used = "IEEE TXT"
+                except Exception as e2:
+                    if not args.quiet:
+                        print(f"IEEE TXT download failed: {e2}")
+                        print("Falling back to Wireshark manuf file...")
 
         # Always try Wireshark as supplement/fallback
         try:
@@ -349,8 +433,11 @@ def main():
 
             if oui_data:
                 oui_data = merge_databases(oui_data, ws_data)
+                if not args.quiet:
+                    print(f"Merged with Wireshark data")
             else:
                 oui_data = ws_data
+                source_used = "Wireshark manuf"
         except Exception as e:
             if not args.quiet:
                 print(f"Wireshark download failed: {e}")
@@ -361,10 +448,11 @@ def main():
         oui_data = add_common_vendors(oui_data)
 
         # Save to file
-        save_oui_database(oui_data, args.output, args.quiet)
+        save_oui_database(oui_data, args.output, args.quiet, source_used)
 
         if not args.quiet:
             print(f"\nSuccess! OUI database updated with {len(oui_data):,} entries")
+            print(f"Primary source: {source_used}")
             print(f"Location: {args.output}")
 
     except Exception as e:

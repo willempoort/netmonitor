@@ -595,7 +595,7 @@ De apparatenlijst toont alle ontdekte apparaten met:
 | **Last Seen** | Wanneer het apparaat laatst verkeer genereerde |
 | **Actions** | Actieknoppen |
 
-**Tip:** De MAC vendor database bevat 30.000+ fabrikanten inclusief populaire IoT merken zoals Sonos, Philips Hue, Shelly, Tuya, en meer. Administrators kunnen de database bijwerken met `python3 update_oui_database.py`.
+**Tip:** De MAC vendor database bevat 35.000+ fabrikanten (dagelijks bijgewerkt van IEEE) inclusief populaire IoT merken zoals Sonos, Philips Hue, Shelly, Tuya, en meer. Administrators kunnen de database bijwerken met `python3 update_oui_database.py`.
 
 #### Learning Status
 
