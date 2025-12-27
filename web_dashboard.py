@@ -2072,10 +2072,20 @@ def api_get_device_learning_status(ip_address):
             status = 'not_started'
             message = 'No traffic analyzed yet'
             ready_for_template = False
+            packet_count = 0
+            unique_ports = 0
         else:
-            packet_count = learned_behavior.get('packet_count', 0)
-            unique_ports = len(learned_behavior.get('typical_ports', []))
-            unique_destinations = len(learned_behavior.get('typical_destinations', []))
+            # Get packet count from traffic_summary (the actual structure)
+            traffic_summary = learned_behavior.get('traffic_summary', {})
+            packet_count = traffic_summary.get('total_packets', 0)
+
+            # Get unique ports from ports structure
+            ports_data = learned_behavior.get('ports', {})
+            outbound_ports = ports_data.get('outbound_destination_ports', [])
+            inbound_ports = ports_data.get('inbound_source_ports', [])
+            unique_ports = len(set(outbound_ports + inbound_ports))
+
+            unique_destinations = traffic_summary.get('unique_outbound_destinations', 0)
 
             if packet_count < 100:
                 status = 'learning'
@@ -2097,10 +2107,10 @@ def api_get_device_learning_status(ip_address):
             'message': message,
             'ready_for_template': ready_for_template,
             'statistics': {
-                'packet_count': learned_behavior.get('packet_count', 0) if learned_behavior else 0,
-                'unique_ports': len(learned_behavior.get('typical_ports', [])) if learned_behavior else 0,
-                'unique_destinations': len(learned_behavior.get('typical_destinations', [])) if learned_behavior else 0,
-                'protocols': learned_behavior.get('protocols', []) if learned_behavior else []
+                'packet_count': packet_count,
+                'unique_ports': unique_ports,
+                'unique_destinations': learned_behavior.get('traffic_summary', {}).get('unique_outbound_destinations', 0) if learned_behavior else 0,
+                'protocols': learned_behavior.get('ports', {}).get('protocols', []) if learned_behavior else []
             }
         })
 
@@ -2141,8 +2151,9 @@ def api_create_template_from_device():
                 'error': 'No learned behavior available for this device'
             }), 400
 
-        # Check if enough data
-        packet_count = learned_behavior.get('packet_count', 0)
+        # Check if enough data - get packet count from traffic_summary structure
+        traffic_summary = learned_behavior.get('traffic_summary', {})
+        packet_count = traffic_summary.get('total_packets', 0)
         if packet_count < 50:
             return jsonify({
                 'success': False,
@@ -2167,10 +2178,13 @@ def api_create_template_from_device():
 
         behaviors_added = 0
 
-        # Add allowed ports behavior
-        typical_ports = learned_behavior.get('typical_ports', [])
-        if typical_ports:
-            ports = [p['port'] for p in typical_ports[:20]]
+        # Get ports data from the correct structure
+        ports_data = learned_behavior.get('ports', {})
+
+        # Add allowed outbound ports behavior
+        outbound_ports = ports_data.get('outbound_destination_ports', [])
+        if outbound_ports:
+            ports = outbound_ports[:20]  # Limit to 20 ports
             if ports:
                 db.add_template_behavior(
                     template_id=template_id,
@@ -2181,10 +2195,10 @@ def api_create_template_from_device():
                 )
                 behaviors_added += 1
 
-        # Add server ports behavior
-        server_ports = learned_behavior.get('server_ports', [])
-        if server_ports:
-            ports = [p['port'] for p in server_ports[:10]]
+        # Add server ports behavior (inbound)
+        inbound_ports = ports_data.get('inbound_source_ports', [])
+        if inbound_ports:
+            ports = inbound_ports[:10]  # Limit to 10 ports
             if ports:
                 db.add_template_behavior(
                     template_id=template_id,
@@ -2196,7 +2210,7 @@ def api_create_template_from_device():
                 behaviors_added += 1
 
         # Add protocols behavior
-        protocols = learned_behavior.get('protocols', [])
+        protocols = ports_data.get('protocols', [])
         if protocols:
             db.add_template_behavior(
                 template_id=template_id,
@@ -2207,28 +2221,30 @@ def api_create_template_from_device():
             )
             behaviors_added += 1
 
-        # Add traffic pattern behavior
-        traffic_pattern = learned_behavior.get('traffic_pattern')
-        if traffic_pattern:
-            params = {}
-            if traffic_pattern == 'streaming':
-                params = {'high_bandwidth': True, 'streaming': True}
-            elif traffic_pattern == 'server':
-                params = {'high_connection_rate': True}
-            elif traffic_pattern == 'continuous':
-                params = {'continuous': True}
-            elif traffic_pattern == 'periodic':
-                params = {'periodic': True, 'low_frequency': True}
+        # Add traffic pattern behavior based on characteristics
+        characteristics = learned_behavior.get('characteristics', {})
+        traffic_pattern = None
+        params = {}
 
-            if params:
-                db.add_template_behavior(
-                    template_id=template_id,
-                    behavior_type='traffic_pattern',
-                    parameters=params,
-                    action='allow',
-                    description=f"Learned traffic pattern: {traffic_pattern}"
-                )
-                behaviors_added += 1
+        if characteristics.get('is_high_bandwidth'):
+            traffic_pattern = 'streaming'
+            params = {'high_bandwidth': True, 'streaming': True}
+        elif characteristics.get('is_server'):
+            traffic_pattern = 'server'
+            params = {'high_connection_rate': True}
+        elif characteristics.get('is_low_frequency'):
+            traffic_pattern = 'periodic'
+            params = {'periodic': True, 'low_frequency': True}
+
+        if traffic_pattern and params:
+            db.add_template_behavior(
+                template_id=template_id,
+                behavior_type='traffic_pattern',
+                parameters=params,
+                action='allow',
+                description=f"Learned traffic pattern: {traffic_pattern}"
+            )
+            behaviors_added += 1
 
         # Optionally assign the template to the source device
         if data.get('assign_to_device', True):
