@@ -2166,8 +2166,8 @@ def api_create_template_from_device():
             if device.get('hostname'):
                 description += f" ({device['hostname']})"
 
-        # Check if template name already exists
-        existing_templates = db.get_device_templates()
+        # Check if template name already exists (include inactive templates)
+        existing_templates = db.get_device_templates(include_inactive=True)
         if any(t.get('name', '').lower() == template_name.lower() for t in existing_templates):
             return jsonify({
                 'success': False,
@@ -2372,6 +2372,14 @@ def api_internal_create_template_from_device():
             description = f"Auto-generated from device {ip_address}"
             if device.get('hostname'):
                 description += f" ({device['hostname']})"
+
+        # Check if template name already exists (include inactive templates)
+        existing_templates = db.get_device_templates(include_inactive=True)
+        if any(t.get('name', '').lower() == template_name.lower() for t in existing_templates):
+            return jsonify({
+                'success': False,
+                'error': f'Template with name "{template_name}" already exists'
+            }), 400
 
         template_id = db.create_device_template(
             name=template_name,
