@@ -2212,12 +2212,14 @@ def api_create_template_from_device():
         # Add protocols behavior
         protocols = ports_data.get('protocols', [])
         if protocols:
+            # Convert to strings for description (protocols may be integers)
+            protocol_strs = [str(p) for p in protocols]
             db.add_template_behavior(
                 template_id=template_id,
                 behavior_type='allowed_protocols',
                 parameters={'protocols': protocols},
                 action='allow',
-                description=f"Learned protocols: {', '.join(protocols)}"
+                description=f"Learned protocols: {', '.join(protocol_strs)}"
             )
             behaviors_added += 1
 
