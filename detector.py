@@ -218,9 +218,10 @@ class ThreatDetector:
         src_ip = ip_layer.src
         dst_ip = ip_layer.dst
 
-        # Skip whitelisted IPs (both source AND destination)
-        # This allows whitelisting multicast destinations like 224.0.0.0/4
-        if self._is_whitelisted(src_ip) or self._is_whitelisted(dst_ip):
+        # Skip whitelisted source IPs only
+        # Destination is NOT checked - attacks targeting whitelisted devices should still be detected
+        # Use device templates for destination-based filtering instead
+        if self._is_whitelisted(src_ip):
             return threats
 
         # Check blacklist (static config)
