@@ -55,6 +55,12 @@ try:
 except ImportError:
     ProtocolParser = None
 
+# Import Enhanced Encrypted Traffic Analyzer
+try:
+    from encrypted_traffic_analyzer import EncryptedTrafficAnalyzer
+except ImportError:
+    EncryptedTrafficAnalyzer = None
+
 
 class ThreatDetector:
     """Detecteert verschillende soorten verdacht netwerkverkeer"""
@@ -114,6 +120,15 @@ class ThreatDetector:
                 self.logger.info("ProtocolParser initialized for SMB/LDAP deep inspection")
             except Exception as e:
                 self.logger.warning(f"Could not initialize ProtocolParser: {e}")
+
+        # Initialize Enhanced Encrypted Traffic Analyzer
+        self.encrypted_traffic_analyzer = None
+        if EncryptedTrafficAnalyzer and config.get('thresholds', {}).get('encrypted_traffic', {}).get('enabled', True):
+            try:
+                self.encrypted_traffic_analyzer = EncryptedTrafficAnalyzer(config, db_manager=db_manager)
+                self.logger.info("EncryptedTrafficAnalyzer initialized for advanced TLS analysis")
+            except Exception as e:
+                self.logger.warning(f"Could not initialize EncryptedTrafficAnalyzer: {e}")
 
         # Tracking data structures
         self.port_scan_tracker = defaultdict(lambda: {
@@ -383,6 +398,11 @@ class ThreatDetector:
         if self.protocol_parser:
             protocol_threats = self.protocol_parser.analyze_packet(packet)
             threats.extend(protocol_threats)
+
+        # Enhanced encrypted traffic analysis (ESNI/ECH, domain fronting, cert analysis)
+        if self.encrypted_traffic_analyzer:
+            encrypted_threats = self.encrypted_traffic_analyzer.analyze_packet(packet)
+            threats.extend(encrypted_threats)
 
         # Apply template-based alert suppression
         # This filters out alerts for expected device behavior

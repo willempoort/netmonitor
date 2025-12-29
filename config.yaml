@@ -206,6 +206,15 @@ thresholds:
     decay_rate: 0.1                  # Risk score decay rate per hour (10%)
     decay_interval: 3600             # Decay check interval in seconden
 
+  # Enhanced encrypted traffic analysis
+  encrypted_traffic:
+    enabled: true
+    detect_weak_ciphers: true        # Detecteer zwakke/verouderde cipher suites
+    detect_self_signed: true         # Detecteer self-signed certificaten
+    detect_expired_certs: true       # Detecteer verlopen certificaten
+    detect_domain_fronting: true     # Detecteer domain fronting (C2 evasion)
+    detect_esni_ech: true            # Detecteer ESNI/ECH (verborgen hostnames)
+
 # SOAR (Security Orchestration, Automation and Response)
 soar:
   enabled: true
