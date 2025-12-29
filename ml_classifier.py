@@ -661,7 +661,9 @@ class DeviceClassifier:
                 'confidence': classification['confidence'],
                 'method': classification['method']
             }
-            results['devices'].append(device_result)
+            # Only include first 100 devices in response to avoid huge payloads
+            if len(results['devices']) < 100:
+                results['devices'].append(device_result)
 
             if classification['device_type'] != 'unknown':
                 results['classified'] += 1
@@ -681,7 +683,9 @@ class DeviceClassifier:
             else:
                 results['unknown'] += 1
 
+        # Convert defaultdict to regular dict for JSON serialization
         results['by_type'] = dict(results['by_type'])
+        results['devices_truncated'] = len(devices) > 100
         return results
 
     def get_status(self) -> Dict:
