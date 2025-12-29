@@ -139,6 +139,11 @@ def init_dashboard(config_file='config.yaml'):
     web_auth = WebAuthManager(db)
     logger.info("Web authentication manager initialized")
 
+    # Initialize ML classifier (if sklearn is available)
+    ml = get_ml_classifier()
+    if ml:
+        logger.info("ML Classifier initialized and background training started")
+
     logger.info("Web Dashboard geïnitialiseerd")
 
 
@@ -3561,8 +3566,16 @@ def get_ml_classifier():
         try:
             from ml_classifier import MLClassifierManager, SKLEARN_AVAILABLE
             if SKLEARN_AVAILABLE:
-                _ml_classifier_manager = MLClassifierManager(db_manager=db)
+                # Pass config for ML settings
+                ml_config = config if config else {}
+                _ml_classifier_manager = MLClassifierManager(db_manager=db, config=ml_config)
                 logger.info("ML Classifier Manager initialized")
+
+                # Auto-start background training if enabled in config
+                auto_train = ml_config.get('ml', {}).get('auto_train', True)
+                if auto_train:
+                    _ml_classifier_manager.start_background_training()
+                    logger.info("ML background training auto-started")
             else:
                 logger.warning("scikit-learn not available, ML classification disabled")
         except ImportError as e:

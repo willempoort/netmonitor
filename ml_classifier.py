@@ -959,6 +959,15 @@ class MLClassifierManager:
                 result = self.classifier.train()
                 if result.get('success'):
                     self.logger.info(f"Classifier training complete: {result.get('message')}")
+
+                    # Auto-classify all devices and update database
+                    auto_classify = self.config.get('ml', {}).get('auto_classify', True)
+                    if auto_classify:
+                        classify_result = self.classifier.classify_all_devices(update_db=True)
+                        self.logger.info(
+                            f"Auto-classification complete: {classify_result.get('classified')} classified, "
+                            f"{classify_result.get('updated')} updated in database"
+                        )
                 else:
                     self.logger.warning(f"Classifier training failed: {result.get('error')}")
 
