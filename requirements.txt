@@ -16,3 +16,6 @@ pyotp>=2.9.0
 qrcode>=7.4.2
 argon2-cffi>=23.1.0
 Pillow>=10.1.0
+# ML device classification (optional - graceful fallback if not installed)
+numpy>=1.24.0
+scikit-learn>=1.3.0

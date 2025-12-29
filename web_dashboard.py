@@ -3548,6 +3548,146 @@ def api_get_device_classification_stats():
         return jsonify({'success': False, 'error': str(e), 'trace': error_trace}), 500
 
 
+# ==================== ML Classification API ====================
+
+# Global ML classifier manager (initialized lazily)
+_ml_classifier_manager = None
+
+
+def get_ml_classifier():
+    """Get or create ML classifier manager."""
+    global _ml_classifier_manager
+    if _ml_classifier_manager is None:
+        try:
+            from ml_classifier import MLClassifierManager, SKLEARN_AVAILABLE
+            if SKLEARN_AVAILABLE:
+                _ml_classifier_manager = MLClassifierManager(db_manager=db)
+                logger.info("ML Classifier Manager initialized")
+            else:
+                logger.warning("scikit-learn not available, ML classification disabled")
+        except ImportError as e:
+            logger.warning(f"ML Classifier not available: {e}")
+    return _ml_classifier_manager
+
+
+@app.route('/api/ml/status')
+@login_required
+def api_ml_status():
+    """Get ML classifier status and statistics."""
+    ml = get_ml_classifier()
+    if not ml:
+        return jsonify({
+            'success': True,
+            'available': False,
+            'message': 'ML classification not available (scikit-learn not installed)'
+        })
+
+    return jsonify({
+        'success': True,
+        'available': True,
+        'status': ml.get_status()
+    })
+
+
+@app.route('/api/ml/train', methods=['POST'])
+@login_required
+def api_ml_train():
+    """Train ML classification models."""
+    ml = get_ml_classifier()
+    if not ml:
+        return jsonify({
+            'success': False,
+            'error': 'ML classification not available'
+        }), 400
+
+    try:
+        result = ml.train_models()
+        return jsonify({
+            'success': result.get('success', False),
+            'result': result
+        })
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"Error training ML models: {e}\n{error_trace}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/ml/classify/<path:ip_address>')
+@login_required
+def api_ml_classify_device(ip_address):
+    """Classify a single device using ML."""
+    ml = get_ml_classifier()
+    if not ml:
+        return jsonify({
+            'success': False,
+            'error': 'ML classification not available'
+        }), 400
+
+    try:
+        device = db.get_device_by_ip(ip_address)
+        if not device:
+            return jsonify({'success': False, 'error': 'Device not found'}), 404
+
+        result = ml.classify_device(device)
+        return jsonify({
+            'success': True,
+            'ip_address': ip_address,
+            'result': result
+        })
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"Error classifying device {ip_address}: {e}\n{error_trace}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/ml/classify-all', methods=['POST'])
+@login_required
+def api_ml_classify_all():
+    """Classify all devices using ML."""
+    ml = get_ml_classifier()
+    if not ml:
+        return jsonify({
+            'success': False,
+            'error': 'ML classification not available'
+        }), 400
+
+    try:
+        data = request.get_json() or {}
+        update_db = data.get('update_db', False)
+
+        result = ml.classifier.classify_all_devices(update_db=update_db)
+        return jsonify({
+            'success': True,
+            'result': result
+        })
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"Error classifying all devices: {e}\n{error_trace}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/ml/start-background-training', methods=['POST'])
+@login_required
+def api_ml_start_background_training():
+    """Start background ML training thread."""
+    ml = get_ml_classifier()
+    if not ml:
+        return jsonify({
+            'success': False,
+            'error': 'ML classification not available'
+        }), 400
+
+    try:
+        ml.start_background_training()
+        return jsonify({
+            'success': True,
+            'message': 'Background training started'
+        })
+    except Exception as e:
+        logger.error(f"Error starting background training: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ==================== WebSocket Events ====================
 
 @socketio.on('connect')

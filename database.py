@@ -2419,6 +2419,32 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
+    def update_device_classification(self, device_id: int,
+                                     classification_method: str,
+                                     classification_confidence: float) -> bool:
+        """
+        Update only the classification fields of a device (not the template).
+        Used by ML classifier to store classification results.
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE devices
+                SET classification_method = %s,
+                    classification_confidence = %s,
+                    last_seen = NOW()
+                WHERE id = %s
+            ''', (classification_method, classification_confidence, device_id))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error updating device classification: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
     def delete_device(self, device_id: int) -> bool:
         """Delete a device by ID (soft delete)"""
         conn = self._get_connection()
