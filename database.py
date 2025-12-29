@@ -666,9 +666,12 @@ class DatabaseManager:
             # Convert metadata dict to JSON
             metadata_json = json.dumps(alert.get('metadata', {})) if alert.get('metadata') else None
 
+            # Get sensor_id from alert (defaults to 'central' in DB if not provided)
+            sensor_id = alert.get('sensor_id')
+
             cursor.execute('''
-                INSERT INTO alerts (severity, threat_type, source_ip, destination_ip, description, metadata)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO alerts (severity, threat_type, source_ip, destination_ip, description, metadata, sensor_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             ''', (
                 alert.get('severity', 'INFO'),
@@ -676,7 +679,8 @@ class DatabaseManager:
                 alert.get('source_ip'),
                 alert.get('destination_ip'),
                 alert.get('description', ''),
-                metadata_json
+                metadata_json,
+                sensor_id
             ))
 
             alert_id = cursor.fetchone()[0]
