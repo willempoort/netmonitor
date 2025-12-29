@@ -3688,6 +3688,75 @@ def api_ml_start_background_training():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# Internal ML endpoints (localhost access for MCP/CLI)
+@app.route('/api/internal/ml/status')
+@local_or_login_required
+def api_internal_ml_status():
+    """Internal API: Get ML status (localhost access)."""
+    ml = get_ml_classifier()
+    if not ml:
+        return jsonify({
+            'success': True,
+            'available': False,
+            'message': 'ML classification not available (scikit-learn not installed)'
+        })
+    return jsonify({
+        'success': True,
+        'available': True,
+        'status': ml.get_status()
+    })
+
+
+@app.route('/api/internal/ml/train', methods=['POST'])
+@local_or_login_required
+def api_internal_ml_train():
+    """Internal API: Train ML models (localhost access)."""
+    ml = get_ml_classifier()
+    if not ml:
+        return jsonify({'success': False, 'error': 'ML classification not available'}), 400
+    try:
+        result = ml.train_models()
+        return jsonify({'success': result.get('success', False), 'result': result})
+    except Exception as e:
+        logger.error(f"Error training ML models: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/internal/ml/classify/<path:ip_address>')
+@local_or_login_required
+def api_internal_ml_classify_device(ip_address):
+    """Internal API: Classify a device (localhost access)."""
+    ml = get_ml_classifier()
+    if not ml:
+        return jsonify({'success': False, 'error': 'ML classification not available'}), 400
+    try:
+        device = db.get_device_by_ip(ip_address)
+        if not device:
+            return jsonify({'success': False, 'error': 'Device not found'}), 404
+        result = ml.classify_device(device)
+        return jsonify({'success': True, 'ip_address': ip_address, 'result': result})
+    except Exception as e:
+        logger.error(f"Error classifying device {ip_address}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/internal/ml/classify-all', methods=['POST'])
+@local_or_login_required
+def api_internal_ml_classify_all():
+    """Internal API: Classify all devices (localhost access)."""
+    ml = get_ml_classifier()
+    if not ml:
+        return jsonify({'success': False, 'error': 'ML classification not available'}), 400
+    try:
+        data = request.get_json() or {}
+        update_db = data.get('update_db', False)
+        result = ml.classifier.classify_all_devices(update_db=update_db)
+        return jsonify({'success': True, 'result': result})
+    except Exception as e:
+        logger.error(f"Error classifying all devices: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ==================== WebSocket Events ====================
 
 @socketio.on('connect')
