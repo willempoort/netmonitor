@@ -9,18 +9,17 @@ Type=simple
 User=root
 WorkingDirectory=__INSTALL_DIR__
 
-# Load environment variables from .env
-EnvironmentFile=-__INSTALL_DIR__/.env
-EnvironmentFile=-/etc/netmonitor/netmonitor.env
-
-# Set defaults for MCP API (used if not defined in .env)
-# These MUST be set here because systemd doesn't support ${VAR:-default} in ExecStart
+# Set defaults first - these can be overridden by EnvironmentFile
 Environment="MCP_API_HOST=0.0.0.0"
 Environment="MCP_API_PORT=8000"
 Environment="PYTHONUNBUFFERED=1"
+Environment="LOG_DIR=/var/log/netmonitor"
+
+# Load environment variables from .env (overrides defaults above)
+EnvironmentFile=-__INSTALL_DIR__/.env
+EnvironmentFile=-/etc/netmonitor/netmonitor.env
 
 # Start MCP HTTP API server
-# Note: Environment variables from EnvironmentFile override the defaults above
 ExecStart=__INSTALL_DIR__/venv/bin/python3 __INSTALL_DIR__/mcp_server/http_server.py \
     --host $MCP_API_HOST \
     --port $MCP_API_PORT
@@ -32,7 +31,7 @@ RestartSec=10
 # Security hardening
 NoNewPrivileges=true
 PrivateTmp=true
-ReadWritePaths=/var/log/netmonitor __INSTALL_DIR__
+ReadWritePaths=/var/log/netmonitor /var/lib/netmonitor __INSTALL_DIR__
 
 # Logging
 StandardOutput=journal

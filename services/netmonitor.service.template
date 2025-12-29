@@ -8,6 +8,12 @@ Type=simple
 User=root
 WorkingDirectory=__INSTALL_DIR__
 
+# Set defaults first - these can be overridden by EnvironmentFile
+Environment="DATA_DIR=/var/lib/netmonitor"
+Environment="LOG_DIR=/var/log/netmonitor"
+Environment="RUN_DIR=/var/run/netmonitor"
+Environment="CACHE_DIR=/var/cache/netmonitor"
+
 # Load environment variables from .env file
 # The - prefix means the file is optional (no error if missing)
 EnvironmentFile=-__INSTALL_DIR__/.env
@@ -27,10 +33,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 
 # Allow read/write to required directories
-ReadWritePaths=${DATA_DIR:-/var/lib/netmonitor}
-ReadWritePaths=${LOG_DIR:-/var/log/netmonitor}
-ReadWritePaths=${RUN_DIR:-/var/run/netmonitor}
-ReadWritePaths=${CACHE_DIR:-/var/cache/netmonitor}
+ReadWritePaths=/var/lib/netmonitor /var/log/netmonitor /var/run/netmonitor /var/cache/netmonitor __INSTALL_DIR__
 
 # Logging
 StandardOutput=journal
