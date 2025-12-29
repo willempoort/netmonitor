@@ -1093,6 +1093,9 @@ def api_submit_sensor_alerts(sensor_id):
 
     Supports optional PCAP data for forensic evidence (NIS2 compliance).
     PCAP data should be base64 encoded in alert['pcap_data'].
+
+    Alerts are filtered through BehaviorMatcher to suppress expected behavior
+    based on device templates before being stored.
     """
     import base64
 
@@ -1107,12 +1110,23 @@ def api_submit_sensor_alerts(sensor_id):
         # Update heartbeat
         db.update_sensor_heartbeat(sensor_id)
 
+        # Initialize BehaviorMatcher for alert filtering (same as local capture)
+        behavior_matcher = None
+        try:
+            from behavior_matcher import BehaviorMatcher
+            behavior_matcher = BehaviorMatcher(db_manager=db)
+        except ImportError:
+            logger.debug("BehaviorMatcher not available, sensor alerts will not be filtered")
+        except Exception as e:
+            logger.warning(f"Could not initialize BehaviorMatcher for sensor alerts: {e}")
+
         # Ensure PCAP directory exists for sensor captures
         pcap_dir = Path('/var/log/netmonitor/pcap/sensors')
         pcap_dir.mkdir(parents=True, exist_ok=True)
 
-        # Insert all alerts
+        # Process alerts
         success_count = 0
+        suppressed_count = 0
         pcap_count = 0
         for alert in alerts:
             # Parse timestamp if provided
@@ -1156,6 +1170,27 @@ def api_submit_sensor_alerts(sensor_id):
                 metadata['pcap_file'] = pcap_filename
                 metadata['pcap_source'] = 'sensor'
 
+            # Check if alert should be suppressed based on device templates
+            should_suppress = False
+            suppression_reason = None
+            if behavior_matcher:
+                try:
+                    threat_for_check = {
+                        'source_ip': alert.get('source_ip'),
+                        'destination_ip': alert.get('destination_ip'),
+                        'type': alert.get('threat_type', 'UNKNOWN'),
+                        'severity': alert.get('severity', 'INFO'),
+                        'metadata': metadata
+                    }
+                    should_suppress, suppression_reason = behavior_matcher.should_suppress_alert(threat_for_check)
+                except Exception as e:
+                    logger.debug(f"Error checking alert suppression: {e}")
+
+            if should_suppress:
+                suppressed_count += 1
+                logger.debug(f"Suppressed sensor alert from {alert.get('source_ip')}: {suppression_reason}")
+                continue  # Skip this alert, don't insert
+
             success = db.insert_alert_from_sensor(
                 sensor_id=sensor_id,
                 severity=alert.get('severity', 'INFO'),
@@ -1185,10 +1220,15 @@ def api_submit_sensor_alerts(sensor_id):
                 except:
                     pass  # Don't fail if broadcast fails
 
+        # Log suppression statistics if any
+        if suppressed_count > 0:
+            logger.info(f"Sensor {sensor_id}: {suppressed_count}/{len(alerts)} alerts suppressed by BehaviorMatcher")
+
         return jsonify({
             'success': True,
             'received': len(alerts),
             'inserted': success_count,
+            'suppressed': suppressed_count,
             'pcap_received': pcap_count
         })
 
