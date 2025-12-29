@@ -3652,7 +3652,7 @@ def api_ml_classify_all():
         }), 400
 
     try:
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         update_db = data.get('update_db', False)
 
         result = ml.classifier.classify_all_devices(update_db=update_db)
@@ -3748,7 +3748,7 @@ def api_internal_ml_classify_all():
     if not ml:
         return jsonify({'success': False, 'error': 'ML classification not available'}), 400
     try:
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         update_db = data.get('update_db', False)
         result = ml.classifier.classify_all_devices(update_db=update_db)
         return jsonify({'success': True, 'result': result})
