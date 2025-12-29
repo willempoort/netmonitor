@@ -19,6 +19,10 @@ Environment="CACHE_DIR=/var/cache/netmonitor"
 EnvironmentFile=-__INSTALL_DIR__/.env
 EnvironmentFile=-/etc/netmonitor/netmonitor.env
 
+# Create runtime directory
+RuntimeDirectory=netmonitor
+RuntimeDirectoryMode=0755
+
 # Start netmonitor monitoring engine
 # This includes the embedded Flask dashboard if DASHBOARD_SERVER=embedded
 ExecStart=__INSTALL_DIR__/venv/bin/python3 __INSTALL_DIR__/netmonitor.py \
