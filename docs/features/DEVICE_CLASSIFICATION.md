@@ -17,6 +17,149 @@ Device Classification is een intelligent systeem voor het automatisch herkennen 
 - **Alert Suppression** - Verwacht gedrag niet als alert tonen
 - **Service Providers** - Streaming/CDN verkeer herkennen
 
+### Machine Learning Capabilities
+
+- **ML Device Classification** - Random Forest classifier voor automatische apparaattype herkenning
+- **ML Anomaly Detection** - Isolation Forest voor gedragsafwijkingen detectie per device
+- **Auto-Training** - ML modellen automatisch trainen en classificaties toepassen (24-uurs cyclus)
+- **Feature Extraction** - 28 features per device voor nauwkeurige classificatie
+
+---
+
+## 🤖 Machine Learning Architectuur
+
+NetMonitor bevat echte Machine Learning voor device classificatie en anomaly detectie. De ML modellen draaien **volledig op de SOC server** - geen impact op sensor RAM.
+
+### ML Components
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    SOC Server                                │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │           ML Classifier Manager                       │   │
+│  │  - Coördineert training en inference                  │   │
+│  │  - Auto-training elke 24 uur                          │   │
+│  │  - Auto-classification na training                    │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                          │                                   │
+│         ┌────────────────┼────────────────┐                 │
+│         ▼                ▼                ▼                 │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
+│  │   Feature   │  │   Device    │  │  Anomaly    │         │
+│  │  Extractor  │  │ Classifier  │  │  Detector   │         │
+│  │  (28 feat)  │  │(RandomForest)│  │(IsolForest) │         │
+│  └─────────────┘  └─────────────┘  └─────────────┘         │
+│                          │                                   │
+│                          ▼                                   │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │           /var/lib/netmonitor/ml_models/              │   │
+│  │  - device_classifier.pkl                              │   │
+│  │  - anomaly_detector.pkl                               │   │
+│  │  - feature_scaler.pkl                                 │   │
+│  └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Device Types (11 klassen)
+
+De ML classifier herkent de volgende apparaattypes:
+
+| Type | Beschrijving | Typische Kenmerken |
+|------|--------------|-------------------|
+| `workstation` | Desktop/laptop computers | Diverse poorten, HTTP/HTTPS dominant |
+| `server` | Servers (web, file, etc.) | Hoge inbound traffic, specifieke poorten |
+| `iot_camera` | IP camera's | RTSP (554), ONVIF, constant outbound |
+| `iot_sensor` | IoT sensoren | Lage bandwidth, periodiek verkeer |
+| `smart_tv` | Smart TV's | Streaming poorten, Netflix/YouTube |
+| `nas` | Network Attached Storage | SMB/NFS, hoge opslag traffic |
+| `printer` | Netwerkprinters | IPP (631), LPD (515), SMB |
+| `smart_speaker` | Smart speakers (Alexa, etc.) | Voice services, streaming |
+| `mobile` | Smartphones/tablets | WiFi, diverse apps |
+| `network_device` | Routers/switches | Management poorten, SNMP |
+| `unknown` | Onbekend | Onvoldoende data |
+
+### Feature Extraction (28 features)
+
+De ML classifier analyseert de volgende features per device:
+
+**Volume Features:**
+- `total_bytes_in` - Totaal inkomende bytes
+- `total_bytes_out` - Totaal uitgaande bytes
+- `bytes_ratio` - Verhouding in/out
+- `total_packets` - Totaal aantal packets
+
+**Port Category Features:**
+- `web_ports_ratio` - Percentage HTTP/HTTPS traffic
+- `streaming_ports_ratio` - Percentage streaming poorten
+- `iot_ports_ratio` - Percentage IoT-specifieke poorten
+- `server_ports_ratio` - Percentage server poorten
+- `other_ports_ratio` - Percentage overige poorten
+
+**Protocol Features:**
+- `tcp_ratio` - Percentage TCP traffic
+- `udp_ratio` - Percentage UDP traffic
+- `icmp_ratio` - Percentage ICMP traffic
+
+**Behavioral Features:**
+- `unique_dst_ports` - Aantal unieke destination poorten
+- `unique_src_ports` - Aantal unieke source poorten
+- `is_server` - Biedt services aan (0/1)
+- `has_dns_traffic` - DNS traffic aanwezig (0/1)
+- `has_streaming_traffic` - Streaming traffic (0/1)
+- `has_iot_traffic` - IoT traffic aanwezig (0/1)
+- `is_high_volume` - Hoge traffic volume (0/1)
+- `is_low_volume` - Lage traffic volume (0/1)
+
+**Time Features:**
+- `activity_hours` - Uren actief per dag
+- `burst_ratio` - Verhouding burst vs constant traffic
+
+### ML Configuration
+
+**config.yaml:**
+```yaml
+ml:
+  enabled: true                    # ML inschakelen
+  auto_train: true                 # Auto-training bij dashboard start
+  auto_classify: true              # Auto-classificatie na training
+  auto_train_interval: 86400       # Training interval (seconden)
+  min_confidence: 0.7              # Minimum confidence voor auto-assign
+  model_dir: /var/lib/netmonitor/ml_models
+```
+
+### Training Process
+
+1. **Data Collection**: Verzamel learned_behavior van alle devices
+2. **Feature Extraction**: Extraheer 28 features per device
+3. **Bootstrap**: Gebruik vendor hints voor initial labels
+4. **Model Training**: Train Random Forest classifier
+5. **Validation**: Test accuracy op hold-out set
+6. **Persistence**: Sla model op naar disk
+
+**Minimum Requirements:**
+- 10+ devices met learned_behavior
+- 50+ packets per device voor classificatie
+- scikit-learn package geïnstalleerd
+
+### API Endpoints
+
+**Internal (localhost only):**
+```
+GET  /api/internal/ml/status        - ML status en statistieken
+POST /api/internal/ml/train         - Trigger training
+GET  /api/internal/ml/classify/<ip> - Classificeer device
+POST /api/internal/ml/classify-all  - Classificeer alle devices
+```
+
+**Authenticated:**
+```
+GET  /api/ml/status                 - ML status (requires login)
+POST /api/ml/train                  - Trigger training (requires login)
+GET  /api/ml/classify/<ip>          - Classificeer device
+POST /api/ml/classify-all           - Classificeer alle devices
+```
+
 ---
 
 ## 🏗️ Architectuur

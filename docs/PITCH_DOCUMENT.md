@@ -46,19 +46,24 @@ NetMonitor detecteert aanvallen **op het moment dat ze plaatsvinden**, niet maan
 - Ongeautoriseerde toegangspogingen
 - Verdachte poortscans en netwerkverkenning
 
-### 2. Slimme Apparaatherkenning
+### 2. Slimme Apparaatherkenning met Machine Learning
 
-NetMonitor **leert** welke apparaten in uw netwerk horen en wat normaal gedrag is.
+NetMonitor **leert** welke apparaten in uw netwerk horen en wat normaal gedrag is — met echte **Machine Learning**.
 
 ![Screenshot: van Device Classification scherm met apparatenlijst, vendors en templates](./images/netmonitor-afb3.png)
 
 **Hoe het werkt:**
+- **ML Device Classification**: Random Forest classifier herkent automatisch 11 apparaattypes (servers, werkstations, IoT-camera's, smart TV's, NAS, printers, etc.)
+- **ML Anomaly Detection**: Isolation Forest detecteert afwijkend gedrag per apparaat
+- **Auto-Training**: Modellen worden elke 24 uur automatisch getraind en toegepast
 - Automatische herkenning van printers, camera's, servers en werkstations
-- Leert het normale verkeerspatroon per apparaat
+- Leert het normale verkeerspatroon per apparaat (28 features per device)
 - Waarschuwt alleen bij **afwijkend** gedrag
 - Voorkomt vals alarm door streaming-diensten (Netflix, Teams) te herkennen
 
-**Resultaat:** Minder ruis, alleen relevante waarschuwingen die actie vereisen.
+**Technisch:** De ML modellen draaien volledig op de SOC server — geen impact op sensor RAM (belangrijk voor Raspberry Pi deployments).
+
+**Resultaat:** Minder ruis, automatische classificatie, en alleen relevante waarschuwingen die actie vereisen.
 
 ### 3. Centraal Beheer
 
@@ -254,12 +259,14 @@ Rapportage: "3 nieuwe apparaten ontdekt, 1 met verdachte TLS fingerprint"
 - Real-time reputation checks
 - JA3 malware fingerprint database
 
-### Gedragsanalyse
+### Gedragsanalyse met ML
 - Data exfiltratie (grote uploads)
 - Beaconing (regelmatige "check-ins" naar hackers)
 - Lateral movement (verspreiding binnen netwerk)
 - Ongebruikelijke verkeerspatronen
-- Device behavior learning
+- **ML Device Classification**: Random Forest classifier (11 apparaattypes)
+- **ML Anomaly Detection**: Isolation Forest per-device baseline
+- Device behavior learning (28 features per apparaat)
 
 ### Protocol Analyse
 - DNS tunneling (data verstopt in DNS)
@@ -339,7 +346,7 @@ Onze experts helpen bij de productie-implementatie.
 | **Detectie** | 30+ detectie types, Threat feeds, IP reputation, Behavior analysis, JA3 fingerprinting |
 | **TLS/HTTPS** | JA3/JA3S analyse, SNI monitoring, Certificate checks, Malware fingerprints |
 | **Forensics** | PCAP capture, Ring buffer, Flow export, Per-alert opname (NIS2 compliant) |
-| **Classificatie** | Device discovery, Behavior learning, Template matching, Alert suppression |
+| **Classificatie** | Device discovery, **ML Classification** (Random Forest), Behavior learning, **ML Anomaly Detection** (Isolation Forest), Template matching, Alert suppression |
 | **GeoIP** | Land identificatie, Local/Private onderscheid, MaxMind database |
 | **Beheer** | Central dashboard, Multi-sensor, Remote config, Whitelist management |
 | **AI Integratie** | 37 MCP tools, Token auth, Permission scopes, Audit logging |

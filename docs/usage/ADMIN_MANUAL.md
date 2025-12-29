@@ -427,7 +427,7 @@ Whitelisted IPs/ranges won't trigger alerts.
 
 ## Device Classification Administration
 
-Device Classification is a ML-based system that automatically discovers devices, learns their behavior patterns, and suppresses expected alerts. This section covers the administrative aspects.
+Device Classification is a ML-based system that automatically discovers devices, learns their behavior patterns, and suppresses expected alerts. The system includes **Machine Learning** capabilities for automatic device classification and anomaly detection. This section covers the administrative aspects.
 
 ### Database Tables
 
@@ -553,6 +553,76 @@ Device Classification exposes these API endpoints:
 | `/api/service-providers` | GET | List providers |
 | `/api/device-classification/stats` | GET | Get statistics |
 
+### ML Device Classification Configuration
+
+NetMonitor includes Machine Learning for automatic device classification and anomaly detection. The ML models run entirely on the SOC server with **zero impact on sensor RAM**.
+
+**ML Components:**
+- **Random Forest Classifier**: Classifies devices into 11 types (workstation, server, iot_camera, iot_sensor, smart_tv, nas, printer, smart_speaker, mobile, network_device, unknown)
+- **Isolation Forest**: Detects behavioral anomalies per device
+- **Feature Extraction**: 28 features extracted from traffic patterns
+
+**Configuration in config.yaml:**
+
+```yaml
+ml:
+  enabled: true                    # Enable ML classification
+  auto_train: true                 # Auto-start training on dashboard startup
+  auto_classify: true              # Auto-apply classifications after training
+  auto_train_interval: 86400       # Training interval in seconds (default: 24 hours)
+  min_confidence: 0.7              # Minimum confidence for auto-classification
+  model_dir: /var/lib/netmonitor/ml_models  # Model storage location
+```
+
+**ML API Endpoints (Internal - localhost only):**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/internal/ml/status` | GET | ML classifier status and statistics |
+| `/api/internal/ml/train` | POST | Trigger model training |
+| `/api/internal/ml/classify/<ip>` | GET | Classify single device |
+| `/api/internal/ml/classify-all` | POST | Classify all devices |
+
+**ML Model Files:**
+
+Models are stored in `/var/lib/netmonitor/ml_models/`:
+- `device_classifier.pkl` - Random Forest model
+- `anomaly_detector.pkl` - Isolation Forest model
+- `feature_scaler.pkl` - Feature normalization
+
+**Training the ML Model:**
+
+Training happens automatically every 24 hours, or can be triggered manually:
+
+```bash
+# Via curl (from SOC server)
+curl -X POST http://localhost:8080/api/internal/ml/train
+
+# Via MCP API
+curl -X POST http://localhost:8000/mcp/tools/execute \
+  -H "Authorization: Bearer <token>" \
+  -d '{"tool_name": "train_ml_classifier", "parameters": {}}'
+```
+
+**Minimum Requirements:**
+- At least 10 devices with learned behavior for training
+- Devices need 50+ packets analyzed for classification
+- Training uses bootstrap from vendor hints when data is limited
+
+**Monitoring ML Performance:**
+
+```bash
+# Check ML status
+curl http://localhost:8080/api/internal/ml/status
+
+# Response includes:
+# - sklearn_available: true/false
+# - classifier_trained: true/false
+# - training_samples: number of devices used
+# - last_training: timestamp
+# - device_type_distribution: count per type
+```
+
 ### MCP Tools for Device Classification
 
 The MCP server includes these tools for AI integration:
@@ -566,6 +636,8 @@ The MCP server includes these tools for AI integration:
 | `assign_device_template` | read_write | Assign template to device |
 | `create_device_template` | read_write | Create new template |
 | `save_device_learned_behavior` | read_write | Save learned behavior |
+| `train_ml_classifier` | read_write | Train ML classification model |
+| `classify_device` | read_write | Classify device using ML |
 
 ### Performance Considerations
 

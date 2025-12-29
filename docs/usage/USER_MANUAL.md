@@ -551,8 +551,15 @@ Sensor: office-vlan10-01
 
 Device Classification is een intelligent systeem dat automatisch apparaten in uw netwerk herkent, hun gedrag leert en alerts onderdrukt voor verwacht verkeer. Dit vermindert "alert fatigue" door alleen te waarschuwen bij **afwijkend** gedrag.
 
+**Machine Learning Features:**
+- 🤖 **ML Device Classification** - Random Forest classifier herkent automatisch 11 apparaattypes
+- 📊 **ML Anomaly Detection** - Isolation Forest detecteert afwijkend gedrag per apparaat
+- ⚡ **Auto-Training** - Modellen worden elke 24 uur automatisch getraind en toegepast
+- 🎯 **28 Features** - Het systeem analyseert 28 verkeerskenmerken per apparaat
+
 **Voordelen:**
 - 🔍 **Automatische herkenning** - Apparaten worden automatisch gedetecteerd via ARP/IP packets
+- 🤖 **ML Classificatie** - Apparaten worden automatisch geclassificeerd op basis van verkeerspatronen
 - 📚 **Gedrag leren** - Het systeem leert welk verkeer normaal is per apparaat
 - 🔇 **Alert suppressie** - Verwacht gedrag genereert geen alerts (behalve CRITICAL/C2)
 - 📺 **Streaming herkenning** - Netflix, YouTube, Teams verkeer wordt als normaal gezien
@@ -604,6 +611,12 @@ De apparatenlijst toont alle ontdekte apparaten met:
 | **Not Started** | Nog geen verkeer geanalyseerd | Wacht op verkeer |
 | **Learning (N)** | N packets geanalyseerd, <100 | Laat meer verkeer door |
 | **Ready** | 100+ packets, profiel compleet | Template kan worden gegenereerd |
+
+**ML Classification Status:**
+Bij apparaten met 50+ packets wordt automatisch een ML classificatie uitgevoerd. U ziet:
+- **ML Type**: Het door ML voorgestelde apparaattype (bijv. "workstation", "iot_camera")
+- **Confidence**: Betrouwbaarheidsscore (0-100%)
+- Apparaten met >70% confidence worden automatisch geclassificeerd
 
 #### Zoeken en Filteren
 

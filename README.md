@@ -300,10 +300,13 @@ THREAT_FEED_UPDATE_INTERVAL=3600  # 1 uur (default)
 |---------|--------|--------------|
 | **Device Discovery** | ✅ | Automatische detectie van apparaten via ARP/IP packets met OUI vendor lookup |
 | **Behavior Learning** | ✅ | Traffic patronen analyseren en leren per apparaat (poorten, protocollen, volumes) |
+| **ML Device Classification** | ✅ | Random Forest classifier voor automatische apparaattype herkenning (11 types) |
+| **ML Anomaly Detection** | ✅ | Isolation Forest voor gedragsafwijkingen detectie per device |
 | **Template-Based Classification** | ✅ | Apparaten koppelen aan device templates (IP Camera, Smart TV, Server, etc.) |
 | **Alert Suppression** | ✅ | Verwacht gedrag per apparaattype niet als alert tonen (nooit voor CRITICAL/C2/Threats) |
 | **Service Provider Detection** | ✅ | Streaming/CDN verkeer herkennen (Netflix, Spotify, YouTube, etc.) |
 | **Auto Template Generation** | ✅ | Templates automatisch genereren uit geleerd apparaatgedrag |
+| **Auto-Training** | ✅ | ML modellen automatisch trainen en classificaties toepassen (24-uurs cyclus) |
 
 ### 🔐 TLS/HTTPS Analysis (Metadata, geen decryptie)
 
