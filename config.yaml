@@ -175,6 +175,47 @@ thresholds:
     detect_ftp_non_standard: true    # FTP verkeer op andere poorten dan 20/21
     ignore_quic: true                # Negeer QUIC (UDP 443) voor HTTP detection
 
+  # Kerberos/Active Directory attack detection
+  kerberos:
+    enabled: true
+    tgs_req_threshold: 10            # TGS requests per window voor Kerberoasting detectie
+    tgs_req_window: 300              # Tijdvenster in seconden (5 min)
+    asrep_threshold: 5               # AS-REP responses met weak encryption
+    asrep_window: 300                # Tijdvenster in seconden
+    tgt_lifetime_max: 36000          # Max TGT lifetime in seconden (10 uur)
+
+  # Kill chain / multi-stage attack correlation
+  kill_chain:
+    enabled: true
+    chain_window: 3600               # Correlatie window in seconden (1 uur)
+    activity_timeout: 1800           # Inactivity timeout voor chain (30 min)
+    min_events: 3                    # Minimum events voor chain detectie
+    min_stages: 2                    # Minimum stages voor chain alert
+
+  # Protocol deep parsing (SMB/LDAP)
+  protocol_parsing:
+    enabled: true
+    flag_smb1: true                  # Flag SMB1 gebruik (deprecated)
+    detect_admin_shares: true        # Detecteer admin share access (C$, ADMIN$, etc.)
+    detect_sensitive_files: true     # Detecteer access to NTDS.dit, SAM, etc.
+    detect_ldap_sensitive: true      # Detecteer sensitive LDAP attribute queries
+
+  # Asset risk scoring
+  risk_scoring:
+    enabled: true
+    decay_rate: 0.1                  # Risk score decay rate per hour (10%)
+    decay_interval: 3600             # Decay check interval in seconden
+
+# SOAR (Security Orchestration, Automation and Response)
+soar:
+  enabled: true
+  dry_run: true                      # BELANGRIJK: true = geen echte blocking actions
+  require_approval: true             # Vereist goedkeuring voor playbook execution
+  max_blocks_per_hour: 10            # Maximum aantal IP blocks per uur
+  webhook_url: null                  # Webhook URL voor notificaties (bijv. Slack)
+  email_enabled: false               # Email notificaties inschakelen
+  email_recipients: []               # Email adressen voor notificaties
+
 # Blacklisted IPs (known malicious IPs)
 blacklist:
   - 192.0.2.0/24  # Example RFC5737 test network

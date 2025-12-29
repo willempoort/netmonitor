@@ -37,6 +37,24 @@ except ImportError:
     TLSAnalyzer = None
     detect_tls_anomalies = None
 
+# Import Kerberos analyzer for AD attack detection
+try:
+    from kerberos_analyzer import KerberosAnalyzer
+except ImportError:
+    KerberosAnalyzer = None
+
+# Import Kill Chain detector for multi-stage attack correlation
+try:
+    from kill_chain_detector import KillChainDetector
+except ImportError:
+    KillChainDetector = None
+
+# Import Protocol Parser for SMB/LDAP deep inspection
+try:
+    from protocol_parser import ProtocolParser
+except ImportError:
+    ProtocolParser = None
+
 
 class ThreatDetector:
     """Detecteert verschillende soorten verdacht netwerkverkeer"""
@@ -69,6 +87,33 @@ class ThreatDetector:
                 self.logger.info("TLSAnalyzer initialized for JA3 fingerprinting and metadata extraction")
             except Exception as e:
                 self.logger.warning(f"Could not initialize TLSAnalyzer: {e}")
+
+        # Initialize Kerberos analyzer for AD attack detection
+        self.kerberos_analyzer = None
+        if KerberosAnalyzer and config.get('thresholds', {}).get('kerberos', {}).get('enabled', True):
+            try:
+                self.kerberos_analyzer = KerberosAnalyzer(config, db_manager=db_manager)
+                self.logger.info("KerberosAnalyzer initialized for AD attack detection")
+            except Exception as e:
+                self.logger.warning(f"Could not initialize KerberosAnalyzer: {e}")
+
+        # Initialize Kill Chain detector for multi-stage attack correlation
+        self.kill_chain_detector = None
+        if KillChainDetector and config.get('thresholds', {}).get('kill_chain', {}).get('enabled', True):
+            try:
+                self.kill_chain_detector = KillChainDetector(config, db_manager=db_manager)
+                self.logger.info("KillChainDetector initialized for multi-stage attack correlation")
+            except Exception as e:
+                self.logger.warning(f"Could not initialize KillChainDetector: {e}")
+
+        # Initialize Protocol Parser for SMB/LDAP deep inspection
+        self.protocol_parser = None
+        if ProtocolParser and config.get('thresholds', {}).get('protocol_parsing', {}).get('enabled', True):
+            try:
+                self.protocol_parser = ProtocolParser(config, db_manager=db_manager)
+                self.logger.info("ProtocolParser initialized for SMB/LDAP deep inspection")
+            except Exception as e:
+                self.logger.warning(f"Could not initialize ProtocolParser: {e}")
 
         # Tracking data structures
         self.port_scan_tracker = defaultdict(lambda: {
@@ -329,12 +374,32 @@ class ThreatDetector:
             behavior_threats = self.behavior_detector.analyze_packet(packet)
             threats.extend(behavior_threats)
 
+        # Kerberos/AD attack detection
+        if self.kerberos_analyzer:
+            kerberos_threats = self.kerberos_analyzer.analyze_packet(packet)
+            threats.extend(kerberos_threats)
+
+        # SMB/LDAP deep protocol parsing
+        if self.protocol_parser:
+            protocol_threats = self.protocol_parser.analyze_packet(packet)
+            threats.extend(protocol_threats)
+
         # Apply template-based alert suppression
         # This filters out alerts for expected device behavior
         if threats and self.behavior_matcher:
             threats = self.behavior_matcher.filter_threats(threats, packet)
             # Return only non-suppressed threats (suppressed ones are logged)
             threats = self.behavior_matcher.get_active_threats(threats)
+
+        # Kill chain / multi-stage attack correlation
+        # Process each threat through the kill chain detector
+        if self.kill_chain_detector and threats:
+            chain_alerts = []
+            for threat in threats:
+                chain_result = self.kill_chain_detector.process_alert(threat)
+                chain_alerts.extend(chain_result)
+            # Add chain-level alerts to the threat list
+            threats.extend(chain_alerts)
 
         return threats
 
