@@ -974,7 +974,7 @@ function renderBehaviorsTable(behaviors, isBuiltin) {
     if (behaviors.length === 0) {
         behaviorsTable.innerHTML = `
             <tr>
-                <td colspan="5" class="text-center text-muted">No behaviors defined</td>
+                <td colspan="6" class="text-center text-muted">No behaviors defined</td>
             </tr>
         `;
     } else {
@@ -999,6 +999,14 @@ function renderBehaviorsTable(behaviors, isBuiltin) {
                         ? b.parameters.destinations.join(', ')
                         : b.parameters.destinations;
                 }
+                else if (b.parameters.subnets) {
+                    valueDisplay = Array.isArray(b.parameters.subnets)
+                        ? b.parameters.subnets.join(', ')
+                        : b.parameters.subnets;
+                }
+                else if (b.parameters.internal) {
+                    valueDisplay = 'Internal networks';
+                }
                 else if (b.parameters.schedule) valueDisplay = b.parameters.schedule;
                 else if (Object.keys(b.parameters).length > 0) {
                     valueDisplay = JSON.stringify(b.parameters);
@@ -1013,10 +1021,20 @@ function renderBehaviorsTable(behaviors, isBuiltin) {
 
             const actionClass = b.action === 'allow' ? 'success' : (b.action === 'suppress' ? 'info' : 'warning');
 
+            // Get direction from parameters
+            const direction = b.parameters?.direction || '';
+            let directionBadge = '<span class="badge bg-secondary">Both</span>';
+            if (direction === 'inbound') {
+                directionBadge = '<span class="badge bg-info">Inbound</span>';
+            } else if (direction === 'outbound') {
+                directionBadge = '<span class="badge bg-primary">Outbound</span>';
+            }
+
             return `
                 <tr>
                     <td><code>${b.behavior_type}</code></td>
                     <td>${valueDisplay}</td>
+                    <td>${directionBadge}</td>
                     <td><span class="badge bg-${actionClass}">${b.action}</span></td>
                     <td>${b.description || '-'}</td>
                     <td>${deleteBtn}</td>
@@ -1034,6 +1052,7 @@ function showAddBehaviorForm() {
     document.getElementById('add-behavior-form').style.display = 'block';
     document.getElementById('new-behavior-type').value = 'allowed_ports';
     document.getElementById('new-behavior-value').value = '';
+    document.getElementById('new-behavior-direction').value = '';
     document.getElementById('new-behavior-action').value = 'allow';
     document.getElementById('new-behavior-description').value = '';
     updateBehaviorPlaceholder();
@@ -1054,12 +1073,13 @@ function updateBehaviorPlaceholder() {
     const placeholders = {
         'allowed_ports': 'e.g., 443 or 5060-5090 or 80,443,8080',
         'allowed_protocols': 'e.g., TCP, UDP, ICMP',
+        'allowed_sources': 'e.g., internal or 192.168.1.0/24,10.0.0.0/8',
         'bandwidth_limit': 'e.g., 100 (MB per hour)',
-        'connection_behavior': 'e.g., max_connections:50',
+        'connection_behavior': 'e.g., accepts_connections or api_server',
         'expected_destinations': 'e.g., 8.8.8.8 or google.com',
         'time_restrictions': 'e.g., 08:00-18:00',
         'dns_behavior': 'e.g., allowed_domains:*.google.com',
-        'traffic_pattern': 'e.g., bidirectional'
+        'traffic_pattern': 'e.g., high_bandwidth or streaming'
     };
 
     input.placeholder = placeholders[type] || 'Enter value';
@@ -1074,6 +1094,7 @@ async function addBehaviorRule() {
 
     const behaviorType = document.getElementById('new-behavior-type').value;
     const value = document.getElementById('new-behavior-value').value.trim();
+    const direction = document.getElementById('new-behavior-direction').value;
     const action = document.getElementById('new-behavior-action').value;
     const description = document.getElementById('new-behavior-description').value.trim();
 
@@ -1101,11 +1122,26 @@ async function addBehaviorRule() {
         case 'allowed_protocols':
             parameters = { protocols: value.toUpperCase().split(',').map(p => p.trim()) };
             break;
+        case 'allowed_sources':
+            // Support: 'internal' keyword or CIDR subnets
+            if (value.toLowerCase() === 'internal') {
+                parameters = { internal: true };
+            } else {
+                parameters = { subnets: value.split(',').map(s => s.trim()) };
+            }
+            break;
         case 'bandwidth_limit':
             parameters = { limit: parseFloat(value) };
             break;
         case 'connection_behavior':
-            parameters = { max_connections: parseInt(value) || value };
+            // Support: keyword values like accepts_connections, api_server, high_connection_rate
+            const keywords = value.toLowerCase().split(',').map(k => k.trim());
+            keywords.forEach(kw => {
+                if (kw === 'accepts_connections') parameters.accepts_connections = true;
+                else if (kw === 'api_server') parameters.api_server = true;
+                else if (kw === 'high_connection_rate') parameters.high_connection_rate = true;
+                else parameters[kw] = true;
+            });
             break;
         case 'expected_destinations':
             parameters = { destinations: value.split(',').map(d => d.trim()) };
@@ -1117,10 +1153,23 @@ async function addBehaviorRule() {
             parameters = { pattern: value };
             break;
         case 'traffic_pattern':
-            parameters = { pattern: value };
+            // Support keyword values like high_bandwidth, streaming, continuous
+            const patternKeywords = value.toLowerCase().split(',').map(k => k.trim());
+            patternKeywords.forEach(kw => {
+                if (kw === 'high_bandwidth') parameters.high_bandwidth = true;
+                else if (kw === 'streaming') parameters.streaming = true;
+                else if (kw === 'continuous') parameters.continuous = true;
+                else if (kw === 'receives_streams') parameters.receives_streams = true;
+                else parameters[kw] = true;
+            });
             break;
         default:
             parameters = { value: value };
+    }
+
+    // Add direction if specified
+    if (direction) {
+        parameters.direction = direction;
     }
 
     try {
