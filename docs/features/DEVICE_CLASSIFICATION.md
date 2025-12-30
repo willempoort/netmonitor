@@ -211,6 +211,45 @@ POST /api/ml/classify-all           - Classificeer alle devices
 
 ---
 
+## 🔐 Enterprise Security Integration
+
+Device Classification integreert naadloos met de enterprise security modules voor context-aware detectie.
+
+### Kill Chain Correlatie
+
+Apparaattype beïnvloedt de kill chain stage-mapping:
+- **Server**: Credential access alerts krijgen hogere prioriteit
+- **Workstation**: Initial access en execution alerts worden nauwer gemonitord
+- **IoT**: Lateral movement naar IoT devices triggert extra alerts
+
+### Asset Risk Scoring
+
+Apparaatcategorie bepaalt de risk score multiplier:
+
+| Categorie | Multiplier | Rationale |
+|-----------|------------|-----------|
+| server | 1.5x | Kritieke infrastructuur |
+| workstation | 1.0x | Standaard |
+| iot | 1.2x | Vaak kwetsbaar |
+| network_device | 1.5x | Infrastructuur pivot point |
+| unknown | 1.0x | Baseline |
+
+### SOAR Integration
+
+Device templates kunnen SOAR playbooks beïnvloeden:
+- **Server templates**: Voorzichtiger met isolatie-acties
+- **IoT templates**: Snellere blokkering geoorloofd
+- **Kritieke assets**: Require approval altijd ingeschakeld
+
+### Kerberos & SMB Context
+
+Device classificatie verbetert protocol detectie:
+- Alleen servers moeten SMB shares aanbieden
+- Workstations die als "server" fungeren triggeren alerts
+- IoT devices met Kerberos traffic zijn verdacht
+
+---
+
 ## 📊 Database Schema
 
 ### devices
