@@ -428,7 +428,7 @@ Onze experts helpen bij de productie-implementatie.
 | **SOAR** | Automated playbooks, Approval workflows, Dry-run mode, Multi-integration |
 | **GeoIP** | Land identificatie, Local/Private onderscheid, MaxMind database |
 | **Beheer** | Central dashboard, Multi-sensor, Remote config, Whitelist management |
-| **AI Integratie** | 45+ MCP tools, Token auth, Permission scopes, Audit logging |
+| **AI Integratie** | 49 MCP tools, Token auth, Permission scopes, Audit logging |
 
 ### B. Compliance & Security
 
