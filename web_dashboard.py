@@ -1965,6 +1965,59 @@ def api_delete_device(ip_address):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/devices/<path:ip_address>/touch', methods=['POST'])
+@login_required
+def api_touch_device(ip_address):
+    """
+    Update a device's last_seen timestamp to NOW.
+    Use this to manually refresh activity for devices like Access Points
+    that don't generate much traffic themselves.
+    """
+    try:
+        success = db.touch_device(ip_address=ip_address)
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Device {ip_address} last_seen updated',
+                'ip_address': ip_address
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Device not found'}), 404
+    except Exception as e:
+        logger.error(f"Error touching device {ip_address}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/devices/touch', methods=['POST'])
+@login_required
+def api_touch_devices_bulk():
+    """
+    Update last_seen for multiple devices at once.
+
+    Request body:
+        ip_addresses: List of IP addresses to touch
+
+    Use this to refresh activity for multiple devices like Access Points.
+    """
+    try:
+        data = request.get_json()
+        ip_addresses = data.get('ip_addresses', [])
+
+        if not ip_addresses:
+            return jsonify({'success': False, 'error': 'ip_addresses list required'}), 400
+
+        updated = db.touch_devices_bulk(ip_addresses)
+        return jsonify({
+            'success': True,
+            'message': f'Updated {updated} devices',
+            'updated_count': updated,
+            'requested_count': len(ip_addresses)
+        })
+    except Exception as e:
+        logger.error(f"Error bulk touching devices: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/devices/<path:ip_address>/traffic-stats')
 @login_required
 def api_get_device_traffic_stats(ip_address):

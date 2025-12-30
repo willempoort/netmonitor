@@ -2512,6 +2512,87 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
+    def touch_device(self, device_id: int = None, ip_address: str = None) -> bool:
+        """
+        Update a device's last_seen timestamp to NOW().
+        Use this to manually refresh activity for devices that don't generate much traffic.
+
+        Args:
+            device_id: Device ID (preferred)
+            ip_address: IP address (alternative, updates all matching devices)
+
+        Returns:
+            True if at least one device was updated
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            if device_id:
+                cursor.execute('''
+                    UPDATE devices
+                    SET last_seen = NOW(), is_active = TRUE
+                    WHERE id = %s
+                ''', (device_id,))
+            elif ip_address:
+                # Normalize IP address
+                clean_ip = ip_address.split('/')[0] if '/' in ip_address else ip_address
+                cursor.execute('''
+                    UPDATE devices
+                    SET last_seen = NOW(), is_active = TRUE
+                    WHERE ip_address = %s::inet
+                ''', (clean_ip,))
+            else:
+                return False
+
+            conn.commit()
+            updated = cursor.rowcount > 0
+            if updated:
+                self.logger.info(f"Touched device: id={device_id}, ip={ip_address}")
+            return updated
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error touching device: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    def touch_devices_bulk(self, ip_addresses: list) -> int:
+        """
+        Update last_seen for multiple devices at once.
+
+        Args:
+            ip_addresses: List of IP addresses to touch
+
+        Returns:
+            Number of devices updated
+        """
+        if not ip_addresses:
+            return 0
+
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            # Clean IP addresses
+            clean_ips = [ip.split('/')[0] if '/' in ip else ip for ip in ip_addresses]
+
+            cursor.execute('''
+                UPDATE devices
+                SET last_seen = NOW(), is_active = TRUE
+                WHERE ip_address = ANY(%s::inet[])
+            ''', (clean_ips,))
+
+            conn.commit()
+            updated = cursor.rowcount
+            self.logger.info(f"Bulk touched {updated} devices")
+            return updated
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error bulk touching devices: {e}")
+            return 0
+        finally:
+            self._return_connection(conn)
+
     def delete_device(self, device_id: int) -> bool:
         """Delete a device by ID (soft delete)"""
         conn = self._get_connection()

@@ -477,6 +477,7 @@ class DeviceDiscovery:
     def _process_ip_packet(self, packet, mac_address: str = None) -> Optional[Dict]:
         """
         Process IP packet for device discovery.
+        Tracks both source and destination devices if they're internal.
         """
         ip = packet[IP]
         src_ip = ip.src
@@ -489,9 +490,22 @@ class DeviceDiscovery:
             device_info = self._register_device(src_ip, mac_address)
             self._update_traffic_stats(src_ip, packet, direction='outbound', dst_ip=dst_ip)
 
-        # Track destination device (if internal and we see return traffic)
+        # Track destination device (if internal)
+        # This ensures devices like Access Points, servers, and IoT devices
+        # that receive traffic but don't send much get their last_seen updated
         if self._is_internal_ip(dst_ip):
-            # We might not have MAC for destination, but track the IP
+            # Get destination MAC from Ethernet layer if available
+            dst_mac = None
+            if Ether in packet:
+                dst_mac = packet[Ether].dst
+                # Skip broadcast/multicast MACs
+                if dst_mac and (dst_mac.lower() == 'ff:ff:ff:ff:ff:ff' or
+                               dst_mac.lower().startswith('01:00:5e') or  # IPv4 multicast
+                               dst_mac.lower().startswith('33:33:')):     # IPv6 multicast
+                    dst_mac = None
+
+            # Register destination device (with MAC if available)
+            self._register_device(dst_ip, dst_mac)
             self._update_traffic_stats(dst_ip, packet, direction='inbound', src_ip=src_ip)
 
         return device_info
