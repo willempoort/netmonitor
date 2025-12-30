@@ -2023,11 +2023,15 @@ document.getElementById('command-history-btn').addEventListener('click', functio
 
 // ==================== Whitelist Management ====================
 
+// Store current whitelist entries for editing
+let whitelistEntries = [];
+
 function loadWhitelist() {
     fetch('/api/whitelist')
         .then(response => response.json())
         .then(data => {
             if (data.success) {
+                whitelistEntries = data.entries;
                 updateWhitelistTable(data.entries);
                 document.getElementById('whitelist-count').textContent = data.entries.length;
             }
@@ -2035,12 +2039,24 @@ function loadWhitelist() {
         .catch(error => console.error('Error loading whitelist:', error));
 }
 
+function getDirectionBadge(direction) {
+    switch(direction) {
+        case 'inbound':
+            return '<span class="badge bg-success">Inbound</span>';
+        case 'outbound':
+            return '<span class="badge bg-warning text-dark">Outbound</span>';
+        case 'both':
+        default:
+            return '<span class="badge bg-secondary">Both</span>';
+    }
+}
+
 function updateWhitelistTable(entries) {
     const tbody = document.getElementById('whitelist-table');
     tbody.innerHTML = '';
 
     if (entries.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No whitelist entries</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No whitelist entries</td></tr>';
         return;
     }
 
@@ -2049,15 +2065,20 @@ function updateWhitelistTable(entries) {
         const scopeBadge = entry.scope === 'global'
             ? '<span class="badge bg-primary">Global</span>'
             : '<span class="badge bg-info">Sensor</span>';
+        const directionBadge = getDirectionBadge(entry.direction || 'both');
 
         row.innerHTML = `
             <td><code>${entry.ip_cidr}</code></td>
             <td>${entry.description || '<span class="text-muted">-</span>'}</td>
+            <td>${directionBadge}</td>
             <td>${scopeBadge}</td>
             <td>${entry.sensor_id || '<span class="text-muted">-</span>'}</td>
             <td><small>${new Date(entry.created_at).toLocaleString()}</small></td>
             <td>
-                <button class="btn btn-sm btn-danger" onclick="deleteWhitelistEntry(${entry.id})">
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="editWhitelistEntry(${entry.id})" title="Edit">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-danger" onclick="deleteWhitelistEntry(${entry.id})" title="Delete">
                     <i class="bi bi-trash"></i>
                 </button>
             </td>
@@ -2072,10 +2093,14 @@ document.getElementById('whitelist-scope').addEventListener('change', function()
     sensorContainer.style.display = this.value === 'sensor' ? 'block' : 'none';
 });
 
-// Add whitelist entry
+// Track if we're editing an existing entry
+let editingWhitelistId = null;
+
+// Add/Update whitelist entry
 document.getElementById('add-whitelist-btn').addEventListener('click', function() {
     const ipCidr = document.getElementById('whitelist-ip').value;
     const description = document.getElementById('whitelist-description').value;
+    const direction = document.getElementById('whitelist-direction').value;
     const scope = document.getElementById('whitelist-scope').value;
     const sensorId = scope === 'sensor' ? document.getElementById('whitelist-sensor-select').value : null;
 
@@ -2089,33 +2114,81 @@ document.getElementById('add-whitelist-btn').addEventListener('click', function(
         return;
     }
 
-    fetch('/api/whitelist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            ip_cidr: ipCidr,
-            description: description,
-            scope: scope,
-            sensor_id: sensorId
+    // If editing, delete old entry first then add new one
+    const saveEntry = () => {
+        fetch('/api/whitelist', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ip_cidr: ipCidr,
+                description: description,
+                direction: direction,
+                scope: scope,
+                sensor_id: sensorId
+            })
         })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Clear form
-            document.getElementById('whitelist-ip').value = '';
-            document.getElementById('whitelist-description').value = '';
-            document.getElementById('whitelist-scope').value = 'global';
-            document.getElementById('whitelist-sensor-container').style.display = 'none';
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Clear form and reset state
+                clearWhitelistForm();
+                loadWhitelist();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => alert('Error: ' + error.message));
+    };
 
-            // Reload whitelist
-            loadWhitelist();
-        } else {
-            alert('Error: ' + data.error);
-        }
-    })
-    .catch(error => alert('Error: ' + error.message));
+    if (editingWhitelistId) {
+        // Delete old entry first, then save new
+        fetch(`/api/whitelist/${editingWhitelistId}`, { method: 'DELETE' })
+            .then(() => saveEntry())
+            .catch(error => alert('Error updating: ' + error.message));
+    } else {
+        saveEntry();
+    }
 });
+
+// Clear whitelist form
+function clearWhitelistForm() {
+    document.getElementById('whitelist-ip').value = '';
+    document.getElementById('whitelist-description').value = '';
+    document.getElementById('whitelist-direction').value = 'both';
+    document.getElementById('whitelist-scope').value = 'global';
+    document.getElementById('whitelist-sensor-container').style.display = 'none';
+    editingWhitelistId = null;
+    document.getElementById('add-whitelist-btn').innerHTML = '<i class="bi bi-plus-circle"></i> Add';
+}
+
+// Edit whitelist entry - populate form with existing values
+window.editWhitelistEntry = function(entryId) {
+    const entry = whitelistEntries.find(e => e.id === entryId);
+    if (!entry) {
+        alert('Entry not found');
+        return;
+    }
+
+    // Populate form
+    document.getElementById('whitelist-ip').value = entry.ip_cidr;
+    document.getElementById('whitelist-description').value = entry.description || '';
+    document.getElementById('whitelist-direction').value = entry.direction || 'both';
+    document.getElementById('whitelist-scope').value = entry.scope;
+
+    if (entry.scope === 'sensor') {
+        document.getElementById('whitelist-sensor-container').style.display = 'block';
+        document.getElementById('whitelist-sensor-select').value = entry.sensor_id || '';
+    } else {
+        document.getElementById('whitelist-sensor-container').style.display = 'none';
+    }
+
+    // Set editing state
+    editingWhitelistId = entryId;
+    document.getElementById('add-whitelist-btn').innerHTML = '<i class="bi bi-check-circle"></i> Update';
+
+    // Scroll to form
+    document.getElementById('whitelist-ip').focus();
+};
 
 // Delete whitelist entry
 window.deleteWhitelistEntry = function(entryId) {
@@ -2129,6 +2202,10 @@ window.deleteWhitelistEntry = function(entryId) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
+            // If we were editing this entry, clear the form
+            if (editingWhitelistId === entryId) {
+                clearWhitelistForm();
+            }
             loadWhitelist();
         } else {
             alert('Error: ' + data.error);

@@ -298,13 +298,21 @@
                         <div class="card-body">
                             <!-- Add Whitelist Form -->
                             <div class="row g-3 mb-3">
-                                <div class="col-md-3">
+                                <div class="col-md-2">
                                     <label for="whitelist-ip" class="form-label">IP / CIDR</label>
                                     <input type="text" class="form-control bg-dark text-light border-secondary" id="whitelist-ip" placeholder="192.168.1.0/24">
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-2">
                                     <label for="whitelist-description" class="form-label">Description</label>
                                     <input type="text" class="form-control bg-dark text-light border-secondary" id="whitelist-description" placeholder="Internal network">
+                                </div>
+                                <div class="col-md-2">
+                                    <label for="whitelist-direction" class="form-label">Direction</label>
+                                    <select class="form-select bg-dark text-light border-secondary" id="whitelist-direction">
+                                        <option value="both">Both</option>
+                                        <option value="inbound">Inbound</option>
+                                        <option value="outbound">Outbound</option>
+                                    </select>
                                 </div>
                                 <div class="col-md-2">
                                     <label for="whitelist-scope" class="form-label">Scope</label>
@@ -332,6 +340,7 @@
                                         <tr>
                                             <th>IP / CIDR</th>
                                             <th>Description</th>
+                                            <th>Direction</th>
                                             <th>Scope</th>
                                             <th>Sensor</th>
                                             <th>Created</th>
@@ -340,7 +349,7 @@
                                     </thead>
                                     <tbody id="whitelist-table">
                                         <tr>
-                                            <td colspan="6" class="text-center text-muted">Loading whitelist...</td>
+                                            <td colspan="7" class="text-center text-muted">Loading whitelist...</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -540,9 +549,13 @@
                                                     <th class="device-sort-header" data-sort="mac_vendor" style="cursor: pointer;" onclick="sortDevices('mac_vendor')">
                                                         MAC / Vendor<span class="sort-indicator"></span>
                                                     </th>
-                                                    <th>Template</th>
+                                                    <th class="device-sort-header" data-sort="template_name" style="cursor: pointer;" onclick="sortDevices('template_name')">
+                                                        Template<span class="sort-indicator"></span>
+                                                    </th>
                                                     <th>Learning Status</th>
-                                                    <th>Last Seen</th>
+                                                    <th class="device-sort-header" data-sort="last_seen" style="cursor: pointer;" onclick="sortDevices('last_seen')">
+                                                        Last Seen<span class="sort-indicator"></span>
+                                                    </th>
                                                     <th>Actions</th>
                                                 </tr>
                                             </thead>

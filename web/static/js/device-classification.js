@@ -250,6 +250,16 @@ function compareDevices(a, b, column) {
             valA = ((a.vendor || '') + (a.mac_address || '')).toLowerCase();
             valB = ((b.vendor || '') + (b.mac_address || '')).toLowerCase();
             break;
+        case 'last_seen':
+            // Sort by date (newest first when descending)
+            valA = a.last_seen ? new Date(a.last_seen).getTime() : 0;
+            valB = b.last_seen ? new Date(b.last_seen).getTime() : 0;
+            break;
+        case 'template_name':
+            // Sort by template name, unclassified at end
+            valA = (a.template_name || 'zzz_unclassified').toLowerCase();
+            valB = (b.template_name || 'zzz_unclassified').toLowerCase();
+            break;
         default:
             valA = a[column] || '';
             valB = b[column] || '';
