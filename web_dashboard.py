@@ -1353,23 +1353,41 @@ def api_get_whitelist():
 @app.route('/api/whitelist', methods=['POST'])
 @require_role('admin', 'operator')
 def api_add_whitelist():
-    """Add whitelist entry"""
+    """Add whitelist entry
+
+    Request body:
+        ip_cidr: IP address or CIDR range (required)
+        description: Human-readable description
+        scope: 'global' or 'sensor'
+        sensor_id: Required if scope is 'sensor'
+        direction: 'inbound', 'outbound', or 'both' (default: 'both')
+        created_by: User/system identifier
+    """
     try:
         data = request.get_json()
         ip_cidr = data.get('ip_cidr')
         description = data.get('description', '')
         scope = data.get('scope', 'global')
         sensor_id = data.get('sensor_id')
+        direction = data.get('direction', 'both')
         created_by = data.get('created_by', 'dashboard')
 
         if not ip_cidr:
             return jsonify({'success': False, 'error': 'ip_cidr required'}), 400
+
+        # Validate direction
+        if direction not in ('inbound', 'outbound', 'both'):
+            return jsonify({
+                'success': False,
+                'error': "direction must be 'inbound', 'outbound', or 'both'"
+            }), 400
 
         entry_id = db.add_whitelist_entry(
             ip_cidr=ip_cidr,
             description=description,
             scope=scope,
             sensor_id=sensor_id,
+            direction=direction,
             created_by=created_by
         )
 
@@ -1377,7 +1395,7 @@ def api_add_whitelist():
             return jsonify({
                 'success': True,
                 'entry_id': entry_id,
-                'message': f'Whitelist entry added: {ip_cidr}'
+                'message': f'Whitelist entry added: {ip_cidr} ({direction})'
             })
         else:
             return jsonify({'success': False, 'error': 'Failed to add whitelist entry'}), 500
@@ -1403,13 +1421,32 @@ def api_delete_whitelist(entry_id):
 @app.route('/api/whitelist/check/<ip_address>', methods=['GET'])
 @require_sensor_token_or_login()
 def api_check_whitelist(ip_address):
-    """Check if IP is whitelisted"""
+    """Check if IP is whitelisted
+
+    Query parameters:
+        sensor_id: Optional sensor ID for sensor-specific rules
+        direction: 'inbound', 'outbound', or omit for 'both' only
+    """
     try:
         sensor_id = request.args.get('sensor_id')
-        is_whitelisted = db.check_ip_whitelisted(ip_address, sensor_id=sensor_id)
+        direction = request.args.get('direction')
+
+        # Validate direction if provided
+        if direction and direction not in ('inbound', 'outbound', 'both'):
+            return jsonify({
+                'success': False,
+                'error': "direction must be 'inbound', 'outbound', or 'both'"
+            }), 400
+
+        is_whitelisted = db.check_ip_whitelisted(
+            ip_address,
+            sensor_id=sensor_id,
+            direction=direction
+        )
         return jsonify({
             'success': True,
             'ip_address': ip_address,
+            'direction': direction or 'both',
             'is_whitelisted': is_whitelisted
         })
     except Exception as e:

@@ -246,23 +246,42 @@ class ThreatDetector:
             pass
         return False
 
-    def _is_whitelisted(self, ip_str):
-        """Check if IP is whitelisted (config OR database)"""
-        # First check config whitelist (fast, in-memory)
+    def _is_whitelisted(self, ip_str, direction: str = None):
+        """Check if IP is whitelisted (config OR database)
+
+        Args:
+            ip_str: IP address to check
+            direction: 'inbound', 'outbound', or None for legacy behavior
+
+        Direction semantics:
+            - 'inbound': Traffic coming INTO the network (dst_ip is internal, src_ip is external)
+            - 'outbound': Traffic going OUT of the network (src_ip is internal, dst_ip is external)
+            - Use 'inbound' when checking external source IPs
+            - Use 'outbound' when checking external destination IPs
+        """
+        # First check config whitelist (fast, in-memory, no direction support)
         if self._is_in_list(ip_str, self.config_whitelist):
             self.logger.debug(f"IP {ip_str} whitelisted via config")
             return True
 
-        # Then check database whitelist (if available)
+        # Then check database whitelist (if available) with direction support
         if self.db_manager:
             try:
-                if self.db_manager.check_ip_whitelisted(ip_str, sensor_id=self.sensor_id):
-                    self.logger.debug(f"IP {ip_str} whitelisted via database (sensor_id={self.sensor_id})")
+                if self.db_manager.check_ip_whitelisted(ip_str, sensor_id=self.sensor_id, direction=direction):
+                    self.logger.debug(f"IP {ip_str} whitelisted via database (sensor_id={self.sensor_id}, direction={direction})")
                     return True
             except Exception as e:
                 self.logger.warning(f"Error checking database whitelist for {ip_str}: {e}")
 
         return False
+
+    def _is_src_whitelisted(self, src_ip: str) -> bool:
+        """Check if source IP is whitelisted for inbound traffic"""
+        return self._is_whitelisted(src_ip, direction='inbound')
+
+    def _is_dst_whitelisted(self, dst_ip: str) -> bool:
+        """Check if destination IP is whitelisted for outbound traffic"""
+        return self._is_whitelisted(dst_ip, direction='outbound')
 
     def analyze_packet(self, packet):
         """

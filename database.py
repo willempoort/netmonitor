@@ -189,11 +189,26 @@ class DatabaseManager:
                     description TEXT,
                     scope TEXT DEFAULT 'global',
                     sensor_id TEXT,
+                    direction TEXT DEFAULT 'both',
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     created_by TEXT,
                     FOREIGN KEY (sensor_id) REFERENCES sensors(sensor_id) ON DELETE CASCADE,
-                    CONSTRAINT valid_scope CHECK (scope IN ('global', 'sensor'))
+                    CONSTRAINT valid_scope CHECK (scope IN ('global', 'sensor')),
+                    CONSTRAINT valid_direction CHECK (direction IN ('inbound', 'outbound', 'both'))
                 );
+            ''')
+
+            # Add direction column if not exists (for existing installations)
+            cursor.execute('''
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name = 'ip_whitelists' AND column_name = 'direction') THEN
+                        ALTER TABLE ip_whitelists ADD COLUMN direction TEXT DEFAULT 'both';
+                        ALTER TABLE ip_whitelists ADD CONSTRAINT valid_direction
+                            CHECK (direction IN ('inbound', 'outbound', 'both'));
+                    END IF;
+                END $$;
             ''')
 
             # Index for faster whitelist lookups
@@ -1649,8 +1664,18 @@ class DatabaseManager:
 
     def add_whitelist_entry(self, ip_cidr: str, description: str = None,
                           scope: str = 'global', sensor_id: str = None,
+                          direction: str = 'both',
                           created_by: str = 'system') -> Optional[int]:
-        """Add IP/CIDR to whitelist"""
+        """Add IP/CIDR to whitelist
+
+        Args:
+            ip_cidr: IP address or CIDR range to whitelist
+            description: Human-readable description
+            scope: 'global' or 'sensor'
+            sensor_id: Required if scope is 'sensor'
+            direction: 'inbound', 'outbound', or 'both' (default)
+            created_by: User/system that created the entry
+        """
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
@@ -1660,15 +1685,20 @@ class DatabaseManager:
                 self.logger.error("sensor_id required for sensor-scoped whitelist")
                 return None
 
+            # Validate direction
+            if direction not in ('inbound', 'outbound', 'both'):
+                self.logger.error(f"Invalid direction: {direction}. Must be 'inbound', 'outbound', or 'both'")
+                return None
+
             cursor.execute('''
-                INSERT INTO ip_whitelists (ip_cidr, description, scope, sensor_id, created_by)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO ip_whitelists (ip_cidr, description, scope, sensor_id, direction, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING id
-            ''', (ip_cidr, description, scope, sensor_id, created_by))
+            ''', (ip_cidr, description, scope, sensor_id, direction, created_by))
 
             entry_id = cursor.fetchone()[0]
             conn.commit()
-            self.logger.info(f"Whitelist entry added: {ip_cidr} ({scope})")
+            self.logger.info(f"Whitelist entry added: {ip_cidr} ({scope}, {direction})")
             return entry_id
 
         except Exception as e:
@@ -1729,25 +1759,62 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
-    def check_ip_whitelisted(self, ip_address: str, sensor_id: str = None) -> bool:
-        """Check if IP is whitelisted (for sensor or globally)"""
+    def check_ip_whitelisted(self, ip_address: str, sensor_id: str = None,
+                              direction: str = None) -> bool:
+        """Check if IP is whitelisted (for sensor or globally)
+
+        Args:
+            ip_address: IP address to check
+            sensor_id: Optional sensor ID for sensor-specific rules
+            direction: 'inbound', 'outbound', or None (checks 'both' only)
+
+        Returns:
+            True if IP matches a whitelist entry for the given direction
+        """
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
 
+            # Build direction filter
+            # If direction is specified, match entries with that direction OR 'both'
+            # If direction is None, only match 'both' entries (backwards compatible)
+            if direction and direction in ('inbound', 'outbound'):
+                direction_filter = "AND (direction = %s OR direction = 'both')"
+                direction_param = direction
+            else:
+                direction_filter = "AND direction = 'both'"
+                direction_param = None
+
             # Check both global and sensor-specific whitelists
             # Use >>= operator: "does CIDR contain or equal IP?"
             if sensor_id:
-                cursor.execute('''
-                    SELECT COUNT(*) FROM ip_whitelists
-                    WHERE ip_cidr >>= inet %s
-                      AND (scope = 'global' OR (scope = 'sensor' AND sensor_id = %s))
-                ''', (ip_address, sensor_id))
+                if direction_param:
+                    cursor.execute(f'''
+                        SELECT COUNT(*) FROM ip_whitelists
+                        WHERE ip_cidr >>= inet %s
+                          AND (scope = 'global' OR (scope = 'sensor' AND sensor_id = %s))
+                          {direction_filter}
+                    ''', (ip_address, sensor_id, direction_param))
+                else:
+                    cursor.execute(f'''
+                        SELECT COUNT(*) FROM ip_whitelists
+                        WHERE ip_cidr >>= inet %s
+                          AND (scope = 'global' OR (scope = 'sensor' AND sensor_id = %s))
+                          {direction_filter}
+                    ''', (ip_address, sensor_id))
             else:
-                cursor.execute('''
-                    SELECT COUNT(*) FROM ip_whitelists
-                    WHERE ip_cidr >>= inet %s AND scope = 'global'
-                ''', (ip_address,))
+                if direction_param:
+                    cursor.execute(f'''
+                        SELECT COUNT(*) FROM ip_whitelists
+                        WHERE ip_cidr >>= inet %s AND scope = 'global'
+                          {direction_filter}
+                    ''', (ip_address, direction_param))
+                else:
+                    cursor.execute(f'''
+                        SELECT COUNT(*) FROM ip_whitelists
+                        WHERE ip_cidr >>= inet %s AND scope = 'global'
+                          {direction_filter}
+                    ''', (ip_address,))
 
             count = cursor.fetchone()[0]
             return count > 0

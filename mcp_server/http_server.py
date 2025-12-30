@@ -810,14 +810,15 @@ class MCPHTTPServer:
             # Whitelist Management Tools
             {
                 "name": "add_whitelist_entry",
-                "description": "Add an IP, CIDR range, or domain to the whitelist",
+                "description": "Add an IP, CIDR range, or domain to the whitelist with optional direction filtering",
                 "input_schema": {
                     "type": "object",
                     "properties": {
                         "ip_cidr": {"type": "string", "description": "IP address, CIDR range (e.g., 192.168.1.0/24), or domain"},
                         "description": {"type": "string", "description": "Reason for whitelisting (e.g., 'Office network', 'Trusted partner')"},
                         "scope": {"type": "string", "description": "'global' for all sensors or 'sensor' for specific sensor (default: global)"},
-                        "sensor_id": {"type": "string", "description": "Sensor ID (required if scope is 'sensor')"}
+                        "sensor_id": {"type": "string", "description": "Sensor ID (required if scope is 'sensor')"},
+                        "direction": {"type": "string", "description": "'inbound' (incoming traffic), 'outbound' (outgoing traffic), or 'both' (default). Use inbound for external source IPs, outbound for external destination IPs."}
                     },
                     "required": ["ip_cidr", "description"]
                 },
@@ -2370,13 +2371,14 @@ class MCPHTTPServer:
     # ==================== Whitelist Management Tool Implementations ====================
 
     async def _tool_add_whitelist_entry(self, params: Dict) -> Dict:
-        """Add an IP, CIDR range, or domain to the whitelist"""
+        """Add an IP, CIDR range, or domain to the whitelist with direction support"""
         import requests
 
         ip_cidr = params.get('ip_cidr')
         description = params.get('description')
         scope = params.get('scope', 'global')
         sensor_id = params.get('sensor_id')
+        direction = params.get('direction', 'both')
 
         if not ip_cidr or not description:
             return {'success': False, 'error': 'ip_cidr and description are required'}
@@ -2384,7 +2386,10 @@ class MCPHTTPServer:
         if scope == 'sensor' and not sensor_id:
             return {'success': False, 'error': "sensor_id required when scope is 'sensor'"}
 
-        logger.info(f"Adding whitelist entry: {ip_cidr} (scope: {scope})")
+        if direction not in ('inbound', 'outbound', 'both'):
+            return {'success': False, 'error': "direction must be 'inbound', 'outbound', or 'both'"}
+
+        logger.info(f"Adding whitelist entry: {ip_cidr} (scope: {scope}, direction: {direction})")
 
         dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
 
@@ -2396,6 +2401,7 @@ class MCPHTTPServer:
                     'description': description,
                     'scope': scope,
                     'sensor_id': sensor_id,
+                    'direction': direction,
                     'created_by': 'mcp'
                 },
                 timeout=10
@@ -2406,12 +2412,13 @@ class MCPHTTPServer:
                 if result.get('success'):
                     return {
                         'success': True,
-                        'message': f"Added {ip_cidr} to whitelist",
+                        'message': f"Added {ip_cidr} to whitelist ({direction})",
                         'entry_id': result.get('entry_id'),
                         'ip_cidr': ip_cidr,
                         'description': description,
                         'scope': scope,
-                        'sensor_id': sensor_id
+                        'sensor_id': sensor_id,
+                        'direction': direction
                     }
                 else:
                     return {'success': False, 'error': result.get('error', 'Unknown error')}
