@@ -1233,11 +1233,12 @@
                     <div id="add-behavior-form" class="card bg-secondary mb-3" style="display: none;">
                         <div class="card-body">
                             <div class="row g-2">
-                                <div class="col-md-4">
+                                <div class="col-md-3">
                                     <label class="form-label small">Behavior Type</label>
                                     <select class="form-select form-select-sm bg-dark text-light border-secondary" id="new-behavior-type" onchange="updateBehaviorPlaceholder()">
                                         <option value="allowed_ports">Allowed Port(s)</option>
                                         <option value="allowed_protocols">Allowed Protocol</option>
+                                        <option value="allowed_sources">Allowed Sources</option>
                                         <option value="bandwidth_limit">Bandwidth Limit (MB/h)</option>
                                         <option value="connection_behavior">Connection Behavior</option>
                                         <option value="expected_destinations">Expected Destination</option>
@@ -1246,12 +1247,20 @@
                                         <option value="traffic_pattern">Traffic Pattern</option>
                                     </select>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-3">
                                     <label class="form-label small">Value</label>
                                     <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
                                            id="new-behavior-value" placeholder="e.g., 443 or 5060-5090">
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-3">
+                                    <label class="form-label small">Direction</label>
+                                    <select class="form-select form-select-sm bg-dark text-light border-secondary" id="new-behavior-direction">
+                                        <option value="">Both (default)</option>
+                                        <option value="inbound">Inbound (traffic TO device)</option>
+                                        <option value="outbound">Outbound (traffic FROM device)</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
                                     <label class="form-label small">Action</label>
                                     <select class="form-select form-select-sm bg-dark text-light border-secondary" id="new-behavior-action">
                                         <option value="allow">Allow (suppress alerts)</option>
@@ -1284,6 +1293,7 @@
                                 <tr>
                                     <th>Type</th>
                                     <th>Value</th>
+                                    <th>Direction</th>
                                     <th>Action</th>
                                     <th>Description</th>
                                     <th style="width: 50px;"></th>
@@ -1291,7 +1301,7 @@
                             </thead>
                             <tbody id="template-behaviors-table">
                                 <tr>
-                                    <td colspan="5" class="text-center text-muted">No behaviors defined</td>
+                                    <td colspan="6" class="text-center text-muted">No behaviors defined</td>
                                 </tr>
                             </tbody>
                         </table>
