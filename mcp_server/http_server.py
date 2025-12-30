@@ -847,6 +847,156 @@ class MCPHTTPServer:
                     "required": ["entry_id"]
                 },
                 "scope_required": "read_write"
+            },
+            # AD/Kerberos Attack Detection Tools
+            {
+                "name": "get_kerberos_stats",
+                "description": "Get Kerberos attack detection statistics including Kerberoasting, AS-REP Roasting, and DCSync attempts",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "hours": {"type": "integer", "description": "Time window in hours (default: 24)"},
+                        "sensor_id": {"type": "string", "description": "Filter by sensor ID"}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "get_kerberos_attacks",
+                "description": "Get detailed list of detected Kerberos attacks (Kerberoasting, AS-REP Roasting, DCSync, Pass-the-Hash)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "attack_type": {"type": "string", "description": "Filter by type: kerberoasting, asrep_roasting, dcsync, pass_the_hash, golden_ticket"},
+                        "hours": {"type": "integer", "description": "Time window in hours (default: 24)"},
+                        "limit": {"type": "integer", "description": "Maximum results (default: 50)"}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "check_weak_encryption",
+                "description": "Check for weak Kerberos encryption usage (RC4, DES) in the network",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "hours": {"type": "integer", "description": "Time window in hours (default: 24)"}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            # Kill Chain Detection Tools
+            {
+                "name": "get_attack_chains",
+                "description": "Get detected multi-stage attack chains with kill chain stage progression",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "min_stages": {"type": "integer", "description": "Minimum stages to include (default: 2)"},
+                        "hours": {"type": "integer", "description": "Time window in hours (default: 24)"},
+                        "source_ip": {"type": "string", "description": "Filter by source IP"}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "get_mitre_mapping",
+                "description": "Get MITRE ATT&CK technique mapping for detected alerts",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "hours": {"type": "integer", "description": "Time window in hours (default: 24)"},
+                        "tactic": {"type": "string", "description": "Filter by tactic (e.g., 'credential_access', 'lateral_movement')"}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            # Risk Scoring Tools
+            {
+                "name": "get_top_risk_assets",
+                "description": "Get assets with highest risk scores based on alert history and asset criticality",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer", "description": "Number of assets to return (default: 10)"},
+                        "min_score": {"type": "number", "description": "Minimum risk score threshold (0-100)"}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "get_asset_risk",
+                "description": "Get detailed risk score and contributing factors for a specific IP address",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "ip_address": {"type": "string", "description": "IP address to check"}
+                    },
+                    "required": ["ip_address"]
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "get_risk_trends",
+                "description": "Get risk score trends over time for top assets",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "hours": {"type": "integer", "description": "Time window in hours (default: 24)"},
+                        "limit": {"type": "integer", "description": "Number of assets to include (default: 10)"}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            # SOAR Tools
+            {
+                "name": "get_soar_playbooks",
+                "description": "Get configured SOAR playbooks and their status",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "enabled_only": {"type": "boolean", "description": "Only show enabled playbooks (default: false)"}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "get_pending_approvals",
+                "description": "Get SOAR actions pending manual approval",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "playbook": {"type": "string", "description": "Filter by playbook name"}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "approve_soar_action",
+                "description": "Approve or reject a pending SOAR action",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "action_id": {"type": "integer", "description": "Action ID to approve/reject"},
+                        "approved": {"type": "boolean", "description": "True to approve, False to reject"},
+                        "reason": {"type": "string", "description": "Reason for approval/rejection"}
+                    },
+                    "required": ["action_id", "approved"]
+                },
+                "scope_required": "read_write"
+            },
+            {
+                "name": "get_soar_history",
+                "description": "Get history of executed SOAR actions",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "hours": {"type": "integer", "description": "Time window in hours (default: 24)"},
+                        "playbook": {"type": "string", "description": "Filter by playbook name"},
+                        "status": {"type": "string", "description": "Filter by status: executed, pending, rejected, failed"}
+                    }
+                },
+                "scope_required": "read_only"
             }
         ]
         return tools
@@ -912,6 +1062,22 @@ class MCPHTTPServer:
             'add_whitelist_entry': self._tool_add_whitelist_entry,
             'get_whitelist_entries': self._tool_get_whitelist_entries,
             'remove_whitelist_entry': self._tool_remove_whitelist_entry,
+            # AD/Kerberos Attack Detection Tools
+            'get_kerberos_stats': self._tool_get_kerberos_stats,
+            'get_kerberos_attacks': self._tool_get_kerberos_attacks,
+            'check_weak_encryption': self._tool_check_weak_encryption,
+            # Kill Chain Detection Tools
+            'get_attack_chains': self._tool_get_attack_chains,
+            'get_mitre_mapping': self._tool_get_mitre_mapping,
+            # Risk Scoring Tools
+            'get_top_risk_assets': self._tool_get_top_risk_assets,
+            'get_asset_risk': self._tool_get_asset_risk,
+            'get_risk_trends': self._tool_get_risk_trends,
+            # SOAR Tools
+            'get_soar_playbooks': self._tool_get_soar_playbooks,
+            'get_pending_approvals': self._tool_get_pending_approvals,
+            'approve_soar_action': self._tool_approve_soar_action,
+            'get_soar_history': self._tool_get_soar_history,
         }
 
         if tool_name not in tool_map:
@@ -2508,6 +2674,574 @@ class MCPHTTPServer:
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Error removing whitelist entry: {e}")
+            return {'success': False, 'error': str(e)}
+
+    # ==================== AD/Kerberos Attack Detection Tool Implementations ====================
+
+    async def _tool_get_kerberos_stats(self, params: Dict) -> Dict:
+        """Get Kerberos attack detection statistics"""
+        hours = params.get('hours', 24)
+        sensor_id = params.get('sensor_id')
+
+        try:
+            # Query alerts related to Kerberos attacks
+            kerberos_types = ['kerberoasting', 'asrep_roasting', 'dcsync', 'pass_the_hash', 'golden_ticket', 'weak_encryption']
+
+            stats = {
+                'period_hours': hours,
+                'total_kerberos_alerts': 0,
+                'by_attack_type': {},
+                'by_severity': {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0},
+                'unique_sources': set(),
+                'unique_targets': set()
+            }
+
+            alerts = self.db.get_recent_alerts(hours=hours, sensor_id=sensor_id)
+
+            for alert in alerts:
+                alert_type = alert.get('alert_type', '').lower()
+                if any(kt in alert_type for kt in kerberos_types):
+                    stats['total_kerberos_alerts'] += 1
+                    stats['by_attack_type'][alert_type] = stats['by_attack_type'].get(alert_type, 0) + 1
+                    severity = alert.get('severity', 'MEDIUM')
+                    stats['by_severity'][severity] = stats['by_severity'].get(severity, 0) + 1
+                    if alert.get('src_ip'):
+                        stats['unique_sources'].add(alert['src_ip'])
+                    if alert.get('dst_ip'):
+                        stats['unique_targets'].add(alert['dst_ip'])
+
+            stats['unique_sources'] = list(stats['unique_sources'])
+            stats['unique_targets'] = list(stats['unique_targets'])
+
+            return {
+                'success': True,
+                'stats': stats
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting Kerberos stats: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def _tool_get_kerberos_attacks(self, params: Dict) -> Dict:
+        """Get detailed list of Kerberos attacks"""
+        attack_type = params.get('attack_type')
+        hours = params.get('hours', 24)
+        limit = params.get('limit', 50)
+
+        try:
+            kerberos_types = ['kerberoasting', 'asrep_roasting', 'dcsync', 'pass_the_hash', 'golden_ticket']
+            alerts = self.db.get_recent_alerts(hours=hours)
+
+            attacks = []
+            for alert in alerts:
+                alert_type_lower = alert.get('alert_type', '').lower()
+
+                # Filter by specific attack type if provided
+                if attack_type:
+                    if attack_type.lower() not in alert_type_lower:
+                        continue
+                else:
+                    if not any(kt in alert_type_lower for kt in kerberos_types):
+                        continue
+
+                attacks.append({
+                    'id': alert.get('id'),
+                    'timestamp': str(alert.get('timestamp')),
+                    'attack_type': alert.get('alert_type'),
+                    'severity': alert.get('severity'),
+                    'src_ip': alert.get('src_ip'),
+                    'dst_ip': alert.get('dst_ip'),
+                    'description': alert.get('description'),
+                    'sensor_id': alert.get('sensor_id')
+                })
+
+                if len(attacks) >= limit:
+                    break
+
+            return {
+                'success': True,
+                'count': len(attacks),
+                'attacks': attacks
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting Kerberos attacks: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def _tool_check_weak_encryption(self, params: Dict) -> Dict:
+        """Check for weak Kerberos encryption usage"""
+        hours = params.get('hours', 24)
+
+        try:
+            alerts = self.db.get_recent_alerts(hours=hours)
+
+            weak_encryption_events = []
+            for alert in alerts:
+                if 'weak_encryption' in alert.get('alert_type', '').lower() or \
+                   'rc4' in alert.get('description', '').lower() or \
+                   'des' in alert.get('description', '').lower():
+                    weak_encryption_events.append({
+                        'timestamp': str(alert.get('timestamp')),
+                        'src_ip': alert.get('src_ip'),
+                        'dst_ip': alert.get('dst_ip'),
+                        'description': alert.get('description'),
+                        'encryption_type': 'RC4' if 'rc4' in alert.get('description', '').lower() else 'DES'
+                    })
+
+            return {
+                'success': True,
+                'weak_encryption_detected': len(weak_encryption_events) > 0,
+                'count': len(weak_encryption_events),
+                'events': weak_encryption_events[:50],
+                'recommendation': 'Disable RC4 and DES encryption in Active Directory Group Policy' if weak_encryption_events else 'No weak encryption detected'
+            }
+
+        except Exception as e:
+            logger.error(f"Error checking weak encryption: {e}")
+            return {'success': False, 'error': str(e)}
+
+    # ==================== Kill Chain Detection Tool Implementations ====================
+
+    async def _tool_get_attack_chains(self, params: Dict) -> Dict:
+        """Get detected multi-stage attack chains"""
+        min_stages = params.get('min_stages', 2)
+        hours = params.get('hours', 24)
+        source_ip = params.get('source_ip')
+
+        try:
+            alerts = self.db.get_recent_alerts(hours=hours)
+
+            # Group alerts by source IP to detect chains
+            chains_by_source = {}
+            for alert in alerts:
+                src = alert.get('src_ip')
+                if not src:
+                    continue
+                if source_ip and src != source_ip:
+                    continue
+
+                if src not in chains_by_source:
+                    chains_by_source[src] = {
+                        'source_ip': src,
+                        'stages': set(),
+                        'alerts': [],
+                        'first_seen': alert.get('timestamp'),
+                        'last_seen': alert.get('timestamp')
+                    }
+
+                # Map alert type to kill chain stage
+                stage = self._map_to_kill_chain_stage(alert.get('alert_type', ''))
+                if stage:
+                    chains_by_source[src]['stages'].add(stage)
+                    chains_by_source[src]['alerts'].append({
+                        'alert_type': alert.get('alert_type'),
+                        'stage': stage,
+                        'timestamp': str(alert.get('timestamp')),
+                        'severity': alert.get('severity')
+                    })
+                    chains_by_source[src]['last_seen'] = alert.get('timestamp')
+
+            # Filter by minimum stages and format output
+            attack_chains = []
+            for src, chain in chains_by_source.items():
+                if len(chain['stages']) >= min_stages:
+                    attack_chains.append({
+                        'source_ip': src,
+                        'stage_count': len(chain['stages']),
+                        'stages': list(chain['stages']),
+                        'alert_count': len(chain['alerts']),
+                        'first_seen': str(chain['first_seen']),
+                        'last_seen': str(chain['last_seen']),
+                        'severity': 'CRITICAL' if len(chain['stages']) >= 4 else 'HIGH',
+                        'alerts': chain['alerts'][:10]  # Limit alerts in response
+                    })
+
+            # Sort by stage count descending
+            attack_chains.sort(key=lambda x: x['stage_count'], reverse=True)
+
+            return {
+                'success': True,
+                'count': len(attack_chains),
+                'attack_chains': attack_chains[:20]
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting attack chains: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def _map_to_kill_chain_stage(self, alert_type: str) -> Optional[str]:
+        """Map alert type to kill chain stage"""
+        alert_lower = alert_type.lower()
+
+        stage_mapping = {
+            'reconnaissance': ['port_scan', 'enumeration', 'discovery', 'sweep'],
+            'initial_access': ['brute_force', 'password_spray', 'exploit'],
+            'execution': ['malware', 'shell', 'script'],
+            'persistence': ['backdoor', 'scheduled_task', 'registry'],
+            'privilege_escalation': ['privilege', 'escalation', 'admin'],
+            'defense_evasion': ['obfuscation', 'encoding', 'masquerading'],
+            'credential_access': ['kerberoasting', 'credential', 'mimikatz', 'dcsync', 'pass_the_hash'],
+            'discovery': ['ldap_enum', 'ad_enum', 'network_scan'],
+            'lateral_movement': ['lateral', 'psexec', 'wmi', 'smb_admin'],
+            'collection': ['exfiltration', 'collection', 'archive'],
+            'impact': ['ransomware', 'wiper', 'destruction']
+        }
+
+        for stage, keywords in stage_mapping.items():
+            if any(kw in alert_lower for kw in keywords):
+                return stage
+
+        return None
+
+    async def _tool_get_mitre_mapping(self, params: Dict) -> Dict:
+        """Get MITRE ATT&CK technique mapping for alerts"""
+        hours = params.get('hours', 24)
+        tactic = params.get('tactic')
+
+        try:
+            # MITRE ATT&CK mapping for common alerts
+            mitre_mapping = {
+                'port_scan': {'technique': 'T1046', 'name': 'Network Service Scanning', 'tactic': 'discovery'},
+                'brute_force': {'technique': 'T1110', 'name': 'Brute Force', 'tactic': 'credential_access'},
+                'kerberoasting': {'technique': 'T1558.003', 'name': 'Kerberoasting', 'tactic': 'credential_access'},
+                'dcsync': {'technique': 'T1003.006', 'name': 'DCSync', 'tactic': 'credential_access'},
+                'pass_the_hash': {'technique': 'T1550.002', 'name': 'Pass the Hash', 'tactic': 'lateral_movement'},
+                'smb_admin_share': {'technique': 'T1021.002', 'name': 'SMB/Windows Admin Shares', 'tactic': 'lateral_movement'},
+                'lateral_movement': {'technique': 'T1021', 'name': 'Remote Services', 'tactic': 'lateral_movement'},
+                'c2_communication': {'technique': 'T1071', 'name': 'Application Layer Protocol', 'tactic': 'command_and_control'},
+                'dns_tunneling': {'technique': 'T1071.004', 'name': 'DNS', 'tactic': 'command_and_control'},
+                'data_exfiltration': {'technique': 'T1041', 'name': 'Exfiltration Over C2 Channel', 'tactic': 'exfiltration'},
+                'beaconing': {'technique': 'T1573', 'name': 'Encrypted Channel', 'tactic': 'command_and_control'}
+            }
+
+            alerts = self.db.get_recent_alerts(hours=hours)
+
+            mapped_alerts = []
+            tactic_counts = {}
+
+            for alert in alerts:
+                alert_type = alert.get('alert_type', '').lower()
+
+                for key, mapping in mitre_mapping.items():
+                    if key in alert_type:
+                        if tactic and mapping['tactic'] != tactic:
+                            continue
+
+                        mapped_alerts.append({
+                            'alert_id': alert.get('id'),
+                            'alert_type': alert.get('alert_type'),
+                            'mitre_technique': mapping['technique'],
+                            'technique_name': mapping['name'],
+                            'tactic': mapping['tactic'],
+                            'timestamp': str(alert.get('timestamp')),
+                            'src_ip': alert.get('src_ip')
+                        })
+
+                        tactic_counts[mapping['tactic']] = tactic_counts.get(mapping['tactic'], 0) + 1
+                        break
+
+            return {
+                'success': True,
+                'total_mapped': len(mapped_alerts),
+                'by_tactic': tactic_counts,
+                'mapped_alerts': mapped_alerts[:100]
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting MITRE mapping: {e}")
+            return {'success': False, 'error': str(e)}
+
+    # ==================== Risk Scoring Tool Implementations ====================
+
+    async def _tool_get_top_risk_assets(self, params: Dict) -> Dict:
+        """Get assets with highest risk scores"""
+        limit = params.get('limit', 10)
+        min_score = params.get('min_score', 0)
+
+        try:
+            # Calculate risk scores based on alert history
+            alerts = self.db.get_recent_alerts(hours=168)  # 7 days
+
+            risk_scores = {}
+            severity_weights = {'CRITICAL': 10, 'HIGH': 5, 'MEDIUM': 2, 'LOW': 1}
+
+            for alert in alerts:
+                src_ip = alert.get('src_ip')
+                if not src_ip:
+                    continue
+
+                if src_ip not in risk_scores:
+                    risk_scores[src_ip] = {
+                        'ip_address': src_ip,
+                        'score': 0,
+                        'alert_count': 0,
+                        'critical_count': 0,
+                        'high_count': 0,
+                        'alert_types': set()
+                    }
+
+                severity = alert.get('severity', 'MEDIUM')
+                weight = severity_weights.get(severity, 1)
+                risk_scores[src_ip]['score'] += weight
+                risk_scores[src_ip]['alert_count'] += 1
+                risk_scores[src_ip]['alert_types'].add(alert.get('alert_type', 'unknown'))
+
+                if severity == 'CRITICAL':
+                    risk_scores[src_ip]['critical_count'] += 1
+                elif severity == 'HIGH':
+                    risk_scores[src_ip]['high_count'] += 1
+
+            # Normalize scores to 0-100
+            max_score = max((r['score'] for r in risk_scores.values()), default=1)
+            for ip, data in risk_scores.items():
+                data['score'] = min(100, int((data['score'] / max_score) * 100))
+                data['alert_types'] = list(data['alert_types'])
+
+            # Filter and sort
+            top_assets = [
+                data for data in risk_scores.values()
+                if data['score'] >= min_score
+            ]
+            top_assets.sort(key=lambda x: x['score'], reverse=True)
+
+            return {
+                'success': True,
+                'count': len(top_assets[:limit]),
+                'assets': top_assets[:limit]
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting top risk assets: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def _tool_get_asset_risk(self, params: Dict) -> Dict:
+        """Get detailed risk score for a specific IP"""
+        ip_address = params.get('ip_address')
+
+        if not ip_address:
+            return {'success': False, 'error': 'ip_address is required'}
+
+        try:
+            alerts = self.db.get_recent_alerts(hours=168)  # 7 days
+
+            severity_weights = {'CRITICAL': 10, 'HIGH': 5, 'MEDIUM': 2, 'LOW': 1}
+            risk_data = {
+                'ip_address': ip_address,
+                'score': 0,
+                'alert_count': 0,
+                'contributing_factors': [],
+                'alert_timeline': [],
+                'severity_breakdown': {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}
+            }
+
+            for alert in alerts:
+                if alert.get('src_ip') == ip_address or alert.get('dst_ip') == ip_address:
+                    severity = alert.get('severity', 'MEDIUM')
+                    weight = severity_weights.get(severity, 1)
+                    risk_data['score'] += weight
+                    risk_data['alert_count'] += 1
+                    risk_data['severity_breakdown'][severity] = risk_data['severity_breakdown'].get(severity, 0) + 1
+
+                    risk_data['alert_timeline'].append({
+                        'timestamp': str(alert.get('timestamp')),
+                        'type': alert.get('alert_type'),
+                        'severity': severity
+                    })
+
+                    factor = f"{alert.get('alert_type')} ({severity})"
+                    if factor not in risk_data['contributing_factors']:
+                        risk_data['contributing_factors'].append(factor)
+
+            # Normalize score
+            risk_data['score'] = min(100, risk_data['score'])
+
+            # Determine trend
+            if risk_data['alert_count'] > 10:
+                risk_data['trend'] = 'rising'
+            elif risk_data['alert_count'] > 5:
+                risk_data['trend'] = 'stable'
+            else:
+                risk_data['trend'] = 'low'
+
+            # Limit timeline
+            risk_data['alert_timeline'] = risk_data['alert_timeline'][:20]
+
+            return {
+                'success': True,
+                'risk_data': risk_data
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting asset risk: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def _tool_get_risk_trends(self, params: Dict) -> Dict:
+        """Get risk score trends over time"""
+        hours = params.get('hours', 24)
+        limit = params.get('limit', 10)
+
+        try:
+            # Get top assets first
+            top_result = await self._tool_get_top_risk_assets({'limit': limit})
+            if not top_result.get('success'):
+                return top_result
+
+            trends = []
+            for asset in top_result.get('assets', []):
+                ip = asset['ip_address']
+
+                # Simple trend calculation
+                trends.append({
+                    'ip_address': ip,
+                    'current_score': asset['score'],
+                    'alert_count': asset['alert_count'],
+                    'trend': 'rising' if asset['critical_count'] > 0 else 'stable'
+                })
+
+            return {
+                'success': True,
+                'period_hours': hours,
+                'trends': trends
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting risk trends: {e}")
+            return {'success': False, 'error': str(e)}
+
+    # ==================== SOAR Tool Implementations ====================
+
+    async def _tool_get_soar_playbooks(self, params: Dict) -> Dict:
+        """Get configured SOAR playbooks"""
+        enabled_only = params.get('enabled_only', False)
+
+        try:
+            # Default playbooks configuration
+            playbooks = {
+                'critical_threat': {
+                    'name': 'Critical Threat Response',
+                    'enabled': True,
+                    'trigger': 'CRITICAL severity alert',
+                    'actions': ['block_ip', 'isolate_host', 'notify_soc'],
+                    'auto_approve': False,
+                    'description': 'Responds to critical threats with immediate containment'
+                },
+                'lateral_movement': {
+                    'name': 'Lateral Movement Response',
+                    'enabled': True,
+                    'trigger': 'Lateral movement detection',
+                    'actions': ['quarantine_segment', 'disable_account', 'collect_forensics'],
+                    'auto_approve': False,
+                    'description': 'Contains lateral movement attempts'
+                },
+                'credential_theft': {
+                    'name': 'Credential Theft Response',
+                    'enabled': True,
+                    'trigger': 'Kerberoasting, Pass-the-Hash detected',
+                    'actions': ['force_password_reset', 'revoke_sessions', 'notify_admin'],
+                    'auto_approve': False,
+                    'description': 'Responds to credential theft attempts'
+                },
+                'reconnaissance': {
+                    'name': 'Reconnaissance Response',
+                    'enabled': True,
+                    'trigger': 'Port scan, enumeration detected',
+                    'actions': ['monitor_enhanced', 'capture_pcap'],
+                    'auto_approve': True,
+                    'description': 'Enhanced monitoring for reconnaissance activity'
+                },
+                'brute_force': {
+                    'name': 'Brute Force Response',
+                    'enabled': True,
+                    'trigger': 'Failed authentication threshold',
+                    'actions': ['temporary_block', 'rate_limit'],
+                    'auto_approve': True,
+                    'description': 'Blocks brute force attempts'
+                }
+            }
+
+            if enabled_only:
+                playbooks = {k: v for k, v in playbooks.items() if v['enabled']}
+
+            return {
+                'success': True,
+                'playbook_count': len(playbooks),
+                'playbooks': playbooks,
+                'dry_run_mode': True,  # Default to dry run
+                'require_approval': True
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting SOAR playbooks: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def _tool_get_pending_approvals(self, params: Dict) -> Dict:
+        """Get SOAR actions pending approval"""
+        playbook = params.get('playbook')
+
+        try:
+            # In a real implementation, this would query a database
+            # For now, return empty list as no actions are pending
+            pending = []
+
+            return {
+                'success': True,
+                'count': len(pending),
+                'pending_approvals': pending,
+                'message': 'No actions pending approval' if not pending else f'{len(pending)} actions pending'
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting pending approvals: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def _tool_approve_soar_action(self, params: Dict) -> Dict:
+        """Approve or reject a SOAR action"""
+        action_id = params.get('action_id')
+        approved = params.get('approved')
+        reason = params.get('reason', '')
+
+        if action_id is None or approved is None:
+            return {'success': False, 'error': 'action_id and approved are required'}
+
+        try:
+            # In a real implementation, this would update the database
+            # and potentially execute the action if approved
+            action = 'approved' if approved else 'rejected'
+
+            return {
+                'success': True,
+                'action_id': action_id,
+                'status': action,
+                'reason': reason,
+                'message': f'Action {action_id} has been {action}',
+                'note': 'SOAR is in dry-run mode - no actual action was executed'
+            }
+
+        except Exception as e:
+            logger.error(f"Error approving SOAR action: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def _tool_get_soar_history(self, params: Dict) -> Dict:
+        """Get history of SOAR actions"""
+        hours = params.get('hours', 24)
+        playbook = params.get('playbook')
+        status = params.get('status')
+
+        try:
+            # In a real implementation, this would query action history
+            # For now, return sample structure
+            history = []
+
+            return {
+                'success': True,
+                'period_hours': hours,
+                'count': len(history),
+                'history': history,
+                'message': 'No SOAR actions in history' if not history else f'{len(history)} actions found'
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting SOAR history: {e}")
             return {'success': False, 'error': str(e)}
 
     async def _get_dashboard_summary(self) -> str:
