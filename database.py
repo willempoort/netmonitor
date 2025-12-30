@@ -2901,8 +2901,12 @@ class DatabaseManager:
                 'icon': 'storage',
                 'category': 'server',
                 'behaviors': [
-                    {'type': 'allowed_ports', 'params': {'ports': [21, 22, 80, 139, 443, 445, 548, 873, 2049, 3260]}, 'action': 'allow'},
+                    # Outbound behaviors
                     {'type': 'traffic_pattern', 'params': {'high_bandwidth': True, 'internal_only': True}, 'action': 'allow'},
+                    # Inbound behaviors - NAS receives many connections for file access
+                    {'type': 'allowed_ports', 'params': {'ports': [21, 22, 80, 139, 443, 445, 548, 873, 2049, 3260], 'direction': 'inbound'}, 'action': 'allow'},
+                    {'type': 'allowed_sources', 'params': {'internal': True}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'high_connection_rate': True, 'accepts_connections': True}, 'action': 'allow'},
                 ]
             },
             {
@@ -2911,7 +2915,10 @@ class DatabaseManager:
                 'icon': 'database',
                 'category': 'server',
                 'behaviors': [
-                    {'type': 'allowed_ports', 'params': {'ports': [1433, 1521, 3306, 5432, 27017]}, 'action': 'allow'},
+                    # Inbound behaviors - database servers receive connections from apps
+                    {'type': 'allowed_ports', 'params': {'ports': [1433, 1521, 3306, 5432, 27017], 'direction': 'inbound'}, 'action': 'allow'},
+                    {'type': 'allowed_sources', 'params': {'internal': True}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'high_connection_rate': True, 'accepts_connections': True}, 'action': 'allow'},
                     {'type': 'expected_destinations', 'params': {'internal_only': True}, 'action': 'allow'},
                 ]
             },
@@ -2921,7 +2928,9 @@ class DatabaseManager:
                 'icon': 'printer',
                 'category': 'iot',
                 'behaviors': [
-                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 515, 631, 9100]}, 'action': 'allow'},
+                    # Inbound behaviors - printers receive print jobs
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 515, 631, 9100], 'direction': 'inbound'}, 'action': 'allow'},
+                    {'type': 'allowed_sources', 'params': {'internal': True}, 'action': 'allow'},
                     {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'mDNS', 'SNMP']}, 'action': 'allow'},
                 ]
             },
@@ -3082,10 +3091,14 @@ class DatabaseManager:
                 'icon': 'home',
                 'category': 'iot',
                 'behaviors': [
-                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 1883, 8080, 8123, 8883]}, 'action': 'allow'},
+                    # Outbound behaviors (traffic FROM this device)
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 1883, 8080, 8123, 8883], 'direction': 'outbound'}, 'action': 'allow'},
                     {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'MQTT', 'mDNS', 'SSDP', 'CoAP']}, 'action': 'allow'},
                     {'type': 'traffic_pattern', 'params': {'moderate_bandwidth': True, 'continuous': True}, 'action': 'allow'},
-                    {'type': 'connection_behavior', 'params': {'high_connection_rate': True, 'local_network': True}, 'action': 'allow'},
+                    # Inbound behaviors (traffic TO this device) - new!
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 8080, 8123, 8443, 21063], 'direction': 'inbound'}, 'action': 'allow'},
+                    {'type': 'allowed_sources', 'params': {'internal': True}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'high_connection_rate': True, 'accepts_connections': True, 'api_server': True}, 'action': 'allow'},
                 ]
             },
         ]

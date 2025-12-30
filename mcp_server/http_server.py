@@ -1918,29 +1918,104 @@ class MCPHTTPServer:
             if match_reason:
                 matching_behaviors.append({
                     'behavior_type': behavior_type,
-                    'reason': match_reason
+                    'reason': match_reason,
+                    'direction': 'outbound',
+                    'device': 'source'
                 })
+
+        # Check 2: Destination device template (inbound behaviors)
+        dst_device = None
+        dst_template = None
+        if destination_ip:
+            dst_device = self.db.get_device_by_ip(destination_ip)
+            if dst_device and dst_device.get('template_id'):
+                dst_template = self.db.get_device_template_by_id(dst_device['template_id'])
+                if dst_template:
+                    dst_behaviors = dst_template.get('behaviors', [])
+                    for behavior in dst_behaviors:
+                        if behavior.get('action') != 'allow':
+                            continue
+
+                        behavior_type = behavior.get('behavior_type')
+                        params_b = behavior.get('parameters', {})
+                        direction = params_b.get('direction')
+
+                        # For destination device, check inbound or bidirectional behaviors
+                        if direction == 'outbound':
+                            continue
+
+                        match_reason = None
+
+                        if behavior_type == 'allowed_ports' and destination_port:
+                            allowed_ports = params_b.get('ports', [])
+                            if destination_port in allowed_ports:
+                                match_reason = f"Inbound port {destination_port} is allowed on destination"
+
+                        elif behavior_type == 'allowed_sources':
+                            import ipaddress
+                            try:
+                                src = ipaddress.ip_address(source_ip)
+                                if params_b.get('internal'):
+                                    internal_nets = [
+                                        ipaddress.ip_network('10.0.0.0/8'),
+                                        ipaddress.ip_network('172.16.0.0/12'),
+                                        ipaddress.ip_network('192.168.0.0/16')
+                                    ]
+                                    if any(src in net for net in internal_nets):
+                                        match_reason = "Internal source is allowed on destination"
+                            except ValueError:
+                                pass
+
+                        elif behavior_type == 'connection_behavior':
+                            if params_b.get('accepts_connections') or params_b.get('api_server'):
+                                if alert_type in ('CONNECTION_FLOOD', 'HIGH_RISK_ATTACK_CHAIN', 'PORT_SCAN'):
+                                    match_reason = "Destination accepts many connections"
+
+                        if match_reason:
+                            matching_behaviors.append({
+                                'behavior_type': behavior_type,
+                                'reason': match_reason,
+                                'direction': 'inbound',
+                                'device': 'destination'
+                            })
 
         would_suppress = len(matching_behaviors) > 0
 
-        return {
+        result = {
             'success': True,
             'would_suppress': would_suppress,
             'reason': matching_behaviors[0]['reason'] if matching_behaviors else f'No matching behavior rules for {alert_type}',
             'matching_behaviors': matching_behaviors,
-            'device': {
+            'source_device': {
                 'ip_address': device.get('ip_address'),
                 'hostname': device.get('hostname'),
                 'mac_address': device.get('mac_address'),
-                'template_name': template.get('name')
+                'template_name': template.get('name') if template else None
             },
-            'template': {
+            'source_template': {
                 'id': template.get('id'),
                 'name': template.get('name'),
                 'category': template.get('category'),
                 'behaviors_count': len(behaviors)
-            }
+            } if template else None
         }
+
+        # Add destination info if available
+        if dst_device:
+            result['destination_device'] = {
+                'ip_address': dst_device.get('ip_address'),
+                'hostname': dst_device.get('hostname'),
+                'template_name': dst_template.get('name') if dst_template else None
+            }
+            if dst_template:
+                result['destination_template'] = {
+                    'id': dst_template.get('id'),
+                    'name': dst_template.get('name'),
+                    'category': dst_template.get('category'),
+                    'behaviors_count': len(dst_template.get('behaviors', []))
+                }
+
+        return result
 
     # ==================== Behavior Learning Tool Implementations ====================
 

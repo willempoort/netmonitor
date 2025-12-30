@@ -165,6 +165,10 @@ class BehaviorMatcher:
         """
         Determine if an alert should be suppressed based on device template.
 
+        Checks BOTH source and destination devices:
+        - Source device: Does this device's template allow SENDING this traffic?
+        - Destination device: Does this device's template allow RECEIVING this traffic?
+
         Args:
             threat: Threat dictionary with type, severity, source_ip, etc.
             packet: Optional scapy packet for additional context
@@ -189,31 +193,149 @@ class BehaviorMatcher:
         if threat_type in ('THREAT_FEED_MATCH', 'C2_COMMUNICATION', 'BLACKLISTED_IP'):
             return False, None
 
-        # Get template for source device
-        template = self._get_device_template(src_ip)
+        # Check 1: Source device template (outbound behavior)
+        # Does the source device's template allow SENDING this type of traffic?
+        src_template = self._get_device_template(src_ip)
+        if src_template:
+            behaviors = src_template.get('behaviors', [])
+            template_name = src_template.get('name', 'Unknown')
 
-        if not template:
-            return False, None
+            for behavior in behaviors:
+                if behavior.get('action') != 'allow':
+                    continue
 
-        behaviors = template.get('behaviors', [])
-        template_name = template.get('name', 'Unknown')
+                behavior_type = behavior.get('behavior_type')
+                params = behavior.get('parameters', {})
+                direction = params.get('direction')
 
-        # Check each behavior rule
-        for behavior in behaviors:
-            if behavior.get('action') != 'allow':
-                continue
+                # For source device, check outbound or bidirectional behaviors
+                if direction == 'inbound':
+                    continue  # Skip inbound-only behaviors for source check
 
-            behavior_type = behavior.get('behavior_type')
-            params = behavior.get('parameters', {})
+                suppress, reason = self._match_behavior(
+                    threat_type, behavior_type, params, threat, packet, dst_ip
+                )
 
-            # Match behavior type to threat type
-            suppress, reason = self._match_behavior(
-                threat_type, behavior_type, params, threat, packet, dst_ip
-            )
+                if suppress:
+                    self.stats['alerts_suppressed'] += 1
+                    return True, f"Source template '{template_name}': {reason}"
 
-            if suppress:
-                self.stats['alerts_suppressed'] += 1
-                return True, f"Template '{template_name}': {reason}"
+        # Check 2: Destination device template (inbound behavior)
+        # Does the destination device's template allow RECEIVING this type of traffic?
+        if dst_ip:
+            dst_template = self._get_device_template(dst_ip)
+            if dst_template:
+                behaviors = dst_template.get('behaviors', [])
+                template_name = dst_template.get('name', 'Unknown')
+
+                for behavior in behaviors:
+                    if behavior.get('action') != 'allow':
+                        continue
+
+                    behavior_type = behavior.get('behavior_type')
+                    params = behavior.get('parameters', {})
+                    direction = params.get('direction')
+
+                    # For destination device, check inbound or bidirectional behaviors
+                    if direction == 'outbound':
+                        continue  # Skip outbound-only behaviors for destination check
+
+                    suppress, reason = self._match_behavior_inbound(
+                        threat_type, behavior_type, params, threat, packet, src_ip
+                    )
+
+                    if suppress:
+                        self.stats['alerts_suppressed'] += 1
+                        return True, f"Destination template '{template_name}': {reason}"
+
+        return False, None
+
+    def _match_behavior_inbound(self, threat_type: str, behavior_type: str,
+                                params: Dict, threat: Dict, packet, src_ip: str) -> Tuple[bool, Optional[str]]:
+        """
+        Match a specific behavior rule against inbound traffic to a destination device.
+
+        This is called when checking if the DESTINATION device expects to receive this traffic.
+
+        Returns:
+            Tuple of (matches: bool, reason: str or None)
+        """
+        # Port-based matching for inbound traffic
+        if behavior_type == 'allowed_ports':
+            allowed_ports = set(params.get('ports', []))
+
+            # For inbound traffic to destination, check the destination port
+            dst_port = threat.get('metadata', {}).get('destination_port')
+
+            if packet:
+                from scapy.layers.inet import TCP, UDP
+                if packet.haslayer(TCP):
+                    dst_port = dst_port or packet[TCP].dport
+                elif packet.haslayer(UDP):
+                    dst_port = dst_port or packet[UDP].dport
+
+            if dst_port in allowed_ports:
+                return True, f"Inbound port {dst_port} is allowed"
+
+        # Source subnet matching (allow connections from specific subnets)
+        elif behavior_type == 'allowed_sources':
+            allowed_subnets = params.get('subnets', [])
+            allowed_internal = params.get('internal', False)
+
+            try:
+                src = ipaddress.ip_address(src_ip)
+
+                # Check if source is internal
+                if allowed_internal:
+                    internal_nets = [
+                        ipaddress.ip_network('10.0.0.0/8'),
+                        ipaddress.ip_network('172.16.0.0/12'),
+                        ipaddress.ip_network('192.168.0.0/16')
+                    ]
+                    if any(src in net for net in internal_nets):
+                        return True, "Internal source is allowed"
+
+                # Check specific subnets
+                for subnet in allowed_subnets:
+                    try:
+                        network = ipaddress.ip_network(subnet, strict=False)
+                        if src in network:
+                            return True, f"Source from {subnet} is allowed"
+                    except ValueError:
+                        continue
+            except ValueError:
+                pass
+
+        # Protocol-based matching
+        elif behavior_type == 'allowed_protocols':
+            allowed_protocols = [p.upper() for p in params.get('protocols', [])]
+
+            if packet:
+                from scapy.layers.inet import TCP, UDP, ICMP
+                if packet.haslayer(TCP) and 'TCP' in allowed_protocols:
+                    return True, "Inbound TCP is allowed"
+                if packet.haslayer(UDP) and 'UDP' in allowed_protocols:
+                    return True, "Inbound UDP is allowed"
+                if packet.haslayer(ICMP) and 'ICMP' in allowed_protocols:
+                    return True, "Inbound ICMP is allowed"
+
+        # Connection behavior matching for servers
+        elif behavior_type == 'connection_behavior':
+            # Server expects high connection rate
+            if params.get('high_connection_rate') or params.get('accepts_connections'):
+                if threat_type in ('CONNECTION_FLOOD', 'PORT_SCAN', 'HIGH_RISK_ATTACK_CHAIN'):
+                    return True, "High connection rate is expected for this server"
+
+            # API server behavior
+            if params.get('api_server'):
+                if threat_type in ('HIGH_RISK_ATTACK_CHAIN', 'CONNECTION_FLOOD'):
+                    return True, "API server expects many connections"
+
+        # Traffic pattern matching
+        elif behavior_type == 'traffic_pattern':
+            if params.get('high_bandwidth') or params.get('receives_streams'):
+                if threat_type in ('HIGH_INBOUND_VOLUME', 'UNUSUAL_PACKET_SIZE'):
+                    return True, "High inbound bandwidth is expected"
 
         return False, None
 

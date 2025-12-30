@@ -515,18 +515,41 @@ Ongeacht template configuratie worden deze alerts altijd getoond:
 3. **C2 communicatie** - Command & Control detectie
 4. **AbuseIPDB high confidence** - Bevestigde malicious IPs
 
+### Bidirectional Template Checking
+
+Alert suppression controleert nu **zowel source als destination** devices:
+
+1. **Source device template (outbound)**: Mag dit device dit verkeer VERZENDEN?
+2. **Destination device template (inbound)**: Mag dit device dit verkeer ONTVANGEN?
+
+Dit betekent dat bijvoorbeeld:
+- Een Home Assistant server geen alerts genereert voor inkomende verbindingen
+- Een NAS geen alerts genereert wanneer clients verbinden voor file sharing
+- Een printer geen alerts genereert bij print jobs van interne clients
+
 ### Behavior Types
 
 Templates kunnen de volgende behavior types definiëren:
 
-| Type | Parameters | Beschrijving |
-|------|------------|--------------|
-| `allowed_ports` | `ports: [80, 443]`, `direction: outbound` | Toegestane poorten |
-| `allowed_protocols` | `protocols: [TCP, UDP]` | Toegestane protocollen |
-| `expected_destinations` | `destinations: [...]` | Verwachte bestemmingen |
-| `traffic_pattern` | `high_bandwidth: true` | Verwacht verkeerspatroon |
-| `connection_behavior` | `many_connections: true` | Connectie gedrag |
-| `bandwidth_limit` | `max_mbps: 100` | Bandwidth limiet |
+| Type | Parameters | Richting | Beschrijving |
+|------|------------|----------|--------------|
+| `allowed_ports` | `ports: [80, 443]`, `direction: inbound/outbound` | Beide | Toegestane poorten |
+| `allowed_protocols` | `protocols: [TCP, UDP]` | Beide | Toegestane protocollen |
+| `allowed_sources` | `internal: true`, `subnets: [...]` | Inbound | Toegestane bronnen (nieuw!) |
+| `expected_destinations` | `destinations: [...]` | Outbound | Verwachte bestemmingen |
+| `traffic_pattern` | `high_bandwidth: true` | Beide | Verwacht verkeerspatroon |
+| `connection_behavior` | `accepts_connections: true`, `api_server: true` | Inbound | Server connectie gedrag |
+| `bandwidth_limit` | `max_mbps: 100` | Beide | Bandwidth limiet |
+
+### Direction Parameter
+
+De `direction` parameter bepaalt wanneer een regel wordt toegepast:
+
+| Direction | Wanneer toegepast | Voorbeeld |
+|-----------|-------------------|-----------|
+| `inbound` | Device is **destination** | Server ontvangt verbindingen |
+| `outbound` | Device is **source** | Client maakt verbindingen |
+| (geen) | Beide richtingen | Algemene regels |
 
 ---
 
@@ -573,10 +596,11 @@ De volgende templates worden automatisch aangemaakt:
 | IP Camera | IoT | RTSP (554), HTTP (80/443), NTP |
 | Smart TV | IoT | Streaming ports, high bandwidth |
 | Smart Speaker | IoT | Voice services, streaming |
-| Network Printer | IoT | IPP (631), LPD (515), SMB |
-| NAS/File Server | Server | SMB (445), NFS, AFP |
-| Web Server | Server | HTTP (80), HTTPS (443) |
-| Database Server | Server | MySQL, PostgreSQL, MongoDB ports |
+| Network Printer | IoT | IPP (631), LPD (515), SMB, **inbound print jobs** |
+| Home Automation Hub | IoT | HTTP (8123), MQTT, **inbound van smart devices** |
+| NAS/File Server | Server | SMB (445), NFS, AFP, **inbound file access** |
+| Web Server | Server | HTTP (80), HTTPS (443), **inbound web requests** |
+| Database Server | Server | MySQL, PostgreSQL, MongoDB, **inbound queries** |
 | Workstation | Endpoint | Mixed traffic, web browsing |
 | Mobile Device | Endpoint | App traffic, sync services |
 
