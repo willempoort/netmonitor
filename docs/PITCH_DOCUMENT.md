@@ -283,7 +283,7 @@ Rapportage: "3 nieuwe apparaten ontdekt, 1 met verdachte TLS fingerprint"
 | Database | PostgreSQL + TimescaleDB |
 | Interface | Modern Web Dashboard |
 | API | REST + WebSocket + MCP HTTP API |
-| AI Integratie | 49 MCP tools met token auth |
+| AI Integratie | 53 MCP tools met token auth |
 | Schaalbaarheid | Multi-sensor architectuur |
 | Performance | 1Gbps+ netwerkverkeer |
 | Forensics | PCAP capture met ring buffer |
@@ -428,7 +428,7 @@ Onze experts helpen bij de productie-implementatie.
 | **SOAR** | Automated playbooks, Approval workflows, Dry-run mode, Multi-integration |
 | **GeoIP** | Land identificatie, Local/Private onderscheid, MaxMind database |
 | **Beheer** | Central dashboard, Multi-sensor, Remote config, Whitelist management |
-| **AI Integratie** | 49 MCP tools, Token auth, Permission scopes, Audit logging |
+| **AI Integratie** | 53 MCP tools, Token auth, Permission scopes, Audit logging |
 
 ### B. Compliance & Security
 

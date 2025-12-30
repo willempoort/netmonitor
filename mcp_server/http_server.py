@@ -502,6 +502,34 @@ class MCPHTTPServer:
                 "scope_required": "read_only"
             },
             {
+                "name": "touch_device",
+                "description": "Update a device's last_seen timestamp to NOW. Useful for manually refreshing devices that receive traffic but don't send much (like Access Points, servers, IoT devices)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "ip_address": {"type": "string", "description": "IP address of the device to touch"}
+                    },
+                    "required": ["ip_address"]
+                },
+                "scope_required": "execute"
+            },
+            {
+                "name": "touch_devices_bulk",
+                "description": "Update last_seen timestamp for multiple devices at once. Returns count of updated devices",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "ip_addresses": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of IP addresses to touch"
+                        }
+                    },
+                    "required": ["ip_addresses"]
+                },
+                "scope_required": "execute"
+            },
+            {
                 "name": "get_service_providers",
                 "description": "Get all service providers (streaming services, CDN providers, etc.) used for filtering false positives",
                 "input_schema": {
@@ -1026,6 +1054,8 @@ class MCPHTTPServer:
             'get_device_template_details': self._tool_get_device_template_details,
             'get_devices': self._tool_get_devices,
             'get_device_by_ip': self._tool_get_device_by_ip,
+            'touch_device': self._tool_touch_device,
+            'touch_devices_bulk': self._tool_touch_devices_bulk,
             'get_service_providers': self._tool_get_service_providers,
             'check_ip_service_provider': self._tool_check_ip_service_provider,
             'get_device_classification_stats': self._tool_get_device_classification_stats,
@@ -1401,6 +1431,46 @@ class MCPHTTPServer:
         return {
             'success': True,
             'device': device
+        }
+
+    async def _tool_touch_device(self, params: Dict) -> Dict:
+        """Implement touch_device tool - update device's last_seen to NOW"""
+        ip_address = params.get('ip_address')
+
+        if not ip_address:
+            return {'success': False, 'error': 'ip_address is required'}
+
+        result = self.db.touch_device(ip_address=ip_address)
+
+        if result:
+            return {
+                'success': True,
+                'message': f'Successfully updated last_seen for device {ip_address}',
+                'ip_address': ip_address
+            }
+        else:
+            return {
+                'success': False,
+                'error': f'Device not found with IP {ip_address}'
+            }
+
+    async def _tool_touch_devices_bulk(self, params: Dict) -> Dict:
+        """Implement touch_devices_bulk tool - update last_seen for multiple devices"""
+        ip_addresses = params.get('ip_addresses', [])
+
+        if not ip_addresses:
+            return {'success': False, 'error': 'ip_addresses is required and must not be empty'}
+
+        if not isinstance(ip_addresses, list):
+            return {'success': False, 'error': 'ip_addresses must be a list'}
+
+        updated_count = self.db.touch_devices_bulk(ip_addresses)
+
+        return {
+            'success': True,
+            'message': f'Successfully updated last_seen for {updated_count} devices',
+            'updated_count': updated_count,
+            'requested_count': len(ip_addresses)
         }
 
     async def _tool_get_service_providers(self, params: Dict) -> Dict:

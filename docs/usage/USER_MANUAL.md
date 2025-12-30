@@ -1052,7 +1052,7 @@ Claude: *retrieves and analyzes alerts*
 
 **Available Tool Categories:**
 
-The MCP server provides 37 tools organized into categories:
+The MCP server provides 53 tools organized into categories:
 
 | Category | Tools | Description |
 |----------|-------|-------------|
@@ -1063,7 +1063,7 @@ The MCP server provides 37 tools organized into categories:
 | **Whitelist** | 4 | Add/remove/check whitelist entries |
 | **TLS Analysis** | 4 | JA3 fingerprints, TLS metadata, certificate info |
 | **PCAP Forensics** | 5 | List/export/manage packet captures |
-| **Device Classification** | 6 | Manage devices, templates, behaviors |
+| **Device Classification** | 8 | Manage devices, templates, behaviors, touch refresh |
 
 **Security Note:**
 
