@@ -125,7 +125,7 @@
 | **MCP Protocol Support** | ★★★★★ | ★☆☆☆☆ | ★☆☆☆☆ | ★☆☆☆☆ | ★☆☆☆☆ | ★☆☆☆☆ |
 | **AI Assistant Ready** | ★★★★★ | ★☆☆☆☆ | ★☆☆☆☆ | ★☆☆☆☆ | ★★★☆☆ | ★☆☆☆☆ |
 | **Natural Language Query** | ★★★★★ | ★☆☆☆☆ | ★☆☆☆☆ | ★☆☆☆☆ | ★★★★☆ | ★☆☆☆☆ |
-| **API Tool Count** | 49 tools | ~10 | ~5 | ~5 | ~20 | ~10 |
+| **API Tool Count** | 53 tools | ~10 | ~5 | ~5 | ~20 | ~10 |
 | **Token Authentication** | ★★★★★ | ★★★☆☆ | ★☆☆☆☆ | ★☆☆☆☆ | ★★★★☆ | ★★☆☆☆ |
 | **Permission Scopes** | ★★★★★ | ★★☆☆☆ | ★☆☆☆☆ | ★☆☆☆☆ | ★★★★☆ | ★★☆☆☆ |
 | **Rate Limiting** | ★★★★★ | ★★☆☆☆ | ★☆☆☆☆ | ★☆☆☆☆ | ★★★★☆ | ★☆☆☆☆ |
@@ -136,12 +136,12 @@
 
 ## MCP Tool Categories Detail
 
-NetMonitor biedt 49 MCP tools verdeeld over categorieën:
+NetMonitor biedt 53 MCP tools verdeeld over categorieën:
 
 | Categorie | Aantal | Beschrijving |
 |-----------|--------|--------------|
 | **Core Analysis** | 5 | IP analyse, threat lookup, sensor status |
-| **Device Classification** | 13 | Device discovery, ML classificatie, templates |
+| **Device Classification** | 15 | Device discovery, ML classificatie, templates, touch refresh |
 | **TLS Analysis** | 3 | JA3 checks, certificate analysis |
 | **PCAP Forensics** | 5 | Capture management, flow export |
 | **Sensor Commands** | 2 | Remote sensor control |

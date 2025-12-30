@@ -546,6 +546,8 @@ Device Classification exposes these API endpoints:
 | `/api/devices` | GET | List all devices |
 | `/api/devices/<ip>` | GET | Get device details |
 | `/api/devices/<ip>/template` | PUT | Assign template |
+| `/api/devices/<ip>/touch` | POST | Update device last_seen to NOW |
+| `/api/devices/touch` | POST | Bulk update last_seen (JSON body with ip_addresses array) |
 | `/api/device-templates` | GET | List templates |
 | `/api/device-templates` | POST | Create template |
 | `/api/device-templates/<id>` | GET | Get template details |
