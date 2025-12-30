@@ -253,11 +253,10 @@ class ThreatDetector:
             ip_str: IP address to check
             direction: 'inbound', 'outbound', or None for legacy behavior
 
-        Direction semantics:
-            - 'inbound': Traffic coming INTO the network (dst_ip is internal, src_ip is external)
-            - 'outbound': Traffic going OUT of the network (src_ip is internal, dst_ip is external)
-            - Use 'inbound' when checking external source IPs
-            - Use 'outbound' when checking external destination IPs
+        Direction semantics (from the perspective of the whitelisted IP):
+            - 'inbound': Whitelist when this IP is the DESTINATION (traffic coming TO this IP)
+            - 'outbound': Whitelist when this IP is the SOURCE (traffic going FROM this IP)
+            - 'both': Whitelist in either direction
         """
         # First check config whitelist (fast, in-memory, no direction support)
         if self._is_in_list(ip_str, self.config_whitelist):
@@ -276,12 +275,12 @@ class ThreatDetector:
         return False
 
     def _is_src_whitelisted(self, src_ip: str) -> bool:
-        """Check if source IP is whitelisted for inbound traffic"""
-        return self._is_whitelisted(src_ip, direction='inbound')
+        """Check if source IP is whitelisted (traffic FROM this IP = outbound from its perspective)"""
+        return self._is_whitelisted(src_ip, direction='outbound')
 
     def _is_dst_whitelisted(self, dst_ip: str) -> bool:
-        """Check if destination IP is whitelisted for outbound traffic"""
-        return self._is_whitelisted(dst_ip, direction='outbound')
+        """Check if destination IP is whitelisted (traffic TO this IP = inbound from its perspective)"""
+        return self._is_whitelisted(dst_ip, direction='inbound')
 
     def analyze_packet(self, packet):
         """
@@ -297,10 +296,10 @@ class ThreatDetector:
         src_ip = ip_layer.src
         dst_ip = ip_layer.dst
 
-        # Skip whitelisted source IPs only
-        # Destination is NOT checked - attacks targeting whitelisted devices should still be detected
+        # Skip whitelisted source IPs (direction='outbound' means: whitelist when IP is SOURCE)
+        # Destination is NOT checked here - attacks targeting whitelisted devices should still be detected
         # Use device templates for destination-based filtering instead
-        if self._is_whitelisted(src_ip):
+        if self._is_src_whitelisted(src_ip):
             return threats
 
         # Check blacklist (static config)

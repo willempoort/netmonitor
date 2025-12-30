@@ -423,6 +423,21 @@ Add trusted IP ranges:
 
 Whitelisted IPs/ranges won't trigger alerts.
 
+**Direction Setting:**
+
+Each whitelist entry has a direction that determines when the rule applies:
+
+| Direction | Description | Example Use Case |
+|-----------|-------------|------------------|
+| **Inbound** | Whitelist when IP is the **destination** | Whitelist a server that receives many connections |
+| **Outbound** | Whitelist when IP is the **source** | Whitelist a trusted scanner/monitoring system |
+| **Both** | Whitelist in either direction | General trusted IP (default) |
+
+Examples:
+- `192.168.1.50` with `outbound`: No alerts when this IP connects to other systems
+- `10.0.0.100` with `inbound`: No alerts when other systems connect to this IP
+- `203.0.113.50` with `both`: No alerts in either direction
+
 ---
 
 ## Device Classification Administration

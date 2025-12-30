@@ -245,7 +245,7 @@ class TestWhitelistBlacklist:
         detector = ThreatDetector(base_config, db_manager=mock_db_manager, sensor_id='test-sensor')
 
         assert detector._is_whitelisted('192.0.2.100') is True
-        mock_db_manager.check_ip_whitelisted.assert_called_once_with('192.0.2.100', sensor_id='test-sensor')
+        mock_db_manager.check_ip_whitelisted.assert_called_once_with('192.0.2.100', sensor_id='test-sensor', direction=None)
 
     def test_is_whitelisted_database_error(self, base_config, mock_db_manager, caplog):
         """
