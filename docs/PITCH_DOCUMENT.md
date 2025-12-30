@@ -105,7 +105,44 @@ Volledige netwerkopname voor incident response en compliance.
 - Per-alert PCAP bestanden voor bewijsvoering
 - Voldoet aan NIS2 logging vereisten
 
-### 7. GeoIP Intelligence
+### 7. Enterprise Security Suite
+
+NetMonitor bevat een complete enterprise security suite voor geavanceerde dreigingsdetectie:
+
+#### AD/Kerberos Aanvalsdetectie
+- **Kerberoasting**: Detecteert mass TGS-REQ aanvragen voor offline password cracking
+- **AS-REP Roasting**: Identificeert aanvallen op accounts zonder pre-authenticatie
+- **DCSync**: Detecteert Domain Controller replicatie misbruik
+- **Pass-the-Hash**: Herkent ticket hergebruik aanvallen
+- **Golden Ticket**: Detecteert vervalste TGT tickets
+- **Zwakke encryptie**: Waarschuwt bij RC4/DES gebruik
+
+#### Kill Chain Correlatie (MITRE ATT&CK)
+Automatische correlatie van alerts naar aanvalsketens:
+- 10-fasen kill chain model
+- MITRE ATT&CK technique mapping
+- Multi-host lateral movement tracking
+- APT campaign detectie
+
+#### SMB/LDAP Deep Parsing
+- Admin share access detectie (C$, ADMIN$, IPC$)
+- Gevoelige bestandstoegang monitoring
+- LDAP enumeratie detectie
+- DCSync query herkenning
+
+#### SOAR (Automated Response)
+- Playbook-based automatisering
+- Goedkeuringsworkflows
+- Dry-run modus voor veilig testen
+- Integratie met firewall, NAC, AD
+
+#### Asset Risk Scoring
+- Dynamische risicoscores (0-100)
+- Tijdsgewogen alerthistorie
+- Trend analyse per asset
+- Prioritering voor SOC teams
+
+### 8. GeoIP Intelligence
 
 Geografische context voor elke IP-verbinding.
 
@@ -122,7 +159,7 @@ NetMonitor is een van de eerste security monitoring tools met native **Model Con
 
 ### Wat Maakt Dit Uniek?
 
-De MCP HTTP API biedt **37 gespecialiseerde security tools** die AI-assistenten direct kunnen aanroepen:
+De MCP HTTP API biedt **49 gespecialiseerde security tools** die AI-assistenten direct kunnen aanroepen:
 
 | Categorie | Tools | Mogelijkheden |
 |-----------|-------|---------------|
@@ -134,6 +171,10 @@ De MCP HTTP API biedt **37 gespecialiseerde security tools** die AI-assistenten 
 | **Whitelist** | 3 | Entries toevoegen, bekijken, verwijderen |
 | **Export** | 1 | CSV export voor SIEM integratie |
 | **Configuratie** | 5 | Parameters lezen en schrijven |
+| **AD/Kerberos** | 3 | Attack stats, ticket analysis, encryption checks |
+| **Kill Chain** | 2 | Attack chains, MITRE ATT&CK mapping |
+| **Risk Scoring** | 3 | Asset scores, trends, prioritering |
+| **SOAR** | 4 | Playbooks, approvals, action history |
 
 ### Concrete AI Use Cases
 
@@ -242,11 +283,14 @@ Rapportage: "3 nieuwe apparaten ontdekt, 1 met verdachte TLS fingerprint"
 | Database | PostgreSQL + TimescaleDB |
 | Interface | Modern Web Dashboard |
 | API | REST + WebSocket + MCP HTTP API |
-| AI Integratie | 37 MCP tools met token auth |
+| AI Integratie | 49 MCP tools met token auth |
 | Schaalbaarheid | Multi-sensor architectuur |
 | Performance | 1Gbps+ netwerkverkeer |
 | Forensics | PCAP capture met ring buffer |
-| TLS Analyse | JA3/JA3S fingerprinting |
+| TLS Analyse | JA3/JA3S, ESNI/ECH, Domain Fronting |
+| AD Security | Kerberos attacks, DCSync, Pass-the-Hash |
+| Correlation | Kill chain, MITRE ATT&CK mapping |
+| Response | SOAR playbooks, automated actions |
 
 ---
 
@@ -258,6 +302,21 @@ Rapportage: "3 nieuwe apparaten ontdekt, 1 met verdachte TLS fingerprint"
 - Bekende kwaadaardige IP-adressen
 - Real-time reputation checks
 - JA3 malware fingerprint database
+
+### AD/Kerberos Attack Detection
+- Kerberoasting (mass TGS-REQ)
+- AS-REP Roasting (pre-auth bypass)
+- DCSync (replication abuse)
+- Pass-the-Hash/Ticket
+- Golden/Silver Ticket forgery
+- Weak encryption (RC4/DES)
+
+### Kill Chain Correlatie
+- 10-stage attack tracking
+- MITRE ATT&CK technique mapping
+- Cross-host lateral movement
+- APT campaign identification
+- Automated severity escalation
 
 ### Gedragsanalyse met ML
 - Data exfiltratie (grote uploads)
@@ -274,6 +333,21 @@ Rapportage: "3 nieuwe apparaten ontdekt, 1 met verdachte TLS fingerprint"
 - TLS/SSL anomalies (certificate issues, unusual ciphers)
 - Brute force aanvallen (wachtwoord raden)
 - Poortscanning
+
+### SMB/LDAP Deep Parsing
+- Admin share access (C$, ADMIN$, IPC$)
+- Sensitive file access (password.txt, .kdbx, id_rsa)
+- Share enumeration detectie
+- LDAP user/group enumeration
+- DCSync query detection
+- Credential harvesting attempts
+
+### Automated Response (SOAR)
+- Playbook-based automation
+- IP blocking, host isolation
+- Account disabling
+- PCAP capture on alert
+- Multi-channel notifications
 
 ### Netwerk Context
 - GeoIP locatie per verbinding
@@ -343,13 +417,18 @@ Onze experts helpen bij de productie-implementatie.
 | Categorie | Features |
 |-----------|----------|
 | **Monitoring** | Real-time packet analyse, Traffic visualisatie, Top talkers, System metrics |
-| **Detectie** | 30+ detectie types, Threat feeds, IP reputation, Behavior analysis, JA3 fingerprinting |
-| **TLS/HTTPS** | JA3/JA3S analyse, SNI monitoring, Certificate checks, Malware fingerprints |
+| **Detectie** | 40+ detectie types, Threat feeds, IP reputation, Behavior analysis, JA3 fingerprinting |
+| **TLS/HTTPS** | JA3/JA3S analyse, SNI monitoring, Certificate checks, Malware fingerprints, ESNI/ECH, Domain Fronting |
+| **AD/Kerberos** | Kerberoasting, AS-REP Roasting, DCSync, Pass-the-Hash, Golden Ticket, Weak encryption |
+| **Kill Chain** | MITRE ATT&CK mapping, 10-stage correlation, Multi-host tracking, APT campaign detection |
+| **SMB/LDAP** | Admin share access, Sensitive file detection, LDAP enumeration, DCSync queries |
 | **Forensics** | PCAP capture, Ring buffer, Flow export, Per-alert opname (NIS2 compliant) |
 | **Classificatie** | Device discovery, **ML Classification** (Random Forest), Behavior learning, **ML Anomaly Detection** (Isolation Forest), Template matching, Alert suppression |
+| **Risk Scoring** | Dynamic 0-100 scores, Time decay, Asset categorization, Trend analysis |
+| **SOAR** | Automated playbooks, Approval workflows, Dry-run mode, Multi-integration |
 | **GeoIP** | Land identificatie, Local/Private onderscheid, MaxMind database |
 | **Beheer** | Central dashboard, Multi-sensor, Remote config, Whitelist management |
-| **AI Integratie** | 37 MCP tools, Token auth, Permission scopes, Audit logging |
+| **AI Integratie** | 45+ MCP tools, Token auth, Permission scopes, Audit logging |
 
 ### B. Compliance & Security
 
@@ -381,7 +460,11 @@ NetMonitor ondersteunt compliance met:
 | Whitelist Management | 3 | mixed |
 | Export Tools | 1 | read_only |
 | Config Management | 5 | mixed |
-| **Totaal** | **37** | - |
+| AD/Kerberos | 3 | read_only |
+| Kill Chain | 2 | read_only |
+| Risk Scoring | 3 | read_only |
+| SOAR | 4 | mixed |
+| **Totaal** | **49** | - |
 
 ---
 

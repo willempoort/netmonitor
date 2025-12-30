@@ -318,6 +318,68 @@ THREAT_FEED_UPDATE_INTERVAL=3600  # 1 uur (default)
 | **Certificate Validation** | ✅ | Expired, self-signed en verdachte certificaten detecteren |
 | **Deprecated TLS Detection** | ✅ | TLS 1.0/1.1 en zwakke cipher suites detecteren |
 | **Malware JA3 Blacklist** | ✅ | Ingebouwde blacklist voor bekende malware fingerprints |
+| **ESNI/ECH Detection** | ✅ | Encrypted SNI en Encrypted Client Hello detectie (privacy/evasion) |
+| **Domain Fronting Detection** | ✅ | SNI vs certificate mismatch detectie (C2 evasion techniek) |
+| **Weak Cipher Detection** | ✅ | NULL, DES, RC4, export cipher detectie |
+
+### 🏰 Active Directory / Kerberos Attack Detection
+
+| Feature | Status | Beschrijving |
+|---------|--------|--------------|
+| **Kerberoasting Detection** | ✅ | Detecteert TGS-REQ enumeration voor service accounts |
+| **AS-REP Roasting Detection** | ✅ | Detecteert accounts zonder pre-authentication |
+| **DCSync Detection** | ✅ | DRSUAPI replication requests van non-DC machines |
+| **Pass-the-Hash Detection** | ✅ | NTLM authentication anomalieën naar meerdere hosts |
+| **Golden/Silver Ticket Indicators** | ✅ | Ongebruikelijke ticket patronen en lifetimes |
+| **Kerberos Downgrade Attack** | ✅ | Detecteert RC4/DES encryption downgrade |
+| **Kerberos Brute Force** | ✅ | Pre-authentication failures tracking |
+
+### 🔗 Kill Chain / Multi-Stage Attack Correlation
+
+| Feature | Status | Beschrijving |
+|---------|--------|--------------|
+| **10-Stage Kill Chain Tracking** | ✅ | Reconnaissance → Impact stage correlatie |
+| **MITRE ATT&CK Mapping** | ✅ | Automatische TTP identificatie per alert |
+| **Attack Chain Detection** | ✅ | Correleert losse alerts tot attack chains |
+| **Risk Score Calculation** | ✅ | Dynamische chain risk scoring |
+| **Stage Progression Alerts** | ✅ | Waarschuwt bij attack chain progressie |
+| **Temporal Correlation** | ✅ | Time-window based event correlatie |
+
+### 📂 SMB/LDAP Deep Protocol Parsing
+
+| Feature | Status | Beschrijving |
+|---------|--------|--------------|
+| **SMB1/2/3 Detection** | ✅ | Protocol versie detectie (SMB1 = deprecated warning) |
+| **Admin Share Access** | ✅ | C$, ADMIN$, IPC$ share access detectie |
+| **Sensitive File Access** | ✅ | NTDS.dit, SAM, SYSTEM, LSASS.dmp access detectie |
+| **SMB Enumeration** | ✅ | Directory enumeration pattern detectie |
+| **LDAP Sensitive Queries** | ✅ | userPassword, unicodePwd, adminCount queries |
+| **SPN Enumeration** | ✅ | servicePrincipalName queries (Kerberoasting recon) |
+| **LDAP Admin Enumeration** | ✅ | Domain admin account enumeration |
+
+### 📊 Asset Risk Scoring
+
+| Feature | Status | Beschrijving |
+|---------|--------|--------------|
+| **Dynamic Risk Scores** | ✅ | Real-time risk scores per asset (0-100) |
+| **Time-Weighted Alerts** | ✅ | Recente alerts wegen zwaarder |
+| **Asset Categorization** | ✅ | Critical/High/Medium/Low asset classificatie |
+| **Risk Trend Analysis** | ✅ | Increasing/Stable/Decreasing trend tracking |
+| **Attack Chain Integration** | ✅ | Kill chain involvement verhoogt risk |
+| **Attacker/Victim Tracking** | ✅ | Rol-gebaseerde risk assessment |
+
+### ⚡ SOAR - Security Orchestration, Automation and Response
+
+| Feature | Status | Beschrijving |
+|---------|--------|--------------|
+| **Automated Playbooks** | ✅ | 5 default playbooks (critical threat, lateral movement, etc.) |
+| **Alert Enrichment** | ✅ | GeoIP, device info, WHOIS enrichment |
+| **Webhook Notifications** | ✅ | Slack/Teams/custom webhook integratie |
+| **Dry-Run Mode** | ✅ | Veilig testen zonder echte blocking |
+| **Approval Workflow** | ✅ | Optionele goedkeuring voor playbook execution |
+| **IP Blocking** | ✅ | Automatische IP blocking (opt-in, rate limited) |
+| **Rate Limiting** | ✅ | Automatische rate limiting responses |
+| **Packet Capture Trigger** | ✅ | Automatische PCAP capture bij critical alerts |
 
 ### 📦 PCAP Forensics (NIS2 Compliant)
 

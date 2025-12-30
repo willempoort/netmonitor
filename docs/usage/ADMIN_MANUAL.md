@@ -1237,6 +1237,299 @@ python3 mcp_server/manage_tokens.py update <token_id> --rate-limit 300
 
 ---
 
+## Enterprise Security Features
+
+NetMonitor v2.3+ includes enterprise-grade security features for advanced threat detection and automated response.
+
+### AD/Kerberos Attack Detection
+
+Detects attacks targeting Active Directory authentication:
+
+**Configuration in config.yaml:**
+```yaml
+kerberos:
+  enabled: true
+  tgs_req_threshold: 10        # TGS requests before Kerberoasting alert
+  tgs_req_window: 300          # Window in seconds
+  as_rep_roast_threshold: 5    # AS-REP requests before alert
+  weak_etype_alert: true       # Alert on RC4/DES usage
+  suspicious_spns:             # Monitor specific service accounts
+    - "MSSQLSvc/*"
+    - "HTTP/*"
+    - "CIFS/*"
+```
+
+**Attack Types Detected:**
+
+| Attack | Description | Severity |
+|--------|-------------|----------|
+| Kerberoasting | Mass TGS requests for offline cracking | HIGH |
+| AS-REP Roasting | Pre-auth disabled account enumeration | HIGH |
+| DCSync | Replication rights abuse | CRITICAL |
+| Pass-the-Hash | Ticket reuse attacks | HIGH |
+| Golden Ticket | Forged TGT detection | CRITICAL |
+| Weak Encryption | RC4/DES usage in Kerberos | MEDIUM |
+
+### Kill Chain / Multi-Stage Attack Detection
+
+Correlates alerts into attack chains using the MITRE ATT&CK framework:
+
+**Configuration in config.yaml:**
+```yaml
+kill_chain:
+  enabled: true
+  chain_window: 3600           # Correlation window in seconds
+  min_stages: 2                # Minimum stages for chain alert
+  max_chains: 1000             # Maximum tracked chains
+  stage_weights:               # Severity weights per stage
+    reconnaissance: 1
+    initial_access: 2
+    execution: 3
+    persistence: 4
+    privilege_escalation: 5
+    defense_evasion: 3
+    credential_access: 4
+    discovery: 2
+    lateral_movement: 4
+    impact: 5
+```
+
+**Kill Chain Stages:**
+
+```
+Reconnaissance → Initial Access → Execution → Persistence
+     ↓                                            ↓
+   Discovery ← Defense Evasion ← Privilege Escalation
+     ↓
+Lateral Movement → Credential Access → Collection → Impact
+```
+
+**Attack Chain Alerts:**
+- `MULTI_STAGE_ATTACK` - Multiple stages detected for same source
+- `LATERAL_MOVEMENT_CHAIN` - Attack spreading across hosts
+- `APT_CAMPAIGN` - Long-running coordinated attack
+
+### SMB/LDAP Deep Parsing
+
+Deep protocol analysis for Windows network traffic:
+
+**Configuration in config.yaml:**
+```yaml
+protocol_parsing:
+  enabled: true
+  smb:
+    enabled: true
+    detect_admin_shares: true    # C$, ADMIN$, IPC$ access
+    detect_sensitive_files: true # Password files, configs
+    detect_enumeration: true     # Share enumeration
+  ldap:
+    enabled: true
+    detect_sensitive_queries: true  # Password attributes
+    detect_enumeration: true        # User/group enumeration
+    detect_dcsync: true            # Replication queries
+```
+
+**SMB Detections:**
+
+| Detection | Description | Severity |
+|-----------|-------------|----------|
+| Admin Share Access | C$, ADMIN$, SYSVOL access | HIGH |
+| Sensitive File Access | Password.txt, id_rsa, .kdbx | HIGH |
+| Share Enumeration | Mass share listing | MEDIUM |
+| Brute Force SMB | Failed authentication attempts | HIGH |
+
+**LDAP Detections:**
+
+| Detection | Description | Severity |
+|-----------|-------------|----------|
+| Sensitive Attribute Query | userPassword, unicodePwd | HIGH |
+| User Enumeration | Large sAMAccountName queries | MEDIUM |
+| DCSync Attempt | Replication rights query | CRITICAL |
+| Admin Group Query | adminCount, Domain Admins | MEDIUM |
+
+### Enhanced Encrypted Traffic Analysis
+
+Advanced analysis of encrypted traffic beyond basic JA3:
+
+**Configuration in config.yaml:**
+```yaml
+encrypted_traffic:
+  enabled: true
+  esni_detection: true         # Encrypted SNI detection
+  ech_detection: true          # Encrypted Client Hello
+  domain_fronting: true        # CDN abuse detection
+  certificate_analysis: true   # Full cert chain analysis
+  weak_cipher_detection: true  # Export/NULL ciphers
+  certificate_transparency: true
+  suspicious_validity: true    # Unusual cert lifetimes
+  self_signed_alert: true      # Self-signed certs
+```
+
+**Detection Capabilities:**
+
+| Detection | Description | Severity |
+|-----------|-------------|----------|
+| ESNI/ECH Usage | Encrypted SNI (potential evasion) | MEDIUM |
+| Domain Fronting | SNI/Certificate mismatch | HIGH |
+| Self-Signed Cert | Untrusted certificate | MEDIUM |
+| Expired Certificate | Certificate validity issue | LOW |
+| Short-Lived Cert | Validity < 7 days | MEDIUM |
+| Weak Cipher Selected | NULL/EXPORT/RC4 ciphers | HIGH |
+
+### Asset Risk Scoring
+
+Dynamic risk scores per asset based on alert history:
+
+**Configuration in config.yaml:**
+```yaml
+risk_scoring:
+  enabled: true
+  decay_hours: 168             # Score decay period (7 days)
+  base_weights:                # Severity multipliers
+    CRITICAL: 10.0
+    HIGH: 5.0
+    MEDIUM: 2.0
+    LOW: 1.0
+  category_weights:            # Asset type multipliers
+    server: 1.5
+    workstation: 1.0
+    iot: 1.2
+    unknown: 1.0
+  alert_type_weights:          # Specific alert multipliers
+    c2_communication: 15.0
+    lateral_movement: 12.0
+    credential_theft: 10.0
+    data_exfiltration: 10.0
+```
+
+**Risk Score Features:**
+- **0-100 Scale**: Dynamic score per IP address
+- **Time Decay**: Old alerts contribute less to score
+- **Asset Categories**: Servers weighted higher than endpoints
+- **Trend Analysis**: Rising/falling/stable indicators
+
+**API Endpoints:**
+```bash
+# Get top risk assets
+curl http://localhost:8080/api/risk/top?limit=10
+
+# Get risk details for IP
+curl http://localhost:8080/api/risk/192.168.1.100
+
+# Get risk trends
+curl http://localhost:8080/api/risk/trends?hours=24
+```
+
+### SOAR (Security Orchestration, Automation and Response)
+
+Automated response capabilities with approval workflows:
+
+**Configuration in config.yaml:**
+```yaml
+soar:
+  enabled: true
+  dry_run: true                # Log only, no actual actions
+  require_approval: true       # Manual approval for actions
+  approval_timeout: 3600       # Timeout in seconds
+  max_actions_per_hour: 100    # Rate limiting
+  playbooks:
+    critical_threat:
+      enabled: true
+      auto_approve: false
+      actions:
+        - block_ip
+        - isolate_host
+        - notify_soc
+    lateral_movement:
+      enabled: true
+      actions:
+        - quarantine_segment
+        - disable_account
+        - collect_forensics
+    credential_theft:
+      enabled: true
+      actions:
+        - force_password_reset
+        - revoke_sessions
+        - notify_admin
+    reconnaissance:
+      enabled: true
+      actions:
+        - monitor_enhanced
+        - capture_pcap
+    brute_force:
+      enabled: true
+      actions:
+        - temporary_block
+        - rate_limit
+  notifications:
+    email:
+      enabled: true
+      smtp_server: smtp.example.com
+      recipients:
+        - soc@example.com
+    webhook:
+      enabled: true
+      url: https://slack.com/webhook/xxx
+    syslog:
+      enabled: true
+      server: siem.example.com
+      port: 514
+```
+
+**SOAR Features:**
+
+1. **Dry Run Mode** (default: enabled)
+   - Logs all actions without executing
+   - Safe testing of playbooks
+   - Review before production deployment
+
+2. **Approval Workflow**
+   - Actions require manual approval
+   - Timeout configurable
+   - Audit trail for all decisions
+
+3. **Default Playbooks:**
+
+| Playbook | Trigger | Actions |
+|----------|---------|---------|
+| critical_threat | CRITICAL alert | Block IP, isolate host, notify |
+| lateral_movement | Lateral movement detected | Quarantine segment, disable account |
+| credential_theft | Kerberoasting/PtH | Force password reset, revoke sessions |
+| reconnaissance | Port scan, enumeration | Enhanced monitoring, PCAP capture |
+| brute_force | Failed auth threshold | Temporary block, rate limit |
+
+4. **Available Actions:**
+
+| Action | Description | Requires |
+|--------|-------------|----------|
+| block_ip | Add to firewall block list | Firewall integration |
+| isolate_host | Network quarantine | NAC integration |
+| disable_account | Disable AD account | LDAP access |
+| capture_pcap | Full packet capture | PCAP enabled |
+| notify_soc | Send alert to SOC team | Email/webhook config |
+| force_password_reset | Expire password | AD integration |
+
+**SOAR API:**
+```bash
+# List pending approvals
+curl http://localhost:8080/api/soar/approvals
+
+# Approve action
+curl -X POST http://localhost:8080/api/soar/approve/123
+
+# Reject action
+curl -X POST http://localhost:8080/api/soar/reject/123
+
+# View playbook status
+curl http://localhost:8080/api/soar/playbooks
+
+# View action history
+curl http://localhost:8080/api/soar/history
+```
+
+---
+
 ## Maintenance & Troubleshooting
 
 ### Log Files
