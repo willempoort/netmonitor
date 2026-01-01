@@ -2956,12 +2956,12 @@ class MCPHTTPServer:
         source_ip = params.get('source_ip')
 
         try:
-            alerts = self.db.get_recent_alerts(hours=hours)
+            alerts = self.db.get_recent_alerts(hours=hours, limit=1000)
 
             # Group alerts by source IP to detect chains
             chains_by_source = {}
             for alert in alerts:
-                src = alert.get('src_ip')
+                src = alert.get('source_ip')  # Fixed: was 'src_ip'
                 if not src:
                     continue
                 if source_ip and src != source_ip:
@@ -2977,14 +2977,16 @@ class MCPHTTPServer:
                     }
 
                 # Map alert type to kill chain stage
-                stage = self._map_to_kill_chain_stage(alert.get('alert_type', ''))
+                threat_type = alert.get('threat_type', '')  # Fixed: was 'alert_type'
+                stage = self._map_to_kill_chain_stage(threat_type)
                 if stage:
                     chains_by_source[src]['stages'].add(stage)
                     chains_by_source[src]['alerts'].append({
-                        'alert_type': alert.get('alert_type'),
+                        'threat_type': threat_type,
                         'stage': stage,
                         'timestamp': str(alert.get('timestamp')),
-                        'severity': alert.get('severity')
+                        'severity': alert.get('severity'),
+                        'description': alert.get('description', '')[:100]
                     })
                     chains_by_source[src]['last_seen'] = alert.get('timestamp')
 
@@ -3021,22 +3023,27 @@ class MCPHTTPServer:
         alert_lower = alert_type.lower()
 
         stage_mapping = {
-            'reconnaissance': ['port_scan', 'enumeration', 'discovery', 'sweep'],
-            'initial_access': ['brute_force', 'password_spray', 'exploit'],
-            'execution': ['malware', 'shell', 'script'],
-            'persistence': ['backdoor', 'scheduled_task', 'registry'],
+            'reconnaissance': ['port_scan', 'enumeration', 'discovery', 'sweep', 'dns_zone', 'arp_scan'],
+            'initial_access': ['brute_force', 'password_spray', 'exploit', 'phishing'],
+            'execution': ['malware', 'shell', 'script', 'command_injection'],
+            'persistence': ['backdoor', 'scheduled_task', 'registry', 'c2_communication', 'beaconing'],
             'privilege_escalation': ['privilege', 'escalation', 'admin'],
-            'defense_evasion': ['obfuscation', 'encoding', 'masquerading'],
-            'credential_access': ['kerberoasting', 'credential', 'mimikatz', 'dcsync', 'pass_the_hash'],
-            'discovery': ['ldap_enum', 'ad_enum', 'network_scan'],
-            'lateral_movement': ['lateral', 'psexec', 'wmi', 'smb_admin'],
-            'collection': ['exfiltration', 'collection', 'archive'],
-            'impact': ['ransomware', 'wiper', 'destruction']
+            'defense_evasion': ['obfuscation', 'encoding', 'masquerading', 'dns_tunnel', 'dns_dga', 'encoded'],
+            'credential_access': ['kerberoasting', 'credential', 'mimikatz', 'dcsync', 'pass_the_hash', 'ntlm'],
+            'discovery': ['ldap_enum', 'ad_enum', 'network_scan', 'smb_enum'],
+            'lateral_movement': ['lateral', 'psexec', 'wmi', 'smb_admin', 'rdp'],
+            'collection': ['exfiltration', 'collection', 'archive', 'data_staging'],
+            'command_and_control': ['c2', 'beacon', 'attack_chain', 'high_risk', 'threat_feed'],
+            'impact': ['ransomware', 'wiper', 'destruction', 'dos', 'ddos']
         }
 
         for stage, keywords in stage_mapping.items():
             if any(kw in alert_lower for kw in keywords):
                 return stage
+
+        # Default mapping for unknown high severity alerts
+        if 'high_risk' in alert_lower or 'critical' in alert_lower:
+            return 'command_and_control'
 
         return None
 
