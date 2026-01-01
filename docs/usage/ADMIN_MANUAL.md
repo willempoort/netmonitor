@@ -429,13 +429,13 @@ Each whitelist entry has a direction that determines when the rule applies:
 
 | Direction | Description | Example Use Case |
 |-----------|-------------|------------------|
-| **Inbound** | Whitelist when IP is the **destination** | Whitelist a server that receives many connections |
-| **Outbound** | Whitelist when IP is the **source** | Whitelist a trusted scanner/monitoring system |
+| **Source** | Whitelist when IP is the **source** of traffic | Trusted scanner, monitoring system |
+| **Destination** | Whitelist when IP is the **destination** of traffic | Multicast (224.0.0.0/4), trusted servers |
 | **Both** | Whitelist in either direction | General trusted IP (default) |
 
 Examples:
-- `192.168.1.50` with `outbound`: No alerts when this IP connects to other systems
-- `10.0.0.100` with `inbound`: No alerts when other systems connect to this IP
+- `192.168.1.50` with `source`: No alerts when this IP connects to other systems
+- `224.0.0.0/4` with `destination`: No alerts for multicast traffic (mDNS, SSDP)
 - `203.0.113.50` with `both`: No alerts in either direction
 
 ---

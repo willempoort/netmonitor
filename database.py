@@ -1766,7 +1766,8 @@ class DatabaseManager:
         Args:
             ip_address: IP address to check
             sensor_id: Optional sensor ID for sensor-specific rules
-            direction: 'inbound', 'outbound', or None (checks 'both' only)
+            direction: 'source', 'destination', or None (checks 'both' only)
+                       Also accepts legacy 'inbound'/'outbound' for backwards compatibility
 
         Returns:
             True if IP matches a whitelist entry for the given direction
@@ -1776,9 +1777,19 @@ class DatabaseManager:
             cursor = conn.cursor()
 
             # Build direction filter
-            # If direction is specified, match entries with that direction OR 'both'
-            # If direction is None, only match 'both' entries (backwards compatible)
-            if direction and direction in ('inbound', 'outbound'):
+            # Support both new terminology (source/destination) and legacy (inbound/outbound)
+            # source = outbound (when IP is the source of traffic)
+            # destination = inbound (when IP is the destination of traffic)
+            if direction == 'source':
+                # Match 'source' or legacy 'outbound' or 'both'
+                direction_filter = "AND (direction IN ('source', 'outbound', 'both'))"
+                direction_param = None
+            elif direction == 'destination':
+                # Match 'destination' or legacy 'inbound' or 'both'
+                direction_filter = "AND (direction IN ('destination', 'inbound', 'both'))"
+                direction_param = None
+            elif direction in ('inbound', 'outbound'):
+                # Legacy support
                 direction_filter = "AND (direction = %s OR direction = 'both')"
                 direction_param = direction
             else:

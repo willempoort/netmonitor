@@ -251,11 +251,11 @@ class ThreatDetector:
 
         Args:
             ip_str: IP address to check
-            direction: 'inbound', 'outbound', or None for legacy behavior
+            direction: 'source', 'destination', or None for legacy/both
 
-        Direction semantics (from the perspective of the whitelisted IP):
-            - 'inbound': Whitelist when this IP is the DESTINATION (traffic coming TO this IP)
-            - 'outbound': Whitelist when this IP is the SOURCE (traffic going FROM this IP)
+        Direction semantics:
+            - 'source': Whitelist when this IP is the SOURCE of traffic
+            - 'destination': Whitelist when this IP is the DESTINATION of traffic
             - 'both': Whitelist in either direction
         """
         # First check config whitelist (fast, in-memory, no direction support)
@@ -275,12 +275,12 @@ class ThreatDetector:
         return False
 
     def _is_src_whitelisted(self, src_ip: str) -> bool:
-        """Check if source IP is whitelisted (traffic FROM this IP = outbound from its perspective)"""
-        return self._is_whitelisted(src_ip, direction='outbound')
+        """Check if source IP is whitelisted (traffic FROM this IP)"""
+        return self._is_whitelisted(src_ip, direction='source')
 
     def _is_dst_whitelisted(self, dst_ip: str) -> bool:
-        """Check if destination IP is whitelisted (traffic TO this IP = inbound from its perspective)"""
-        return self._is_whitelisted(dst_ip, direction='inbound')
+        """Check if destination IP is whitelisted (traffic TO this IP)"""
+        return self._is_whitelisted(dst_ip, direction='destination')
 
     def analyze_packet(self, packet):
         """
@@ -296,10 +296,13 @@ class ThreatDetector:
         src_ip = ip_layer.src
         dst_ip = ip_layer.dst
 
-        # Skip whitelisted source IPs (direction='outbound' means: whitelist when IP is SOURCE)
-        # Destination is NOT checked here - attacks targeting whitelisted devices should still be detected
-        # Use device templates for destination-based filtering instead
+        # Skip whitelisted IPs based on direction setting
+        # Source whitelist: Skip if source IP is whitelisted with direction='source' or 'both'
+        # Destination whitelist: Skip if destination IP is whitelisted with direction='destination' or 'both'
+        # This enables whitelisting multicast addresses (224.0.0.0/4), trusted servers, etc.
         if self._is_src_whitelisted(src_ip):
+            return threats
+        if self._is_dst_whitelisted(dst_ip):
             return threats
 
         # Check blacklist (static config)
