@@ -571,17 +571,36 @@ class KerberosAnalyzer:
         """
         threats = []
 
+        # Exclude IoT discovery protocols that cause false positives
+        # mDNS (5353), SSDP (1900), UPnP, LLMNR (5355), NetBIOS (137-139)
+        excluded_ports = {1900, 5353, 5355, 137, 138, 139, 5000, 8008, 8443}
+        if dst_port in excluded_ports:
+            return threats
+
+        # Exclude multicast and broadcast addresses
+        if dst_ip.startswith('224.') or dst_ip.startswith('239.') or dst_ip.endswith('.255'):
+            return threats
+
+        # Exclude link-local and APIPA addresses
+        if dst_ip.startswith('169.254.') or dst_ip.startswith('fe80:'):
+            return threats
+
         if not packet.haslayer(Raw):
             return threats
 
         try:
             raw_data = bytes(packet[Raw].load)
 
+            # Need at least enough data for RPC header + UUID
+            if len(raw_data) < 24:
+                return threats
+
             # Look for DRSUAPI interface UUID: e3514235-4b06-11d1-ab04-00c04fc2dcd2
             drsuapi_uuid = b'\x35\x42\x51\xe3\x06\x4b\xd1\x11\xab\x04\x00\xc0\x4f\xc2\xdc\xd2'
 
-            # Also look for DsGetNCChanges opnum (3)
-            if drsuapi_uuid in raw_data or b'\x03\x00' in raw_data[:50]:
+            # Only trigger on actual DRSUAPI UUID match (not the generic opnum bytes)
+            # The opnum check alone caused too many false positives on IoT traffic
+            if drsuapi_uuid in raw_data:
                 current_time = time.time()
                 self.drsuapi_tracker[src_ip].append((current_time, dst_ip, dst_port))
 
