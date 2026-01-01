@@ -117,7 +117,8 @@ async function loadDevices() {
 
         if (result.success) {
             allDevices = result.devices;
-            renderDevicesTable(allDevices);
+            // Use filterDevicesTable to apply sorting (default: IP ascending)
+            filterDevicesTable();
             updateDeviceCounts();
             populateTemplateFilter();
         } else {
