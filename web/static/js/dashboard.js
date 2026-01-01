@@ -2031,9 +2031,19 @@ function loadWhitelist() {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                whitelistEntries = data.entries;
-                updateWhitelistTable(data.entries);
-                document.getElementById('whitelist-count').textContent = data.entries.length;
+                // Sort entries by IP address (ascending)
+                const sortedEntries = data.entries.sort((a, b) => {
+                    // Extract IP from CIDR notation for comparison
+                    const ipA = a.ip_cidr.split('/')[0];
+                    const ipB = b.ip_cidr.split('/')[0];
+                    // Convert IP to numeric for proper sorting
+                    const numA = ipA.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet), 0) >>> 0;
+                    const numB = ipB.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet), 0) >>> 0;
+                    return numA - numB;
+                });
+                whitelistEntries = sortedEntries;
+                updateWhitelistTable(sortedEntries);
+                document.getElementById('whitelist-count').textContent = sortedEntries.length;
             }
         })
         .catch(error => console.error('Error loading whitelist:', error));
@@ -2041,10 +2051,12 @@ function loadWhitelist() {
 
 function getDirectionBadge(direction) {
     switch(direction) {
-        case 'inbound':
-            return '<span class="badge bg-success">Inbound</span>';
-        case 'outbound':
-            return '<span class="badge bg-warning text-dark">Outbound</span>';
+        case 'source':
+        case 'outbound':  // legacy support
+            return '<span class="badge bg-warning text-dark">Source</span>';
+        case 'destination':
+        case 'inbound':  // legacy support
+            return '<span class="badge bg-success">Destination</span>';
         case 'both':
         default:
             return '<span class="badge bg-secondary">Both</span>';
@@ -2172,7 +2184,11 @@ window.editWhitelistEntry = function(entryId) {
     // Populate form
     document.getElementById('whitelist-ip').value = entry.ip_cidr;
     document.getElementById('whitelist-description').value = entry.description || '';
-    document.getElementById('whitelist-direction').value = entry.direction || 'both';
+    // Map legacy values to new terminology
+    let direction = entry.direction || 'both';
+    if (direction === 'inbound') direction = 'destination';
+    if (direction === 'outbound') direction = 'source';
+    document.getElementById('whitelist-direction').value = direction;
     document.getElementById('whitelist-scope').value = entry.scope;
 
     if (entry.scope === 'sensor') {
