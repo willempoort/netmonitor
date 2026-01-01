@@ -846,7 +846,7 @@ class MCPHTTPServer:
                         "description": {"type": "string", "description": "Reason for whitelisting (e.g., 'Office network', 'Trusted partner')"},
                         "scope": {"type": "string", "description": "'global' for all sensors or 'sensor' for specific sensor (default: global)"},
                         "sensor_id": {"type": "string", "description": "Sensor ID (required if scope is 'sensor')"},
-                        "direction": {"type": "string", "description": "'inbound' (incoming traffic), 'outbound' (outgoing traffic), or 'both' (default). Use inbound for external source IPs, outbound for external destination IPs."}
+                        "direction": {"type": "string", "description": "'source' (when IP is traffic source), 'destination' (when IP is traffic destination), or 'both' (default)"}
                     },
                     "required": ["ip_cidr", "description"]
                 },
@@ -2697,8 +2697,10 @@ class MCPHTTPServer:
         if scope == 'sensor' and not sensor_id:
             return {'success': False, 'error': "sensor_id required when scope is 'sensor'"}
 
-        if direction not in ('inbound', 'outbound', 'both'):
-            return {'success': False, 'error': "direction must be 'inbound', 'outbound', or 'both'"}
+        # Validate direction (support both old and new terminology)
+        valid_directions = ('source', 'destination', 'inbound', 'outbound', 'both')
+        if direction not in valid_directions:
+            return {'success': False, 'error': "direction must be 'source', 'destination', or 'both'"}
 
         logger.info(f"Adding whitelist entry: {ip_cidr} (scope: {scope}, direction: {direction})")
 

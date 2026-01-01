@@ -1375,12 +1375,21 @@ def api_add_whitelist():
         if not ip_cidr:
             return jsonify({'success': False, 'error': 'ip_cidr required'}), 400
 
-        # Validate direction
-        if direction not in ('inbound', 'outbound', 'both'):
+        # Validate and normalize direction (support both old and new terminology)
+        # Map new terms to old for database storage
+        direction_map = {
+            'source': 'outbound',      # source = traffic FROM this IP
+            'destination': 'inbound',   # destination = traffic TO this IP
+            'inbound': 'inbound',
+            'outbound': 'outbound',
+            'both': 'both'
+        }
+        if direction not in direction_map:
             return jsonify({
                 'success': False,
-                'error': "direction must be 'inbound', 'outbound', or 'both'"
+                'error': "direction must be 'source', 'destination', or 'both'"
             }), 400
+        direction = direction_map[direction]
 
         entry_id = db.add_whitelist_entry(
             ip_cidr=ip_cidr,
@@ -1425,17 +1434,18 @@ def api_check_whitelist(ip_address):
 
     Query parameters:
         sensor_id: Optional sensor ID for sensor-specific rules
-        direction: 'inbound', 'outbound', or omit for 'both' only
+        direction: 'source', 'destination', or omit for 'both' only
     """
     try:
         sensor_id = request.args.get('sensor_id')
         direction = request.args.get('direction')
 
-        # Validate direction if provided
-        if direction and direction not in ('inbound', 'outbound', 'both'):
+        # Validate direction if provided (support both old and new terminology)
+        valid_directions = ('source', 'destination', 'inbound', 'outbound', 'both')
+        if direction and direction not in valid_directions:
             return jsonify({
                 'success': False,
-                'error': "direction must be 'inbound', 'outbound', or 'both'"
+                'error': "direction must be 'source', 'destination', or 'both'"
             }), 400
 
         is_whitelisted = db.check_ip_whitelisted(
