@@ -164,6 +164,57 @@ function renderConfigByCategory(config) {
     }
     renderCategoryParams('detection-rules', detectionRulesParams, 'thresholds');
 
+    // Render Active Directory Security (Kerberos + Protocol Parsing)
+    const adSecurityParams = {};
+    if (configCategories && configCategories['Active Directory Security']) {
+        configCategories['Active Directory Security'].forEach(paramPath => {
+            const parts = paramPath.split('.');
+            if (parts[0] === 'thresholds' && config.thresholds && config.thresholds[parts[1]]) {
+                adSecurityParams[parts[1]] = config.thresholds[parts[1]];
+            }
+        });
+    }
+    renderCategoryParams('ad-security', adSecurityParams, 'thresholds');
+
+    // Render Attack Chain Correlation (Kill Chain + Risk Scoring)
+    const attackChainParams = {};
+    if (configCategories && configCategories['Attack Chain Correlation']) {
+        configCategories['Attack Chain Correlation'].forEach(paramPath => {
+            const parts = paramPath.split('.');
+            if (parts[0] === 'thresholds' && config.thresholds && config.thresholds[parts[1]]) {
+                attackChainParams[parts[1]] = config.thresholds[parts[1]];
+            }
+        });
+    }
+    renderCategoryParams('attack-chain', attackChainParams, 'thresholds');
+
+    // Render Advanced Encrypted Traffic
+    const encryptedTrafficParams = {};
+    if (configCategories && configCategories['Advanced Encrypted Traffic']) {
+        configCategories['Advanced Encrypted Traffic'].forEach(paramPath => {
+            const parts = paramPath.split('.');
+            if (parts[0] === 'thresholds' && config.thresholds && config.thresholds[parts[1]]) {
+                encryptedTrafficParams[parts[1]] = config.thresholds[parts[1]];
+            }
+        });
+    }
+    renderCategoryParams('encrypted-traffic', encryptedTrafficParams, 'thresholds');
+
+    // Render Forensics (NIS2) - PCAP Export
+    const forensicsParams = {};
+    if (configCategories && configCategories['Forensics (NIS2)']) {
+        configCategories['Forensics (NIS2)'].forEach(paramPath => {
+            const parts = paramPath.split('.');
+            if (parts[0] === 'thresholds' && config.thresholds && config.thresholds[parts[1]]) {
+                forensicsParams[parts[1]] = config.thresholds[parts[1]];
+            }
+        });
+    }
+    renderCategoryParams('forensics', forensicsParams, 'thresholds');
+
+    // Render SOAR (Automated Response)
+    renderCategoryParams('soar', config.soar || {}, 'soar');
+
     // Render Thresholds (performance thresholds only)
     const performanceThresholds = {};
     if (configCategories && configCategories['Thresholds']) {
