@@ -413,13 +413,38 @@
                                     </button>
                                 </li>
                                 <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="ad-security-tab" data-bs-toggle="tab" data-bs-target="#ad-security-pane" type="button" role="tab">
+                                        <i class="bi bi-building"></i> Active Directory
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="attack-chain-tab" data-bs-toggle="tab" data-bs-target="#attack-chain-pane" type="button" role="tab">
+                                        <i class="bi bi-diagram-3"></i> Attack Chains
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="encrypted-traffic-tab" data-bs-toggle="tab" data-bs-target="#encrypted-traffic-pane" type="button" role="tab">
+                                        <i class="bi bi-lock"></i> Encrypted Traffic
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="forensics-tab" data-bs-toggle="tab" data-bs-target="#forensics-pane" type="button" role="tab">
+                                        <i class="bi bi-file-earmark-binary"></i> Forensics
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="soar-tab" data-bs-toggle="tab" data-bs-target="#soar-pane" type="button" role="tab">
+                                        <i class="bi bi-robot"></i> SOAR
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
                                     <button class="nav-link" id="thresholds-tab" data-bs-toggle="tab" data-bs-target="#thresholds-pane" type="button" role="tab">
                                         <i class="bi bi-speedometer"></i> Thresholds
                                     </button>
                                 </li>
                                 <li class="nav-item" role="presentation">
                                     <button class="nav-link" id="alerts-config-tab" data-bs-toggle="tab" data-bs-target="#alerts-config-pane" type="button" role="tab">
-                                        <i class="bi bi-bell"></i> Alert Management
+                                        <i class="bi bi-bell"></i> Alerts
                                     </button>
                                 </li>
                                 <li class="nav-item" role="presentation">
@@ -429,7 +454,7 @@
                                 </li>
                                 <li class="nav-item" role="presentation">
                                     <button class="nav-link" id="all-params-tab" data-bs-toggle="tab" data-bs-target="#all-params-pane" type="button" role="tab">
-                                        <i class="bi bi-list-ul"></i> All Parameters
+                                        <i class="bi bi-list-ul"></i> All
                                     </button>
                                 </li>
                             </ul>
@@ -443,6 +468,41 @@
                                             <div class="spinner-border spinner-border-sm" role="status"></div>
                                             <p class="mt-2">Loading detection rules...</p>
                                         </div>
+                                    </div>
+                                </div>
+
+                                <!-- Active Directory Security Tab -->
+                                <div class="tab-pane fade" id="ad-security-pane" role="tabpanel">
+                                    <div id="ad-security-content" class="config-category-content">
+                                        <div class="text-center text-muted p-4">Loading AD security settings...</div>
+                                    </div>
+                                </div>
+
+                                <!-- Attack Chain Correlation Tab -->
+                                <div class="tab-pane fade" id="attack-chain-pane" role="tabpanel">
+                                    <div id="attack-chain-content" class="config-category-content">
+                                        <div class="text-center text-muted p-4">Loading attack chain settings...</div>
+                                    </div>
+                                </div>
+
+                                <!-- Advanced Encrypted Traffic Tab -->
+                                <div class="tab-pane fade" id="encrypted-traffic-pane" role="tabpanel">
+                                    <div id="encrypted-traffic-content" class="config-category-content">
+                                        <div class="text-center text-muted p-4">Loading encrypted traffic settings...</div>
+                                    </div>
+                                </div>
+
+                                <!-- Forensics (NIS2) Tab -->
+                                <div class="tab-pane fade" id="forensics-pane" role="tabpanel">
+                                    <div id="forensics-content" class="config-category-content">
+                                        <div class="text-center text-muted p-4">Loading forensics settings...</div>
+                                    </div>
+                                </div>
+
+                                <!-- SOAR Tab -->
+                                <div class="tab-pane fade" id="soar-pane" role="tabpanel">
+                                    <div id="soar-content" class="config-category-content">
+                                        <div class="text-center text-muted p-4">Loading SOAR settings...</div>
                                     </div>
                                 </div>
 
