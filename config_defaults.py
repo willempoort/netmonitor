@@ -115,6 +115,44 @@ BEST_PRACTICE_CONFIG = {
             "upload_to_soc": True,          # Upload PCAP to SOC server (required for NIS2)
             "keep_local_copy": False        # Keep local copy after upload (saves disk space)
         },
+        # Kerberos/Active Directory attack detection
+        "kerberos": {
+            "enabled": True,
+            "tgs_req_threshold": 10,        # TGS requests per window for Kerberoasting detection
+            "tgs_req_window": 300,          # Time window in seconds (5 min)
+            "asrep_threshold": 5,           # AS-REP responses with weak encryption
+            "asrep_window": 300,            # Time window in seconds
+            "tgt_lifetime_max": 36000       # Max TGT lifetime in seconds (10 hours)
+        },
+        # Kill chain / multi-stage attack correlation
+        "kill_chain": {
+            "enabled": True,
+            "chain_window": 3600,           # Correlation window in seconds (1 hour)
+            "activity_timeout": 1800,       # Inactivity timeout for chain (30 min)
+            "min_events": 3,                # Minimum events for chain detection
+            "min_stages": 2                 # Minimum stages for chain alert
+        },
+        # Protocol deep parsing (SMB/LDAP)
+        "protocol_parsing": {
+            "enabled": True,
+            "flag_smb1": True,              # Flag SMB1 usage (deprecated)
+            "detect_admin_shares": True,    # Detect admin share access (C$, ADMIN$, etc.)
+            "detect_sensitive_files": True, # Detect access to NTDS.dit, SAM, etc.
+            "detect_ldap_sensitive": True   # Detect sensitive LDAP attribute queries
+        },
+        # Asset risk scoring
+        "risk_scoring": {
+            "enabled": True,
+            "decay_rate": 0.1,              # Risk score decay rate per hour (10%)
+            "decay_interval": 3600          # Decay check interval in seconds
+        },
+        # Enhanced encrypted traffic analysis (additions to tls_analysis)
+        "encrypted_traffic": {
+            "enabled": True,
+            "detect_self_signed": True,     # Detect self-signed certificates
+            "detect_domain_fronting": True, # Detect domain fronting (C2 evasion)
+            "detect_esni_ech": True         # Detect ESNI/ECH (hidden hostnames)
+        },
         # Performance thresholds
         "packet_rate_warning": 10000,   # Packets/sec warning threshold
         "packet_rate_critical": 50000,  # Packets/sec critical threshold
@@ -122,6 +160,17 @@ BEST_PRACTICE_CONFIG = {
         "connection_rate_critical": 5000,
         "bandwidth_warning_mbps": 80,   # Bandwidth utilization warning
         "bandwidth_critical_mbps": 200  # Bandwidth utilization critical
+    },
+
+    # SOAR (Security Orchestration, Automation and Response)
+    "soar": {
+        "enabled": True,
+        "dry_run": True,                    # IMPORTANT: true = no real blocking actions
+        "require_approval": True,           # Require approval for playbook execution
+        "max_blocks_per_hour": 10,          # Maximum IP blocks per hour
+        "webhook_url": "",                  # Webhook URL for notifications (e.g., Slack)
+        "email_enabled": False,             # Enable email notifications
+        "email_recipients": []              # Email addresses for notifications
     },
 
     # Logging - Balanced verbosity for operational visibility
@@ -329,6 +378,39 @@ PARAMETER_DESCRIPTIONS = {
     "thresholds.smtp_ftp_transfer.size_threshold_mb": "Transfer size (MB) that triggers alert",
     "thresholds.smtp_ftp_transfer.time_window": "Time window (seconds) for transfer detection",
 
+    # Kerberos/Active Directory
+    "thresholds.kerberos.enabled": "Enable Kerberos/AD attack detection (Kerberoasting, AS-REP roasting)",
+    "thresholds.kerberos.tgs_req_threshold": "TGS requests per window that trigger Kerberoasting alert",
+    "thresholds.kerberos.tgs_req_window": "Time window (seconds) for Kerberoasting detection",
+    "thresholds.kerberos.asrep_threshold": "AS-REP responses with weak encryption that trigger alert",
+    "thresholds.kerberos.asrep_window": "Time window (seconds) for AS-REP roasting detection",
+    "thresholds.kerberos.tgt_lifetime_max": "Maximum TGT lifetime in seconds (Golden Ticket detection)",
+
+    # Kill Chain Correlation
+    "thresholds.kill_chain.enabled": "Enable multi-stage attack chain correlation",
+    "thresholds.kill_chain.chain_window": "Time window (seconds) for correlating attack chain events",
+    "thresholds.kill_chain.activity_timeout": "Inactivity timeout (seconds) before chain expires",
+    "thresholds.kill_chain.min_events": "Minimum events required to form an attack chain",
+    "thresholds.kill_chain.min_stages": "Minimum kill chain stages for HIGH_RISK alert",
+
+    # Protocol Deep Parsing (SMB/LDAP)
+    "thresholds.protocol_parsing.enabled": "Enable deep protocol parsing for SMB/LDAP",
+    "thresholds.protocol_parsing.flag_smb1": "Flag deprecated SMB1 protocol usage",
+    "thresholds.protocol_parsing.detect_admin_shares": "Detect access to admin shares (C$, ADMIN$, IPC$)",
+    "thresholds.protocol_parsing.detect_sensitive_files": "Detect access to sensitive files (NTDS.dit, SAM, SECURITY)",
+    "thresholds.protocol_parsing.detect_ldap_sensitive": "Detect sensitive LDAP attribute queries (userPassword, etc.)",
+
+    # Risk Scoring
+    "thresholds.risk_scoring.enabled": "Enable asset risk scoring based on alert history",
+    "thresholds.risk_scoring.decay_rate": "Risk score decay rate per hour (0.1 = 10%)",
+    "thresholds.risk_scoring.decay_interval": "Interval (seconds) between decay calculations",
+
+    # Encrypted Traffic (Advanced)
+    "thresholds.encrypted_traffic.enabled": "Enable advanced encrypted traffic analysis",
+    "thresholds.encrypted_traffic.detect_self_signed": "Detect self-signed certificates (potential C2)",
+    "thresholds.encrypted_traffic.detect_domain_fronting": "Detect domain fronting (CDN-based C2 evasion)",
+    "thresholds.encrypted_traffic.detect_esni_ech": "Detect ESNI/ECH usage (hidden hostnames)",
+
     # TLS/SSL Analysis
     "thresholds.tls_analysis.enabled": "Enable TLS/SSL analysis (JA3 fingerprinting)",
     "thresholds.tls_analysis.ja3_detection": "Extract JA3 fingerprints from TLS handshakes",
@@ -363,7 +445,16 @@ PARAMETER_DESCRIPTIONS = {
     "performance.metrics_interval": "Seconds between metric reports to SOC server",
     "performance.heartbeat_interval": "Seconds between heartbeat signals",
     "performance.config_sync_interval": "Seconds between configuration synchronizations",
-    "performance.whitelist_sync_interval": "Seconds between whitelist synchronizations"
+    "performance.whitelist_sync_interval": "Seconds between whitelist synchronizations",
+
+    # SOAR (Security Orchestration, Automation and Response)
+    "soar.enabled": "Enable SOAR automated response capabilities",
+    "soar.dry_run": "Dry run mode - log actions but don't execute (recommended for testing)",
+    "soar.require_approval": "Require manual approval before executing playbook actions",
+    "soar.max_blocks_per_hour": "Maximum IP blocks allowed per hour (rate limiting)",
+    "soar.webhook_url": "Webhook URL for external notifications (Slack, Teams, etc.)",
+    "soar.email_enabled": "Enable email notifications for SOAR actions",
+    "soar.email_recipients": "Email addresses for SOAR notifications (comma-separated)"
 }
 
 # Categories for UI grouping
@@ -385,8 +476,28 @@ PARAMETER_CATEGORIES = {
         "thresholds.smtp_ftp_transfer",
         "thresholds.tls_analysis"
     ],
+    "Active Directory Security": [
+        "thresholds.kerberos",
+        "thresholds.protocol_parsing"
+    ],
+    "Attack Chain Correlation": [
+        "thresholds.kill_chain",
+        "thresholds.risk_scoring"
+    ],
+    "Advanced Encrypted Traffic": [
+        "thresholds.encrypted_traffic"
+    ],
     "Forensics (NIS2)": [
         "thresholds.pcap_export"
+    ],
+    "SOAR (Automated Response)": [
+        "soar.enabled",
+        "soar.dry_run",
+        "soar.require_approval",
+        "soar.max_blocks_per_hour",
+        "soar.webhook_url",
+        "soar.email_enabled",
+        "soar.email_recipients"
     ],
     "Thresholds": [
         "thresholds.packet_rate_warning",
