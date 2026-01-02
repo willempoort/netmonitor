@@ -579,7 +579,8 @@ class NetworkMonitor:
                         severity = threat.get('severity', 'LOW')
                         if severity in ('CRITICAL', 'HIGH'):
                             try:
-                                pcap_path = self.pcap_exporter.capture_alert(threat, packet)
+                                # Use immediate=True to ensure file is written immediately
+                                pcap_path = self.pcap_exporter.capture_alert(threat, packet, immediate=True)
                                 if pcap_path:
                                     self.logger.info(f"PCAP captured for {threat.get('type')}: {pcap_path}")
                             except Exception as pcap_error:
