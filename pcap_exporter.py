@@ -104,9 +104,15 @@ class PCAPExporter:
         # Check for pending post-alert captures
         self._process_pending_captures()
 
-    def capture_alert(self, alert: Dict, packet: Packet = None) -> Optional[str]:
+    def capture_alert(self, alert: Dict, packet: Packet = None, immediate: bool = False) -> Optional[str]:
         """
         Save packets around an alert for forensic analysis.
+
+        Args:
+            alert: Alert dictionary with type, source_ip, destination_ip
+            packet: The triggering packet
+            immediate: If True, write file immediately without waiting for post-alert packets
+                      (use for HIGH/CRITICAL alerts that need immediate upload)
 
         Returns the path to the saved PCAP file.
         """
@@ -133,8 +139,8 @@ class PCAPExporter:
             if packet:
                 all_packets.append(packet)
 
-            # Schedule post-alert capture
-            if self.post_alert_packets > 0:
+            # Schedule post-alert capture (unless immediate write is requested)
+            if self.post_alert_packets > 0 and not immediate:
                 self.pending_captures.append({
                     'filepath': filepath,
                     'packets': all_packets,
@@ -145,7 +151,7 @@ class PCAPExporter:
                 self.logger.debug(f"Scheduled post-alert capture for {filepath}")
                 return str(filepath)
 
-            # Save immediately if no post-alert capture needed
+            # Save immediately if no post-alert capture needed or immediate=True
             if all_packets:
                 wrpcap(str(filepath), all_packets)
                 self.stats['captures_saved'] += 1

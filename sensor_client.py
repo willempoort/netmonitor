@@ -1065,10 +1065,11 @@ class SensorClient:
                     self.logger.warning(f"⚠️  [{severity}] {threat.get('type')}: {threat.get('description')}")
 
                     # Capture PCAP FIRST for high-severity alerts (NIS2 compliance)
+                    # Use immediate=True since we need the file NOW for upload
                     pcap_path = None
                     if self.pcap_exporter:
                         try:
-                            pcap_path = self.pcap_exporter.capture_alert(threat, packet)
+                            pcap_path = self.pcap_exporter.capture_alert(threat, packet, immediate=True)
                             if pcap_path:
                                 self.logger.info(f"PCAP captured: {pcap_path}")
                         except Exception as pcap_err:
