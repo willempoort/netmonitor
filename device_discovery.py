@@ -869,11 +869,26 @@ class DeviceDiscovery:
                 'has_many_destinations': has_many_destinations,
                 'has_many_sources': has_many_sources
             },
+            # Store observed destinations for template creation
+            'typical_destinations': sorted(list(stats['outbound_ips']))[:50],  # Top 50 destinations
             'suggested_behaviors': []
         }
 
         # Generate suggested behavior rules
         suggested_behaviors = []
+
+        # Destination-based behaviors (useful for managed devices like UniFi APs)
+        outbound_ips = list(stats['outbound_ips'])
+        if outbound_ips and len(outbound_ips) <= 10:
+            # Device communicates with limited destinations - ideal for strict whitelisting
+            suggested_behaviors.append({
+                'behavior_type': 'expected_destinations',
+                'parameters': {
+                    'allowed_ips': sorted(outbound_ips)
+                },
+                'action': 'allow',
+                'description': f'Limited destinations: {len(outbound_ips)} unique IPs (strict whitelist possible)'
+            })
 
         # Port-based behaviors
         if dst_ports:

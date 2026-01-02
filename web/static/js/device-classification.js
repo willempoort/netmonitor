@@ -995,6 +995,14 @@ function renderBehaviorsTable(behaviors, isBuiltin) {
                         : b.parameters.protocols;
                 }
                 else if (b.parameters.limit) valueDisplay = b.parameters.limit + ' MB/h';
+                else if (b.parameters.allowed_ips) {
+                    valueDisplay = Array.isArray(b.parameters.allowed_ips)
+                        ? b.parameters.allowed_ips.join(', ')
+                        : b.parameters.allowed_ips;
+                }
+                else if (b.parameters.internal_only) {
+                    valueDisplay = 'Internal networks only';
+                }
                 else if (b.parameters.destinations) {
                     valueDisplay = Array.isArray(b.parameters.destinations)
                         ? b.parameters.destinations.join(', ')
@@ -1077,7 +1085,7 @@ function updateBehaviorPlaceholder() {
         'allowed_sources': 'e.g., internal or 192.168.1.0/24,10.0.0.0/8',
         'bandwidth_limit': 'e.g., 100 (MB per hour)',
         'connection_behavior': 'e.g., accepts_connections or api_server',
-        'expected_destinations': 'e.g., 8.8.8.8 or google.com',
+        'expected_destinations': 'e.g., 192.168.1.100 or 10.0.0.0/8 (comma-separated IPs/CIDRs)',
         'time_restrictions': 'e.g., 08:00-18:00',
         'dns_behavior': 'e.g., allowed_domains:*.google.com',
         'traffic_pattern': 'e.g., high_bandwidth or streaming'
@@ -1145,7 +1153,12 @@ async function addBehaviorRule() {
             });
             break;
         case 'expected_destinations':
-            parameters = { destinations: value.split(',').map(d => d.trim()) };
+            // Support: 'internal' keyword or explicit IPs/CIDRs
+            if (value.toLowerCase() === 'internal') {
+                parameters = { internal_only: true };
+            } else {
+                parameters = { allowed_ips: value.split(',').map(d => d.trim()) };
+            }
             break;
         case 'time_restrictions':
             parameters = { schedule: value };

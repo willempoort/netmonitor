@@ -3037,6 +3037,20 @@ class DatabaseManager:
                     {'type': 'expected_destinations', 'params': {'internal_only': True}, 'action': 'allow'},
                 ]
             },
+            {
+                'name': 'UniFi Controller Client',
+                'description': 'External UniFi device connecting to internal controller (customize allowed_ips with your controller IP)',
+                'icon': 'wifi',
+                'category': 'infrastructure',
+                'behaviors': [
+                    # UniFi ports: 8443 (controller UI/API), 8080 (device inform), 3478 (STUN), 6789 (speed test)
+                    {'type': 'allowed_ports', 'params': {'ports': [8443, 8080, 3478, 6789, 10001], 'direction': 'outbound'}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP']}, 'action': 'allow'},
+                    # IMPORTANT: Replace with your actual UniFi controller IP(s)
+                    {'type': 'expected_destinations', 'params': {'allowed_ips': ['192.168.1.1']}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'periodic': True, 'low_frequency': True}, 'action': 'allow'},
+                ]
+            },
             # Server types
             {
                 'name': 'DNS Server',
