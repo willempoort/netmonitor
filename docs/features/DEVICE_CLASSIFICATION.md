@@ -535,11 +535,46 @@ Templates kunnen de volgende behavior types definiëren:
 |------|------------|----------|--------------|
 | `allowed_ports` | `ports: [80, 443]`, `direction: inbound/outbound` | Beide | Toegestane poorten |
 | `allowed_protocols` | `protocols: [TCP, UDP]` | Beide | Toegestane protocollen |
-| `allowed_sources` | `internal: true`, `subnets: [...]` | Inbound | Toegestane bronnen (nieuw!) |
-| `expected_destinations` | `destinations: [...]` | Outbound | Verwachte bestemmingen |
+| `allowed_sources` | `internal: true`, `subnets: [192.168.1.0/24]` | Inbound | Toegestane bronnen voor servers |
+| `expected_destinations` | `allowed_ips: [192.168.1.100]`, `internal_only: true` | Outbound | Toegestane bestemmingen |
 | `traffic_pattern` | `high_bandwidth: true` | Beide | Verwacht verkeerspatroon |
 | `connection_behavior` | `accepts_connections: true`, `api_server: true` | Inbound | Server connectie gedrag |
 | `bandwidth_limit` | `max_mbps: 100` | Beide | Bandwidth limiet |
+
+#### expected_destinations Parameters
+
+| Parameter | Type | Beschrijving |
+|-----------|------|--------------|
+| `allowed_ips` | `string[]` | Expliciete IP-adressen of CIDRs die toegestaan zijn (bijv. `["192.168.1.100", "10.0.0.0/8"]`) |
+| `internal_only` | `boolean` | Alleen interne netwerken (10.x, 172.16.x, 192.168.x) zijn toegestaan |
+| `categories` | `string[]` | Toegestane provider categorieën (bijv. `["streaming", "cdn"]`) |
+
+**Use case: UniFi Controller**
+```json
+{
+  "behavior_type": "expected_destinations",
+  "parameters": {"allowed_ips": ["192.168.1.100"]},
+  "action": "allow",
+  "description": "Alleen verkeer naar UniFi controller toegestaan"
+}
+```
+
+#### allowed_sources Parameters
+
+| Parameter | Type | Beschrijving |
+|-----------|------|--------------|
+| `subnets` | `string[]` | Expliciete IP-adressen of CIDRs die mogen connecten (bijv. `["203.0.113.10", "198.51.100.0/24"]`) |
+| `internal` | `boolean` | Alleen interne netwerken mogen connecten |
+
+**Use case: UniFi Controller met externe APs**
+```json
+{
+  "behavior_type": "allowed_sources",
+  "parameters": {"subnets": ["203.0.113.10", "198.51.100.50"]},
+  "action": "allow",
+  "description": "Externe UniFi APs die mogen connecten"
+}
+```
 
 ### Direction Parameter
 
@@ -603,6 +638,68 @@ De volgende templates worden automatisch aangemaakt:
 | Database Server | Server | MySQL, PostgreSQL, MongoDB, **inbound queries** |
 | Workstation | Endpoint | Mixed traffic, web browsing |
 | Mobile Device | Endpoint | App traffic, sync services |
+| UniFi Controller | Server | 8443, 8080, STUN, **inbound van APs** |
+| UniFi Controller Client | Infrastructure | 8443, 8080, naar controller IP |
+
+### Template Cloning
+
+Built-in templates zijn read-only, maar kunnen gekloond worden:
+
+1. Open een template in de Templates tab
+2. Klik op **Clone** knop
+3. Geef een naam op voor de kopie
+4. De gekloonde template opent automatisch en is volledig bewerkbaar
+
+**MCP Tool:**
+```json
+{
+  "tool": "clone_device_template",
+  "arguments": {
+    "template_id": 5,
+    "new_name": "Mijn UniFi Controller"
+  }
+}
+```
+
+---
+
+## 🔍 MAC-based Device Matching
+
+In DHCP-omgevingen kunnen IP-adressen regelmatig veranderen. NetMonitor gebruikt **MAC-adres als primaire identifier** wanneer beschikbaar:
+
+### Voordelen
+
+- Device behoudt classificatie, template en learned behavior bij IP-wijziging
+- Geen dubbele "New device discovered" meldingen
+- Historische data blijft gekoppeld aan het juiste device
+
+### Werking
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Packet ontvangen met MAC aa:bb:cc:dd:ee:ff, IP 10.0.0.50   │
+└─────────────────────────────┬───────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  MAC bekend in cache?                                        │
+│  ├─ JA, maar IP gewijzigd → "Device IP changed: X -> Y"     │
+│  │    Update IP in cache en database                        │
+│  └─ NEE → Controleer IP in cache                            │
+│       ├─ IP bekend → Update last_seen                       │
+│       └─ IP onbekend → "New device discovered"              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Logging
+
+```
+# IP-wijziging (DHCP lease renewal)
+Device IP changed: 192.168.1.100 -> 192.168.1.150 (MAC: aa:bb:cc:dd:ee:ff)
+
+# Nieuw device
+New device discovered: 192.168.1.200 (MAC: bb:cc:dd:ee:ff:00, Vendor: Apple)
+```
 
 ---
 

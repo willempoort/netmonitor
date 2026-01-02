@@ -629,6 +629,20 @@ class MCPHTTPServer:
                 },
                 "scope_required": "read_write"
             },
+            {
+                "name": "clone_device_template",
+                "description": "Clone an existing device template (including built-in templates) to create an editable copy with customizations",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "template_id": {"type": "number", "description": "ID of the template to clone"},
+                        "new_name": {"type": "string", "description": "Name for the cloned template"},
+                        "new_description": {"type": "string", "description": "Optional description for the cloned template"}
+                    },
+                    "required": ["template_id", "new_name"]
+                },
+                "scope_required": "read_write"
+            },
             # Alert Suppression Tools
             {
                 "name": "get_alert_suppression_stats",
@@ -1065,6 +1079,7 @@ class MCPHTTPServer:
             'get_device_traffic_stats': self._tool_get_device_traffic_stats,
             'get_device_classification_hints': self._tool_get_device_classification_hints,
             'create_template_from_device': self._tool_create_template_from_device,
+            'clone_device_template': self._tool_clone_device_template,
             # Alert Suppression Tools
             'get_alert_suppression_stats': self._tool_get_alert_suppression_stats,
             'test_alert_suppression': self._tool_test_alert_suppression,
@@ -1784,6 +1799,54 @@ class MCPHTTPServer:
                 'success': False,
                 'error': str(e),
                 'message': 'Failed to create template. Ensure the dashboard API is running.'
+            }
+
+    async def _tool_clone_device_template(self, params: Dict) -> Dict:
+        """Implement clone_device_template tool (requires write access)"""
+        import requests
+
+        template_id = params.get('template_id')
+        new_name = params.get('new_name')
+        new_description = params.get('new_description')
+
+        if not template_id or not new_name:
+            return {'success': False, 'error': 'template_id and new_name are required'}
+
+        # Clone template via dashboard API
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            payload = {'name': new_name}
+            if new_description:
+                payload['description'] = new_description
+
+            response = requests.post(
+                f"{dashboard_url}/api/device-templates/{template_id}/clone",
+                json=payload,
+                timeout=15
+            )
+
+            if response.status_code == 200 or response.status_code == 201:
+                data = response.json()
+                return {
+                    'success': True,
+                    'template_id': data.get('template_id'),
+                    'template_name': new_name,
+                    'message': data.get('message', f'Template cloned as "{new_name}"')
+                }
+            else:
+                data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
+                return {
+                    'success': False,
+                    'error': data.get('error', f'API returned status {response.status_code}')
+                }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error cloning template: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to clone template. Ensure the dashboard API is running.'
             }
 
     # ==================== Alert Suppression Tool Implementations ====================
