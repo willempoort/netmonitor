@@ -105,6 +105,9 @@ class DeviceDiscovery:
         ])
         self.internal_networks = self._parse_networks(internal_networks)
 
+        # Load existing devices from database to avoid "new device" messages on restart
+        self._load_existing_devices()
+
         # Start background thread for periodic tasks
         self._start_background_tasks()
 
@@ -119,6 +122,50 @@ class DeviceDiscovery:
             except ValueError as e:
                 self.logger.warning(f"Invalid network CIDR: {net_str}: {e}")
         return networks
+
+    def _load_existing_devices(self):
+        """
+        Load existing devices from database into cache on startup.
+        This prevents "New device discovered" messages for known devices after restart.
+        """
+        if not self.db:
+            return
+
+        try:
+            devices = self.db.get_devices(sensor_id=self.sensor_id, include_inactive=False)
+            loaded_count = 0
+
+            for device in devices:
+                ip_address = device.get('ip_address')
+                mac_address = device.get('mac_address')
+                if not ip_address:
+                    continue
+
+                cache_key = (ip_address, self.sensor_id)
+
+                # Add to device cache
+                self.device_cache[cache_key] = {
+                    'ip_address': ip_address,
+                    'mac_address': mac_address,
+                    'hostname': device.get('hostname'),
+                    'vendor': device.get('vendor'),
+                    'sensor_id': self.sensor_id,
+                    'first_seen': device.get('first_seen') or datetime.now(),
+                    'last_seen': device.get('last_seen') or datetime.now(),
+                    'is_new': False
+                }
+
+                # Add to MAC mapping if MAC is known
+                if mac_address:
+                    self.mac_to_cache_key[mac_address] = cache_key
+
+                loaded_count += 1
+
+            if loaded_count > 0:
+                self.logger.info(f"Loaded {loaded_count} existing devices from database into cache")
+
+        except Exception as e:
+            self.logger.warning(f"Could not load existing devices from database: {e}")
 
     def _load_oui_database(self) -> Dict[str, str]:
         """
