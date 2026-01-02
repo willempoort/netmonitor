@@ -316,7 +316,9 @@ class BehaviorMatcher:
 
         # Protocol-based matching
         elif behavior_type == 'allowed_protocols':
-            allowed_protocols = [p.upper() for p in params.get('protocols', [])]
+            # Handle mixed types in protocols list (could be strings or ints)
+            raw_protocols = params.get('protocols', [])
+            allowed_protocols = [str(p).upper() for p in raw_protocols if p is not None]
 
             if packet:
                 from scapy.layers.inet import TCP, UDP, ICMP
@@ -391,7 +393,9 @@ class BehaviorMatcher:
 
         # Protocol-based matching
         elif behavior_type == 'allowed_protocols':
-            allowed_protocols = [p.upper() for p in params.get('protocols', [])]
+            # Handle mixed types in protocols list (could be strings or ints)
+            raw_protocols = params.get('protocols', [])
+            allowed_protocols = [str(p).upper() for p in raw_protocols if p is not None]
 
             if packet:
                 from scapy.layers.inet import TCP, UDP, ICMP
