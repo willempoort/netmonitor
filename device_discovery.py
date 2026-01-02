@@ -63,6 +63,10 @@ class DeviceDiscovery:
         self.device_cache: Dict[Tuple[str, str], Dict] = {}
         self.cache_lock = threading.Lock()
 
+        # MAC address to cache key mapping for DHCP environments
+        # Key: mac_address -> (ip_address, sensor_id)
+        self.mac_to_cache_key: Dict[str, Tuple[str, str]] = {}
+
         # Track when devices were last updated in DB to avoid excessive writes
         # Key: (ip_address, sensor_id) -> last_db_update timestamp
         self.last_db_update: Dict[Tuple[str, str], datetime] = {}
@@ -514,6 +518,10 @@ class DeviceDiscovery:
         """
         Register or update a device in the cache.
 
+        Uses MAC address as primary identifier when available (important for DHCP
+        environments where IP addresses change). Falls back to IP-based matching
+        when MAC is not available.
+
         Args:
             ip_address: Device IP address
             mac_address: Device MAC address (optional)
@@ -525,6 +533,37 @@ class DeviceDiscovery:
         now = datetime.now()
 
         with self.cache_lock:
+            # First check: Do we know this MAC address already? (DHCP-friendly matching)
+            if mac_address and mac_address in self.mac_to_cache_key:
+                old_cache_key = self.mac_to_cache_key[mac_address]
+
+                if old_cache_key != cache_key and old_cache_key in self.device_cache:
+                    # Same MAC but different IP - this is an IP change (DHCP lease renewal)
+                    device = self.device_cache[old_cache_key]
+                    old_ip = device.get('ip_address')
+
+                    # Update IP address
+                    device['ip_address'] = ip_address
+                    device['last_seen'] = now
+
+                    # Move to new cache key
+                    del self.device_cache[old_cache_key]
+                    self.device_cache[cache_key] = device
+                    self.mac_to_cache_key[mac_address] = cache_key
+
+                    # Transfer last_db_update tracking
+                    if old_cache_key in self.last_db_update:
+                        self.last_db_update[cache_key] = self.last_db_update.pop(old_cache_key)
+
+                    self.logger.info(f"Device IP changed: {old_ip} -> {ip_address} (MAC: {mac_address})")
+
+                    # Persist the IP change
+                    self._persist_device(device)
+                    self.last_db_update[cache_key] = now
+
+                    return device
+
+            # Second check: Do we have this IP in cache?
             if cache_key in self.device_cache:
                 # Update existing device
                 device = self.device_cache[cache_key]
@@ -534,6 +573,8 @@ class DeviceDiscovery:
                 if mac_address and not device.get('mac_address'):
                     device['mac_address'] = mac_address
                     device['vendor'] = self.get_vendor_from_mac(mac_address)
+                    # Register MAC mapping
+                    self.mac_to_cache_key[mac_address] = cache_key
 
                 # Try hostname resolution if we don't have it
                 if not device.get('hostname'):
@@ -556,6 +597,11 @@ class DeviceDiscovery:
                 }
 
                 self.device_cache[cache_key] = device
+
+                # Register MAC mapping if available
+                if mac_address:
+                    self.mac_to_cache_key[mac_address] = cache_key
+
                 self.logger.info(f"New device discovered: {ip_address} (MAC: {mac_address}, Vendor: {vendor}, Hostname: {hostname})")
 
                 # Immediately persist new devices
