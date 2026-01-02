@@ -2365,7 +2365,7 @@ class DatabaseManager:
                 INSERT INTO devices
                 (ip_address, sensor_id, mac_address, hostname, vendor, template_id, created_by)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (ip_address, sensor_id)
+                ON CONFLICT ON CONSTRAINT unique_device_per_sensor
                 DO UPDATE SET
                     mac_address = COALESCE(EXCLUDED.mac_address, devices.mac_address),
                     hostname = COALESCE(EXCLUDED.hostname, devices.hostname),
