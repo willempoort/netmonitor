@@ -268,8 +268,12 @@ class BehaviorMatcher:
         if behavior_type == 'allowed_ports':
             allowed_ports = set(params.get('ports', []))
 
-            # For inbound traffic to destination, check the destination port
-            dst_port = threat.get('metadata', {}).get('destination_port')
+            # For inbound traffic to destination, check the destination port (with defensive check)
+            dst_port = None
+            if isinstance(threat, dict):
+                metadata = threat.get('metadata', {})
+                if isinstance(metadata, dict):
+                    dst_port = metadata.get('destination_port')
 
             if packet:
                 from scapy.layers.inet import TCP, UDP
@@ -356,9 +360,14 @@ class BehaviorMatcher:
             allowed_ports = set(params.get('ports', []))
             direction = params.get('direction')  # 'inbound', 'outbound', or None (both)
 
-            # Extract port from threat metadata or packet
-            dst_port = threat.get('metadata', {}).get('destination_port')
-            src_port = threat.get('metadata', {}).get('source_port')
+            # Extract port from threat metadata or packet (with defensive check)
+            dst_port = None
+            src_port = None
+            if isinstance(threat, dict):
+                metadata = threat.get('metadata', {})
+                if isinstance(metadata, dict):
+                    dst_port = metadata.get('destination_port')
+                    src_port = metadata.get('source_port')
 
             if packet:
                 from scapy.layers.inet import TCP, UDP
