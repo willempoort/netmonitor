@@ -413,10 +413,30 @@ class BehaviorMatcher:
                     if packet.haslayer(UDP) and packet[UDP].dport in (554, 8554):
                         return True, "RTSP protocol is allowed"
 
-        # Destination-based matching (streaming services, CDN, etc.)
+        # Destination-based matching (streaming services, CDN, specific IPs, etc.)
         elif behavior_type == 'expected_destinations':
             allowed_categories = params.get('categories', [])
+            allowed_ips = params.get('allowed_ips', [])
             internal_only = params.get('internal_only', False)
+
+            # Check explicit allowed IPs/CIDRs first (for cases like UniFi controller)
+            if allowed_ips and dst_ip:
+                try:
+                    dst = ipaddress.ip_address(dst_ip)
+                    for allowed in allowed_ips:
+                        try:
+                            if '/' in str(allowed):
+                                # CIDR notation
+                                if dst in ipaddress.ip_network(allowed, strict=False):
+                                    return True, f"Destination {dst_ip} is in allowed network {allowed}"
+                            else:
+                                # Single IP
+                                if dst == ipaddress.ip_address(allowed):
+                                    return True, f"Destination {dst_ip} is explicitly allowed"
+                        except ValueError:
+                            continue
+                except ValueError:
+                    pass
 
             if internal_only:
                 # Check if destination is internal
