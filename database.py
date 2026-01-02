@@ -2340,23 +2340,38 @@ class DatabaseManager:
                 existing = cursor.fetchone()
 
                 if existing:
-                    device_id, old_ip = existing
-                    # Update existing device (may include IP change)
-                    cursor.execute('''
-                        UPDATE devices SET
-                            ip_address = %s,
-                            hostname = COALESCE(%s, hostname),
-                            vendor = COALESCE(%s, vendor),
-                            last_seen = NOW(),
-                            is_active = TRUE
-                        WHERE id = %s
-                        RETURNING id
-                    ''', (ip_address, hostname, vendor, device_id))
-                    device_id = cursor.fetchone()[0]
-                    conn.commit()
+                    device_id, old_ip_raw = existing
+                    # Normalize IP (strip /32 CIDR suffix from PostgreSQL INET type)
+                    old_ip = old_ip_raw.split('/')[0] if old_ip_raw and '/' in old_ip_raw else old_ip_raw
 
+                    # Only update if IP actually changed
                     if old_ip != ip_address:
+                        cursor.execute('''
+                            UPDATE devices SET
+                                ip_address = %s,
+                                hostname = COALESCE(%s, hostname),
+                                vendor = COALESCE(%s, vendor),
+                                last_seen = NOW(),
+                                is_active = TRUE
+                            WHERE id = %s
+                            RETURNING id
+                        ''', (ip_address, hostname, vendor, device_id))
+                        device_id = cursor.fetchone()[0]
+                        conn.commit()
                         self.logger.info(f"Device IP updated: {old_ip} -> {ip_address} (MAC: {mac_address})")
+                    else:
+                        # Just update last_seen, hostname, vendor
+                        cursor.execute('''
+                            UPDATE devices SET
+                                hostname = COALESCE(%s, hostname),
+                                vendor = COALESCE(%s, vendor),
+                                last_seen = NOW(),
+                                is_active = TRUE
+                            WHERE id = %s
+                            RETURNING id
+                        ''', (hostname, vendor, device_id))
+                        device_id = cursor.fetchone()[0]
+                        conn.commit()
 
                     return device_id
 

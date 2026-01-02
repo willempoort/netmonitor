@@ -123,6 +123,15 @@ class DeviceDiscovery:
                 self.logger.warning(f"Invalid network CIDR: {net_str}: {e}")
         return networks
 
+    def _normalize_ip(self, ip_address: str) -> str:
+        """
+        Normalize IP address by stripping CIDR suffix if present.
+        PostgreSQL INET type returns '10.0.0.1/32' but we compare with '10.0.0.1'.
+        """
+        if ip_address and '/' in ip_address:
+            return ip_address.split('/')[0]
+        return ip_address
+
     def _load_existing_devices(self):
         """
         Load existing devices from database into cache on startup.
@@ -136,7 +145,7 @@ class DeviceDiscovery:
             loaded_count = 0
 
             for device in devices:
-                ip_address = device.get('ip_address')
+                ip_address = self._normalize_ip(device.get('ip_address'))
                 mac_address = device.get('mac_address')
                 if not ip_address:
                     continue
