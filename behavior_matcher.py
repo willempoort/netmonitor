@@ -178,6 +178,10 @@ class BehaviorMatcher:
         """
         self.stats['alerts_checked'] += 1
 
+        # Defensive check for malformed threats
+        if not isinstance(threat, dict):
+            return False, None
+
         src_ip = threat.get('source_ip')
         dst_ip = threat.get('destination_ip')
         threat_type = threat.get('type', '')
@@ -468,6 +472,11 @@ class BehaviorMatcher:
         filtered = []
 
         for threat in threats:
+            # Skip non-dict items (malformed threats)
+            if not isinstance(threat, dict):
+                self.logger.warning(f"Skipping non-dict threat: {type(threat)}")
+                continue
+
             suppress, reason = self.should_suppress_alert(threat, packet)
 
             if suppress:
