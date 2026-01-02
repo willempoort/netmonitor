@@ -266,6 +266,7 @@ Authorization: Bearer a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9
 - assign_device_template
 - create_service_provider
 - create_template_from_device
+- clone_device_template        # Kloon bestaande template (ook built-in)
 - save_device_learned_behavior
 # TLS Analysis (read_write):
 - add_ja3_blacklist           # Voeg JA3 toe aan blacklist
