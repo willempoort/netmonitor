@@ -2319,10 +2319,48 @@ class DatabaseManager:
                        mac_address: str = None, hostname: str = None,
                        vendor: str = None, template_id: int = None,
                        created_by: str = None) -> Optional[int]:
-        """Register a new device or update if exists"""
+        """
+        Register a new device or update if exists.
+
+        Uses MAC address as primary identifier when available (important for DHCP
+        environments where IP addresses change). Falls back to IP-based matching
+        when MAC is not available.
+        """
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
+
+            # First check: Do we have a device with this MAC address? (DHCP-friendly)
+            # This allows IP changes without creating duplicate device entries
+            if mac_address:
+                cursor.execute('''
+                    SELECT id, ip_address::text as ip_address FROM devices
+                    WHERE mac_address = %s AND sensor_id = %s
+                ''', (mac_address, sensor_id))
+                existing = cursor.fetchone()
+
+                if existing:
+                    device_id, old_ip = existing
+                    # Update existing device (may include IP change)
+                    cursor.execute('''
+                        UPDATE devices SET
+                            ip_address = %s,
+                            hostname = COALESCE(%s, hostname),
+                            vendor = COALESCE(%s, vendor),
+                            last_seen = NOW(),
+                            is_active = TRUE
+                        WHERE id = %s
+                        RETURNING id
+                    ''', (ip_address, hostname, vendor, device_id))
+                    device_id = cursor.fetchone()[0]
+                    conn.commit()
+
+                    if old_ip != ip_address:
+                        self.logger.info(f"Device IP updated: {old_ip} -> {ip_address} (MAC: {mac_address})")
+
+                    return device_id
+
+            # No MAC or MAC not found - use IP-based matching
             cursor.execute('''
                 INSERT INTO devices
                 (ip_address, sensor_id, mac_address, hostname, vendor, template_id, created_by)
