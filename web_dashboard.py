@@ -3196,6 +3196,55 @@ def api_create_device_template():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/device-templates/<int:template_id>/clone', methods=['POST'])
+@login_required
+def api_clone_device_template(template_id):
+    """Clone an existing device template (including built-in templates)"""
+    try:
+        # Get the source template
+        source = db.get_device_template_by_id(template_id)
+        if not source:
+            return jsonify({'success': False, 'error': 'Template not found'}), 404
+
+        data = request.get_json() or {}
+
+        # Create new template with optional custom name
+        new_name = data.get('name', f"{source['name']} (Copy)")
+        new_description = data.get('description', source.get('description', ''))
+
+        new_template_id = db.create_device_template(
+            name=new_name,
+            description=new_description,
+            icon=source.get('icon', 'device'),
+            category=source.get('category', 'other'),
+            created_by=current_user.username if current_user.is_authenticated else 'api'
+        )
+
+        if new_template_id:
+            # Copy all behaviors from source template
+            source_behaviors = db.get_template_behaviors(template_id)
+            for behavior in source_behaviors:
+                db.add_template_behavior(
+                    template_id=new_template_id,
+                    behavior_type=behavior.get('behavior_type'),
+                    parameters=behavior.get('parameters', {}),
+                    action=behavior.get('action', 'allow'),
+                    description=behavior.get('description')
+                )
+
+            return jsonify({
+                'success': True,
+                'template_id': new_template_id,
+                'message': f'Template cloned successfully as "{new_name}"'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to clone template'}), 500
+
+    except Exception as e:
+        logger.error(f"Error cloning device template: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/device-templates/<int:template_id>', methods=['PUT'])
 @login_required
 def api_update_device_template(template_id):

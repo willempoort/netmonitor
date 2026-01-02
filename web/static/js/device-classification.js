@@ -759,6 +759,41 @@ async function deleteTemplate() {
     }
 }
 
+async function cloneTemplate() {
+    const templateId = document.getElementById('template-detail-id').value;
+    const templateName = document.getElementById('template-detail-name').textContent;
+
+    // Prompt for new name
+    const newName = prompt('Enter name for the cloned template:', `${templateName} (My Copy)`);
+    if (!newName) {
+        return; // User cancelled
+    }
+
+    try {
+        const response = await fetch(`/api/device-templates/${templateId}/clone`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name: newName })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showSuccess(`Template cloned as "${newName}"`);
+            // Close current modal and open the new template
+            bootstrap.Modal.getInstance(document.getElementById('templateDetailsModal')).hide();
+            loadTemplates();
+            // Show the new template after a short delay
+            setTimeout(() => showTemplateDetails(result.template_id), 300);
+        } else {
+            showError('Failed to clone template: ' + (result.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error cloning template:', error);
+        showError('Network error while cloning template');
+    }
+}
+
 // ==================== Service Providers Functions ====================
 
 async function loadProviders() {
