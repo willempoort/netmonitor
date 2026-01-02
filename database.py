@@ -504,6 +504,29 @@ class DatabaseManager:
                 END $$;
             """)
 
+            # Migration: Update valid_behavior_type constraint to include allowed_sources
+            # This is needed for templates with source IP whitelisting
+            cursor.execute("""
+                DO $$
+                BEGIN
+                    -- Check if constraint exists but doesn't include 'allowed_sources'
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.check_constraints
+                        WHERE constraint_name = 'valid_behavior_type'
+                        AND check_clause NOT LIKE '%allowed_sources%'
+                    ) THEN
+                        ALTER TABLE template_behaviors DROP CONSTRAINT valid_behavior_type;
+                        ALTER TABLE template_behaviors ADD CONSTRAINT valid_behavior_type CHECK (
+                            behavior_type IN (
+                                'allowed_ports', 'allowed_protocols', 'allowed_sources',
+                                'expected_destinations', 'traffic_pattern', 'connection_behavior',
+                                'dns_behavior', 'time_restrictions', 'bandwidth_limit'
+                            )
+                        );
+                    END IF;
+                END $$;
+            """)
+
             conn.commit()
 
         except Exception as e:
