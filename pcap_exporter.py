@@ -39,7 +39,10 @@ class PCAPExporter:
         self.logger = logging.getLogger('NetMonitor.PCAPExporter')
 
         # Configure output directory
-        pcap_config = self.config.get('pcap_export', {})
+        # Check both locations for backwards compatibility
+        pcap_config = self.config.get('thresholds', {}).get('pcap_export', {})
+        if not pcap_config:
+            pcap_config = self.config.get('pcap_export', {})
         self.output_dir = Path(output_dir or pcap_config.get('output_dir', '/var/log/netmonitor/pcap'))
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
