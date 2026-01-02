@@ -346,9 +346,9 @@ class DatabaseManager:
                     description TEXT,
                     created_at TIMESTAMPTZ DEFAULT NOW(),
                     CONSTRAINT valid_behavior_type CHECK (behavior_type IN (
-                        'allowed_ports', 'allowed_protocols', 'expected_destinations',
-                        'traffic_pattern', 'connection_behavior', 'dns_behavior',
-                        'time_restrictions', 'bandwidth_limit'
+                        'allowed_ports', 'allowed_protocols', 'allowed_sources',
+                        'expected_destinations', 'traffic_pattern', 'connection_behavior',
+                        'dns_behavior', 'time_restrictions', 'bandwidth_limit'
                     )),
                     CONSTRAINT valid_action CHECK (action IN ('allow', 'alert', 'suppress'))
                 );
