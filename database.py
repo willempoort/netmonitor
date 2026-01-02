@@ -3053,6 +3053,22 @@ class DatabaseManager:
                 ]
             },
             {
+                'name': 'UniFi Controller',
+                'description': 'Ubiquiti UniFi Network Controller - create a COPY with your allowed external source IPs',
+                'icon': 'cloud',
+                'category': 'server',
+                'behaviors': [
+                    # UniFi Controller inbound ports
+                    {'type': 'allowed_ports', 'params': {'ports': [8443, 8080, 8880, 8843, 6789, 27117], 'direction': 'inbound'}, 'action': 'allow'},
+                    # STUN port for remote APs
+                    {'type': 'allowed_ports', 'params': {'ports': [3478], 'protocols': ['UDP'], 'direction': 'inbound'}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP']}, 'action': 'allow'},
+                    # Example: Add your external AP IPs here (create custom template)
+                    # {'type': 'allowed_sources', 'params': {'subnets': ['203.0.113.0/24']}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'high_connection_rate': True, 'accepts_connections': True}, 'action': 'allow'},
+                ]
+            },
+            {
                 'name': 'UniFi Controller Client',
                 'description': 'External UniFi device connecting to internal controller (customize allowed_ips with your controller IP)',
                 'icon': 'wifi',
