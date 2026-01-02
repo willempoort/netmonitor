@@ -97,11 +97,26 @@ def _load_bash_config(config_file):
                 key = key.strip()
                 value = value.strip()
 
+                # Strip inline comments (space followed by #)
+                # Handle unquoted values first
+                if not (value.startswith('"') or value.startswith("'")):
+                    if ' #' in value:
+                        value = value.split(' #', 1)[0].strip()
+
                 # Remove quotes if present
                 if value.startswith('"') and value.endswith('"'):
                     value = value[1:-1]
                 elif value.startswith("'") and value.endswith("'"):
                     value = value[1:-1]
+                # Handle quoted value with trailing inline comment: "value" # comment
+                elif value.startswith('"'):
+                    close_idx = value.find('"', 1)
+                    if close_idx > 0:
+                        value = value[1:close_idx]
+                elif value.startswith("'"):
+                    close_idx = value.find("'", 1)
+                    if close_idx > 0:
+                        value = value[1:close_idx]
 
                 # Convert to nested dict structure expected by sensor_client
                 if key == 'INTERFACE':
