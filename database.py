@@ -40,16 +40,62 @@ class DatabaseManager:
             self.logger.error(f"Failed to create connection pool: {e}")
             raise
 
-        # Initialize database schema
-        self._init_database()
+        # Check schema version - skip heavy init if already up to date
+        SCHEMA_VERSION = 12  # Increment this when schema changes
 
-        # Create hypertables and continuous aggregates
-        self._setup_timescaledb()
+        if self._check_schema_version(SCHEMA_VERSION):
+            self.logger.info(f"Database schema is up to date (v{SCHEMA_VERSION})")
+        else:
+            # Initialize database schema
+            self._init_database()
 
-        # Initialize builtin data (templates, service providers)
-        self._init_builtin_data()
+            # Create hypertables and continuous aggregates
+            self._setup_timescaledb()
 
-        self.logger.info(f"Database geïnitialiseerd: PostgreSQL + TimescaleDB")
+            # Initialize builtin data (templates, service providers)
+            self._init_builtin_data()
+
+            # Update schema version
+            self._set_schema_version(SCHEMA_VERSION)
+            self.logger.info(f"Database schema updated to v{SCHEMA_VERSION}")
+
+    def _check_schema_version(self, required_version: int) -> bool:
+        """Check if database schema is at the required version"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            # Check if schema_version table exists and has correct version
+            cursor.execute("""
+                SELECT version FROM schema_version
+                WHERE component = 'netmonitor'
+                LIMIT 1
+            """)
+            row = cursor.fetchone()
+            if row and row[0] >= required_version:
+                return True
+            return False
+        except Exception:
+            # Table doesn't exist or other error - need to run init
+            return False
+        finally:
+            self._return_connection(conn)
+
+    def _set_schema_version(self, version: int):
+        """Set the current schema version"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO schema_version (component, version, updated_at)
+                VALUES ('netmonitor', %s, NOW())
+                ON CONFLICT (component) DO UPDATE SET version = %s, updated_at = NOW()
+            """, (version, version))
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            self.logger.warning(f"Could not set schema version: {e}")
+        finally:
+            self._return_connection(conn)
 
     def _get_connection(self):
         """Get connection from pool"""
@@ -64,6 +110,15 @@ class DatabaseManager:
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
+
+            # Schema version tracking table (must be first)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS schema_version (
+                    component VARCHAR(50) PRIMARY KEY,
+                    version INTEGER NOT NULL DEFAULT 1,
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            ''')
 
             # Enable TimescaleDB extension (optional - will continue without it if not available)
             try:
