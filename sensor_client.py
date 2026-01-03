@@ -145,6 +145,14 @@ def _load_bash_config(config_file):
                     config.setdefault('thresholds', {}).setdefault('pcap_export', {})['keep_local_copy'] = value.lower() in ('true', 'yes', '1')
                 elif key == 'PCAP_OUTPUT_DIR':
                     config.setdefault('thresholds', {}).setdefault('pcap_export', {})['output_dir'] = value
+                elif key == 'PCAP_RAM_FLUSH_THRESHOLD':
+                    # RAM threshold for emergency PCAP buffer flush (0-100, 0=disabled)
+                    try:
+                        threshold = int(value)
+                        if 0 <= threshold <= 100:
+                            config.setdefault('thresholds', {}).setdefault('pcap_export', {})['ram_flush_threshold'] = threshold
+                    except ValueError:
+                        pass  # Invalid value, use default
 
     return config
 
@@ -907,6 +915,14 @@ class SensorClient:
                 # Reset trigger when RAM drops 10% below threshold
                 self.ram_flush_triggered = False
                 self.logger.info(f"RAM usage {memory.percent:.1f}% back to normal, PCAP flush reset")
+
+            # Cleanup old detector tracking data to prevent memory leaks
+            if hasattr(self, 'detector') and hasattr(self.detector, 'cleanup_old_data'):
+                try:
+                    self.detector.cleanup_old_data()
+                except Exception as e:
+                    self.logger.warning(f"Error cleaning up detector data: {e}")
+
             uptime = int(time.time() - self.start_time)
 
             # Calculate bandwidth (Mbps) over measurement window
@@ -957,39 +973,68 @@ class SensorClient:
 
         Uploads any pending PCAP captures to SOC server and clears the
         in-memory packet buffer to free RAM on resource-constrained sensors.
+        Also clears detector tracking buffers to prevent memory leaks.
         """
-        if not self.pcap_exporter:
-            return
-
         try:
             import gc
 
-            # 1. Process any pending captures (write to disk and upload)
-            if hasattr(self.pcap_exporter, 'pending_captures'):
-                pending = len(self.pcap_exporter.pending_captures)
-                if pending > 0:
-                    self.logger.info(f"Processing {pending} pending PCAP captures...")
-                    self.pcap_exporter._process_pending_captures()
+            # 1. Process and clear PCAP buffers (if available)
+            if self.pcap_exporter:
+                # Process any pending captures (write to disk and upload)
+                if hasattr(self.pcap_exporter, 'pending_captures'):
+                    pending = len(self.pcap_exporter.pending_captures)
+                    if pending > 0:
+                        self.logger.info(f"Processing {pending} pending PCAP captures...")
+                        self.pcap_exporter._process_pending_captures()
 
-            # 2. Clear the in-memory packet buffer
-            with self.pcap_exporter.buffer_lock:
-                buffer_size = len(self.pcap_exporter.packet_buffer)
-                self.pcap_exporter.packet_buffer.clear()
-                self.logger.info(f"Cleared PCAP buffer ({buffer_size} packets)")
+                # Clear the in-memory packet buffer
+                with self.pcap_exporter.buffer_lock:
+                    buffer_size = len(self.pcap_exporter.packet_buffer)
+                    self.pcap_exporter.packet_buffer.clear()
+                    self.logger.info(f"Cleared PCAP buffer ({buffer_size} packets)")
 
-            # 3. Clear flow buffers if present
-            if hasattr(self.pcap_exporter, 'flow_buffers'):
-                flow_count = len(self.pcap_exporter.flow_buffers)
-                self.pcap_exporter.flow_buffers.clear()
-                if flow_count > 0:
-                    self.logger.info(f"Cleared {flow_count} flow buffers")
+                # Clear flow buffers if present
+                if hasattr(self.pcap_exporter, 'flow_buffers'):
+                    flow_count = len(self.pcap_exporter.flow_buffers)
+                    self.pcap_exporter.flow_buffers.clear()
+                    if flow_count > 0:
+                        self.logger.info(f"Cleared {flow_count} flow buffers")
 
-            # 4. Force garbage collection to free memory
+            # 2. Clear detector tracking buffers (prevents memory leak)
+            if hasattr(self, 'detector'):
+                # Clear all tracking dictionaries
+                cleared_items = 0
+                if hasattr(self.detector, 'port_scan_tracker'):
+                    cleared_items += len(self.detector.port_scan_tracker)
+                    self.detector.port_scan_tracker.clear()
+                if hasattr(self.detector, 'connection_tracker'):
+                    cleared_items += len(self.detector.connection_tracker)
+                    self.detector.connection_tracker.clear()
+                if hasattr(self.detector, 'dns_tracker'):
+                    cleared_items += len(self.detector.dns_tracker)
+                    self.detector.dns_tracker.clear()
+                if hasattr(self.detector, 'brute_force_tracker'):
+                    cleared_items += len(self.detector.brute_force_tracker)
+                    self.detector.brute_force_tracker.clear()
+                if hasattr(self.detector, 'icmp_tracker'):
+                    cleared_items += len(self.detector.icmp_tracker)
+                    self.detector.icmp_tracker.clear()
+                if hasattr(self.detector, 'http_tracker'):
+                    cleared_items += len(self.detector.http_tracker)
+                    self.detector.http_tracker.clear()
+                if hasattr(self.detector, 'smtp_ftp_tracker'):
+                    cleared_items += len(self.detector.smtp_ftp_tracker)
+                    self.detector.smtp_ftp_tracker.clear()
+
+                if cleared_items > 0:
+                    self.logger.info(f"Cleared {cleared_items} detector tracking entries")
+
+            # 3. Force garbage collection to free memory
             gc.collect()
 
             # Log memory after flush
             memory = psutil.virtual_memory()
-            self.logger.info(f"✓ Emergency PCAP flush complete, RAM now at {memory.percent:.1f}%")
+            self.logger.info(f"✓ Emergency flush complete, RAM now at {memory.percent:.1f}%")
 
         except Exception as e:
             self.logger.error(f"Error during emergency PCAP flush: {e}")
