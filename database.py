@@ -408,7 +408,7 @@ class DatabaseManager:
                     CONSTRAINT valid_behavior_type CHECK (behavior_type IN (
                         'allowed_ports', 'allowed_protocols', 'allowed_sources',
                         'expected_destinations', 'traffic_pattern', 'connection_behavior',
-                        'dns_behavior', 'time_restrictions', 'bandwidth_limit'
+                        'dns_behavior', 'time_restrictions', 'bandwidth_limit', 'suppress_alert_types'
                     )),
                     CONSTRAINT valid_action CHECK (action IN ('allow', 'alert', 'suppress'))
                 );
@@ -580,7 +580,30 @@ class DatabaseManager:
                             behavior_type IN (
                                 'allowed_ports', 'allowed_protocols', 'allowed_sources',
                                 'expected_destinations', 'traffic_pattern', 'connection_behavior',
-                                'dns_behavior', 'time_restrictions', 'bandwidth_limit'
+                                'dns_behavior', 'time_restrictions', 'bandwidth_limit', 'suppress_alert_types'
+                            )
+                        );
+                    END IF;
+                END $$;
+            """)
+
+            # Migration v2.8: Add suppress_alert_types to valid_behavior_type constraint
+            # This allows management interfaces (UniFi, etc.) to suppress specific CRITICAL alerts
+            cursor.execute("""
+                DO $$
+                BEGIN
+                    -- Check if constraint doesn't include 'suppress_alert_types'
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.check_constraints
+                        WHERE constraint_name = 'valid_behavior_type'
+                        AND check_clause NOT LIKE '%suppress_alert_types%'
+                    ) THEN
+                        ALTER TABLE template_behaviors DROP CONSTRAINT valid_behavior_type;
+                        ALTER TABLE template_behaviors ADD CONSTRAINT valid_behavior_type CHECK (
+                            behavior_type IN (
+                                'allowed_ports', 'allowed_protocols', 'allowed_sources',
+                                'expected_destinations', 'traffic_pattern', 'connection_behavior',
+                                'dns_behavior', 'time_restrictions', 'bandwidth_limit', 'suppress_alert_types'
                             )
                         );
                     END IF;
