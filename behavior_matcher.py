@@ -161,6 +161,40 @@ class BehaviorMatcher:
 
         return None
 
+    def _check_explicit_alert_suppression(self, src_ip: str, dst_ip: str, threat_type: str) -> bool:
+        """
+        Check if there's an explicit suppress_alert_types behavior for this threat.
+
+        This allows templates to suppress specific CRITICAL alerts (e.g., HTTP_SENSITIVE_DATA
+        for management interfaces like UniFi controllers).
+
+        Returns:
+            True if this threat_type should be explicitly suppressed
+        """
+        # Check source template
+        if src_ip:
+            src_template = self._get_device_template(src_ip)
+            if src_template:
+                for behavior in src_template.get('behaviors', []):
+                    if behavior.get('behavior_type') == 'suppress_alert_types':
+                        params = behavior.get('parameters', {})
+                        alert_types = params.get('alert_types', [])
+                        if threat_type in alert_types:
+                            return True
+
+        # Check destination template
+        if dst_ip:
+            dst_template = self._get_device_template(dst_ip)
+            if dst_template:
+                for behavior in dst_template.get('behaviors', []):
+                    if behavior.get('behavior_type') == 'suppress_alert_types':
+                        params = behavior.get('parameters', {})
+                        alert_types = params.get('alert_types', [])
+                        if threat_type in alert_types:
+                            return True
+
+        return False
+
     def should_suppress_alert(self, threat: Dict, packet=None) -> Tuple[bool, Optional[str]]:
         """
         Determine if an alert should be suppressed based on device template.
@@ -189,12 +223,16 @@ class BehaviorMatcher:
         if not src_ip:
             return False, None
 
-        # Never suppress critical security threats
-        if threat.get('severity') == 'CRITICAL':
-            return False, None
-
         # Never suppress threat feed matches or C2 communication
         if threat_type in ('THREAT_FEED_MATCH', 'C2_COMMUNICATION', 'BLACKLISTED_IP'):
+            return False, None
+
+        # Check if there's an explicit suppress_alert_types rule before applying CRITICAL filter
+        # This allows templates to suppress specific CRITICAL alerts (e.g., HTTP_SENSITIVE_DATA for management interfaces)
+        has_explicit_suppression = self._check_explicit_alert_suppression(src_ip, dst_ip, threat_type)
+
+        # Never suppress CRITICAL threats unless explicitly allowed by template
+        if threat.get('severity') == 'CRITICAL' and not has_explicit_suppression:
             return False, None
 
         # Check 1: Source device template (outbound behavior)
@@ -354,6 +392,12 @@ class BehaviorMatcher:
                 if threat_type in ('HIGH_INBOUND_VOLUME', 'UNUSUAL_PACKET_SIZE'):
                     return True, "High inbound bandwidth is expected"
 
+        # Explicit alert type suppression (for management interfaces, etc.)
+        elif behavior_type == 'suppress_alert_types':
+            alert_types = params.get('alert_types', [])
+            if threat_type in alert_types:
+                return True, f"Alert type {threat_type} is explicitly allowed"
+
         return False, None
 
     def _match_behavior(self, threat_type: str, behavior_type: str,
@@ -495,6 +539,12 @@ class BehaviorMatcher:
                 # Smart devices often make many cloud DNS queries
                 if params.get('allow_cloud_dns'):
                     return True, "Cloud DNS queries are expected"
+
+        # Explicit alert type suppression (for management interfaces, etc.)
+        elif behavior_type == 'suppress_alert_types':
+            alert_types = params.get('alert_types', [])
+            if threat_type in alert_types:
+                return True, f"Alert type {threat_type} is explicitly allowed"
 
         return False, None
 

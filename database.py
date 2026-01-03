@@ -3137,18 +3137,21 @@ class DatabaseManager:
             },
             {
                 'name': 'UniFi Controller',
-                'description': 'Ubiquiti UniFi Network Controller - create a COPY with your allowed external source IPs',
+                'description': 'Ubiquiti UniFi Network Controller - suppresses false positives for management traffic',
                 'icon': 'cloud',
                 'category': 'server',
                 'behaviors': [
-                    # UniFi Controller inbound ports
+                    # UniFi Controller inbound ports (8443=HTTPS, 8080=HTTP inform, 8843=guest portal, 6789=speedtest, 27117=MongoDB)
                     {'type': 'allowed_ports', 'params': {'ports': [8443, 8080, 8880, 8843, 6789, 27117], 'direction': 'inbound'}, 'action': 'allow'},
                     # STUN port for remote APs
                     {'type': 'allowed_ports', 'params': {'ports': [3478], 'protocols': ['UDP'], 'direction': 'inbound'}, 'action': 'allow'},
                     {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP']}, 'action': 'allow'},
-                    # Example: Add your external AP IPs here (create custom template)
-                    # {'type': 'allowed_sources', 'params': {'subnets': ['203.0.113.0/24']}, 'action': 'allow'},
+                    # Suppress HTTP_SENSITIVE_DATA alerts - UniFi sends JSON config data which may contain sensitive-looking patterns
+                    {'type': 'suppress_alert_types', 'params': {'alert_types': ['HTTP_SENSITIVE_DATA', 'HTTP_HIGH_ENTROPY_PAYLOAD']}, 'action': 'allow'},
+                    # Allow high connection rate from managed devices
                     {'type': 'connection_behavior', 'params': {'high_connection_rate': True, 'accepts_connections': True}, 'action': 'allow'},
+                    # Allow internal sources only (add external AP IPs via allowed_sources if needed)
+                    {'type': 'allowed_sources', 'params': {'internal': True}, 'action': 'allow'},
                 ]
             },
             {
