@@ -389,6 +389,9 @@ class SensorClient:
         self.pcap_upload_enabled = pcap_config.get('upload_to_soc', True)
         # Keep local copy after upload (default: False to save storage)
         self.pcap_keep_local = pcap_config.get('keep_local_copy', False)
+        # RAM threshold for emergency PCAP flush (default: 80%)
+        self.ram_flush_threshold = pcap_config.get('ram_flush_threshold', 80)
+        self.ram_flush_triggered = False  # Prevent repeated flushes
 
         if PCAP_AVAILABLE and pcap_enabled:
             try:
@@ -893,6 +896,17 @@ class SensorClient:
             cpu_percent = psutil.cpu_percent(interval=1)
             memory = psutil.virtual_memory()
             disk = psutil.disk_usage('/')
+
+            # Check RAM threshold for emergency PCAP flush
+            if memory.percent >= self.ram_flush_threshold:
+                if not self.ram_flush_triggered:
+                    self.logger.warning(f"⚠️ RAM usage {memory.percent:.1f}% exceeds threshold {self.ram_flush_threshold}%, flushing PCAP buffer...")
+                    self._emergency_pcap_flush()
+                    self.ram_flush_triggered = True
+            elif self.ram_flush_triggered and memory.percent < (self.ram_flush_threshold - 10):
+                # Reset trigger when RAM drops 10% below threshold
+                self.ram_flush_triggered = False
+                self.logger.info(f"RAM usage {memory.percent:.1f}% back to normal, PCAP flush reset")
             uptime = int(time.time() - self.start_time)
 
             # Calculate bandwidth (Mbps) over measurement window
@@ -937,6 +951,48 @@ class SensorClient:
 
         except Exception as e:
             self.logger.error(f"Error sending metrics: {e}")
+
+    def _emergency_pcap_flush(self):
+        """Emergency flush of PCAP buffer when RAM is critically high.
+
+        Uploads any pending PCAP captures to SOC server and clears the
+        in-memory packet buffer to free RAM on resource-constrained sensors.
+        """
+        if not self.pcap_exporter:
+            return
+
+        try:
+            import gc
+
+            # 1. Process any pending captures (write to disk and upload)
+            if hasattr(self.pcap_exporter, 'pending_captures'):
+                pending = len(self.pcap_exporter.pending_captures)
+                if pending > 0:
+                    self.logger.info(f"Processing {pending} pending PCAP captures...")
+                    self.pcap_exporter._process_pending_captures()
+
+            # 2. Clear the in-memory packet buffer
+            with self.pcap_exporter.buffer_lock:
+                buffer_size = len(self.pcap_exporter.packet_buffer)
+                self.pcap_exporter.packet_buffer.clear()
+                self.logger.info(f"Cleared PCAP buffer ({buffer_size} packets)")
+
+            # 3. Clear flow buffers if present
+            if hasattr(self.pcap_exporter, 'flow_buffers'):
+                flow_count = len(self.pcap_exporter.flow_buffers)
+                self.pcap_exporter.flow_buffers.clear()
+                if flow_count > 0:
+                    self.logger.info(f"Cleared {flow_count} flow buffers")
+
+            # 4. Force garbage collection to free memory
+            gc.collect()
+
+            # Log memory after flush
+            memory = psutil.virtual_memory()
+            self.logger.info(f"✓ Emergency PCAP flush complete, RAM now at {memory.percent:.1f}%")
+
+        except Exception as e:
+            self.logger.error(f"Error during emergency PCAP flush: {e}")
 
     def _upload_alert_immediate(self, alert, pcap_path=None):
         """Upload a single high-priority alert immediately
