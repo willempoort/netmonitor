@@ -50,7 +50,16 @@ def update_unifi_template():
 
     print(f"📊 Connecting to database: {config.get('host', 'localhost')}:{config.get('port', 5432)}")
 
-    db = DatabaseManager(config)
+    # DatabaseManager expects individual parameters, not a dict
+    db = DatabaseManager(
+        host=config.get('host', 'localhost'),
+        port=config.get('port', 5432),
+        database=config.get('database', 'netmonitor'),
+        user=config.get('user', 'netmonitor'),
+        password=config.get('password', 'netmonitor'),
+        min_connections=config.get('min_connections', 2),
+        max_connections=config.get('max_connections', 10)
+    )
 
     try:
         # Find UniFi Controller template
