@@ -71,11 +71,16 @@ class DatabaseManager:
                 LIMIT 1
             """)
             row = cursor.fetchone()
+            conn.commit()  # Release any locks from the SELECT
             if row and row[0] >= required_version:
                 return True
             return False
-        except Exception:
+        except Exception as e:
             # Table doesn't exist or other error - need to run init
+            try:
+                conn.rollback()  # Clean up transaction state
+            except Exception:
+                pass
             return False
         finally:
             self._return_connection(conn)
