@@ -540,6 +540,7 @@ Templates kunnen de volgende behavior types definiëren:
 | `traffic_pattern` | `high_bandwidth: true` | Beide | Verwacht verkeerspatroon |
 | `connection_behavior` | `accepts_connections: true`, `api_server: true` | Inbound | Server connectie gedrag |
 | `bandwidth_limit` | `max_mbps: 100` | Beide | Bandwidth limiet |
+| `suppress_alert_types` | `alert_types: [HTTP_SENSITIVE_DATA]` | Beide | **NEW v2.8** - Suppress specifieke alert types (ook CRITICAL) |
 
 #### expected_destinations Parameters
 
@@ -573,6 +574,54 @@ Templates kunnen de volgende behavior types definiëren:
   "parameters": {"subnets": ["203.0.113.10", "198.51.100.50"]},
   "action": "allow",
   "description": "Externe UniFi APs die mogen connecten"
+}
+```
+
+#### suppress_alert_types Parameters (NEW v2.8)
+
+| Parameter | Type | Beschrijving |
+|-----------|------|--------------|
+| `alert_types` | `string[]` | Alert types om te supprimeren (bijv. `["HTTP_SENSITIVE_DATA", "HTTP_HIGH_ENTROPY_PAYLOAD"]`) |
+
+**Use case: UniFi Controller Management Traffic**
+
+Problem: UniFi controllers sturen JSON configuratie data die door DLP als "sensitive" wordt gedetecteerd (keys, credentials, hashes). Dit is legitiem management verkeer, geen data leak.
+
+Solution: Suppress HTTP_SENSITIVE_DATA alerts voor verkeer naar de controller.
+
+```json
+{
+  "behavior_type": "suppress_alert_types",
+  "parameters": {"alert_types": ["HTTP_SENSITIVE_DATA", "HTTP_HIGH_ENTROPY_PAYLOAD"]},
+  "action": "allow",
+  "description": "UniFi management traffic bevat configuratie data die lijkt op sensitive data"
+}
+```
+
+**Voordelen vs IP Whitelisting:**
+
+| Aspect | IP Whitelist | suppress_alert_types |
+|--------|--------------|----------------------|
+| HTTP_SENSITIVE_DATA | ✅ Gesupprimeerd | ✅ Gesupprimeerd |
+| Brute Force | ❌ **Gesupprimeerd** (gemist!) | ✅ Gedetecteerd |
+| C2 Communication | ❌ **Gesupprimeerd** (gemist!) | ✅ Gedetecteerd |
+| Port Scans | ❌ **Gesupprimeerd** (gemist!) | ✅ Gedetecteerd |
+| Granulariteit | Hele IP | Specifieke alert types |
+
+**Important Notes:**
+- `suppress_alert_types` werkt zelfs voor **CRITICAL** severity alerts
+- Threat feed matches (C2_COMMUNICATION, BLACKLISTED_IP) worden **nooit** gesupprimeerd
+- Alert suppression wordt gelogd in `/var/log/netmonitor/suppression.log`
+
+**Voorbeeld Template: UniFi Controller**
+```json
+{
+  "name": "UniFi Controller",
+  "behaviors": [
+    {"type": "allowed_ports", "params": {"ports": [8443, 8080, 8843], "direction": "inbound"}},
+    {"type": "suppress_alert_types", "params": {"alert_types": ["HTTP_SENSITIVE_DATA", "HTTP_HIGH_ENTROPY_PAYLOAD"]}},
+    {"type": "allowed_sources", "params": {"internal": true}}
+  ]
 }
 ```
 
