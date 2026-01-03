@@ -731,6 +731,38 @@ sudo journalctl -u netmonitor-sensor -f
 | `HEARTBEAT_INTERVAL` | `30` | Status update frequency (seconds) |
 | `CONFIG_SYNC_INTERVAL` | `300` | Configuration fetch frequency (seconds) |
 | `SSL_VERIFY` | `true` | Verify SSL certificates |
+| `SENSOR_WHITELIST` | (empty) | Local IP/CIDR whitelist (comma-separated) |
+
+#### PCAP Forensics (NIS2 Compliance)
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `PCAP_ENABLED` | `true` | Enable packet capture for alerts |
+| `PCAP_UPLOAD_TO_SOC` | `true` | Upload PCAP to SOC server |
+| `PCAP_KEEP_LOCAL` | `false` | Keep local copy after upload |
+| `PCAP_OUTPUT_DIR` | `/var/log/netmonitor/pcap` | Local PCAP storage |
+| `PCAP_RAM_FLUSH_THRESHOLD` | `80` | Flush PCAP buffer at RAM % (0=disable) |
+
+**RAM Management for Small Sensors:**
+
+Sensors met beperkt RAM (bijv. 1GB Nano Pi) kunnen geheugenuitputting ervaren door PCAP buffers. De `PCAP_RAM_FLUSH_THRESHOLD` parameter monitort RAM-gebruik en flusht automatisch de buffer wanneer de drempelwaarde wordt overschreden.
+
+```bash
+# Voor 1GB RAM sensors - flush bij 75% RAM
+PCAP_RAM_FLUSH_THRESHOLD=75
+
+# Voor 4GB RAM sensors - standaard 80% is prima
+PCAP_RAM_FLUSH_THRESHOLD=80
+
+# Uitschakelen (niet aanbevolen voor kleine sensors)
+PCAP_RAM_FLUSH_THRESHOLD=0
+```
+
+Bij een flush:
+1. Pending PCAP captures worden verwerkt en geüpload naar SOC
+2. In-memory packet buffer wordt geleegd
+3. Garbage collection wordt geforceerd
+4. RAM-gebruik daalt significant
 
 ---
 

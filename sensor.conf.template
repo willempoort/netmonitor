@@ -76,6 +76,15 @@ SENSOR_WHITELIST=
 # PCAP_KEEP_LOCAL=false          # Keep local copy after upload
 # PCAP_OUTPUT_DIR=/var/log/netmonitor/pcap  # Local storage directory
 #
+# RAM Management for Resource-Constrained Sensors:
+# For sensors with limited RAM (e.g., 1GB), enable early PCAP flush
+# to prevent memory exhaustion. When RAM exceeds threshold, the
+# PCAP buffer is flushed and uploaded to SOC server automatically.
+#
+# PCAP_RAM_FLUSH_THRESHOLD=80    # Flush PCAP buffer at 80% RAM (default)
+#                                # Set to 75 for 1GB RAM sensors
+#                                # Set to 0 to disable RAM-based flush
+#
 # WARNING: Disabling PCAP upload may impact NIS2 compliance!
 #
 # ============================================

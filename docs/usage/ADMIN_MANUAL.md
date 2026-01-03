@@ -2312,7 +2312,34 @@ thresholds:
     # NIS2 Sensor Options (for remote sensors)
     upload_to_soc: true             # Upload PCAP to SOC server (required for NIS2)
     keep_local_copy: false          # Keep local copy after upload (saves disk)
+    # RAM Management (for resource-constrained sensors)
+    ram_flush_threshold: 80         # Flush PCAP buffer at 80% RAM usage
 ```
+
+#### RAM Management for Resource-Constrained Sensors
+
+Sensors met beperkt RAM (bijv. 1GB Nano Pi) kunnen geheugenuitputting ervaren door PCAP buffers. De `ram_flush_threshold` parameter zorgt voor automatische PCAP buffer flush wanneer RAM kritiek wordt.
+
+**Sensor configuration (sensor.conf):**
+```bash
+# Voor 1GB RAM sensors - flush bij 75%
+PCAP_RAM_FLUSH_THRESHOLD=75
+
+# Standaard (4GB+ sensors)
+PCAP_RAM_FLUSH_THRESHOLD=80
+
+# Uitschakelen (niet aanbevolen)
+PCAP_RAM_FLUSH_THRESHOLD=0
+```
+
+**Gedrag bij RAM threshold:**
+1. ⚠️ Warning log wanneer threshold bereikt
+2. Pending PCAP captures worden verwerkt en geüpload naar SOC
+3. In-memory packet buffer wordt geleegd
+4. Garbage collection wordt geforceerd
+5. ✓ RAM-gebruik daalt significant
+
+**Hysteresis:** Flush reset wanneer RAM 10% onder threshold daalt (bijv. <70% bij threshold 80%)
 
 #### NIS2 Sensor PCAP Architecture
 
