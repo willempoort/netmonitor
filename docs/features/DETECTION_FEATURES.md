@@ -149,7 +149,55 @@ Detecteert grote bestandsoverdrachten via email en FTP.
 
 ---
 
-### 5. 🔒 **Content Analysis Module** (NEW)
+### 5. 🔍 **Protocol Mismatch Detection** (ENHANCED)
+
+Detecteert protocol verkeer op ongebruikelijke poorten (tunneling, stealth exfil).
+
+#### Features:
+- ✅ **SSH Detection**
+  - Detecteert SSH banner (`SSH-`) op niet-standaard poorten
+  - **Fixed (v2.8):** Checkt nu ZOWEL source ALS destination port
+  - Voorkomt false positives bij ephemeral client ports (bijv. 51906)
+  - Alert alleen als BEIDE poorten != 22
+
+- ✅ **HTTP Detection**
+  - Detecteert HTTP requests op niet-standaard poorten
+  - Standaard: 80, 443, 8080, 8443
+
+- ✅ **DNS Detection**
+  - Detecteert DNS verkeer op niet-standaard poorten (HIGH severity)
+  - Mogelijke DNS tunneling indicator
+
+- ✅ **FTP Detection**
+  - Detecteert FTP commands op niet-standaard poorten
+  - Controleert: USER, PASS, 220, 331 commands
+
+**Alert Types:**
+- `SSH_NON_STANDARD_PORT` (MEDIUM) - SSH verkeer op ongebruikelijke poort
+- `HTTP_NON_STANDARD_PORT` (MEDIUM) - HTTP verkeer op ongebruikelijke poort
+- `DNS_NON_STANDARD_PORT` (HIGH) - DNS tunneling indicator
+- `FTP_NON_STANDARD_PORT` (MEDIUM) - FTP verkeer op ongebruikelijke poort
+
+**Bug Fix (v2.8 - 2026-01-03):**
+```python
+# VOOR (bug): Triggerde op client ephemeral ports
+if dst_port != 22:  # ❌ False positive bij SSH responses
+
+# NA (fix): Checkt beide kanten van de verbinding
+if dst_port != 22 and src_port != 22:  # ✅ Alleen echte non-standard SSH
+```
+
+**Voorbeeld False Positive (Opgelost):**
+```
+SSH verbinding: 10.100.0.92:51906 → 10.100.0.70:22
+Response packet: 10.100.0.70:22 → 10.100.0.92:51906
+  ❌ Oude logica: "SSH op poort 51906!" (ephemeral port)
+  ✅ Nieuwe logica: src_port=22, geen alert
+```
+
+---
+
+### 6. 🔒 **Content Analysis Module** (NEW)
 
 Standalone module voor payload analysis.
 
@@ -204,7 +252,7 @@ findings = analyzer.scan_for_sensitive_data(payload)
 
 ---
 
-### 6. 🔐 **TLS/HTTPS Analysis** (NEW)
+### 7. 🔐 **TLS/HTTPS Analysis** (NEW)
 
 Analyseert TLS handshakes **zonder decryptie** voor threat detection.
 
@@ -277,7 +325,7 @@ add_ja3_blacklist --ja3_hash "abc123..." --malware_family "CustomMalware"
 
 ---
 
-### 7. 📦 **PCAP Forensics** (NEW)
+### 8. 📦 **PCAP Forensics** (ENHANCED)
 
 Selectieve packet capture voor forensische analyse.
 
@@ -321,6 +369,48 @@ thresholds:
     flow_buffer_size: 500         # Per-flow buffer size
     max_captures: 100             # Max saved PCAP files
     max_age_hours: 24             # Delete captures after 24 hours
+    ram_flush_threshold: 80       # Flush buffer at RAM % (NEW v2.8)
+```
+
+#### RAM-Based PCAP Flush (NEW v2.8)
+
+Voor resource-constrained sensors (Raspberry Pi, NanoPi) met beperkt RAM.
+
+**Problem (Fixed):**
+- Sensors met 1-2GB RAM liepen vast door volle PCAP buffers
+- `PCAP_RAM_FLUSH_THRESHOLD` environment variable werd niet ingelezen
+- Detector tracking buffers groeiden onbeperkt (memory leak)
+- RAM usage 95-99%, sensors crashed
+
+**Solution:**
+```bash
+# sensor.conf
+PCAP_RAM_FLUSH_THRESHOLD=75    # Flush bij 75% RAM (was: 80% hardcoded)
+```
+
+**Werking:**
+1. **Monitoring:** Elke metrics cycle (30s) wordt RAM % gecheckt
+2. **Emergency Flush bij threshold:**
+   - PCAP buffer naar disk schrijven en uploaden
+   - PCAP packet buffer wissen
+   - Detector tracking buffers clearen (port_scan, dns, brute_force, etc.)
+   - Garbage collection forceren
+3. **Periodieke Cleanup:**
+   - `detector.cleanup_old_data()` elke 30s
+   - Oude entries (>5-10 min) worden verwijderd
+
+**Impact:**
+```
+VOOR fix:  RAM 97-99% → sensor crash
+NA fix:    RAM 70-80% → stabiel
+```
+
+**Logs:**
+```
+⚠️ RAM usage 76.2% exceeds threshold 75%, flushing PCAP buffer...
+Cleared PCAP buffer (1247 packets)
+Cleared 342 detector tracking entries
+✓ Emergency flush complete, RAM now at 68.4%
 ```
 
 **MCP Tools:**
