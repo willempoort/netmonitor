@@ -165,10 +165,17 @@ class NetworkMonitor:
                     config=self.config
                 )
                 self.logger.info("Device Discovery enabled")
-                # Update vendor info for existing devices without vendor
-                updated = self.device_discovery.update_missing_vendors()
-                if updated > 0:
-                    self.logger.info(f"Updated vendor info for {updated} existing devices")
+                # Update vendor info in background to not block startup
+                import threading
+                def update_vendors_background():
+                    try:
+                        updated = self.device_discovery.update_missing_vendors()
+                        if updated > 0:
+                            self.logger.info(f"Updated vendor info for {updated} existing devices")
+                    except Exception as e:
+                        self.logger.error(f"Error updating vendors in background: {e}")
+                thread = threading.Thread(target=update_vendors_background, daemon=True)
+                thread.start()
             except Exception as e:
                 self.logger.error(f"Fout bij initialiseren device discovery: {e}")
 
@@ -486,7 +493,7 @@ class NetworkMonitor:
             self.logger.addHandler(file_handler)
 
     def _load_threat_feeds(self):
-        """Laad threat feeds (download en parse)"""
+        """Laad threat feeds (van cache, download in background indien nodig)"""
         if not self.threat_feeds:
             return
 
@@ -498,16 +505,20 @@ class NetworkMonitor:
         # Probeer feeds te laden van cache
         results = self.threat_feeds.load_feeds(feeds_to_use)
 
-        # Als geen feeds geladen, download ze
+        # Als geen feeds geladen, download in background thread (niet blokkeren)
         if sum(results.values()) == 0:
-            self.logger.info("No cached feeds found, downloading...")
-            self.threat_feeds.update_all_feeds(force=True)
+            self.logger.info("No cached feeds found, downloading in background...")
+            import threading
+            def background_download():
+                try:
+                    self.threat_feeds.update_all_feeds(force=True)
+                    self.logger.info("Background threat feed download completed")
+                except Exception as e:
+                    self.logger.error(f"Background threat feed download failed: {e}")
+            thread = threading.Thread(target=background_download, daemon=True)
+            thread.start()
         else:
             self.logger.info(f"Loaded {sum(results.values())} IOCs from cached feeds")
-
-            # Check of feeds oud zijn (> 24 uur)
-            # Download in background als nodig
-            # Voor nu: simpel laden
 
     def signal_handler(self, signum, frame):
         """Handle shutdown signals"""
