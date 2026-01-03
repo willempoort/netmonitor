@@ -95,18 +95,24 @@ def update_unifi_template():
         # Add suppress_alert_types behavior
         print("⚙️  Voeg suppress_alert_types behavior toe...")
 
-        cursor = db.conn.cursor()
-        cursor.execute('''
-            INSERT INTO template_behaviors (template_id, behavior_type, parameters, action, description)
-            VALUES (%s, %s, %s, %s, %s)
-        ''', (
-            template_id,
-            'suppress_alert_types',
-            '{"alert_types": ["HTTP_SENSITIVE_DATA", "HTTP_HIGH_ENTROPY_PAYLOAD"]}',
-            'allow',
-            'UniFi management traffic bevat configuratie data die lijkt op sensitive data'
-        ))
-        db.conn.commit()
+        # Get connection from pool
+        conn = db.connection_pool.getconn()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO template_behaviors (template_id, behavior_type, parameters, action, description)
+                VALUES (%s, %s, %s, %s, %s)
+            ''', (
+                template_id,
+                'suppress_alert_types',
+                '{"alert_types": ["HTTP_SENSITIVE_DATA", "HTTP_HIGH_ENTROPY_PAYLOAD"]}',
+                'allow',
+                'UniFi management traffic bevat configuratie data die lijkt op sensitive data'
+            ))
+            conn.commit()
+        finally:
+            # Return connection to pool
+            db.connection_pool.putconn(conn)
 
         print("✅ suppress_alert_types behavior toegevoegd!")
         print()
