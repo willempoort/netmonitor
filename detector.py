@@ -1117,7 +1117,9 @@ class ThreatDetector:
 
         # SSH pattern detection (based on packet characteristics)
         # SSH typically has specific patterns in initial handshake
-        if packet.haslayer(Raw) and dst_port != 22:
+        # Only alert if SSH traffic is on non-standard ports (both src and dst must not be 22)
+        # If either port is 22, it's normal SSH (even if the other port is ephemeral)
+        if packet.haslayer(Raw) and dst_port != 22 and src_port != 22:
             try:
                 payload = packet[Raw].load
                 # SSH banner starts with "SSH-"
