@@ -303,12 +303,19 @@ class BehaviorMatcher:
                     if any(src in net for net in internal_nets):
                         return True, "Internal source is allowed"
 
-                # Check specific subnets
+                # Check specific subnets/IPs
                 for subnet in allowed_subnets:
                     try:
-                        network = ipaddress.ip_network(subnet, strict=False)
-                        if src in network:
-                            return True, f"Source from {subnet} is allowed"
+                        # Handle both plain IPs and CIDR notation
+                        if '/' not in str(subnet):
+                            # Plain IP - compare directly
+                            if src == ipaddress.ip_address(subnet):
+                                return True, f"Source {subnet} is allowed"
+                        else:
+                            # CIDR notation
+                            network = ipaddress.ip_network(subnet, strict=False)
+                            if src in network:
+                                return True, f"Source from {subnet} is allowed"
                     except ValueError:
                         continue
             except ValueError:
