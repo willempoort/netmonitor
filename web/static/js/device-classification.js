@@ -1123,7 +1123,8 @@ function updateBehaviorPlaceholder() {
         'expected_destinations': 'e.g., 192.168.1.100 or 10.0.0.0/8 (comma-separated IPs/CIDRs)',
         'time_restrictions': 'e.g., 08:00-18:00',
         'dns_behavior': 'e.g., allowed_domains:*.google.com',
-        'traffic_pattern': 'e.g., high_bandwidth or streaming'
+        'traffic_pattern': 'e.g., high_bandwidth or streaming',
+        'suppress_alert_types': 'e.g., HTTP_SENSITIVE_DATA,SSH_NON_STANDARD_PORT'
     };
 
     input.placeholder = placeholders[type] || 'Enter value';
@@ -1211,6 +1212,10 @@ async function addBehaviorRule() {
                 else if (kw === 'receives_streams') parameters.receives_streams = true;
                 else parameters[kw] = true;
             });
+            break;
+        case 'suppress_alert_types':
+            // Parse comma-separated list of alert types (e.g., HTTP_SENSITIVE_DATA,SSH_NON_STANDARD_PORT)
+            parameters = { alert_types: value.toUpperCase().split(',').map(t => t.trim()) };
             break;
         default:
             parameters = { value: value };

@@ -800,17 +800,31 @@ De migration script:
 
 ### 3. Template behavior aanpassen
 
+**Via Web UI (v2.8+):**
 ```
 1. Ga naar Templates tab
 2. Klik op custom template
-3. Bekijk huidige behaviors
-4. Voeg via API nieuwe behavior toe:
-   POST /api/device-templates/{id}/behaviors
-   {
-     "behavior_type": "allowed_ports",
-     "parameters": {"ports": [8080], "direction": "inbound"},
-     "action": "allow"
-   }
+3. Klik "Add Rule" onder Behavior Rules
+4. Selecteer behavior type (bijv. "Suppress Alert Types")
+5. Voer waarde in (bijv. "HTTP_SENSITIVE_DATA,SSH_NON_STANDARD_PORT")
+6. Voeg optionele beschrijving toe
+7. Klik "Add"
+```
+
+**Via API:**
+```
+POST /api/device-templates/{id}/behaviors
+{
+  "behavior_type": "suppress_alert_types",
+  "parameters": {"alert_types": ["HTTP_SENSITIVE_DATA", "HTTP_HIGH_ENTROPY_PAYLOAD"]},
+  "action": "allow",
+  "description": "Suppress false positives for management traffic"
+}
+```
+
+**Via MCP Server:**
+```
+Use the add_template_behavior tool via Claude Code or other MCP clients
 ```
 
 ---
@@ -833,8 +847,9 @@ De migration script:
 
 - Verify dat device een template heeft toegewezen
 - Check of de alert type gedekt wordt door template behaviors
-- CRITICAL alerts worden nooit onderdrukt (by design)
-- Threat feed matches worden nooit onderdrukt
+- **v2.8+**: CRITICAL alerts kunnen worden onderdrukt met `suppress_alert_types` behavior
+- Threat feed matches (C2_COMMUNICATION, BLACKLISTED_IP) worden **nooit** onderdrukt
+- Check suppression log: `tail -f /var/log/netmonitor/suppression.log`
 
 ### Template from Device mislukt
 
@@ -843,6 +858,14 @@ De migration script:
   ```sql
   SELECT learned_behavior FROM devices WHERE ip_address = '192.168.1.x';
   ```
+
+### Dashboard reageert niet na template edit (v2.8)
+
+**Known Issue**: Na het editen van een template kan de dashboard pagina niet meer reageren.
+
+**Workaround**: Refresh de pagina (F5 of Ctrl+R) na het toevoegen/verwijderen van behavior rules.
+
+**Status**: Wordt gefixed in v2.8.1 (JavaScript state management issue)
 
 ---
 
