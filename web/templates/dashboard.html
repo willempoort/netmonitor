@@ -1069,6 +1069,37 @@
                         </div>
                     </div>
 
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="edit-batch-interval" class="form-label">
+                                <i class="bi bi-collection"></i> Alert Batch Interval (seconds)
+                            </label>
+                            <input type="number" class="form-control bg-secondary text-light border-secondary"
+                                   id="edit-batch-interval" min="10" max="300" value="30">
+                            <small class="form-text text-muted">How often alerts are uploaded (default: 30s)</small>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="edit-metrics-interval" class="form-label">
+                                <i class="bi bi-graph-up"></i> Metrics Interval (seconds)
+                            </label>
+                            <input type="number" class="form-control bg-secondary text-light border-secondary"
+                                   id="edit-metrics-interval" min="30" max="600" value="60">
+                            <small class="form-text text-muted">How often metrics are sent (default: 60s)</small>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="edit-min-severity" class="form-label">
+                                <i class="bi bi-funnel"></i> Minimum Alert Severity
+                            </label>
+                            <select class="form-select bg-secondary text-light border-secondary" id="edit-min-severity">
+                                <option value="LOW">LOW (All Alerts)</option>
+                                <option value="MEDIUM">MEDIUM (Medium + High + Critical)</option>
+                                <option value="HIGH">HIGH (High + Critical)</option>
+                                <option value="CRITICAL">CRITICAL (Only Critical)</option>
+                            </select>
+                            <small class="form-text text-muted">Filter alerts by severity (saves bandwidth)</small>
+                        </div>
+                    </div>
+
                     <!-- PCAP Forensics Settings (NIS2 Compliance) -->
                     <div class="mb-3 mt-4">
                         <label class="form-label fw-bold">

@@ -1728,6 +1728,15 @@ async function editSensorSettings(sensorId, sensorName, currentLocation) {
             document.getElementById('edit-heartbeat-interval').value = heartbeatInterval;
             document.getElementById('edit-config-sync-interval').value = configSyncInterval;
 
+            // Populate additional performance settings
+            const batchInterval = config.performance?.batch_interval || 30;
+            const metricsInterval = config.performance?.metrics_interval || 60;
+            const minSeverity = config.filter?.min_severity || 'LOW';
+
+            document.getElementById('edit-batch-interval').value = batchInterval;
+            document.getElementById('edit-metrics-interval').value = metricsInterval;
+            document.getElementById('edit-min-severity').value = minSeverity;
+
             // Populate PCAP Forensics settings
             const pcapConfig = config.thresholds?.pcap_export || {};
             document.getElementById('edit-pcap-enabled').value = String(pcapConfig.enabled !== false); // Default true
@@ -1752,17 +1761,39 @@ async function editSensorSettings(sensorId, sensorName, currentLocation) {
                     interfaceSelect.appendChild(option);
                 });
             } else {
-                // Use reported interfaces from sensor
-                availableInterfaces.forEach(iface => {
+                // Use reported interfaces from sensor (with PROMISC status)
+                availableInterfaces.forEach(ifaceData => {
+                    // Handle both old format (string) and new format (object)
+                    const ifaceName = typeof ifaceData === 'string' ? ifaceData : ifaceData.name;
+                    const promisc = typeof ifaceData === 'object' ? ifaceData.promisc : false;
+                    const status = typeof ifaceData === 'object' ? ifaceData.status : 'unknown';
+
                     const option = document.createElement('option');
-                    option.value = iface;
-                    option.textContent = iface;
+                    option.value = ifaceName;
+
+                    // Add warning icon if not in PROMISC mode
+                    let label = ifaceName;
+                    if (!promisc && status === 'up') {
+                        label = `⚠️  ${ifaceName}`;
+                        option.title = 'Warning: Interface not in PROMISCUOUS mode. Run: sudo ip link set ' + ifaceName + ' promisc on';
+                        option.style.color = '#ffc107'; // Warning yellow
+                    } else if (status === 'down') {
+                        label = `⏸️  ${ifaceName}`;
+                        option.title = 'Interface is DOWN';
+                        option.style.color = '#6c757d'; // Gray
+                    } else if (promisc) {
+                        label = `✓ ${ifaceName}`;
+                        option.title = 'Interface in PROMISCUOUS mode (ready for monitoring)';
+                    }
+
+                    option.textContent = label;
                     interfaceSelect.appendChild(option);
                 });
                 // Add "all" option
                 const allOption = document.createElement('option');
                 allOption.value = 'all';
-                allOption.textContent = 'All Interfaces';
+                allOption.textContent = '✓ All Interfaces';
+                allOption.title = 'Monitor all available interfaces';
                 interfaceSelect.appendChild(allOption);
             }
 
@@ -1807,6 +1838,11 @@ async function saveSensorSettings() {
     const pcapKeepLocal = document.getElementById('edit-pcap-keep-local').value === 'true';
     const pcapRamThreshold = parseInt(document.getElementById('edit-pcap-ram-threshold').value);
     const pcapOutputDir = document.getElementById('edit-pcap-output-dir').value.trim();
+
+    // Additional performance settings
+    const batchInterval = parseInt(document.getElementById('edit-batch-interval').value);
+    const metricsInterval = parseInt(document.getElementById('edit-metrics-interval').value);
+    const minSeverity = document.getElementById('edit-min-severity').value;
 
     console.log(`[SENSORS] Saving settings for sensor ${sensorId}`);
 
@@ -1869,6 +1905,22 @@ async function saveSensorSettings() {
                 parameter_path: 'thresholds.pcap_export.output_dir',
                 value: pcapOutputDir,
                 description: `PCAP output directory for sensor ${sensorId}`
+            },
+            // Additional performance settings
+            {
+                parameter_path: 'performance.batch_interval',
+                value: batchInterval,
+                description: `Alert batch interval for sensor ${sensorId}`
+            },
+            {
+                parameter_path: 'performance.metrics_interval',
+                value: metricsInterval,
+                description: `Metrics interval for sensor ${sensorId}`
+            },
+            {
+                parameter_path: 'filter.min_severity',
+                value: minSeverity,
+                description: `Minimum alert severity for sensor ${sensorId}`
             }
         ];
 

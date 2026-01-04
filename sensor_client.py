@@ -627,14 +627,39 @@ class SensorClient:
             # Get version
             version = "1.0.0"  # TODO: Get from package
 
-            # Get available network interfaces
+            # Get available network interfaces with PROMISC mode status
             available_interfaces = []
             try:
                 net_ifs = psutil.net_if_addrs()
-                # Filter out loopback
+                net_stats = psutil.net_if_stats()
+
                 for iface in net_ifs.keys():
-                    if iface != 'lo' and not iface.startswith('docker'):
-                        available_interfaces.append(iface)
+                    if iface == 'lo' or iface.startswith('docker'):
+                        continue
+
+                    # Check if interface is in promiscuous mode
+                    promisc = False
+                    try:
+                        # On Linux, check /sys/class/net/{iface}/flags
+                        # IFF_PROMISC = 0x100 (256 decimal)
+                        flags_path = f'/sys/class/net/{iface}/flags'
+                        if os.path.exists(flags_path):
+                            with open(flags_path, 'r') as f:
+                                flags = int(f.read().strip(), 16)
+                                promisc = bool(flags & 0x100)
+                    except:
+                        # Fallback: assume not in promisc mode
+                        promisc = False
+
+                    # Get interface status
+                    is_up = net_stats.get(iface, None)
+                    status = 'up' if (is_up and is_up.isup) else 'down'
+
+                    available_interfaces.append({
+                        'name': iface,
+                        'promisc': promisc,
+                        'status': status
+                    })
             except Exception as e:
                 self.logger.warning(f"Could not detect available interfaces: {e}")
 
