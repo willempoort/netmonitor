@@ -129,17 +129,17 @@ class ThreatFeedManager:
 
         try:
             with open(cache_file, 'r', encoding='utf-8', errors='ignore') as f:
-                for line in f:
-                    line = line.strip()
+                import csv
+                reader = csv.reader(f)
 
-                    # Skip comments en headers
-                    if not line or line.startswith('#'):
+                for row in reader:
+                    # Skip empty rows or comments
+                    if not row or (row[0] and row[0].startswith('#')):
                         continue
 
                     # Parse: first_seen,dst_ip,dst_port,c2_status,last_online,malware
-                    parts = line.split(',')
-                    if len(parts) >= 2:
-                        ip = parts[1].strip()
+                    if len(row) >= 2:
+                        ip = row[1].strip()
 
                         # Valideer IP format (simpel)
                         if self._is_valid_ip(ip):
@@ -147,7 +147,7 @@ class ThreatFeedManager:
                             self.c2_servers[ip] = {
                                 'type': 'botnet_c2',
                                 'feed': 'feodotracker',
-                                'malware': parts[5] if len(parts) > 5 else 'Unknown'
+                                'malware': row[5].strip() if len(row) > 5 else 'Unknown'
                             }
                             count += 1
 
@@ -198,16 +198,31 @@ class ThreatFeedManager:
 
         try:
             with open(cache_file, 'r', encoding='utf-8', errors='ignore') as f:
-                reader = csv.DictReader(f, delimiter=',')
+                # Filter out comment lines before passing to CSV reader
+                lines = []
+                header_found = False
+                for line in f:
+                    stripped = line.strip()
+                    # Skip comment lines that don't contain column headers
+                    if stripped.startswith('#') and not header_found:
+                        # Check if this is the header line (contains "ioc_type")
+                        if 'ioc_type' in stripped:
+                            # Remove the leading # and use as header
+                            lines.append(stripped[1:].strip())
+                            header_found = True
+                        continue
+                    elif stripped and not stripped.startswith('#'):
+                        lines.append(line)
+
+                # Parse the CSV
+                import io
+                csv_data = io.StringIO('\n'.join(lines))
+                reader = csv.DictReader(csv_data, delimiter=',', skipinitialspace=True)
 
                 for row in reader:
-                    # Skip comments
-                    if not row or list(row.values())[0].startswith('#'):
-                        continue
-
-                    # Check ioc_type
-                    ioc_type = row.get('ioc_type', '').lower()
-                    ioc_value = row.get('ioc_value', '').strip().strip('"')
+                    # Check ioc_type (handle both quoted and unquoted column names)
+                    ioc_type = row.get('ioc_type', row.get(' "ioc_type"', '')).strip(' "').lower()
+                    ioc_value = row.get('ioc_value', row.get(' "ioc_value"', '')).strip(' "')
 
                     if not ioc_value:
                         continue
@@ -236,22 +251,31 @@ class ThreatFeedManager:
         return count
 
     def parse_sslblacklist(self, cache_file: Path) -> int:
-        """Parse SSL Blacklist (malicious SSL IPs)"""
+        """Parse SSL Blacklist (malicious SSL IPs) - DEPRECATED since 2025-01-03"""
         count = 0
 
         try:
             with open(cache_file, 'r', encoding='utf-8', errors='ignore') as f:
-                for line in f:
-                    line = line.strip()
+                import csv
 
-                    # Skip comments
-                    if not line or line.startswith('#'):
+                # Check if deprecated
+                first_lines = f.read(500)
+                if 'deprecated' in first_lines.lower():
+                    self.logger.info("SSLBlacklist has been deprecated by abuse.ch")
+                    return 0
+
+                # Reset file pointer
+                f.seek(0)
+                reader = csv.reader(f)
+
+                for row in reader:
+                    # Skip empty rows or comments
+                    if not row or (row[0] and row[0].startswith('#')):
                         continue
 
                     # Parse: Listing_date,Listing_reason,DstIP,DstPort
-                    parts = line.split(',')
-                    if len(parts) >= 3:
-                        ip = parts[2].strip()
+                    if len(row) >= 3:
+                        ip = row[2].strip()
 
                         if self._is_valid_ip(ip):
                             self.malicious_ips.add(ip)
