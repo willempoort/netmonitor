@@ -627,6 +627,17 @@ class SensorClient:
             # Get version
             version = "1.0.0"  # TODO: Get from package
 
+            # Get available network interfaces
+            available_interfaces = []
+            try:
+                net_ifs = psutil.net_if_addrs()
+                # Filter out loopback
+                for iface in net_ifs.keys():
+                    if iface != 'lo' and not iface.startswith('docker'):
+                        available_interfaces.append(iface)
+            except Exception as e:
+                self.logger.warning(f"Could not detect available interfaces: {e}")
+
             response = requests.post(
                 f"{self.server_url}/api/sensors/register",
                 headers=self._get_headers(),
@@ -638,7 +649,8 @@ class SensorClient:
                     'version': version,
                     'config': {
                         'interface': self.config.get('interface', 'unknown'),
-                        'batch_interval': self.batch_interval
+                        'batch_interval': self.batch_interval,
+                        'available_interfaces': available_interfaces
                     }
                 },
                 timeout=10,

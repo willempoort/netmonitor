@@ -1735,6 +1735,47 @@ async function editSensorSettings(sensorId, sensorName, currentLocation) {
             document.getElementById('edit-pcap-keep-local').value = String(pcapConfig.keep_local_copy === true); // Default false
             document.getElementById('edit-pcap-ram-threshold').value = pcapConfig.ram_flush_threshold || 75;
             document.getElementById('edit-pcap-output-dir').value = pcapConfig.output_dir || '/var/log/netmonitor/pcap';
+
+            // Populate network interface(s) from available interfaces
+            const availableInterfaces = config.available_interfaces || [];
+            const currentInterface = config.interface || 'eth0';
+
+            const interfaceSelect = document.getElementById('edit-sensor-interface');
+            interfaceSelect.innerHTML = ''; // Clear loading message
+
+            if (availableInterfaces.length === 0) {
+                // No interfaces reported yet, show common defaults
+                ['eth0', 'eth1', 'ens192', 'ens33', 'all'].forEach(iface => {
+                    const option = document.createElement('option');
+                    option.value = iface;
+                    option.textContent = iface === 'all' ? 'All Interfaces' : iface;
+                    interfaceSelect.appendChild(option);
+                });
+            } else {
+                // Use reported interfaces from sensor
+                availableInterfaces.forEach(iface => {
+                    const option = document.createElement('option');
+                    option.value = iface;
+                    option.textContent = iface;
+                    interfaceSelect.appendChild(option);
+                });
+                // Add "all" option
+                const allOption = document.createElement('option');
+                allOption.value = 'all';
+                allOption.textContent = 'All Interfaces';
+                interfaceSelect.appendChild(allOption);
+            }
+
+            // Select current interface(s)
+            const currentInterfaces = currentInterface.includes(',')
+                ? currentInterface.split(',').map(i => i.trim())
+                : [currentInterface];
+
+            Array.from(interfaceSelect.options).forEach(option => {
+                if (currentInterfaces.includes(option.value)) {
+                    option.selected = true;
+                }
+            });
         }
     } catch (error) {
         console.error('[SENSORS] Error loading current settings:', error);
@@ -1754,6 +1795,11 @@ async function saveSensorSettings() {
         .filter(line => line.length > 0);
     const heartbeatInterval = parseInt(document.getElementById('edit-heartbeat-interval').value);
     const configSyncInterval = parseInt(document.getElementById('edit-config-sync-interval').value);
+
+    // Network Interface(s)
+    const interfaceSelect = document.getElementById('edit-sensor-interface');
+    const selectedInterfaces = Array.from(interfaceSelect.selectedOptions).map(opt => opt.value);
+    const interfaceValue = selectedInterfaces.join(',');
 
     // PCAP Forensics settings
     const pcapEnabled = document.getElementById('edit-pcap-enabled').value === 'true';
@@ -1782,6 +1828,11 @@ async function saveSensorSettings() {
                 parameter_path: 'internal_networks',
                 value: internalNetworks,
                 description: `Internal networks for sensor ${sensorId}`
+            },
+            {
+                parameter_path: 'interface',
+                value: interfaceValue,
+                description: `Network interface(s) for sensor ${sensorId}`
             },
             {
                 parameter_path: 'performance.heartbeat_interval',

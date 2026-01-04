@@ -1027,6 +1027,20 @@
                     </div>
 
                     <div class="mb-3">
+                        <label for="edit-sensor-interface" class="form-label">
+                            <i class="bi bi-ethernet"></i> Network Interface(s)
+                        </label>
+                        <select class="form-select bg-secondary text-light border-secondary"
+                                id="edit-sensor-interface" multiple size="4">
+                            <option value="loading" disabled>Loading available interfaces...</option>
+                        </select>
+                        <small class="form-text text-muted">
+                            Select one or more interfaces to monitor. Hold Ctrl/Cmd to select multiple.
+                            <strong>Note:</strong> Sensor restart required after change.
+                        </small>
+                    </div>
+
+                    <div class="mb-3">
                         <label for="edit-internal-networks" class="form-label">
                             <i class="bi bi-diagram-3"></i> Internal Networks (CIDR)
                         </label>
