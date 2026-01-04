@@ -1055,6 +1055,66 @@
                         </div>
                     </div>
 
+                    <!-- PCAP Forensics Settings (NIS2 Compliance) -->
+                    <div class="mb-3 mt-4">
+                        <label class="form-label fw-bold">
+                            <i class="bi bi-camera-video"></i> PCAP Forensics (NIS2 Compliance)
+                        </label>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="edit-pcap-enabled" class="form-label">
+                                <i class="bi bi-toggle-on"></i> PCAP Capture Enabled
+                            </label>
+                            <select class="form-select bg-secondary text-light border-secondary" id="edit-pcap-enabled">
+                                <option value="true">Enabled (NIS2 Required)</option>
+                                <option value="false">Disabled</option>
+                            </select>
+                            <small class="form-text text-muted">Enable packet capture for forensic analysis</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="edit-pcap-upload" class="form-label">
+                                <i class="bi bi-cloud-upload"></i> Upload to SOC
+                            </label>
+                            <select class="form-select bg-secondary text-light border-secondary" id="edit-pcap-upload">
+                                <option value="true">Enabled (NIS2 Required)</option>
+                                <option value="false">Local Only</option>
+                            </select>
+                            <small class="form-text text-muted">Upload PCAP files to central SOC server</small>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="edit-pcap-keep-local" class="form-label">
+                                <i class="bi bi-hdd"></i> Keep Local Copy
+                            </label>
+                            <select class="form-select bg-secondary text-light border-secondary" id="edit-pcap-keep-local">
+                                <option value="false">Delete After Upload (Recommended)</option>
+                                <option value="true">Keep Local Copy</option>
+                            </select>
+                            <small class="form-text text-muted">Keep PCAP files on sensor after upload (uses disk space)</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="edit-pcap-ram-threshold" class="form-label">
+                                <i class="bi bi-memory"></i> RAM Flush Threshold (%)
+                            </label>
+                            <input type="number" class="form-control bg-secondary text-light border-secondary"
+                                   id="edit-pcap-ram-threshold" min="50" max="95" value="75">
+                            <small class="form-text text-muted">Flush PCAP buffer when RAM exceeds this % (default: 75)</small>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="edit-pcap-output-dir" class="form-label">
+                            <i class="bi bi-folder"></i> PCAP Output Directory
+                        </label>
+                        <input type="text" class="form-control bg-secondary text-light border-secondary"
+                               id="edit-pcap-output-dir" value="/var/log/netmonitor/pcap" placeholder="/var/log/netmonitor/pcap">
+                        <small class="form-text text-muted">Local directory for PCAP file storage</small>
+                    </div>
+
                     <div class="alert alert-info">
                         <i class="bi bi-info-circle"></i>
                         <strong>Note:</strong> Changes will be picked up automatically within the configured sync interval.

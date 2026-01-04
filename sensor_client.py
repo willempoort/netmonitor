@@ -393,14 +393,11 @@ class SensorClient:
         # Default: enabled for compliance, uploads to SOC server
         self.pcap_exporter = None
         pcap_config = self.config.get('thresholds', {}).get('pcap_export', {})
-        # Default to ENABLED on sensors for NIS2 compliance
-        pcap_enabled = pcap_config.get('enabled', True)
-        # Upload PCAP to SOC server (default: True for centralized forensics)
-        self.pcap_upload_enabled = pcap_config.get('upload_to_soc', True)
-        # Keep local copy after upload (default: False to save storage)
-        self.pcap_keep_local = pcap_config.get('keep_local_copy', False)
-        # RAM threshold for emergency PCAP flush (default: 80%)
-        self.ram_flush_threshold = pcap_config.get('ram_flush_threshold', 80)
+        # Fallback defaults (normally loaded from server config via include_defaults=true)
+        pcap_enabled = pcap_config.get('enabled', True)  # NIS2: enabled by default
+        self.pcap_upload_enabled = pcap_config.get('upload_to_soc', True)  # NIS2: upload required
+        self.pcap_keep_local = pcap_config.get('keep_local_copy', False)  # Save disk space
+        self.ram_flush_threshold = pcap_config.get('ram_flush_threshold', 75)  # Conservative for low-RAM sensors
         self.ram_flush_triggered = False  # Prevent repeated flushes
 
         if PCAP_AVAILABLE and pcap_enabled:
