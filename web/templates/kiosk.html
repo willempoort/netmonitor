@@ -977,6 +977,15 @@
             stopProgressBar();
         }
 
+        function nextScreen() {
+            // Advance to next screen
+            rotateScreen();
+
+            // Reset rotation timer
+            stopRotation();
+            startRotation();
+        }
+
         // ==================== Progress Bar ====================
         function startProgressBar() {
             const progressBar = document.getElementById('rotation-progress-bar');
@@ -1628,7 +1637,19 @@
                     toggleFullscreen();
                 } else if (e.key === 't' || e.key === 'T') {
                     toggleTheme();
+                } else if (e.key === 'ArrowRight' || e.key === ' ') {
+                    e.preventDefault();
+                    nextScreen();
                 }
+            });
+
+            // Click to advance to next screen
+            document.addEventListener('click', (e) => {
+                // Don't advance if clicking on interactive elements
+                if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A' || e.target.closest('button') || e.target.closest('a')) {
+                    return;
+                }
+                nextScreen();
             });
         });
 
