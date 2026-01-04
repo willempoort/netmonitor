@@ -336,10 +336,12 @@ class SensorClient:
         handlers.append(logging.StreamHandler())
 
         # Configure logging
+        # Use force=True to override any existing logging config (e.g., from Scapy)
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=handlers
+            handlers=handlers,
+            force=True
         )
 
     def _init_components(self):
