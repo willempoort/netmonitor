@@ -72,7 +72,7 @@ const THREAT_INFO = {
         color: '#dc3545'
     },
     'BRUTE_FORCE_ATTEMPT': {
-        name: 'Brute Force Attack',
+        name: 'Brute Force Attempt',
         description: 'Herhaalde login pogingen op authenticatie services (SSH, RDP, FTP, etc.).',
         impact: 'HOOG - Aanvaller probeert in te breken via wachtwoord gissen. Mogelijk compromittering.',
         icon: 'bi-key',
