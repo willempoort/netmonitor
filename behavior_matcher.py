@@ -220,6 +220,8 @@ class BehaviorMatcher:
         dst_ip = threat.get('destination_ip')
         threat_type = threat.get('type', '')
 
+        self.logger.debug(f"Checking suppression for: {threat_type} from {src_ip} → {dst_ip} (severity: {threat.get('severity')})")
+
         if not src_ip:
             return False, None
 
@@ -328,6 +330,8 @@ class BehaviorMatcher:
             allowed_subnets = params.get('subnets', [])
             allowed_internal = params.get('internal', False)
 
+            self.logger.debug(f"Checking allowed_sources: src_ip={src_ip}, allowed_subnets={allowed_subnets}, allowed_internal={allowed_internal}")
+
             try:
                 src = ipaddress.ip_address(src_ip)
 
@@ -348,15 +352,19 @@ class BehaviorMatcher:
                         if '/' not in str(subnet):
                             # Plain IP - compare directly
                             if src == ipaddress.ip_address(subnet):
+                                self.logger.debug(f"MATCH: Source {subnet} is allowed")
                                 return True, f"Source {subnet} is allowed"
                         else:
                             # CIDR notation
                             network = ipaddress.ip_network(subnet, strict=False)
                             if src in network:
+                                self.logger.debug(f"MATCH: Source from {subnet} is allowed")
                                 return True, f"Source from {subnet} is allowed"
-                    except ValueError:
+                    except ValueError as e:
+                        self.logger.debug(f"ValueError checking subnet {subnet}: {e}")
                         continue
-            except ValueError:
+            except ValueError as e:
+                self.logger.debug(f"ValueError parsing src_ip {src_ip}: {e}")
                 pass
 
         # Protocol-based matching

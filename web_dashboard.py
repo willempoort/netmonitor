@@ -1188,6 +1188,12 @@ def api_submit_sensor_alerts(sensor_id):
                         'metadata': metadata
                     }
                     should_suppress, suppression_reason = behavior_matcher.should_suppress_alert(threat_for_check)
+
+                    # Debug logging for suppression decisions
+                    if should_suppress:
+                        logger.info(f"[SUPPRESSED] {alert.get('threat_type')} from {alert.get('source_ip')} → {alert.get('destination_ip')}: {suppression_reason}")
+                    else:
+                        logger.debug(f"[NOT SUPPRESSED] {alert.get('threat_type')} from {alert.get('source_ip')} → {alert.get('destination_ip')} (severity: {alert.get('severity')})")
                 except Exception as e:
                     logger.debug(f"Error checking alert suppression: {e}")
 
