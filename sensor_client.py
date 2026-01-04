@@ -441,7 +441,7 @@ class SensorClient:
                 headers=headers,
                 params={
                     'sensor_id': self.sensor_id,
-                    'include_defaults': 'false'  # Sensors use local config as base
+                    'include_defaults': 'true'  # Get full config: defaults + sensor overrides
                 },
                 timeout=10,
                 verify=self.ssl_verify
@@ -483,10 +483,11 @@ class SensorClient:
 
                     # Log what changed
                     changes = self._count_config_differences(self.config, server_config)
+                    total_params = self._count_all_params(server_config)
                     if changes > 0:
-                        self.logger.info(f"✓ Config updated from server: {changes} parameter(s) overridden")
+                        self.logger.info(f"✓ Config loaded from server: {total_params} total parameters ({changes} changes)")
                     else:
-                        self.logger.info("✓ Config synced (no changes)")
+                        self.logger.info(f"✓ Config synced from server: {total_params} parameters (no changes)")
 
                     # Update local config reference
                     self.config = merged_config
@@ -526,6 +527,16 @@ class SensorClient:
             elif base[key] != value:
                 count += 1
 
+        return count
+
+    def _count_all_params(self, config: dict) -> int:
+        """Count total number of leaf parameters in config"""
+        count = 0
+        for key, value in config.items():
+            if isinstance(value, dict):
+                count += self._count_all_params(value)
+            else:
+                count += 1
         return count
 
     def _update_whitelist(self):
