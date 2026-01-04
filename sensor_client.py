@@ -398,7 +398,7 @@ class SensorClient:
         self.pcap_upload_enabled = pcap_config.get('upload_to_soc', True)  # NIS2: upload required
         self.pcap_keep_local = pcap_config.get('keep_local_copy', False)  # Save disk space
         self.ram_flush_threshold = pcap_config.get('ram_flush_threshold', 75)  # Conservative for low-RAM sensors
-        self.ram_flush_triggered = False  # Prevent repeated flushes
+        self.last_ram_flush_time = 0  # Timestamp of last flush (for cooldown)
 
         if PCAP_AVAILABLE and pcap_enabled:
             try:
@@ -953,15 +953,24 @@ class SensorClient:
             disk = psutil.disk_usage('/')
 
             # Check RAM threshold for emergency PCAP flush
+            # Use time-based cooldown (60s) instead of "must drop 10%" to allow retries
+            current_time = time.time()
+            cooldown_period = 60  # seconds between flushes
+
             if memory.percent >= self.ram_flush_threshold:
-                if not self.ram_flush_triggered:
+                time_since_last_flush = current_time - self.last_ram_flush_time
+
+                if self.last_ram_flush_time == 0 or time_since_last_flush >= cooldown_period:
                     self.logger.warning(f"⚠️ RAM usage {memory.percent:.1f}% exceeds threshold {self.ram_flush_threshold}%, flushing PCAP buffer...")
                     self._emergency_pcap_flush()
-                    self.ram_flush_triggered = True
-            elif self.ram_flush_triggered and memory.percent < (self.ram_flush_threshold - 10):
-                # Reset trigger when RAM drops 10% below threshold
-                self.ram_flush_triggered = False
-                self.logger.info(f"RAM usage {memory.percent:.1f}% back to normal, PCAP flush reset")
+                    self.last_ram_flush_time = current_time
+                elif time_since_last_flush < cooldown_period:
+                    # Still in cooldown period
+                    self.logger.debug(f"RAM still high ({memory.percent:.1f}%) but in cooldown (wait {cooldown_period - time_since_last_flush:.0f}s)")
+            elif self.last_ram_flush_time > 0 and memory.percent < (self.ram_flush_threshold - 5):
+                # Log when RAM drops back to normal (5% below threshold)
+                self.logger.info(f"✓ RAM usage {memory.percent:.1f}% back to normal")
+                self.last_ram_flush_time = 0  # Reset for clean state
 
             # Cleanup old detector tracking data to prevent memory leaks
             if hasattr(self, 'detector') and hasattr(self.detector, 'cleanup_old_data'):
