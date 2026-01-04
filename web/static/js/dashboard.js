@@ -1691,6 +1691,56 @@ function rebootSensor(sensorId, sensorName) {
     });
 }
 
+// Helper function to create interface checkbox
+function createInterfaceCheckbox(ifaceName, displayName, promisc, status, isChecked) {
+    const checkboxDiv = document.createElement('div');
+    checkboxDiv.className = 'form-check';
+
+    const checkbox = document.createElement('input');
+    checkbox.className = 'form-check-input';
+    checkbox.type = 'checkbox';
+    checkbox.value = ifaceName;
+    checkbox.id = `iface-${ifaceName}`;
+    checkbox.checked = isChecked;
+
+    const label = document.createElement('label');
+    label.className = 'form-check-label text-light';
+    label.htmlFor = `iface-${ifaceName}`;
+
+    // Build label text with status indicator
+    let labelText = displayName || ifaceName;
+    let statusIndicator = '';
+    let title = '';
+
+    if (promisc !== null && status !== null) {
+        // Regular interface with PROMISC status
+        if (status === 'down') {
+            statusIndicator = '⚪ ';
+            title = 'Interface is DOWN';
+            label.style.color = '#6c757d'; // Gray
+        } else if (!promisc && status === 'up') {
+            statusIndicator = '🔴 ';
+            title = `PROMISC mode disabled. Run: sudo ip link set ${ifaceName} promisc on`;
+            label.style.color = '#dc3545'; // Red
+        } else if (promisc) {
+            statusIndicator = '🟢 ';
+            title = 'PROMISC mode enabled (ready for monitoring)';
+            label.style.color = '#28a745'; // Green
+        }
+    } else {
+        // "All Interfaces" or no status
+        title = displayName === 'All Interfaces' ? 'Toggle all interfaces' : '';
+    }
+
+    label.textContent = statusIndicator + labelText;
+    label.title = title;
+
+    checkboxDiv.appendChild(checkbox);
+    checkboxDiv.appendChild(label);
+
+    return checkboxDiv;
+}
+
 async function editSensorSettings(sensorId, sensorName, currentLocation) {
     // Advanced settings editor using modal and centralized config
     console.log(`[SENSORS] Opening settings for sensor: ${sensorId}`);
@@ -1759,16 +1809,19 @@ async function editSensorSettings(sensorId, sensorName, currentLocation) {
             const availableInterfaces = sensor.config?.available_interfaces || [];
             const currentInterface = sensor.config?.interface || 'eth0';
 
-            const interfaceSelect = document.getElementById('edit-sensor-interface');
-            interfaceSelect.innerHTML = ''; // Clear loading message
+            const interfaceContainer = document.getElementById('edit-sensor-interface');
+            interfaceContainer.innerHTML = ''; // Clear loading message
+
+            // Parse current interface(s)
+            const currentInterfaces = currentInterface.includes(',')
+                ? currentInterface.split(',').map(i => i.trim())
+                : [currentInterface];
 
             if (availableInterfaces.length === 0) {
                 // No interfaces reported yet, show common defaults
-                ['eth0', 'eth1', 'ens192', 'ens33', 'all'].forEach(iface => {
-                    const option = document.createElement('option');
-                    option.value = iface;
-                    option.textContent = iface === 'all' ? 'All Interfaces' : iface;
-                    interfaceSelect.appendChild(option);
+                ['eth0', 'eth1', 'ens192', 'ens33'].forEach(iface => {
+                    const checkboxDiv = createInterfaceCheckbox(iface, '', false, 'unknown', currentInterfaces.includes(iface));
+                    interfaceContainer.appendChild(checkboxDiv);
                 });
             } else {
                 // Use reported interfaces from sensor (with PROMISC status)
@@ -1778,46 +1831,25 @@ async function editSensorSettings(sensorId, sensorName, currentLocation) {
                     const promisc = typeof ifaceData === 'object' ? ifaceData.promisc : false;
                     const status = typeof ifaceData === 'object' ? ifaceData.status : 'unknown';
 
-                    const option = document.createElement('option');
-                    option.value = ifaceName;
-
-                    // Use colored circles to indicate PROMISC status
-                    let label = ifaceName;
-                    if (status === 'down') {
-                        label = `⚪ ${ifaceName}`;
-                        option.title = 'Interface is DOWN';
-                        option.style.color = '#6c757d'; // Gray
-                    } else if (!promisc && status === 'up') {
-                        label = `🔴 ${ifaceName}`;
-                        option.title = 'PROMISC mode disabled. Run: sudo ip link set ' + ifaceName + ' promisc on';
-                        option.style.color = '#dc3545'; // Red
-                    } else if (promisc) {
-                        label = `🟢 ${ifaceName}`;
-                        option.title = 'PROMISC mode enabled (ready for monitoring)';
-                        option.style.color = '#28a745'; // Green
-                    }
-
-                    option.textContent = label;
-                    interfaceSelect.appendChild(option);
+                    const checkboxDiv = createInterfaceCheckbox(ifaceName, '', promisc, status, currentInterfaces.includes(ifaceName));
+                    interfaceContainer.appendChild(checkboxDiv);
                 });
-                // Add "all" option (no status indicator - just plain text)
-                const allOption = document.createElement('option');
-                allOption.value = 'all';
-                allOption.textContent = 'All Interfaces';
-                allOption.title = 'Monitor all available interfaces';
-                interfaceSelect.appendChild(allOption);
             }
 
-            // Select current interface(s)
-            const currentInterfaces = currentInterface.includes(',')
-                ? currentInterface.split(',').map(i => i.trim())
-                : [currentInterface];
+            // Add "All Interfaces" checkbox at the end
+            const allCheckboxDiv = createInterfaceCheckbox('all', 'All Interfaces', null, null, currentInterfaces.includes('all'));
+            interfaceContainer.appendChild(allCheckboxDiv);
 
-            Array.from(interfaceSelect.options).forEach(option => {
-                if (currentInterfaces.includes(option.value)) {
-                    option.selected = true;
-                }
-            });
+            // Add event listener to "All Interfaces" checkbox to toggle all
+            const allCheckbox = interfaceContainer.querySelector('#iface-all');
+            if (allCheckbox) {
+                allCheckbox.addEventListener('change', function() {
+                    const otherCheckboxes = interfaceContainer.querySelectorAll('input[type="checkbox"]:not(#iface-all)');
+                    otherCheckboxes.forEach(cb => {
+                        cb.checked = this.checked;
+                    });
+                });
+            }
         }
     } catch (error) {
         console.error('[SENSORS] Error loading sensor interfaces:', error);
@@ -1838,9 +1870,10 @@ async function saveSensorSettings() {
     const heartbeatInterval = parseInt(document.getElementById('edit-heartbeat-interval').value);
     const configSyncInterval = parseInt(document.getElementById('edit-config-sync-interval').value);
 
-    // Network Interface(s)
-    const interfaceSelect = document.getElementById('edit-sensor-interface');
-    const selectedInterfaces = Array.from(interfaceSelect.selectedOptions).map(opt => opt.value);
+    // Network Interface(s) - read from checkboxes
+    const interfaceContainer = document.getElementById('edit-sensor-interface');
+    const selectedInterfaces = Array.from(interfaceContainer.querySelectorAll('input[type="checkbox"]:checked'))
+        .map(cb => cb.value);
     const interfaceValue = selectedInterfaces.join(',');
 
     // PCAP Forensics settings

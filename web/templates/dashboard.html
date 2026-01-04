@@ -66,16 +66,19 @@
             z-index: 1000 !important;
         }
 
-        /* Improve visibility of selected options in multi-select */
-        #edit-sensor-interface option:checked {
-            background-color: #0d6efd !important;
-            background: linear-gradient(0deg, #0d6efd 0%, #0d6efd 100%) !important;
-            color: white !important;
-            font-weight: 600 !important;
+        /* Interface checkbox styling */
+        #edit-sensor-interface .form-check {
+            padding: 0.5rem;
+            border-radius: 0.25rem;
+            margin-bottom: 0.5rem;
         }
 
-        #edit-sensor-interface option:hover {
-            background-color: #495057 !important;
+        #edit-sensor-interface .form-check:hover {
+            background-color: #495057;
+        }
+
+        #edit-sensor-interface .form-check-input:checked + .form-check-label {
+            font-weight: 600;
         }
     </style>
 </head>
@@ -1039,15 +1042,14 @@
                     </div>
 
                     <div class="mb-3">
-                        <label for="edit-sensor-interface" class="form-label">
+                        <label class="form-label">
                             <i class="bi bi-ethernet"></i> Network Interface(s)
                         </label>
-                        <select class="form-select bg-secondary text-light border-secondary"
-                                id="edit-sensor-interface" multiple size="4">
-                            <option value="loading" disabled>Loading available interfaces...</option>
-                        </select>
+                        <div id="edit-sensor-interface" class="bg-secondary p-3 rounded border border-secondary">
+                            <div class="text-light opacity-75">Loading available interfaces...</div>
+                        </div>
                         <small class="form-text text-light opacity-75">
-                            Select one or more interfaces to monitor. Hold Ctrl/Cmd to select multiple.
+                            Check one or more interfaces to monitor.
                             <strong class="text-warning">Note:</strong> Sensor restart required after change.
                         </small>
                     </div>
