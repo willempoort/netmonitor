@@ -1744,10 +1744,20 @@ async function editSensorSettings(sensorId, sensorName, currentLocation) {
             document.getElementById('edit-pcap-keep-local').value = String(pcapConfig.keep_local_copy === true); // Default false
             document.getElementById('edit-pcap-ram-threshold').value = pcapConfig.ram_flush_threshold || 75;
             document.getElementById('edit-pcap-output-dir').value = pcapConfig.output_dir || '/var/log/netmonitor/pcap';
+        }
+    } catch (error) {
+        console.error('[SENSORS] Error loading current settings:', error);
+    }
 
-            // Populate network interface(s) from available interfaces
-            const availableInterfaces = config.available_interfaces || [];
-            const currentInterface = config.interface || 'eth0';
+    // Fetch sensor metadata to get available interfaces
+    try {
+        const sensorResponse = await fetch(`/api/sensors/${encodeURIComponent(sensorId)}`);
+        const sensorResult = await sensorResponse.json();
+
+        if (sensorResult.success && sensorResult.data) {
+            const sensor = sensorResult.data;
+            const availableInterfaces = sensor.config?.available_interfaces || [];
+            const currentInterface = sensor.config?.interface || 'eth0';
 
             const interfaceSelect = document.getElementById('edit-sensor-interface');
             interfaceSelect.innerHTML = ''; // Clear loading message
@@ -1809,7 +1819,7 @@ async function editSensorSettings(sensorId, sensorName, currentLocation) {
             });
         }
     } catch (error) {
-        console.error('[SENSORS] Error loading current settings:', error);
+        console.error('[SENSORS] Error loading sensor interfaces:', error);
     }
 
     // Show modal
