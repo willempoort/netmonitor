@@ -62,34 +62,6 @@ SENSOR_TOKEN=
 SENSOR_WHITELIST=
 
 # ============================================
-# PCAP Forensics (NIS2 Compliance)
-# ============================================
-#
-# PCAP capture is ENABLED BY DEFAULT for NIS2 compliance.
-# Packets are captured around HIGH/CRITICAL alerts and
-# automatically uploaded to the SOC server.
-#
-# Override defaults only if needed (e.g., limited storage):
-#
-# PCAP_ENABLED=true              # Enable/disable PCAP capture
-# PCAP_UPLOAD_TO_SOC=true        # Upload PCAP to SOC server (NIS2 required)
-# PCAP_KEEP_LOCAL=false          # Keep local copy after upload
-# PCAP_OUTPUT_DIR=/var/log/netmonitor/pcap  # Local storage directory
-#
-# RAM Management for Resource-Constrained Sensors:
-# For sensors with limited RAM (e.g., 1GB), enable early PCAP flush
-# to prevent memory exhaustion. When RAM exceeds threshold, the
-# PCAP buffer is flushed and uploaded to SOC server automatically.
-#
-# PCAP_RAM_FLUSH_THRESHOLD=80    # Flush PCAP buffer at 80% RAM (default)
-#                                # Set to 75 for 1GB RAM sensors
-#                                # Set to 0 to disable RAM-based flush
-#
-# WARNING: Disabling PCAP upload may impact NIS2 compliance!
-#
-# ============================================
-
-# ============================================
 # All Other Settings From SOC Server
 # ============================================
 #
@@ -101,22 +73,28 @@ SENSOR_WHITELIST=
 #   - SENSOR_LOCATION (set via dashboard)
 #
 # PERFORMANCE SETTINGS:
-#   - HEARTBEAT_INTERVAL (default: 30 seconds)
-#   - CONFIG_SYNC_INTERVAL (default: 300 seconds)
+#   - Heartbeat Interval (default: 30 seconds)
+#   - Config Sync Interval (default: 300 seconds)
 #
 # NETWORK CONFIGURATION:
-#   - INTERNAL_NETWORKS (CIDR ranges)
+#   - Internal Networks (CIDR ranges)
 #   - Whitelist / Allowlist
+#
+# PCAP FORENSICS (NIS2 Compliance):
+#   - PCAP Capture Enabled (default: true)
+#   - Upload to SOC (default: true, NIS2 required)
+#   - Keep Local Copy (default: false, saves disk space)
+#   - RAM Flush Threshold (default: 75%, for low-memory sensors)
+#   - Output Directory (default: /var/log/netmonitor/pcap)
 #
 # DETECTION SETTINGS:
 #   - All detection rules (15+ rules)
 #   - All thresholds
 #   - TLS/HTTPS analysis (JA3 fingerprinting)
-#   - PCAP forensics settings
 #   - Alert sensitivity
 #   - Batch intervals
 #
-# Edit these via: SOC Dashboard → Configuration Management
+# Edit these via: SOC Dashboard → Sensors → Edit Sensor
 #
 # Sensors sync automatically every 5 minutes (configurable).
 # Force immediate sync: systemctl restart netmonitor-sensor

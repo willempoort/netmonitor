@@ -1727,6 +1727,14 @@ async function editSensorSettings(sensorId, sensorName, currentLocation) {
 
             document.getElementById('edit-heartbeat-interval').value = heartbeatInterval;
             document.getElementById('edit-config-sync-interval').value = configSyncInterval;
+
+            // Populate PCAP Forensics settings
+            const pcapConfig = config.thresholds?.pcap_export || {};
+            document.getElementById('edit-pcap-enabled').value = String(pcapConfig.enabled !== false); // Default true
+            document.getElementById('edit-pcap-upload').value = String(pcapConfig.upload_to_soc !== false); // Default true
+            document.getElementById('edit-pcap-keep-local').value = String(pcapConfig.keep_local_copy === true); // Default false
+            document.getElementById('edit-pcap-ram-threshold').value = pcapConfig.ram_flush_threshold || 75;
+            document.getElementById('edit-pcap-output-dir').value = pcapConfig.output_dir || '/var/log/netmonitor/pcap';
         }
     } catch (error) {
         console.error('[SENSORS] Error loading current settings:', error);
@@ -1746,6 +1754,13 @@ async function saveSensorSettings() {
         .filter(line => line.length > 0);
     const heartbeatInterval = parseInt(document.getElementById('edit-heartbeat-interval').value);
     const configSyncInterval = parseInt(document.getElementById('edit-config-sync-interval').value);
+
+    // PCAP Forensics settings
+    const pcapEnabled = document.getElementById('edit-pcap-enabled').value === 'true';
+    const pcapUpload = document.getElementById('edit-pcap-upload').value === 'true';
+    const pcapKeepLocal = document.getElementById('edit-pcap-keep-local').value === 'true';
+    const pcapRamThreshold = parseInt(document.getElementById('edit-pcap-ram-threshold').value);
+    const pcapOutputDir = document.getElementById('edit-pcap-output-dir').value.trim();
 
     console.log(`[SENSORS] Saving settings for sensor ${sensorId}`);
 
@@ -1777,6 +1792,32 @@ async function saveSensorSettings() {
                 parameter_path: 'performance.config_sync_interval',
                 value: configSyncInterval,
                 description: `Config sync interval for sensor ${sensorId}`
+            },
+            // PCAP Forensics settings
+            {
+                parameter_path: 'thresholds.pcap_export.enabled',
+                value: pcapEnabled,
+                description: `PCAP capture enabled for sensor ${sensorId}`
+            },
+            {
+                parameter_path: 'thresholds.pcap_export.upload_to_soc',
+                value: pcapUpload,
+                description: `PCAP upload to SOC for sensor ${sensorId}`
+            },
+            {
+                parameter_path: 'thresholds.pcap_export.keep_local_copy',
+                value: pcapKeepLocal,
+                description: `Keep local PCAP copy for sensor ${sensorId}`
+            },
+            {
+                parameter_path: 'thresholds.pcap_export.ram_flush_threshold',
+                value: pcapRamThreshold,
+                description: `PCAP RAM flush threshold for sensor ${sensorId}`
+            },
+            {
+                parameter_path: 'thresholds.pcap_export.output_dir',
+                value: pcapOutputDir,
+                description: `PCAP output directory for sensor ${sensorId}`
             }
         ];
 
