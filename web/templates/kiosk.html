@@ -1079,8 +1079,7 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    updateSensors(data.sensors || []);
-                    updateLocationGroups(data.sensors || []);
+                    updateSensors(data.sensors || []); // This now handles location grouping + sensor details
                 }
             } catch (error) {
                 console.error('Error fetching sensors:', error);
