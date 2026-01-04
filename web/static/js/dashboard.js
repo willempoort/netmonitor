@@ -1781,28 +1781,29 @@ async function editSensorSettings(sensorId, sensorName, currentLocation) {
                     const option = document.createElement('option');
                     option.value = ifaceName;
 
-                    // Add warning icon if not in PROMISC mode
+                    // Use colored circles to indicate PROMISC status
                     let label = ifaceName;
-                    if (!promisc && status === 'up') {
-                        label = `⚠️  ${ifaceName}`;
-                        option.title = 'Warning: Interface not in PROMISCUOUS mode. Run: sudo ip link set ' + ifaceName + ' promisc on';
-                        option.style.color = '#ffc107'; // Warning yellow
-                    } else if (status === 'down') {
-                        label = `⏸️  ${ifaceName}`;
+                    if (status === 'down') {
+                        label = `⚪ ${ifaceName}`;
                         option.title = 'Interface is DOWN';
                         option.style.color = '#6c757d'; // Gray
+                    } else if (!promisc && status === 'up') {
+                        label = `🔴 ${ifaceName}`;
+                        option.title = 'PROMISC mode disabled. Run: sudo ip link set ' + ifaceName + ' promisc on';
+                        option.style.color = '#dc3545'; // Red
                     } else if (promisc) {
-                        label = `✓ ${ifaceName}`;
-                        option.title = 'Interface in PROMISCUOUS mode (ready for monitoring)';
+                        label = `🟢 ${ifaceName}`;
+                        option.title = 'PROMISC mode enabled (ready for monitoring)';
+                        option.style.color = '#28a745'; // Green
                     }
 
                     option.textContent = label;
                     interfaceSelect.appendChild(option);
                 });
-                // Add "all" option
+                // Add "all" option (no status indicator - just plain text)
                 const allOption = document.createElement('option');
                 allOption.value = 'all';
-                allOption.textContent = '✓ All Interfaces';
+                allOption.textContent = 'All Interfaces';
                 allOption.title = 'Monitor all available interfaces';
                 interfaceSelect.appendChild(allOption);
             }
