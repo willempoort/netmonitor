@@ -1076,8 +1076,16 @@ class SensorClient:
                 if cleared_items > 0:
                     self.logger.info(f"Cleared {cleared_items} detector tracking entries")
 
-            # 3. Force garbage collection to free memory
-            gc.collect()
+            # 3. Clear alert buffer to free memory
+            alert_buffer_size = len(self.alert_buffer)
+            if alert_buffer_size > 0:
+                self.alert_buffer.clear()
+                self.logger.warning(f"⚠️ Dropped {alert_buffer_size} pending alerts to free RAM")
+
+            # 4. Force aggressive garbage collection to free memory
+            # Run GC multiple times to ensure all generations are collected
+            for _ in range(3):
+                gc.collect()
 
             # Log memory after flush
             memory = psutil.virtual_memory()
