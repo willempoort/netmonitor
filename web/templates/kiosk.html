@@ -1415,13 +1415,19 @@
             const allValues = [...(inboundData || []), ...(outboundData || [])];
             const maxValue = Math.max(...allValues, 0);
 
-            // If all values are 0 or very small, show a minimum scale
-            if (maxValue < 0.1) {
+            // More granular scaling for low bandwidth to show detail
+            if (maxValue < 0.05) {
+                return 0.1; // Show 0-0.1 Mbps scale for very low traffic
+            } else if (maxValue < 0.2) {
+                return 0.5; // Show 0-0.5 Mbps scale
+            } else if (maxValue < 0.5) {
                 return 1; // Show 0-1 Mbps scale
+            } else if (maxValue < 1) {
+                return 2; // Show 0-2 Mbps scale
             }
 
             // Round up to a nice number for the scale
-            // This creates nice intervals like 1, 2, 5, 10, 20, 50, 100, etc.
+            // This creates nice intervals like 2, 5, 10, 20, 50, 100, etc.
             const magnitude = Math.pow(10, Math.floor(Math.log10(maxValue)));
             const normalized = maxValue / magnitude;
 
