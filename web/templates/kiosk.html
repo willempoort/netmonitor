@@ -1537,7 +1537,9 @@
                             ticks: {
                                 color: textColor,
                                 callback: function(value) {
-                                    return value.toFixed(1) + ' Mbps';
+                                    // Show 2 decimals for low bandwidth, 1 decimal for higher
+                                    const decimals = value < 1 ? 2 : 1;
+                                    return value.toFixed(decimals) + ' Mbps';
                                 }
                             }
                         }
