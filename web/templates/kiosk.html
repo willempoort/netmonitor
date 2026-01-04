@@ -234,13 +234,19 @@
             display: block;
         }
 
+        #alerts-list {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+        }
+
         .alert-item {
             background: var(--bg-card);
             border: 1px solid var(--border-color);
             border-left: 4px solid var(--accent-danger);
             border-radius: 0.5rem;
             padding: 1rem;
-            margin-bottom: 1rem;
+            margin-bottom: 0; /* Remove bottom margin, using gap instead */
             transition: all 0.2s ease;
         }
 
@@ -505,11 +511,20 @@
             padding: 1rem;
         }
 
+        .location-group .sensors-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 0.75rem;
+            margin-top: 0.75rem;
+        }
+
         .location-group-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 0.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
         }
 
         .location-name {
@@ -781,12 +796,7 @@
 
             <!-- Location Groups -->
             <div class="location-groups" id="location-groups">
-                <!-- Will be populated by JavaScript -->
-            </div>
-
-            <!-- Sensors Grid -->
-            <div class="sensors-grid" id="sensors-grid">
-                <!-- Sensors will be populated by JavaScript -->
+                <!-- Will be populated by JavaScript with sensors grouped by location -->
             </div>
         </div>
 
@@ -1198,7 +1208,7 @@
 
         function updateSensors(sensors) {
             if (sensors.length === 0) {
-                document.getElementById('sensors-grid').innerHTML = `
+                document.getElementById('location-groups').innerHTML = `
                     <div class="card" style="text-align: center; padding: 2rem;">
                         <p style="color: var(--text-muted);">No sensors found</p>
                     </div>
@@ -1206,38 +1216,62 @@
                 return;
             }
 
-            const sensorsHTML = sensors.map(sensor => `
-                <div class="sensor-card ${sensor.status}">
-                    <div class="sensor-name">${escapeHtml(sensor.name)}</div>
-                    <div class="sensor-location">📍 ${escapeHtml(sensor.location)}</div>
-                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-                        <div class="bg-${sensor.status}" style="width: 8px; height: 8px; border-radius: 50%;"></div>
-                        <span style="font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">
-                            ${sensor.status}
-                        </span>
-                    </div>
-                    <div class="sensor-stats">
-                        <div class="sensor-stat">
-                            <span class="sensor-stat-label">CPU</span>
-                            <span class="sensor-stat-value">${formatNumber(sensor.cpu || 0, 1)}%</span>
-                        </div>
-                        <div class="sensor-stat">
-                            <span class="sensor-stat-label">Memory</span>
-                            <span class="sensor-stat-value">${formatNumber(sensor.memory || 0, 1)}%</span>
-                        </div>
-                        <div class="sensor-stat">
-                            <span class="sensor-stat-label">Bandwidth</span>
-                            <span class="sensor-stat-value">${formatNumber(sensor.bandwidth || 0, 1)} Mbps</span>
-                        </div>
-                        <div class="sensor-stat">
-                            <span class="sensor-stat-label">Alerts 24h</span>
-                            <span class="sensor-stat-value">${sensor.alerts_24h || 0}</span>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
+            // Group sensors by location
+            const sensorsByLocation = {};
+            sensors.forEach(sensor => {
+                const location = sensor.location || 'Unknown Location';
+                if (!sensorsByLocation[location]) {
+                    sensorsByLocation[location] = [];
+                }
+                sensorsByLocation[location].push(sensor);
+            });
 
-            document.getElementById('sensors-grid').innerHTML = sensorsHTML;
+            // Build HTML for location groups
+            const locationsHTML = Object.entries(sensorsByLocation).map(([location, locationSensors]) => {
+                const sensorsHTML = locationSensors.map(sensor => `
+                    <div class="sensor-card ${sensor.status}">
+                        <div class="sensor-name">${escapeHtml(sensor.name)}</div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                            <div class="bg-${sensor.status}" style="width: 8px; height: 8px; border-radius: 50%;"></div>
+                            <span style="font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">
+                                ${sensor.status}
+                            </span>
+                        </div>
+                        <div class="sensor-stats">
+                            <div class="sensor-stat">
+                                <span class="sensor-stat-label">CPU</span>
+                                <span class="sensor-stat-value">${formatNumber(sensor.cpu || 0, 1)}%</span>
+                            </div>
+                            <div class="sensor-stat">
+                                <span class="sensor-stat-label">Memory</span>
+                                <span class="sensor-stat-value">${formatNumber(sensor.memory || 0, 1)}%</span>
+                            </div>
+                            <div class="sensor-stat">
+                                <span class="sensor-stat-label">Bandwidth</span>
+                                <span class="sensor-stat-value">${formatNumber(sensor.bandwidth || 0, 1)} Mbps</span>
+                            </div>
+                            <div class="sensor-stat">
+                                <span class="sensor-stat-label">Alerts 24h</span>
+                                <span class="sensor-stat-value">${sensor.alerts_24h || 0}</span>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+
+                return `
+                    <div class="location-group">
+                        <div class="location-group-header">
+                            <span class="location-name">📍 ${escapeHtml(location)}</span>
+                            <span class="location-count">${locationSensors.length} sensor${locationSensors.length !== 1 ? 's' : ''}</span>
+                        </div>
+                        <div class="sensors-grid">
+                            ${sensorsHTML}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            document.getElementById('location-groups').innerHTML = locationsHTML;
         }
 
         function formatThreatName(type) {
