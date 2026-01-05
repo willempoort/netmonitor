@@ -1081,6 +1081,15 @@ class SensorClient:
                 if hasattr(self.detector, 'smtp_ftp_tracker'):
                     cleared_items += len(self.detector.smtp_ftp_tracker)
                     self.detector.smtp_ftp_tracker.clear()
+                if hasattr(self.detector, 'protocol_mismatch_tracker'):
+                    cleared_items += len(self.detector.protocol_mismatch_tracker)
+                    self.detector.protocol_mismatch_tracker.clear()
+                if hasattr(self.detector, 'tls_metadata_cache'):
+                    cleared_items += len(self.detector.tls_metadata_cache)
+                    self.detector.tls_metadata_cache.clear()
+                if hasattr(self.detector, 'tls_metadata_history'):
+                    cleared_items += len(self.detector.tls_metadata_history)
+                    self.detector.tls_metadata_history.clear()
 
                 if cleared_items > 0:
                     self.logger.info(f"Cleared {cleared_items} detector tracking entries")
@@ -1093,8 +1102,24 @@ class SensorClient:
 
             # 4. Force aggressive garbage collection to free memory
             # Run GC multiple times to ensure all generations are collected
-            for _ in range(3):
-                gc.collect()
+            collected = 0
+            for generation in range(3):
+                collected += gc.collect(generation)
+            self.logger.info(f"Garbage collected {collected} objects")
+
+            # 5. Force memory release back to OS using malloc_trim (Linux only)
+            # Python's GC frees objects but doesn't necessarily return memory to OS
+            # malloc_trim(0) forces the C allocator to release free memory
+            try:
+                import ctypes
+                libc = ctypes.CDLL('libc.so.6')
+                freed = libc.malloc_trim(0)
+                if freed:
+                    self.logger.info("✓ Forced memory release to OS (malloc_trim)")
+                else:
+                    self.logger.debug("malloc_trim: no memory released")
+            except Exception as e:
+                self.logger.debug(f"malloc_trim not available: {e}")
 
             # Log memory after flush
             memory = psutil.virtual_memory()
