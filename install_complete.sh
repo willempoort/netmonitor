@@ -770,6 +770,23 @@ main() {
     print_summary
 
     print_info "Installatie log: $LOG_FILE"
+
+    # Run post-installation setup
+    echo
+    print_header "POST-INSTALLATIE SETUP"
+    echo
+    print_info "Running post-installation configuration..."
+
+    if [ -f "./post_install.sh" ]; then
+        if bash ./post_install.sh; then
+            print_success "Post-installatie setup compleet"
+        else
+            print_warning "Post-installatie setup had warnings - check output above"
+        fi
+    else
+        print_warning "post_install.sh niet gevonden - skip post-installatie"
+        echo "  Run handmatig: ./post_install.sh"
+    fi
 }
 
 # Run main
