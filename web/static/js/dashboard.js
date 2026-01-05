@@ -1850,9 +1850,28 @@ async function editSensorSettings(sensorId, sensorName, currentLocation) {
                     });
                 });
             }
+        } else {
+            // API call failed or returned no data
+            console.error('[SENSORS] Failed to load sensor metadata:', sensorResult);
+            const interfaceContainer = document.getElementById('edit-sensor-interface');
+            interfaceContainer.innerHTML = `
+                <div class="alert alert-warning">
+                    ❌ Could not load interface list. Error: ${sensorResult.error || 'Unknown error'}
+                    <br><small>Check browser console for details.</small>
+                </div>
+            `;
         }
     } catch (error) {
         console.error('[SENSORS] Error loading sensor interfaces:', error);
+        const interfaceContainer = document.getElementById('edit-sensor-interface');
+        if (interfaceContainer) {
+            interfaceContainer.innerHTML = `
+                <div class="alert alert-danger">
+                    ❌ Network error loading interfaces: ${error.message}
+                    <br><small>Check browser console and network tab for details.</small>
+                </div>
+            `;
+        }
     }
 
     // Show modal
