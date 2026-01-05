@@ -8,9 +8,10 @@ DECLARE
     params_json jsonb;
     fixed_params jsonb;
     corrupted_key text;
-    key_count integer;
     fixed_count integer := 0;
     is_corrupted boolean;
+    cleaned_key text;
+    key_name text;
 BEGIN
     -- Loop through all template behaviors
     FOR behavior_record IN
@@ -26,76 +27,55 @@ BEGIN
         FOR corrupted_key IN
             SELECT jsonb_object_keys(params_json) as key
         LOOP
-            -- Detect corruption: keys with escaped quotes, starting with {, or containing \":
+            -- Detect corruption: keys with escaped quotes, starting with {, or containing strange patterns
             IF corrupted_key LIKE '{%' OR
-               corrupted_key LIKE '%\\"%' OR
-               corrupted_key LIKE '%}"%' OR
-               corrupted_key LIKE '"{%' THEN
+               corrupted_key LIKE '%\"%' OR
+               corrupted_key LIKE '"%}%' OR
+               corrupted_key LIKE '"{%' OR
+               corrupted_key ~ '\\' THEN
 
                 is_corrupted := true;
+                RAISE NOTICE 'Found corrupted key in behavior ID %: "%"', behavior_record.id, corrupted_key;
 
-                RAISE NOTICE 'Found corrupted key in behavior ID % (%): "%"',
-                    behavior_record.id, behavior_record.behavior_type, corrupted_key;
+                -- Simple cleanup: extract the actual key name from patterns like:
+                -- "\"continuous\": true}" → continuous
+                -- "{\"high_bandwidth\": true" → high_bandwidth
+                -- "\"streaming\": true" → streaming
 
-                -- Try multiple cleanup strategies
-                DECLARE
-                    cleaned_key text;
-                    parsed_json jsonb;
-                BEGIN
-                    -- Strategy 1: Try to parse as JSON directly
-                    BEGIN
-                        parsed_json := corrupted_key::jsonb;
-                        IF jsonb_typeof(parsed_json) = 'object' THEN
-                            fixed_params := fixed_params || parsed_json;
-                            RAISE NOTICE '  ✓ Parsed as complete JSON object';
-                            CONTINUE;
-                        END IF;
-                    EXCEPTION WHEN OTHERS THEN
-                        -- Not valid JSON, try next strategy
-                    END;
+                cleaned_key := corrupted_key;
 
-                    -- Strategy 2: Remove wrapping quotes and closing brace/quote patterns
-                    cleaned_key := corrupted_key;
-                    cleaned_key := regexp_replace(cleaned_key, '^"?\{', '{', 'g');  -- Remove leading "{
-                    cleaned_key := regexp_replace(cleaned_key, '\}"?$', '}', 'g');  -- Remove trailing }"
-                    cleaned_key := replace(cleaned_key, '\"', '"');  -- Unescape quotes
+                -- Remove all backslashes
+                cleaned_key := replace(cleaned_key, E'\\', '');
 
-                    BEGIN
-                        parsed_json := cleaned_key::jsonb;
-                        IF jsonb_typeof(parsed_json) = 'object' THEN
-                            fixed_params := fixed_params || parsed_json;
-                            RAISE NOTICE '  ✓ Cleaned and parsed: %', cleaned_key;
-                            CONTINUE;
-                        END IF;
-                    EXCEPTION WHEN OTHERS THEN
-                        -- Still not valid, try next strategy
-                    END;
+                -- Remove all double quotes
+                cleaned_key := replace(cleaned_key, '"', '');
 
-                    -- Strategy 3: Try to reconstruct from key pattern like "\"key\": true}"
-                    IF corrupted_key LIKE '%\":%' THEN
-                        -- Extract the key name and try to rebuild
-                        cleaned_key := regexp_replace(corrupted_key, '^"?\\?"?', '', 'g');  -- Remove leading quotes/escapes
-                        cleaned_key := regexp_replace(corrupted_key, '\\?"?"?:.*$', '', 'g');  -- Remove everything after key
+                -- Remove leading/trailing braces
+                cleaned_key := trim(both '{' from cleaned_key);
+                cleaned_key := trim(both '}' from cleaned_key);
 
-                        -- Extract just the property name if we can
-                        IF cleaned_key ~ '^[a-zA-Z_][a-zA-Z0-9_]*$' THEN
-                            -- Valid property name, set to true
-                            fixed_params := jsonb_set(fixed_params, ARRAY[cleaned_key], 'true'::jsonb);
-                            RAISE NOTICE '  ✓ Extracted property: %', cleaned_key;
-                            CONTINUE;
-                        END IF;
-                    END IF;
+                -- If it contains a colon, take only the part before it
+                IF position(':' in cleaned_key) > 0 THEN
+                    key_name := split_part(cleaned_key, ':', 1);
+                ELSE
+                    key_name := cleaned_key;
+                END IF;
 
-                    -- Strategy 4: If all else fails, try to preserve as-is with value
-                    RAISE NOTICE '  ⚠ Could not clean key, preserving with value';
-                    fixed_params := jsonb_set(
-                        fixed_params,
-                        ARRAY[corrupted_key],
-                        params_json->corrupted_key
-                    );
-                END;
+                -- Trim any whitespace
+                key_name := trim(key_name);
+
+                -- Validate it's a reasonable property name
+                IF key_name ~ '^[a-zA-Z_][a-zA-Z0-9_]*$' THEN
+                    -- Add this property as true
+                    fixed_params := jsonb_set(fixed_params, ARRAY[key_name], 'true'::jsonb);
+                    RAISE NOTICE '  ✓ Extracted property: % → %', corrupted_key, key_name;
+                ELSE
+                    -- Could not extract valid name, skip it
+                    RAISE NOTICE '  ⚠ Could not extract valid name from: %', corrupted_key;
+                END IF;
+
             ELSE
-                -- Normal key, keep it
+                -- Normal key, keep it with its value
                 fixed_params := jsonb_set(
                     fixed_params,
                     ARRAY[corrupted_key],
@@ -106,12 +86,14 @@ BEGIN
 
         -- Update if we found corruption
         IF is_corrupted THEN
+            RAISE NOTICE '  → Updating behavior ID % from % to %',
+                behavior_record.id, params_json, fixed_params;
+
             UPDATE template_behaviors
             SET parameters = fixed_params
             WHERE id = behavior_record.id;
 
             fixed_count := fixed_count + 1;
-            RAISE NOTICE '→ Fixed behavior ID % with parameters: %', behavior_record.id, fixed_params;
         END IF;
     END LOOP;
 
@@ -119,6 +101,7 @@ BEGIN
         RAISE NOTICE '';
         RAISE NOTICE '✅ Fixed % corrupted behavior(s)', fixed_count;
     ELSE
+        RAISE NOTICE '';
         RAISE NOTICE 'No corrupted behaviors found';
     END IF;
 END $$;
