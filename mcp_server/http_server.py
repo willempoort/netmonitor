@@ -821,6 +821,25 @@ class MCPHTTPServer:
                 },
                 "scope_required": "read_only"
             },
+            # Memory Management Tools
+            {
+                "name": "get_memory_status",
+                "description": "Get current memory usage of SOC server (system and process RAM, GC stats)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {}
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "flush_memory",
+                "description": "Trigger emergency memory flush on SOC server (garbage collection + malloc_trim)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {}
+                },
+                "scope_required": "execute"
+            },
             # Sensor Command Tools
             {
                 "name": "send_sensor_command",
@@ -1100,6 +1119,9 @@ class MCPHTTPServer:
             'delete_pcap_capture': self._tool_delete_pcap_capture,
             # Export Tools
             'export_alerts_csv': self._tool_export_alerts_csv,
+            # Memory Management Tools
+            'get_memory_status': self._tool_get_memory_status,
+            'flush_memory': self._tool_flush_memory,
             # Sensor Command Tools
             'send_sensor_command': self._tool_send_sensor_command,
             'get_sensor_command_history': self._tool_get_sensor_command_history,
@@ -2665,6 +2687,69 @@ class MCPHTTPServer:
 
         except Exception as e:
             logger.error(f"Error exporting alerts to CSV: {e}")
+            return {'success': False, 'error': str(e)}
+
+    # ==================== Memory Management Tool Implementations ====================
+
+    async def _tool_get_memory_status(self, params: Dict) -> Dict:
+        """Get current memory usage of SOC server"""
+        import requests
+
+        try:
+            # Call the internal API endpoint
+            response = requests.get(
+                f"{self.base_url}/api/internal/memory/status",
+                timeout=5
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get('success'):
+                return {
+                    'success': True,
+                    'memory': data.get('memory', {}),
+                    'message': 'Retrieved memory status successfully'
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': data.get('error', 'Unknown error')
+                }
+
+        except Exception as e:
+            logger.error(f"Error getting memory status: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def _tool_flush_memory(self, params: Dict) -> Dict:
+        """Trigger emergency memory flush on SOC server"""
+        import requests
+
+        try:
+            # Call the internal API endpoint
+            response = requests.post(
+                f"{self.base_url}/api/internal/memory/flush",
+                timeout=30
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get('success'):
+                return {
+                    'success': True,
+                    'before': data.get('before', {}),
+                    'after': data.get('after', {}),
+                    'reduction': data.get('reduction', {}),
+                    'collected_objects': data.get('collected_objects', 0),
+                    'message': f"Memory flushed successfully. System RAM reduced by {data.get('reduction', {}).get('system_percent', 0):.1f}%"
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': data.get('error', 'Unknown error')
+                }
+
+        except Exception as e:
+            logger.error(f"Error flushing memory: {e}")
             return {'success': False, 'error': str(e)}
 
     # ==================== Sensor Command Tool Implementations ====================
