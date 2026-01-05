@@ -114,12 +114,29 @@ def register_soc_sensor(config_file='config.yaml'):
     # Register sensor
     print(f"\nUpdating sensor in database...")
     try:
+        # Get sensor's IP address
+        ip_address = None
+        try:
+            import socket
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip_address = s.getsockname()[0]
+            s.close()
+        except:
+            pass
+
+        # Build config with available_interfaces
+        sensor_config = {
+            'available_interfaces': available_interfaces,
+            'interface': interface  # Current selected interface(s)
+        }
+
         success = db.register_sensor(
             sensor_id=sensor_id,
             hostname=hostname,
             location=location,
-            network_interface=interface,
-            available_interfaces=available_interfaces  # Store detected interfaces
+            ip_address=ip_address,
+            config=sensor_config  # Pass config with available_interfaces
         )
 
         if success:
