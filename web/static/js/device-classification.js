@@ -1119,11 +1119,11 @@ function updateBehaviorPlaceholder() {
         'allowed_protocols': 'e.g., TCP, UDP, ICMP',
         'allowed_sources': 'e.g., internal or 192.168.1.0/24,10.0.0.0/8',
         'bandwidth_limit': 'e.g., 100 (MB per hour)',
-        'connection_behavior': 'e.g., accepts_connections or api_server',
+        'connection_behavior': 'e.g., accepts_connections,api_server or {"accepts_connections":true}',
         'expected_destinations': 'e.g., 192.168.1.100 or 10.0.0.0/8 (comma-separated IPs/CIDRs)',
         'time_restrictions': 'e.g., 08:00-18:00',
         'dns_behavior': 'e.g., allowed_domains:*.google.com',
-        'traffic_pattern': 'e.g., high_bandwidth or streaming',
+        'traffic_pattern': 'e.g., low_bandwidth,streaming or {"low_bandwidth":true}',
         'suppress_alert_types': 'e.g., HTTP_SENSITIVE_DATA,SSH_NON_STANDARD_PORT'
     };
 
@@ -1179,14 +1179,25 @@ async function addBehaviorRule() {
             parameters = { limit: parseFloat(value) };
             break;
         case 'connection_behavior':
-            // Support: keyword values like accepts_connections, api_server, high_connection_rate
-            const keywords = value.toLowerCase().split(',').map(k => k.trim());
-            keywords.forEach(kw => {
-                if (kw === 'accepts_connections') parameters.accepts_connections = true;
-                else if (kw === 'api_server') parameters.api_server = true;
-                else if (kw === 'high_connection_rate') parameters.high_connection_rate = true;
-                else parameters[kw] = true;
-            });
+            // Support both JSON objects and keyword values
+            if (value.trim().startsWith('{')) {
+                // Try to parse as JSON
+                try {
+                    parameters = JSON.parse(value);
+                } catch (e) {
+                    showError('Invalid JSON format. Use either JSON like {"accepts_connections":true} or keywords like accepts_connections,api_server');
+                    return;
+                }
+            } else {
+                // Support keyword values like accepts_connections, api_server, high_connection_rate
+                const keywords = value.toLowerCase().split(',').map(k => k.trim());
+                keywords.forEach(kw => {
+                    if (kw === 'accepts_connections') parameters.accepts_connections = true;
+                    else if (kw === 'api_server') parameters.api_server = true;
+                    else if (kw === 'high_connection_rate') parameters.high_connection_rate = true;
+                    else parameters[kw] = true;
+                });
+            }
             break;
         case 'expected_destinations':
             // Support: 'internal' keyword or explicit IPs/CIDRs
@@ -1203,15 +1214,27 @@ async function addBehaviorRule() {
             parameters = { pattern: value };
             break;
         case 'traffic_pattern':
-            // Support keyword values like high_bandwidth, streaming, continuous
-            const patternKeywords = value.toLowerCase().split(',').map(k => k.trim());
-            patternKeywords.forEach(kw => {
-                if (kw === 'high_bandwidth') parameters.high_bandwidth = true;
-                else if (kw === 'streaming') parameters.streaming = true;
-                else if (kw === 'continuous') parameters.continuous = true;
-                else if (kw === 'receives_streams') parameters.receives_streams = true;
-                else parameters[kw] = true;
-            });
+            // Support both JSON objects and keyword values
+            if (value.trim().startsWith('{')) {
+                // Try to parse as JSON
+                try {
+                    parameters = JSON.parse(value);
+                } catch (e) {
+                    showError('Invalid JSON format. Use either JSON like {"low_bandwidth":true} or keywords like low_bandwidth,streaming');
+                    return;
+                }
+            } else {
+                // Support keyword values like high_bandwidth, streaming, continuous
+                const patternKeywords = value.toLowerCase().split(',').map(k => k.trim());
+                patternKeywords.forEach(kw => {
+                    if (kw === 'high_bandwidth') parameters.high_bandwidth = true;
+                    else if (kw === 'streaming') parameters.streaming = true;
+                    else if (kw === 'continuous') parameters.continuous = true;
+                    else if (kw === 'receives_streams') parameters.receives_streams = true;
+                    else if (kw === 'low_bandwidth') parameters.low_bandwidth = true;
+                    else parameters[kw] = true;
+                });
+            }
             break;
         case 'suppress_alert_types':
             // Parse comma-separated list of alert types (e.g., HTTP_SENSITIVE_DATA,SSH_NON_STANDARD_PORT)
