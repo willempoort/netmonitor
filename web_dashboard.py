@@ -2928,6 +2928,116 @@ def api_internal_packet_buffer_summary():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/internal/memory/status')
+@local_or_login_required
+def api_internal_memory_status():
+    """
+    Internal API: Get current memory usage of SOC server
+    Allows localhost access for monitoring
+    """
+    try:
+        import psutil
+        import gc
+
+        memory = psutil.virtual_memory()
+        process = psutil.Process()
+        process_memory = process.memory_info()
+
+        # Get garbage collector stats
+        gc_stats = {
+            f'gen{i}': gc.get_count()[i] for i in range(3)
+        }
+
+        return jsonify({
+            'success': True,
+            'memory': {
+                'system': {
+                    'total_mb': round(memory.total / 1024 / 1024, 1),
+                    'available_mb': round(memory.available / 1024 / 1024, 1),
+                    'used_mb': round(memory.used / 1024 / 1024, 1),
+                    'percent': memory.percent
+                },
+                'process': {
+                    'rss_mb': round(process_memory.rss / 1024 / 1024, 1),
+                    'vms_mb': round(process_memory.vms / 1024 / 1024, 1),
+                    'percent': process.memory_percent()
+                },
+                'gc': gc_stats
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting memory status: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/internal/memory/flush', methods=['POST'])
+@local_or_login_required
+def api_internal_memory_flush():
+    """
+    Internal API: Emergency memory flush for SOC server
+    Forces garbage collection and malloc_trim to release memory to OS
+    """
+    try:
+        import psutil
+        import gc
+        import ctypes
+
+        # Get memory before flush
+        memory_before = psutil.virtual_memory().percent
+        process = psutil.Process()
+        process_before = process.memory_percent()
+
+        logger.warning(f"⚠️ Manual memory flush triggered - System RAM: {memory_before:.1f}%, Process: {process_before:.1f}%")
+
+        # Aggressive garbage collection
+        collected = 0
+        for generation in range(3):
+            collected += gc.collect(generation)
+        logger.info(f"Garbage collected {collected} objects")
+
+        # Force memory release to OS using malloc_trim (Linux only)
+        try:
+            libc = ctypes.CDLL('libc.so.6')
+            freed = libc.malloc_trim(0)
+            if freed:
+                logger.info("✓ Forced memory release to OS (malloc_trim)")
+            else:
+                logger.debug("malloc_trim: no memory released")
+        except Exception as e:
+            logger.debug(f"malloc_trim not available: {e}")
+
+        # Get memory after flush
+        memory_after = psutil.virtual_memory().percent
+        process_after = process.memory_percent()
+
+        reduction = memory_before - memory_after
+        process_reduction = process_before - process_after
+
+        logger.info(f"✓ Memory flush complete - System RAM: {memory_after:.1f}% (Δ{reduction:+.1f}%), Process: {process_after:.1f}% (Δ{process_reduction:+.1f}%)")
+
+        return jsonify({
+            'success': True,
+            'before': {
+                'system_percent': round(memory_before, 1),
+                'process_percent': round(process_before, 1)
+            },
+            'after': {
+                'system_percent': round(memory_after, 1),
+                'process_percent': round(process_after, 1)
+            },
+            'reduction': {
+                'system_percent': round(reduction, 1),
+                'process_percent': round(process_reduction, 1)
+            },
+            'collected_objects': collected
+        })
+
+    except Exception as e:
+        logger.error(f"Error during memory flush: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ==================== Sensor PCAP API (NIS2 Compliance) ====================
 
 @app.route('/api/pcap/sensors')
