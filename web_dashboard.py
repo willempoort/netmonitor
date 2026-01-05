@@ -3455,6 +3455,29 @@ def api_add_template_behavior(template_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/device-templates/behaviors/<int:behavior_id>', methods=['PUT', 'PATCH'])
+@login_required
+def api_update_template_behavior(behavior_id):
+    """Update a behavior rule"""
+    try:
+        data = request.get_json()
+
+        success = db.update_template_behavior(
+            behavior_id=behavior_id,
+            parameters=data.get('parameters'),
+            action=data.get('action'),
+            description=data.get('description')
+        )
+
+        if success:
+            return jsonify({'success': True, 'message': 'Behavior updated'})
+        else:
+            return jsonify({'success': False, 'error': 'Behavior not found'}), 404
+    except Exception as e:
+        logger.error(f"Error updating behavior {behavior_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/device-templates/behaviors/<int:behavior_id>', methods=['DELETE'])
 @login_required
 def api_delete_template_behavior(behavior_id):
