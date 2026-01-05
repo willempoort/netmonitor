@@ -1028,6 +1028,9 @@ async function loadClassificationStats() {
 function renderBehaviorsTable(behaviors, isBuiltin) {
     const behaviorsTable = document.getElementById('template-behaviors-table');
 
+    // Store behaviors in global variable for edit functionality
+    window.currentBehaviors = behaviors;
+
     if (behaviors.length === 0) {
         behaviorsTable.innerHTML = `
             <tr>
@@ -1079,7 +1082,7 @@ function renderBehaviorsTable(behaviors, isBuiltin) {
             }
 
             const editBtn = isBuiltin ? '' : `
-                <button class="btn btn-sm btn-outline-primary me-1" onclick="editBehaviorRule(${b.id}, '${b.behavior_type}', ${JSON.stringify(b.parameters).replace(/'/g, "&apos;")}, '${b.action}', '${b.description || ''}')" title="Edit rule">
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="editBehaviorRule(${b.id})" title="Edit rule">
                     <i class="bi bi-pencil"></i>
                 </button>
             `;
@@ -1146,9 +1149,16 @@ function hideAddBehaviorForm() {
     }
 }
 
-function editBehaviorRule(behaviorId, behaviorType, parameters, action, description) {
+function editBehaviorRule(behaviorId) {
     if (window.currentTemplateBuiltin) {
         showError('Cannot modify built-in templates');
+        return;
+    }
+
+    // Find the behavior in the current behaviors list
+    const behavior = window.currentBehaviors?.find(b => b.id === behaviorId);
+    if (!behavior) {
+        showError('Behavior not found');
         return;
     }
 
@@ -1159,6 +1169,11 @@ function editBehaviorRule(behaviorId, behaviorType, parameters, action, descript
     document.getElementById('add-behavior-form').style.display = 'block';
 
     // Populate the form with existing values
+    const behaviorType = behavior.behavior_type;
+    const parameters = behavior.parameters || {};
+    const action = behavior.action;
+    const description = behavior.description;
+
     document.getElementById('new-behavior-type').value = behaviorType;
     document.getElementById('new-behavior-action').value = action;
     document.getElementById('new-behavior-description').value = description || '';
