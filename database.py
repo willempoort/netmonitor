@@ -1439,29 +1439,34 @@ class DatabaseManager:
 
             sensor_dict = dict(result)
 
+            # Initialize config if None
+            if sensor_dict.get('config') is None:
+                sensor_dict['config'] = {}
             # Parse config if it's a string (JSONB column)
-            if isinstance(sensor_dict.get('config'), str):
+            elif isinstance(sensor_dict['config'], str):
                 try:
                     sensor_dict['config'] = json.loads(sensor_dict['config'])
                 except (json.JSONDecodeError, TypeError):
+                    self.logger.warning(f"Failed to parse config for sensor {sensor_id}, using empty dict")
                     sensor_dict['config'] = {}
 
             # Merge interface setting from sensor_configs into config
             # This ensures UI saves and loads from the same place
-            cursor.execute('''
-                SELECT parameter_value#>>'{}'
-                FROM sensor_configs
-                WHERE sensor_id = %s
-                AND parameter_path = 'interface'
-                LIMIT 1
-            ''', (sensor_id,))
+            try:
+                cursor.execute('''
+                    SELECT parameter_value#>>'{}'
+                    FROM sensor_configs
+                    WHERE sensor_id = %s
+                    AND parameter_path = 'interface'
+                    LIMIT 1
+                ''', (sensor_id,))
 
-            interface_result = cursor.fetchone()
-            if interface_result and interface_result[0]:
-                # Merge interface into sensor.config
-                if sensor_dict['config'] is None:
-                    sensor_dict['config'] = {}
-                sensor_dict['config']['interface'] = interface_result[0]
+                interface_result = cursor.fetchone()
+                if interface_result and interface_result[0]:
+                    # Merge interface into sensor.config
+                    sensor_dict['config']['interface'] = interface_result[0]
+            except Exception as e:
+                self.logger.warning(f"Could not fetch interface config for sensor {sensor_id}: {e}")
 
             return sensor_dict
 
