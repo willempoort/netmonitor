@@ -702,8 +702,21 @@ async function showTemplateDetails(templateId) {
         // Load devices using this template
         loadTemplateDevices(templateId);
 
-        // Show modal
-        const modal = new bootstrap.Modal(document.getElementById('templateDetailsModal'));
+        // Show modal - reuse existing instance or create new one
+        const modalElement = document.getElementById('templateDetailsModal');
+        let modal = bootstrap.Modal.getInstance(modalElement);
+        if (!modal) {
+            modal = new bootstrap.Modal(modalElement);
+
+            // Add cleanup listener when modal is hidden
+            modalElement.addEventListener('hidden.bs.modal', function () {
+                // Clean up state
+                window.currentTemplateId = null;
+                window.currentTemplateBuiltin = null;
+                window.editingBehaviorId = null;
+                hideAddBehaviorForm();
+            });
+        }
         modal.show();
 
     } catch (error) {
@@ -747,7 +760,11 @@ async function deleteTemplate() {
 
         if (result.success) {
             showSuccess('Template deleted');
-            bootstrap.Modal.getInstance(document.getElementById('templateDetailsModal')).hide();
+            const modal = bootstrap.Modal.getInstance(document.getElementById('templateDetailsModal'));
+            if (modal) {
+                modal.hide();
+            }
+            // Reload the templates list
             loadTemplates();
             loadDevices();
         } else {
@@ -780,10 +797,14 @@ async function cloneTemplate() {
 
         if (result.success) {
             showSuccess(`Template cloned as "${newName}"`);
-            // Close current modal and open the new template
-            bootstrap.Modal.getInstance(document.getElementById('templateDetailsModal')).hide();
+            // Close current modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('templateDetailsModal'));
+            if (modal) {
+                modal.hide();
+            }
+            // Reload templates list
             loadTemplates();
-            // Show the new template after a short delay
+            // Show the new template after the modal is fully hidden
             setTimeout(() => showTemplateDetails(result.template_id), 300);
         } else {
             showError('Failed to clone template: ' + (result.error || 'Unknown error'));
@@ -1057,6 +1078,11 @@ function renderBehaviorsTable(behaviors, isBuiltin) {
                 }
             }
 
+            const editBtn = isBuiltin ? '' : `
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="editBehaviorRule(${b.id}, '${b.behavior_type}', ${JSON.stringify(b.parameters).replace(/'/g, "&apos;")}, '${b.action}', '${b.description || ''}')" title="Edit rule">
+                    <i class="bi bi-pencil"></i>
+                </button>
+            `;
             const deleteBtn = isBuiltin ? '' : `
                 <button class="btn btn-sm btn-outline-danger" onclick="deleteBehaviorRule(${b.id})" title="Delete rule">
                     <i class="bi bi-trash"></i>
@@ -1081,7 +1107,7 @@ function renderBehaviorsTable(behaviors, isBuiltin) {
                     <td>${directionBadge}</td>
                     <td><span class="badge bg-${actionClass}">${b.action}</span></td>
                     <td>${b.description || '-'}</td>
-                    <td>${deleteBtn}</td>
+                    <td>${editBtn}${deleteBtn}</td>
                 </tr>
             `;
         }).join('');
@@ -1093,6 +1119,9 @@ function showAddBehaviorForm() {
         showError('Cannot modify built-in templates');
         return;
     }
+    // Clear edit mode
+    window.editingBehaviorId = null;
+
     document.getElementById('add-behavior-form').style.display = 'block';
     document.getElementById('new-behavior-type').value = 'allowed_ports';
     document.getElementById('new-behavior-value').value = '';
@@ -1100,12 +1129,107 @@ function showAddBehaviorForm() {
     document.getElementById('new-behavior-action').value = 'allow';
     document.getElementById('new-behavior-description').value = '';
     updateBehaviorPlaceholder();
+
+    // Reset button text
+    const submitBtn = document.querySelector('#add-behavior-form button[onclick="addBehaviorRule()"]');
+    if (submitBtn) {
+        submitBtn.innerHTML = '<i class="bi bi-plus-circle"></i> Add Rule';
+    }
 }
 
 function hideAddBehaviorForm() {
     const form = document.getElementById('add-behavior-form');
     if (form) {
         form.style.display = 'none';
+        // Clear edit mode
+        window.editingBehaviorId = null;
+    }
+}
+
+function editBehaviorRule(behaviorId, behaviorType, parameters, action, description) {
+    if (window.currentTemplateBuiltin) {
+        showError('Cannot modify built-in templates');
+        return;
+    }
+
+    // Store the behavior ID we're editing
+    window.editingBehaviorId = behaviorId;
+
+    // Show the form
+    document.getElementById('add-behavior-form').style.display = 'block';
+
+    // Populate the form with existing values
+    document.getElementById('new-behavior-type').value = behaviorType;
+    document.getElementById('new-behavior-action').value = action;
+    document.getElementById('new-behavior-description').value = description || '';
+
+    // Extract direction from parameters
+    const direction = parameters?.direction || '';
+    document.getElementById('new-behavior-direction').value = direction;
+
+    // Build value string from parameters based on type
+    let valueStr = '';
+    switch (behaviorType) {
+        case 'allowed_ports':
+            if (parameters.port_range) {
+                valueStr = parameters.port_range;
+            } else if (parameters.ports) {
+                valueStr = Array.isArray(parameters.ports) ? parameters.ports.join(',') : parameters.ports;
+            }
+            break;
+        case 'allowed_protocols':
+            if (parameters.protocols) {
+                valueStr = Array.isArray(parameters.protocols) ? parameters.protocols.join(',') : parameters.protocols;
+            }
+            break;
+        case 'allowed_sources':
+            if (parameters.internal) {
+                valueStr = 'internal';
+            } else if (parameters.subnets) {
+                valueStr = Array.isArray(parameters.subnets) ? parameters.subnets.join(',') : parameters.subnets;
+            }
+            break;
+        case 'bandwidth_limit':
+            valueStr = parameters.limit || '';
+            break;
+        case 'connection_behavior':
+        case 'traffic_pattern':
+            // For these, display as JSON to preserve all parameters
+            // Filter out 'direction' since it's handled separately
+            const filteredParams = Object.keys(parameters)
+                .filter(k => k !== 'direction')
+                .reduce((obj, k) => { obj[k] = parameters[k]; return obj; }, {});
+            valueStr = Object.keys(filteredParams).length > 0 ? JSON.stringify(filteredParams) : '';
+            break;
+        case 'expected_destinations':
+            if (parameters.internal_only) {
+                valueStr = 'internal';
+            } else if (parameters.allowed_ips) {
+                valueStr = Array.isArray(parameters.allowed_ips) ? parameters.allowed_ips.join(',') : parameters.allowed_ips;
+            }
+            break;
+        case 'time_restrictions':
+            valueStr = parameters.schedule || '';
+            break;
+        case 'dns_behavior':
+            valueStr = parameters.pattern || '';
+            break;
+        case 'suppress_alert_types':
+            if (parameters.alert_types) {
+                valueStr = Array.isArray(parameters.alert_types) ? parameters.alert_types.join(',') : parameters.alert_types;
+            }
+            break;
+        default:
+            valueStr = parameters.value || JSON.stringify(parameters);
+    }
+
+    document.getElementById('new-behavior-value').value = valueStr;
+    updateBehaviorPlaceholder();
+
+    // Change button text
+    const submitBtn = document.querySelector('#add-behavior-form button[onclick="addBehaviorRule()"]');
+    if (submitBtn) {
+        submitBtn.innerHTML = '<i class="bi bi-check-circle"></i> Update Rule';
     }
 }
 
@@ -1250,8 +1374,15 @@ async function addBehaviorRule() {
     }
 
     try {
-        const response = await fetch(`/api/device-templates/${templateId}/behaviors`, {
-            method: 'POST',
+        // Check if we're editing or creating
+        const isEditing = window.editingBehaviorId != null;
+        const url = isEditing
+            ? `/api/device-templates/behaviors/${window.editingBehaviorId}`
+            : `/api/device-templates/${templateId}/behaviors`;
+        const method = isEditing ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+            method: method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 behavior_type: behaviorType,
@@ -1264,16 +1395,16 @@ async function addBehaviorRule() {
         const result = await response.json();
 
         if (result.success) {
-            showSuccess('Behavior rule added');
+            showSuccess(isEditing ? 'Behavior rule updated' : 'Behavior rule added');
             hideAddBehaviorForm();
             // Reload template details to refresh behaviors table
             showTemplateDetails(templateId);
         } else {
-            showError('Failed to add behavior: ' + (result.error || 'Unknown error'));
+            showError(`Failed to ${isEditing ? 'update' : 'add'} behavior: ` + (result.error || 'Unknown error'));
         }
     } catch (error) {
-        console.error('Error adding behavior:', error);
-        showError('Network error while adding behavior');
+        console.error('Error saving behavior:', error);
+        showError('Network error while saving behavior');
     }
 }
 
