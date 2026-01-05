@@ -533,7 +533,7 @@ class BehaviorMatcher:
         elif behavior_type == 'connection_behavior':
             # High connection rate servers
             if params.get('high_connection_rate') or params.get('accepts_connections'):
-                if threat_type in ('CONNECTION_FLOOD', 'PORT_SCAN'):
+                if threat_type in ('CONNECTION_FLOOD', 'PORT_SCAN', 'HIGH_RISK_ATTACK_CHAIN'):
                     return True, "High connection rate is expected for servers"
 
             # Low frequency IoT devices
