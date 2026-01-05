@@ -1434,7 +1434,29 @@ class DatabaseManager:
             ''', (sensor_id,))
 
             result = cursor.fetchone()
-            return dict(result) if result else None
+            if not result:
+                return None
+
+            sensor_dict = dict(result)
+
+            # Merge interface setting from sensor_configs into config
+            # This ensures UI saves and loads from the same place
+            cursor.execute('''
+                SELECT parameter_value#>>'{}'
+                FROM sensor_configs
+                WHERE sensor_id = %s
+                AND parameter_path = 'interface'
+                LIMIT 1
+            ''', (sensor_id,))
+
+            interface_result = cursor.fetchone()
+            if interface_result and interface_result[0]:
+                # Merge interface into sensor.config
+                if sensor_dict['config'] is None:
+                    sensor_dict['config'] = {}
+                sensor_dict['config']['interface'] = interface_result[0]
+
+            return sensor_dict
 
         except Exception as e:
             self.logger.error(f"Error getting sensor: {e}")
