@@ -38,9 +38,25 @@ def get_network_interfaces():
 
             # Detect PROMISC mode and up/down status
             is_up = stats.isup
-            # Note: psutil doesn't provide PROMISC flag directly, so we default to False
-            # You can detect it via scapy or /sys/class/net/<iface>/flags if needed
+
+            # Detect PROMISC mode by reading /sys/class/net/<iface>/flags
+            # PROMISC flag is bit 8 (0x100)
             is_promisc = False
+            try:
+                flags_file = f'/sys/class/net/{iface_name}/flags'
+                with open(flags_file, 'r') as f:
+                    flags = int(f.read().strip(), 16)
+                    is_promisc = bool(flags & 0x100)
+            except:
+                # Fallback: parse ip link show output
+                try:
+                    import subprocess
+                    result = subprocess.run(['ip', 'link', 'show', iface_name],
+                                          capture_output=True, text=True, timeout=2)
+                    if 'PROMISC' in result.stdout:
+                        is_promisc = True
+                except:
+                    pass
 
             interfaces.append({
                 'name': iface_name,
