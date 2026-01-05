@@ -1439,6 +1439,13 @@ class DatabaseManager:
 
             sensor_dict = dict(result)
 
+            # Parse config if it's a string (JSONB column)
+            if isinstance(sensor_dict.get('config'), str):
+                try:
+                    sensor_dict['config'] = json.loads(sensor_dict['config'])
+                except (json.JSONDecodeError, TypeError):
+                    sensor_dict['config'] = {}
+
             # Merge interface setting from sensor_configs into config
             # This ensures UI saves and loads from the same place
             cursor.execute('''
