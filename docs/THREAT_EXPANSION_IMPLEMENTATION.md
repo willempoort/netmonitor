@@ -190,6 +190,48 @@ CREATE INDEX idx_threat_feeds_indicator ON threat_feeds(indicator);
 
 ---
 
+## Infrastructure Progress
+
+### Completed ✅
+
+1. **Database Schema** - `threat_feeds` table created
+   - Supports multiple feed types (phishing, tor_exit, cryptomining, etc.)
+   - Indicators: IP, domain, URL, hash, CIDR, ASN
+   - Confidence scoring and expiration handling
+   - Unique constraint for upsert operations
+   - Indexes for fast lookups
+
+2. **Database Methods** - 6 methods added to DatabaseManager
+   - `add_threat_feed_indicator()` - Upsert individual indicators
+   - `get_threat_feed_indicators()` - Query with filters
+   - `check_threat_indicator()` - Exact match lookup
+   - `check_ip_in_threat_feeds()` - IP/CIDR matching
+   - `cleanup_expired_threat_feeds()` - Mark expired as inactive
+   - `bulk_import_threat_feed()` - Bulk import
+
+3. **Configuration Framework** - `config.yaml` extended
+   - `thresholds.advanced_threats` section added
+   - Phase 1 detections configured (6 types)
+   - Per-detection enable toggles
+   - Configurable thresholds and feed URLs
+   - Update intervals and cache TTL
+
+4. **Threat Feed Updater Service** - Automatic feed updates
+   - `ThreatFeedUpdater` class in `threat_feed_updater.py`
+   - Phishing feed (OpenPhish) integration
+   - Tor exit node feed integration
+   - Automatic expiration cleanup
+   - Integrated into netmonitor.py as background thread
+   - Configurable update intervals
+
+### In Progress 🚧
+
+5. **Detection Logic** - Add detection in packet processing
+6. **Web UI Integration** - Advanced Threat Detection settings page
+7. **MCP API Tools** - Configuration management endpoints
+
+---
+
 ## Testing Strategy
 
 For each threat type:
