@@ -230,6 +230,9 @@ function renderConfigByCategory(config) {
     }
     renderCategoryParams('thresholds', performanceThresholds, 'thresholds');
 
+    // Render Advanced Threat Detection
+    renderCategoryParams('advanced-threats', config.advanced_threats || {}, 'advanced_threats');
+
     // Render Alert Management
     renderCategoryParams('alerts-config', config.alerts || {}, 'alerts');
 
