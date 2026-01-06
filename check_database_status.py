@@ -25,14 +25,18 @@ except Exception as e:
 
 # Check database configuration
 db_config = config.get('database', {})
-db_enabled = db_config.get('enabled', False)
+db_type = db_config.get('type', None)
+
+# Database is enabled if type is set (postgresql or sqlite)
+db_enabled = db_type in ('postgresql', 'sqlite')
 
 print(f"\n📋 Database Configuration:")
+print(f"   Type: {db_type or 'Not configured'}")
 print(f"   Enabled: {db_enabled}")
 
 if not db_enabled:
     print()
-    print("⚠️  Database is DISABLED in config.yaml")
+    print("⚠️  Database is NOT CONFIGURED in config.yaml")
     print("   NetMonitor is running in standalone mode without database.")
     print()
     print("   This means:")
@@ -42,22 +46,44 @@ if not db_enabled:
     print()
     print("   To enable database:")
     print("   1. Edit config.yaml")
-    print("   2. Set database.enabled: true")
+    print("   2. Set database.type: postgresql")
     print("   3. Configure database connection settings")
     print("   4. Restart NetMonitor")
     sys.exit(0)
 
-print(f"   Host: {db_config.get('host', 'localhost')}")
-print(f"   Port: {db_config.get('port', 5432)}")
-print(f"   Database: {db_config.get('database', 'netmonitor')}")
-print(f"   User: {db_config.get('user', 'netmonitor')}")
+# Get connection settings based on database type
+if db_type == 'postgresql':
+    pg_config = db_config.get('postgresql', {})
+    print(f"   Host: {pg_config.get('host', 'localhost')}")
+    print(f"   Port: {pg_config.get('port', 5432)}")
+    print(f"   Database: {pg_config.get('database', 'netmonitor')}")
+    print(f"   User: {pg_config.get('user', 'netmonitor')}")
+elif db_type == 'sqlite':
+    sqlite_config = db_config.get('sqlite', {})
+    print(f"   Path: {sqlite_config.get('path', '/var/lib/netmonitor/netmonitor.db')}")
 
 # Try to connect
 print(f"\n🔌 Testing database connection...")
 
 try:
     from database import DatabaseManager
-    db = DatabaseManager(db_config)
+
+    # Initialize DatabaseManager with correct config structure
+    if db_type == 'postgresql':
+        pg_config = db_config.get('postgresql', {})
+        db = DatabaseManager(
+            host=pg_config.get('host', 'localhost'),
+            port=pg_config.get('port', 5432),
+            database=pg_config.get('database', 'netmonitor'),
+            user=pg_config.get('user', 'netmonitor'),
+            password=pg_config.get('password', 'netmonitor'),
+            min_connections=pg_config.get('min_connections', 2),
+            max_connections=pg_config.get('max_connections', 10)
+        )
+    else:
+        # SQLite fallback
+        sqlite_config = db_config.get('sqlite', {})
+        db = DatabaseManager(db_path=sqlite_config.get('path', '/var/lib/netmonitor/netmonitor.db'))
     print("✓ Database connection successful!")
 
     # Check schema
