@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Threat Detection - NetMonitor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">NetMonitor</a>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text me-3">{{ user['username'] }}</span>
+                <a class="btn btn-outline-light btn-sm" href="/logout">Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <div class="col-12">
+                <h2><i class="bi bi-shield-exclamation"></i> Advanced Threat Detection</h2>
+                <p class="text-muted">Manage threat intelligence feeds and detection settings</p>
+            </div>
+        </div>
+
+        <!-- Threat Feed Statistics -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0"><i class="bi bi-graph-up"></i> Threat Feed Statistics</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            {% for feed_type, data in feed_stats.items() %}
+                            <div class="col-md-3 mb-3">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h6 class="card-subtitle mb-2 text-muted">{{ feed_type }}</h6>
+                                        <h4 class="card-title">{{ data['count'] }}</h4>
+                                        <small class="text-muted">
+                                            {% if data['last_updated'] %}
+                                            Updated: {{ data['last_updated'][:10] }}
+                                            {% else %}
+                                            Never updated
+                                            {% endif %}
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <button id="updateFeedsBtn" class="btn btn-primary mt-3">
+                            <i class="bi bi-arrow-clockwise"></i> Update Threat Feeds Now
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Threat Detection Configuration -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0"><i class="bi bi-gear"></i> Detection Configuration</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Threat Type</th>
+                                    <th>Description</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Cryptomining</strong></td>
+                                    <td>Detect Stratum protocol on mining ports</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if threat_config.get('threat.cryptomining.enabled') else 'secondary' }}">
+                                            {{ 'Enabled' if threat_config.get('threat.cryptomining.enabled') else 'Disabled' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary toggle-threat" data-threat="cryptomining" data-enabled="{{ threat_config.get('threat.cryptomining.enabled', False)|lower }}">
+                                            <i class="bi bi-toggle-{{ 'on' if threat_config.get('threat.cryptomining.enabled') else 'off' }}"></i>
+                                            {{ 'Disable' if threat_config.get('threat.cryptomining.enabled') else 'Enable' }}
+                                        </button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Phishing</strong></td>
+                                    <td>Check DNS queries against phishing domain feeds</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if threat_config.get('threat.phishing.enabled') else 'secondary' }}">
+                                            {{ 'Enabled' if threat_config.get('threat.phishing.enabled') else 'Disabled' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary toggle-threat" data-threat="phishing" data-enabled="{{ threat_config.get('threat.phishing.enabled', False)|lower }}">
+                                            <i class="bi bi-toggle-{{ 'on' if threat_config.get('threat.phishing.enabled') else 'off' }}"></i>
+                                            {{ 'Disable' if threat_config.get('threat.phishing.enabled') else 'Enable' }}
+                                        </button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Tor Exit Nodes</strong></td>
+                                    <td>Detect connections to Tor network</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if threat_config.get('threat.tor.enabled') else 'secondary' }}">
+                                            {{ 'Enabled' if threat_config.get('threat.tor.enabled') else 'Disabled' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary toggle-threat" data-threat="tor" data-enabled="{{ threat_config.get('threat.tor.enabled', False)|lower }}">
+                                            <i class="bi bi-toggle-{{ 'on' if threat_config.get('threat.tor.enabled') else 'off' }}"></i>
+                                            {{ 'Disable' if threat_config.get('threat.tor.enabled') else 'Enable' }}
+                                        </button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Cloud Metadata</strong></td>
+                                    <td>Detect access to AWS/Azure/GCP metadata endpoints</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if threat_config.get('threat.cloud_metadata.enabled') else 'secondary' }}">
+                                            {{ 'Enabled' if threat_config.get('threat.cloud_metadata.enabled') else 'Disabled' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary toggle-threat" data-threat="cloud_metadata" data-enabled="{{ threat_config.get('threat.cloud_metadata.enabled', False)|lower }}">
+                                            <i class="bi bi-toggle-{{ 'on' if threat_config.get('threat.cloud_metadata.enabled') else 'off' }}"></i>
+                                            {{ 'Disable' if threat_config.get('threat.cloud_metadata.enabled') else 'Enable' }}
+                                        </button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>DNS Anomaly</strong></td>
+                                    <td>Detect suspicious DNS query rates</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if threat_config.get('threat.dns_anomaly.enabled') else 'secondary' }}">
+                                            {{ 'Enabled' if threat_config.get('threat.dns_anomaly.enabled') else 'Disabled' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary toggle-threat" data-threat="dns_anomaly" data-enabled="{{ threat_config.get('threat.dns_anomaly.enabled', False)|lower }}">
+                                            <i class="bi bi-toggle-{{ 'on' if threat_config.get('threat.dns_anomaly.enabled') else 'off' }}"></i>
+                                            {{ 'Disable' if threat_config.get('threat.dns_anomaly.enabled') else 'Enable' }}
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Toggle threat detection
+        document.querySelectorAll('.toggle-threat').forEach(btn => {
+            btn.addEventListener('click', async function() {
+                const threat = this.dataset.threat;
+                const currentEnabled = this.dataset.enabled === 'true';
+                const newEnabled = !currentEnabled;
+
+                try {
+                    const response = await fetch('/api/threat-detection/toggle', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            threat_type: threat,
+                            enabled: newEnabled
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    if (data.success) {
+                        location.reload();
+                    } else {
+                        alert('Error: ' + data.error);
+                    }
+                } catch (error) {
+                    alert('Error: ' + error);
+                }
+            });
+        });
+
+        // Update threat feeds
+        document.getElementById('updateFeedsBtn').addEventListener('click', async function() {
+            this.disabled = true;
+            this.innerHTML = '<i class="bi bi-arrow-clockwise spin"></i> Updating...';
+
+            try {
+                const response = await fetch('/api/threat-feeds/update', {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    alert('Threat feeds updated successfully: ' + JSON.stringify(data.results));
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error: ' + error);
+            } finally {
+                this.disabled = false;
+                this.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Update Threat Feeds Now';
+            }
+        });
+    </script>
+
+    <style>
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .spin {
+            animation: spin 1s linear infinite;
+        }
+    </style>
+</body>
+</html>
