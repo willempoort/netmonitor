@@ -3957,6 +3957,109 @@ class DatabaseManager:
 
             # Zigbee Attack detection
             'threat.zigbee_attack.enabled': False,
+
+            # ===== Phase 6: OT/ICS Protocol Security =====
+
+            # Modbus attack detection
+            'threat.modbus_attack.enabled': False,
+            'threat.modbus_attack.write_ops_threshold': 50,
+            'threat.modbus_attack.time_window': 60,
+
+            # DNP3 attack detection
+            'threat.dnp3_attack.enabled': False,
+            'threat.dnp3_attack.ops_threshold': 100,
+            'threat.dnp3_attack.time_window': 60,
+
+            # IEC-104 attack detection
+            'threat.iec104_attack.enabled': False,
+            'threat.iec104_attack.control_commands_threshold': 50,
+            'threat.iec104_attack.time_window': 60,
+
+            # BACnet abuse
+            'threat.bacnet_abuse.enabled': False,
+
+            # Profinet vulnerabilities
+            'threat.profinet_vuln.enabled': False,
+
+            # EtherNet/IP attacks
+            'threat.ethernetip_attack.enabled': False,
+
+            # ===== Phase 7: Container & Orchestration =====
+
+            # Docker escape attempts
+            'threat.docker_escape.enabled': False,
+            'threat.docker_escape.privileged_ops_threshold': 3,
+
+            # Kubernetes API exploits
+            'threat.k8s_exploit.enabled': False,
+            'threat.k8s_exploit.api_calls_threshold': 100,
+
+            # Container registry poisoning
+            'threat.container_registry_poison.enabled': False,
+
+            # Privileged container detection
+            'threat.privileged_container.enabled': False,
+
+            # ===== Phase 8: Advanced Evasion =====
+
+            # IP fragmentation attacks
+            'threat.fragmentation_attack.enabled': False,
+            'threat.fragmentation_attack.fragment_threshold': 100,
+            'threat.fragmentation_attack.overlapping_threshold': 10,
+
+            # Protocol tunneling
+            'threat.tunneling.enabled': False,
+            'threat.tunneling.packet_threshold': 50,
+            'threat.tunneling.time_window': 60,
+
+            # Polymorphic malware
+            'threat.polymorphic_malware.enabled': False,
+            'threat.polymorphic_malware.signature_variation_threshold': 20,
+
+            # Domain Generation Algorithm (DGA)
+            'threat.dga.enabled': False,
+            'threat.dga.subdomain_length_threshold': 12,
+
+            # ===== Phase 9: Completion Boost =====
+
+            # Lateral movement
+            'threat.lateral_movement.enabled': False,
+            'threat.lateral_movement.smb_targets_threshold': 5,
+            'threat.lateral_movement.rdp_attempts_threshold': 3,
+            'threat.lateral_movement.time_window': 300,
+
+            # Data exfiltration
+            'threat.data_exfiltration.enabled': False,
+            'threat.data_exfiltration.megabytes_threshold': 100,
+            'threat.data_exfiltration.destinations_threshold': 20,
+            'threat.data_exfiltration.time_window': 60,
+
+            # Privilege escalation
+            'threat.privilege_escalation.enabled': False,
+            'threat.privilege_escalation.attempts_threshold': 5,
+
+            # Persistence mechanisms
+            'threat.persistence.enabled': False,
+            'threat.persistence.mechanisms_threshold': 3,
+
+            # Credential dumping
+            'threat.credential_dumping.enabled': False,
+            'threat.credential_dumping.indicators_threshold': 2,
+
+            # Living-off-the-land (LOLBins)
+            'threat.lolbins.enabled': False,
+
+            # Memory injection
+            'threat.memory_injection.enabled': False,
+
+            # Process hollowing
+            'threat.process_hollowing.enabled': False,
+
+            # Registry manipulation
+            'threat.registry_manipulation.enabled': False,
+
+            # Scheduled task abuse
+            'threat.scheduled_task_abuse.enabled': False,
         }
 
         count = 0

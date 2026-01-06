@@ -451,6 +451,165 @@ BEST_PRACTICE_CONFIG = {
         # Zigbee Attack detection
         "zigbee_attack": {
             "enabled": False
+        },
+
+        # ===== Phase 6: OT/ICS Protocol Security =====
+
+        # Modbus Attack detection
+        "modbus_attack": {
+            "enabled": False,
+            "write_ops_threshold": 50,
+            "time_window": 60
+        },
+
+        # DNP3 Attack detection
+        "dnp3_attack": {
+            "enabled": False,
+            "ops_threshold": 100,
+            "time_window": 60
+        },
+
+        # IEC-104 Attack detection
+        "iec104_attack": {
+            "enabled": False,
+            "control_commands_threshold": 50,
+            "time_window": 60
+        },
+
+        # BACnet Attack detection
+        "bacnet_attack": {
+            "enabled": False
+        },
+
+        # Profinet Attack detection
+        "profinet_attack": {
+            "enabled": False
+        },
+
+        # EtherNet/IP Attack detection
+        "ethernetip_attack": {
+            "enabled": False
+        },
+
+        # ===== Phase 7: Container & Orchestration =====
+
+        # Docker Container Escape detection
+        "docker_escape": {
+            "enabled": False,
+            "privileged_ops_threshold": 3,
+            "time_window": 300
+        },
+
+        # Kubernetes Exploitation detection
+        "k8s_exploit": {
+            "enabled": False,
+            "api_calls_threshold": 100,
+            "time_window": 300
+        },
+
+        # Container Registry Poisoning detection
+        "container_registry_poisoning": {
+            "enabled": False
+        },
+
+        # Privileged Container detection
+        "privileged_container": {
+            "enabled": False
+        },
+
+        # ===== Phase 8: Advanced Evasion =====
+
+        # IP Fragmentation Attack detection
+        "fragmentation_attack": {
+            "enabled": False,
+            "fragment_threshold": 100,
+            "overlapping_threshold": 10,
+            "time_window": 60
+        },
+
+        # Protocol Tunneling detection
+        "tunneling": {
+            "enabled": False,
+            "packet_threshold": 50,
+            "time_window": 60
+        },
+
+        # Polymorphic Malware detection
+        "polymorphic_malware": {
+            "enabled": False,
+            "signature_variation_threshold": 20,
+            "time_window": 1800
+        },
+
+        # Domain Generation Algorithm (DGA) detection
+        "dga": {
+            "enabled": False,
+            "subdomain_length_threshold": 12,
+            "random_pattern_threshold": 5
+        },
+
+        # ===== Phase 9: Completion Boost =====
+
+        # Lateral Movement detection
+        "lateral_movement": {
+            "enabled": False,
+            "smb_targets_threshold": 5,
+            "rdp_attempts_threshold": 3,
+            "time_window": 300
+        },
+
+        # Data Exfiltration detection
+        "data_exfiltration": {
+            "enabled": False,
+            "megabytes_threshold": 100,
+            "destinations_threshold": 20,
+            "time_window": 60
+        },
+
+        # Privilege Escalation detection
+        "privilege_escalation": {
+            "enabled": False,
+            "attempts_threshold": 5,
+            "time_window": 300
+        },
+
+        # Persistence Mechanism detection
+        "persistence": {
+            "enabled": False,
+            "mechanisms_threshold": 3,
+            "time_window": 300
+        },
+
+        # Credential Dumping detection
+        "credential_dumping": {
+            "enabled": False,
+            "indicators_threshold": 2,
+            "time_window": 300
+        },
+
+        # Living-off-the-Land Binaries (LOLBins) detection
+        "lolbins": {
+            "enabled": False
+        },
+
+        # Memory Injection detection
+        "memory_injection": {
+            "enabled": False
+        },
+
+        # Process Hollowing detection
+        "process_hollowing": {
+            "enabled": False
+        },
+
+        # Registry Manipulation detection
+        "registry_manipulation": {
+            "enabled": False
+        },
+
+        # Scheduled Task Abuse detection
+        "scheduled_task_abuse": {
+            "enabled": False
         }
     },
 
@@ -854,6 +1013,117 @@ PARAMETER_DESCRIPTIONS = {
     # Zigbee Attack
     "threat.zigbee_attack.enabled": "Enable Zigbee attack detection",
 
+    # ===== Phase 6: OT/ICS Protocol Security =====
+
+    # Modbus Attack
+    "threat.modbus_attack.enabled": "Enable Modbus protocol attack detection",
+    "threat.modbus_attack.write_ops_threshold": "Write operations threshold per time window",
+    "threat.modbus_attack.time_window": "Time window (seconds) for Modbus attack detection",
+
+    # DNP3 Attack
+    "threat.dnp3_attack.enabled": "Enable DNP3 protocol attack detection",
+    "threat.dnp3_attack.ops_threshold": "DNP3 operations threshold per time window",
+    "threat.dnp3_attack.time_window": "Time window (seconds) for DNP3 attack detection",
+
+    # IEC-104 Attack
+    "threat.iec104_attack.enabled": "Enable IEC-104 protocol attack detection",
+    "threat.iec104_attack.control_commands_threshold": "Control command threshold per time window",
+    "threat.iec104_attack.time_window": "Time window (seconds) for IEC-104 attack detection",
+
+    # BACnet Attack
+    "threat.bacnet_attack.enabled": "Enable BACnet protocol attack detection",
+
+    # Profinet Attack
+    "threat.profinet_attack.enabled": "Enable Profinet protocol attack detection",
+
+    # EtherNet/IP Attack
+    "threat.ethernetip_attack.enabled": "Enable EtherNet/IP protocol attack detection",
+
+    # ===== Phase 7: Container & Orchestration =====
+
+    # Docker Container Escape
+    "threat.docker_escape.enabled": "Enable Docker container escape detection",
+    "threat.docker_escape.privileged_ops_threshold": "Privileged operations threshold",
+    "threat.docker_escape.time_window": "Time window (seconds) for Docker escape detection",
+
+    # Kubernetes Exploitation
+    "threat.k8s_exploit.enabled": "Enable Kubernetes API exploitation detection",
+    "threat.k8s_exploit.api_calls_threshold": "K8s API calls threshold per time window",
+    "threat.k8s_exploit.time_window": "Time window (seconds) for K8s exploit detection",
+
+    # Container Registry Poisoning
+    "threat.container_registry_poisoning.enabled": "Enable container registry poisoning detection",
+
+    # Privileged Container
+    "threat.privileged_container.enabled": "Enable privileged container detection",
+
+    # ===== Phase 8: Advanced Evasion =====
+
+    # IP Fragmentation Attack
+    "threat.fragmentation_attack.enabled": "Enable IP fragmentation attack detection",
+    "threat.fragmentation_attack.fragment_threshold": "Fragment count threshold",
+    "threat.fragmentation_attack.overlapping_threshold": "Overlapping fragments threshold",
+    "threat.fragmentation_attack.time_window": "Time window (seconds) for fragmentation detection",
+
+    # Protocol Tunneling
+    "threat.tunneling.enabled": "Enable protocol tunneling detection (DNS/ICMP)",
+    "threat.tunneling.packet_threshold": "Tunneling packets threshold per time window",
+    "threat.tunneling.time_window": "Time window (seconds) for tunneling detection",
+
+    # Polymorphic Malware
+    "threat.polymorphic_malware.enabled": "Enable polymorphic malware detection",
+    "threat.polymorphic_malware.signature_variation_threshold": "Signature variation threshold",
+    "threat.polymorphic_malware.time_window": "Time window (seconds) for malware detection",
+
+    # Domain Generation Algorithm (DGA)
+    "threat.dga.enabled": "Enable DGA (Domain Generation Algorithm) detection",
+    "threat.dga.subdomain_length_threshold": "Minimum subdomain length for DGA detection",
+    "threat.dga.random_pattern_threshold": "Random DNS query count threshold",
+
+    # ===== Phase 9: Completion Boost =====
+
+    # Lateral Movement
+    "threat.lateral_movement.enabled": "Enable lateral movement detection (SMB/RDP/PSExec)",
+    "threat.lateral_movement.smb_targets_threshold": "Unique SMB targets threshold",
+    "threat.lateral_movement.rdp_attempts_threshold": "RDP connection attempts threshold",
+    "threat.lateral_movement.time_window": "Time window (seconds) for lateral movement detection",
+
+    # Data Exfiltration
+    "threat.data_exfiltration.enabled": "Enable data exfiltration detection",
+    "threat.data_exfiltration.megabytes_threshold": "Outbound data threshold (MB)",
+    "threat.data_exfiltration.destinations_threshold": "External destinations threshold",
+    "threat.data_exfiltration.time_window": "Time window (seconds) for exfiltration detection",
+
+    # Privilege Escalation
+    "threat.privilege_escalation.enabled": "Enable privilege escalation detection",
+    "threat.privilege_escalation.attempts_threshold": "Privilege escalation attempts threshold",
+    "threat.privilege_escalation.time_window": "Time window (seconds) for escalation detection",
+
+    # Persistence Mechanism
+    "threat.persistence.enabled": "Enable persistence mechanism detection",
+    "threat.persistence.mechanisms_threshold": "Persistence indicators threshold",
+    "threat.persistence.time_window": "Time window (seconds) for persistence detection",
+
+    # Credential Dumping
+    "threat.credential_dumping.enabled": "Enable credential dumping detection (Mimikatz, LSASS)",
+    "threat.credential_dumping.indicators_threshold": "Credential dumping indicators threshold",
+    "threat.credential_dumping.time_window": "Time window (seconds) for dumping detection",
+
+    # Living-off-the-Land Binaries (LOLBins)
+    "threat.lolbins.enabled": "Enable LOLBins detection (PowerShell/WMI abuse)",
+
+    # Memory Injection
+    "threat.memory_injection.enabled": "Enable memory injection detection",
+
+    # Process Hollowing
+    "threat.process_hollowing.enabled": "Enable process hollowing detection",
+
+    # Registry Manipulation
+    "threat.registry_manipulation.enabled": "Enable registry manipulation detection",
+
+    # Scheduled Task Abuse
+    "threat.scheduled_task_abuse.enabled": "Enable scheduled task abuse detection",
+
     # PCAP Export (NIS2 Forensics)
     "thresholds.pcap_export.enabled": "Enable PCAP forensic capture",
     "thresholds.pcap_export.output_dir": "Directory for PCAP file storage",
@@ -961,7 +1231,35 @@ PARAMETER_CATEGORIES = {
         "threat.insecure_rtsp",
         "threat.coap_abuse",
         "threat.zwave_attack",
-        "threat.zigbee_attack"
+        "threat.zigbee_attack",
+        # Phase 6: OT/ICS Protocol Security
+        "threat.modbus_attack",
+        "threat.dnp3_attack",
+        "threat.iec104_attack",
+        "threat.bacnet_attack",
+        "threat.profinet_attack",
+        "threat.ethernetip_attack",
+        # Phase 7: Container & Orchestration
+        "threat.docker_escape",
+        "threat.k8s_exploit",
+        "threat.container_registry_poisoning",
+        "threat.privileged_container",
+        # Phase 8: Advanced Evasion
+        "threat.fragmentation_attack",
+        "threat.tunneling",
+        "threat.polymorphic_malware",
+        "threat.dga",
+        # Phase 9: Completion Boost
+        "threat.lateral_movement",
+        "threat.data_exfiltration",
+        "threat.privilege_escalation",
+        "threat.persistence",
+        "threat.credential_dumping",
+        "threat.lolbins",
+        "threat.memory_injection",
+        "threat.process_hollowing",
+        "threat.registry_manipulation",
+        "threat.scheduled_task_abuse"
     ],
     "SOAR (Automated Response)": [
         "soar.enabled",

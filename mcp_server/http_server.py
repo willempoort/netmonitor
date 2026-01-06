@@ -1071,12 +1071,46 @@ class MCPHTTPServer:
             },
             {
                 "name": "get_threat_detections",
-                "description": "Get recent advanced threat detections (cryptomining, phishing, Tor, cloud metadata, DNS anomaly)",
+                "description": "Get recent threat detections (60+ threat types across 9 phases: Web App Security, DDoS, Ransomware, IoT, OT/ICS, Container, Evasion, Kill Chain)",
                 "input_schema": {
                     "type": "object",
                     "properties": {
                         "hours": {"type": "number", "default": 24},
-                        "threat_type": {"type": "string", "enum": ["CRYPTOMINING_DETECTED", "PHISHING_DOMAIN_QUERY", "TOR_EXIT_NODE_CONNECTION", "CLOUD_METADATA_ACCESS", "DNS_ANOMALY"]},
+                        "threat_type": {
+                            "type": "string",
+                            "enum": [
+                                # Phase 1: Core Advanced Threats
+                                "CRYPTOMINING_DETECTED", "PHISHING_DOMAIN_QUERY", "TOR_EXIT_NODE_CONNECTION",
+                                "CLOUD_METADATA_ACCESS", "DNS_ANOMALY", "DNS_DGA_DETECTED",
+                                # Phase 2: Web Application Security
+                                "SQL_INJECTION_ATTEMPT", "XSS_ATTEMPT", "COMMAND_INJECTION_ATTEMPT",
+                                "PATH_TRAVERSAL_ATTEMPT", "XXE_ATTEMPT", "SSRF_ATTEMPT",
+                                "WEBSHELL_DETECTED", "API_ABUSE_RATE_LIMIT", "API_ABUSE_ENDPOINT",
+                                # Phase 3: DDoS & Resource Exhaustion
+                                "SYN_FLOOD_ATTACK", "UDP_FLOOD_ATTACK", "HTTP_FLOOD_ATTACK",
+                                "SLOWLORIS_ATTACK", "DNS_AMPLIFICATION_ATTACK", "CONNECTION_EXHAUSTION",
+                                "BANDWIDTH_SATURATION",
+                                # Phase 4: Ransomware Indicators
+                                "RANSOMWARE_MASS_ENCRYPTION", "RANSOMWARE_CRYPTO_EXTENSION",
+                                "RANSOMWARE_RANSOM_NOTE", "RANSOMWARE_SHADOW_COPY_DELETION",
+                                "RANSOMWARE_BACKUP_DELETION",
+                                # Phase 5: IoT & Smart Device Security
+                                "IOT_BOTNET_ACTIVITY", "UPNP_EXPLOIT_ATTEMPT", "MQTT_ABUSE",
+                                # Phase 6: OT/ICS Protocol Security
+                                "MODBUS_ATTACK", "DNP3_ATTACK", "IEC104_ATTACK",
+                                # Phase 7: Container & Orchestration
+                                "DOCKER_ESCAPE_ATTEMPT", "K8S_API_EXPLOIT",
+                                # Phase 8: Advanced Evasion
+                                "FRAGMENTATION_ATTACK", "PROTOCOL_TUNNELING", "POLYMORPHIC_MALWARE", "DGA_DETECTED",
+                                # Phase 9: Completion Boost
+                                "LATERAL_MOVEMENT", "DATA_EXFILTRATION", "PRIVILEGE_ESCALATION",
+                                "PERSISTENCE_MECHANISM", "CREDENTIAL_DUMPING",
+                                # Other common detections
+                                "PORT_SCAN", "BRUTE_FORCE_ATTEMPT", "C2_COMMUNICATION",
+                                "DNS_TUNNEL_SUSPICIOUS_LENGTH", "DNS_TUNNEL_HIGH_RATE",
+                                "ICMP_TUNNEL_HIGH_RATE", "HTTP_EXCESSIVE_POSTS"
+                            ]
+                        },
                         "limit": {"type": "number", "default": 50}
                     }
                 },
@@ -1095,11 +1129,34 @@ class MCPHTTPServer:
             },
             {
                 "name": "enable_threat_detection",
-                "description": "Enable or disable a specific threat detection type",
+                "description": "Enable or disable a specific threat detection type (60 total threat types across 9 phases)",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "threat_type": {"type": "string", "enum": ["cryptomining", "phishing", "tor", "vpn", "cloud_metadata", "dns_anomaly"]},
+                        "threat_type": {
+                            "type": "string",
+                            "enum": [
+                                # Phase 1: Core Advanced Threats
+                                "cryptomining", "phishing", "tor", "vpn", "cloud_metadata", "dns_anomaly",
+                                # Phase 2: Web Application Security
+                                "sql_injection", "xss", "command_injection", "path_traversal", "xxe", "ssrf", "webshell", "api_abuse",
+                                # Phase 3: DDoS & Resource Exhaustion
+                                "syn_flood", "udp_flood", "http_flood", "slowloris", "dns_amplification", "ntp_amplification", "connection_exhaustion", "bandwidth_saturation",
+                                # Phase 4: Ransomware Indicators
+                                "ransomware_smb", "ransomware_crypto_ext", "ransomware_ransom_note", "ransomware_shadow_copy", "ransomware_backup_deletion",
+                                # Phase 5: IoT & Smart Device Security
+                                "iot_botnet", "upnp_exploit", "mqtt_abuse", "smart_home_abuse", "insecure_rtsp", "coap_abuse", "zwave_attack", "zigbee_attack",
+                                # Phase 6: OT/ICS Protocol Security
+                                "modbus_attack", "dnp3_attack", "iec104_attack", "bacnet_attack", "profinet_attack", "ethernetip_attack",
+                                # Phase 7: Container & Orchestration
+                                "docker_escape", "k8s_exploit", "container_registry_poisoning", "privileged_container",
+                                # Phase 8: Advanced Evasion
+                                "fragmentation_attack", "tunneling", "polymorphic_malware", "dga",
+                                # Phase 9: Completion Boost
+                                "lateral_movement", "data_exfiltration", "privilege_escalation", "persistence", "credential_dumping",
+                                "lolbins", "memory_injection", "process_hollowing", "registry_manipulation", "scheduled_task_abuse"
+                            ]
+                        },
                         "enabled": {"type": "boolean"},
                         "sensor_id": {"type": "string", "description": "Optional sensor ID for sensor-specific config"}
                     },

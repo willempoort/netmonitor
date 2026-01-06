@@ -1643,6 +1643,84 @@ class ThreatDetector:
         if threat:
             threats.append(threat)
 
+        # ===== Phase 6: OT/ICS Protocol Security =====
+
+        # Modbus attack detection
+        threat = self._detect_modbus_attack(packet, src_ip, dst_ip)
+        if threat:
+            threats.append(threat)
+
+        # DNP3 attack detection
+        threat = self._detect_dnp3_attack(packet, src_ip, dst_ip)
+        if threat:
+            threats.append(threat)
+
+        # IEC-104 attack detection
+        threat = self._detect_iec104_attack(packet, src_ip, dst_ip)
+        if threat:
+            threats.append(threat)
+
+        # ===== Phase 7: Container & Orchestration =====
+
+        # Docker escape detection
+        threat = self._detect_docker_escape(packet, src_ip)
+        if threat:
+            threats.append(threat)
+
+        # Kubernetes API exploit detection
+        threat = self._detect_k8s_exploit(packet, src_ip, dst_ip)
+        if threat:
+            threats.append(threat)
+
+        # ===== Phase 8: Advanced Evasion =====
+
+        # IP fragmentation attack detection
+        threat = self._detect_fragmentation_attack(packet, src_ip)
+        if threat:
+            threats.append(threat)
+
+        # Protocol tunneling detection
+        threat = self._detect_tunneling(packet, src_ip)
+        if threat:
+            threats.append(threat)
+
+        # Polymorphic malware detection
+        threat = self._detect_polymorphic_malware(packet, src_ip)
+        if threat:
+            threats.append(threat)
+
+        # DGA detection
+        threat = self._detect_dga(packet, src_ip)
+        if threat:
+            threats.append(threat)
+
+        # ===== Phase 9: Completion Boost =====
+
+        # Lateral movement detection
+        threat = self._detect_lateral_movement(packet, src_ip, dst_ip)
+        if threat:
+            threats.append(threat)
+
+        # Data exfiltration detection
+        threat = self._detect_data_exfiltration(packet, src_ip, dst_ip)
+        if threat:
+            threats.append(threat)
+
+        # Privilege escalation detection
+        threat = self._detect_privilege_escalation(packet, src_ip)
+        if threat:
+            threats.append(threat)
+
+        # Persistence mechanism detection
+        threat = self._detect_persistence(packet, src_ip)
+        if threat:
+            threats.append(threat)
+
+        # Credential dumping detection
+        threat = self._detect_credential_dumping(packet, src_ip)
+        if threat:
+            threats.append(threat)
+
         return threats
 
     def _detect_cryptomining(self, packet, src_ip, dst_ip):
@@ -3034,8 +3112,607 @@ class ThreatDetector:
 
         return None
 
-    # Remaining Phase 5-9 detection methods would go here (shortened for brevity)
-    # In production, implement all 45+ methods following the same pattern
+    # ==================== Phase 6: OT/ICS Protocol Security ====================
+
+    def _detect_modbus_attack(self, packet, src_ip, dst_ip):
+        """Detect Modbus protocol attacks"""
+        if not packet.haslayer(TCP):
+            return None
+
+        tcp_layer = packet[TCP]
+        if tcp_layer.dport != 502:  # Modbus port
+            return None
+
+        tracker = self.modbus_tracker[src_ip]
+        current_time = time.time()
+
+        if tracker['window_start'] is None:
+            tracker['window_start'] = current_time
+
+        # Simplified Modbus detection (would need full Modbus parser)
+        if packet.haslayer(Raw):
+            payload = packet[Raw].load
+            if len(payload) >= 8:
+                # Modbus function codes (simplified)
+                function_code = payload[7] if len(payload) > 7 else 0
+                tracker['function_codes'][function_code] += 1
+
+                # Write operations (function codes 5, 6, 15, 16)
+                if function_code in [5, 6, 15, 16]:
+                    tracker['write_operations'] += 1
+
+        # Alert on excessive write operations
+        time_window = 60
+        if (current_time - tracker['window_start']) >= time_window:
+            if tracker['write_operations'] > 50:
+                return {
+                    'type': 'MODBUS_ATTACK',
+                    'severity': 'CRITICAL',
+                    'source_ip': src_ip,
+                    'destination_ip': dst_ip,
+                    'description': f'Modbus write attack: {tracker["write_operations"]} write operations',
+                    'metadata': {
+                        'write_operations': tracker['write_operations'],
+                        'function_codes': dict(tracker['function_codes'])
+                    }
+                }
+
+        return None
+
+    def _detect_dnp3_attack(self, packet, src_ip, dst_ip):
+        """Detect DNP3 protocol attacks (SCADA)"""
+        if not packet.haslayer(TCP):
+            return None
+
+        tcp_layer = packet[TCP]
+        if tcp_layer.dport != 20000:  # DNP3 port
+            return None
+
+        tracker = self.dnp3_tracker[src_ip]
+        current_time = time.time()
+
+        if tracker['window_start'] is None:
+            tracker['window_start'] = current_time
+
+        # Simplified DNP3 detection
+        if packet.haslayer(Raw):
+            tracker['suspicious_operations'] += 1
+
+        # Alert on excessive DNP3 traffic
+        time_window = 60
+        if (current_time - tracker['window_start']) >= time_window:
+            if tracker['suspicious_operations'] > 100:
+                return {
+                    'type': 'DNP3_ATTACK',
+                    'severity': 'CRITICAL',
+                    'source_ip': src_ip,
+                    'destination_ip': dst_ip,
+                    'description': f'DNP3 SCADA attack: {tracker["suspicious_operations"]} operations',
+                    'metadata': {
+                        'operations': tracker['suspicious_operations']
+                    }
+                }
+
+        return None
+
+    def _detect_iec104_attack(self, packet, src_ip, dst_ip):
+        """Detect IEC-104 protocol attacks"""
+        if not packet.haslayer(TCP):
+            return None
+
+        tcp_layer = packet[TCP]
+        if tcp_layer.dport != 2404:  # IEC-104 port
+            return None
+
+        tracker = self.iec104_tracker[src_ip]
+        current_time = time.time()
+
+        if tracker['window_start'] is None:
+            tracker['window_start'] = current_time
+
+        tracker['control_commands'] += 1
+
+        # Alert on control commands
+        time_window = 60
+        if (current_time - tracker['window_start']) >= time_window:
+            if tracker['control_commands'] > 50:
+                return {
+                    'type': 'IEC104_ATTACK',
+                    'severity': 'CRITICAL',
+                    'source_ip': src_ip,
+                    'destination_ip': dst_ip,
+                    'description': f'IEC-104 control attack: {tracker["control_commands"]} commands',
+                    'metadata': {
+                        'commands': tracker['control_commands']
+                    }
+                }
+
+        return None
+
+    # ==================== Phase 7: Container & Orchestration ====================
+
+    def _detect_docker_escape(self, packet, src_ip):
+        """Detect Docker container escape attempts"""
+        if not packet.haslayer(Raw):
+            return None
+
+        try:
+            payload = packet[Raw].load.decode('utf-8', errors='ignore').lower()
+
+            # Docker escape indicators
+            escape_patterns = [
+                '/var/run/docker.sock',  # Docker socket access
+                '--privileged',  # Privileged flag
+                'cap-add=sys_admin',  # Dangerous capabilities
+                '/proc/self/exe',  # Process namespace escape
+                'nsenter',  # Namespace manipulation
+                'unshare',  # Namespace unsharing
+            ]
+
+            for pattern in escape_patterns:
+                if pattern in payload:
+                    tracker = self.docker_escape_tracker[src_ip]
+                    current_time = time.time()
+
+                    if tracker['first_seen'] is None:
+                        tracker['first_seen'] = current_time
+
+                    tracker['privileged_operations'] += 1
+
+                    if tracker['privileged_operations'] > 3:
+                        return {
+                            'type': 'DOCKER_ESCAPE_ATTEMPT',
+                            'severity': 'CRITICAL',
+                            'source_ip': src_ip,
+                            'description': f'Docker container escape attempt: {pattern}',
+                            'metadata': {
+                                'pattern': pattern,
+                                'attempts': tracker['privileged_operations']
+                            }
+                        }
+
+        except:
+            pass
+
+        return None
+
+    def _detect_k8s_exploit(self, packet, src_ip, dst_ip):
+        """Detect Kubernetes API exploitation"""
+        if not packet.haslayer(HTTPRequest):
+            return None
+
+        try:
+            http_layer = packet[HTTPRequest]
+            path = http_layer.Path.decode('utf-8', errors='ignore') if http_layer.Path else ''
+
+            # Kubernetes API patterns
+            k8s_patterns = [
+                '/api/v1/namespaces',
+                '/api/v1/pods',
+                '/api/v1/secrets',
+                '/api/v1/serviceaccounts',
+                '/apis/rbac.authorization.k8s.io',
+            ]
+
+            for pattern in k8s_patterns:
+                if pattern in path:
+                    tracker = self.k8s_exploit_tracker[src_ip]
+                    current_time = time.time()
+
+                    if tracker['window_start'] is None:
+                        tracker['window_start'] = current_time
+
+                    tracker['api_calls'][pattern] += 1
+                    tracker['suspicious_endpoints'].add(path[:100])
+
+                    # Alert on excessive API calls
+                    total_calls = sum(tracker['api_calls'].values())
+                    if total_calls > 100:
+                        return {
+                            'type': 'K8S_API_EXPLOIT',
+                            'severity': 'HIGH',
+                            'source_ip': src_ip,
+                            'destination_ip': dst_ip,
+                            'description': f'Kubernetes API exploitation: {total_calls} API calls',
+                            'metadata': {
+                                'total_calls': total_calls,
+                                'endpoints': list(tracker['suspicious_endpoints'])[:5]
+                            }
+                        }
+
+        except:
+            pass
+
+        return None
+
+    # ==================== Phase 8: Advanced Evasion ====================
+
+    def _detect_fragmentation_attack(self, packet, src_ip):
+        """Detect IP fragmentation attacks"""
+        if not packet.haslayer(IP):
+            return None
+
+        ip_layer = packet[IP]
+        tracker = self.fragmentation_tracker[src_ip]
+        current_time = time.time()
+
+        if tracker['window_start'] is None:
+            tracker['window_start'] = current_time
+
+        # Check for fragmentation
+        if ip_layer.flags & 0x1 or ip_layer.frag > 0:  # More fragments or fragment offset
+            tracker['fragments'].append(current_time)
+
+            # Check for overlapping fragments (evasion technique)
+            if ip_layer.frag > 0 and len(tracker['fragments']) > 1:
+                tracker['overlapping_count'] += 1
+
+        # Alert on excessive fragmentation
+        time_window = 60
+        if (current_time - tracker['window_start']) >= time_window:
+            frag_count = len(tracker['fragments'])
+            if frag_count > 100 or tracker['overlapping_count'] > 10:
+                return {
+                    'type': 'FRAGMENTATION_ATTACK',
+                    'severity': 'HIGH',
+                    'source_ip': src_ip,
+                    'description': f'IP fragmentation evasion: {frag_count} fragments',
+                    'metadata': {
+                        'fragment_count': frag_count,
+                        'overlapping': tracker['overlapping_count']
+                    }
+                }
+
+        return None
+
+    def _detect_tunneling(self, packet, src_ip):
+        """Detect protocol tunneling (DNS, ICMP, etc.)"""
+        tracker = self.tunneling_tracker[src_ip]
+        current_time = time.time()
+
+        if tracker['window_start'] is None:
+            tracker['window_start'] = current_time
+
+        # DNS tunneling detection
+        if packet.haslayer(DNS):
+            dns_layer = packet[DNS]
+            if dns_layer.qr == 0 and dns_layer.qd:  # Query
+                domain = dns_layer.qd.qname.decode('utf-8', errors='ignore')
+                # Long subdomains indicate tunneling
+                if len(domain) > 50 or domain.count('.') > 5:
+                    tracker['protocols'].add('DNS')
+                    tracker['payload_size'] += len(domain)
+                    tracker['packet_count'] += 1
+
+        # ICMP tunneling detection
+        if packet.haslayer(ICMP):
+            if packet.haslayer(Raw):
+                payload_size = len(packet[Raw].load)
+                if payload_size > 64:  # Unusually large ICMP payload
+                    tracker['protocols'].add('ICMP')
+                    tracker['payload_size'] += payload_size
+                    tracker['packet_count'] += 1
+
+        # Alert on tunneling patterns
+        time_window = 60
+        if (current_time - tracker['window_start']) >= time_window:
+            if len(tracker['protocols']) > 0 and tracker['packet_count'] > 50:
+                return {
+                    'type': 'PROTOCOL_TUNNELING',
+                    'severity': 'HIGH',
+                    'source_ip': src_ip,
+                    'description': f'Protocol tunneling detected via {list(tracker["protocols"])}',
+                    'metadata': {
+                        'protocols': list(tracker['protocols']),
+                        'packets': tracker['packet_count'],
+                        'total_payload': tracker['payload_size']
+                    }
+                }
+
+        return None
+
+    def _detect_polymorphic_malware(self, packet, src_ip):
+        """Detect polymorphic malware patterns"""
+        if not packet.haslayer(Raw):
+            return None
+
+        tracker = self.polymorphic_tracker[src_ip]
+        current_time = time.time()
+
+        if tracker['first_seen'] is None:
+            tracker['first_seen'] = current_time
+
+        try:
+            payload = packet[Raw].load
+
+            # Simple signature based on payload hash (simplified)
+            import hashlib
+            payload_hash = hashlib.md5(payload[:32]).hexdigest()[:8] if len(payload) >= 32 else None
+
+            if payload_hash:
+                tracker['signatures'].add(payload_hash)
+                tracker['pattern_changes'] = len(tracker['signatures'])
+
+                # Alert if many different signatures from same source
+                if tracker['pattern_changes'] > 20:
+                    return {
+                        'type': 'POLYMORPHIC_MALWARE',
+                        'severity': 'CRITICAL',
+                        'source_ip': src_ip,
+                        'description': f'Polymorphic malware: {tracker["pattern_changes"]} signature variations',
+                        'metadata': {
+                            'signature_count': tracker['pattern_changes']
+                        }
+                    }
+
+        except:
+            pass
+
+        return None
+
+    def _detect_dga(self, packet, src_ip):
+        """Detect Domain Generation Algorithm (DGA) patterns"""
+        if not packet.haslayer(DNS):
+            return None
+
+        dns_layer = packet[DNS]
+        if dns_layer.qr != 0 or not dns_layer.qd:  # Only queries
+            return None
+
+        try:
+            domain = dns_layer.qd.qname.decode('utf-8', errors='ignore').rstrip('.')
+            domain_parts = domain.split('.')
+
+            if len(domain_parts) < 2:
+                return None
+
+            subdomain = domain_parts[0]
+
+            # DGA characteristics
+            is_suspicious = (
+                len(subdomain) > 12 and  # Long subdomain
+                sum(c.isdigit() for c in subdomain) > len(subdomain) * 0.3 and  # Many digits
+                not any(word in subdomain for word in ['www', 'mail', 'smtp', 'ftp', 'api'])  # Not common
+            )
+
+            if is_suspicious:
+                return {
+                    'type': 'DGA_DETECTED',
+                    'severity': 'HIGH',
+                    'source_ip': src_ip,
+                    'description': f'Domain Generation Algorithm detected: {domain}',
+                    'metadata': {
+                        'domain': domain,
+                        'subdomain_length': len(subdomain)
+                    }
+                }
+
+        except:
+            pass
+
+        return None
+
+    # ==================== Phase 9: Completion Boost ====================
+
+    def _detect_lateral_movement(self, packet, src_ip, dst_ip):
+        """Detect lateral movement (SMB, RDP, PSExec)"""
+        tracker = self.lateral_movement_tracker[src_ip]
+        current_time = time.time()
+
+        if tracker['window_start'] is None:
+            tracker['window_start'] = current_time
+
+        if packet.haslayer(TCP):
+            tcp_layer = packet[TCP]
+            dst_port = tcp_layer.dport
+
+            # SMB connections (port 445)
+            if dst_port == 445:
+                tracker['smb_connections'].add(dst_ip)
+
+            # RDP connections (port 3389)
+            if dst_port == 3389:
+                tracker['rdp_attempts'] += 1
+
+            # Check for PSExec patterns in payload
+            if packet.haslayer(Raw):
+                payload = packet[Raw].load.decode('utf-8', errors='ignore').lower()
+                if 'psexec' in payload or 'paexec' in payload or '\\\\pipe\\' in payload:
+                    tracker['psexec_patterns'] += 1
+
+        # Alert on lateral movement patterns
+        time_window = 300  # 5 minutes
+        if (current_time - tracker['window_start']) >= time_window:
+            smb_count = len(tracker['smb_connections'])
+            if smb_count > 5 or tracker['rdp_attempts'] > 3 or tracker['psexec_patterns'] > 0:
+                return {
+                    'type': 'LATERAL_MOVEMENT',
+                    'severity': 'CRITICAL',
+                    'source_ip': src_ip,
+                    'description': f'Lateral movement: {smb_count} SMB targets, {tracker["rdp_attempts"]} RDP attempts',
+                    'metadata': {
+                        'smb_targets': smb_count,
+                        'rdp_attempts': tracker['rdp_attempts'],
+                        'psexec_detected': tracker['psexec_patterns'] > 0
+                    }
+                }
+
+        return None
+
+    def _detect_data_exfiltration(self, packet, src_ip, dst_ip):
+        """Detect data exfiltration patterns"""
+        tracker = self.data_exfil_tracker[src_ip]
+        current_time = time.time()
+
+        if tracker['window_start'] is None:
+            tracker['window_start'] = current_time
+
+        # Track outbound traffic
+        if packet.haslayer(IP):
+            # Check if destination is external (not RFC1918)
+            try:
+                import ipaddress
+                dst_addr = ipaddress.ip_address(dst_ip)
+                if not dst_addr.is_private:
+                    tracker['outbound_bytes'] += len(packet)
+                    tracker['destinations'].add(dst_ip)
+
+                    # Track protocol
+                    if packet.haslayer(TCP):
+                        tracker['protocols'].add('TCP')
+                    elif packet.haslayer(UDP):
+                        tracker['protocols'].add('UDP')
+
+            except:
+                pass
+
+        # Alert on excessive outbound traffic
+        time_window = 60
+        if (current_time - tracker['window_start']) >= time_window:
+            mbytes = tracker['outbound_bytes'] / (1024 * 1024)
+            if mbytes > 100 or len(tracker['destinations']) > 20:  # 100 MB or 20+ destinations
+                return {
+                    'type': 'DATA_EXFILTRATION',
+                    'severity': 'CRITICAL',
+                    'source_ip': src_ip,
+                    'description': f'Data exfiltration: {mbytes:.1f} MB to {len(tracker["destinations"])} destinations',
+                    'metadata': {
+                        'megabytes': mbytes,
+                        'destination_count': len(tracker['destinations']),
+                        'protocols': list(tracker['protocols'])
+                    }
+                }
+
+        return None
+
+    def _detect_privilege_escalation(self, packet, src_ip):
+        """Detect privilege escalation attempts"""
+        if not packet.haslayer(Raw):
+            return None
+
+        tracker = self.privilege_escalation_tracker[src_ip]
+        current_time = time.time()
+
+        if tracker['first_seen'] is None:
+            tracker['first_seen'] = current_time
+
+        try:
+            payload = packet[Raw].load.decode('utf-8', errors='ignore').lower()
+
+            # Privilege escalation indicators
+            if 'sudo ' in payload or 'su -' in payload or 'runas' in payload:
+                tracker['sudo_attempts'] += 1
+
+            if 'uac' in payload or 'bypassuac' in payload:
+                tracker['uac_bypass'] += 1
+
+            if 'exploit' in payload or 'cve-' in payload or 'kernel' in payload:
+                tracker['kernel_exploits'] += 1
+
+            total_attempts = tracker['sudo_attempts'] + tracker['uac_bypass'] + tracker['kernel_exploits']
+            if total_attempts > 5:
+                return {
+                    'type': 'PRIVILEGE_ESCALATION',
+                    'severity': 'CRITICAL',
+                    'source_ip': src_ip,
+                    'description': f'Privilege escalation attempts: {total_attempts} indicators',
+                    'metadata': {
+                        'sudo_attempts': tracker['sudo_attempts'],
+                        'uac_bypass': tracker['uac_bypass'],
+                        'kernel_exploits': tracker['kernel_exploits']
+                    }
+                }
+
+        except:
+            pass
+
+        return None
+
+    def _detect_persistence(self, packet, src_ip):
+        """Detect persistence mechanism creation"""
+        if not packet.haslayer(Raw):
+            return None
+
+        tracker = self.persistence_tracker[src_ip]
+        current_time = time.time()
+
+        if tracker['first_seen'] is None:
+            tracker['first_seen'] = current_time
+
+        try:
+            payload = packet[Raw].load.decode('utf-8', errors='ignore').lower()
+
+            # Persistence indicators
+            if 'hkey' in payload or 'currentversion\\run' in payload:
+                tracker['registry_modifications'] += 1
+
+            if 'schtasks' in payload or 'at.exe' in payload or 'cron' in payload:
+                tracker['scheduled_tasks'] += 1
+
+            if 'startup' in payload or 'appdata\\roaming' in payload:
+                tracker['startup_items'] += 1
+
+            total = tracker['registry_modifications'] + tracker['scheduled_tasks'] + tracker['startup_items']
+            if total > 3:
+                return {
+                    'type': 'PERSISTENCE_MECHANISM',
+                    'severity': 'HIGH',
+                    'source_ip': src_ip,
+                    'description': f'Persistence creation: {total} mechanisms detected',
+                    'metadata': {
+                        'registry': tracker['registry_modifications'],
+                        'scheduled_tasks': tracker['scheduled_tasks'],
+                        'startup_items': tracker['startup_items']
+                    }
+                }
+
+        except:
+            pass
+
+        return None
+
+    def _detect_credential_dumping(self, packet, src_ip):
+        """Detect credential dumping attempts"""
+        if not packet.haslayer(Raw):
+            return None
+
+        tracker = self.credential_dumping_tracker[src_ip]
+        current_time = time.time()
+
+        if tracker['first_seen'] is None:
+            tracker['first_seen'] = current_time
+
+        try:
+            payload = packet[Raw].load.decode('utf-8', errors='ignore').lower()
+
+            # Credential dumping indicators
+            if 'lsass' in payload or 'procdump' in payload:
+                tracker['lsass_access'] += 1
+
+            if 'sam' in payload or 'system32\\config\\sam' in payload:
+                tracker['sam_access'] += 1
+
+            if 'mimikatz' in payload or 'sekurlsa' in payload or 'kerberos::' in payload:
+                tracker['mimikatz_patterns'] += 1
+
+            total = tracker['lsass_access'] + tracker['sam_access'] + tracker['mimikatz_patterns']
+            if total > 2:
+                return {
+                    'type': 'CREDENTIAL_DUMPING',
+                    'severity': 'CRITICAL',
+                    'source_ip': src_ip,
+                    'description': f'Credential dumping: {total} indicators detected',
+                    'metadata': {
+                        'lsass_access': tracker['lsass_access'],
+                        'sam_access': tracker['sam_access'],
+                        'mimikatz': tracker['mimikatz_patterns']
+                    }
+                }
+
+        except:
+            pass
+
+        return None
 
     def cleanup_old_data(self):
         """Cleanup oude tracking data (call periodiek)"""
@@ -3200,5 +3877,87 @@ class ThreatDetector:
             if tracker['window_start'] and \
                (current_time - tracker['window_start']) > 300:
                 del self.mqtt_abuse_tracker[ip]
+
+        # Cleanup Phase 6: OT/ICS Protocol trackers
+        for ip in list(self.modbus_tracker.keys()):
+            tracker = self.modbus_tracker[ip]
+            if tracker['window_start'] and \
+               (current_time - tracker['window_start']) > 300:
+                del self.modbus_tracker[ip]
+
+        for ip in list(self.dnp3_tracker.keys()):
+            tracker = self.dnp3_tracker[ip]
+            if tracker['window_start'] and \
+               (current_time - tracker['window_start']) > 300:
+                del self.dnp3_tracker[ip]
+
+        for ip in list(self.iec104_tracker.keys()):
+            tracker = self.iec104_tracker[ip]
+            if tracker['window_start'] and \
+               (current_time - tracker['window_start']) > 300:
+                del self.iec104_tracker[ip]
+
+        # Cleanup Phase 7: Container & Orchestration trackers
+        for ip in list(self.docker_escape_tracker.keys()):
+            tracker = self.docker_escape_tracker[ip]
+            if tracker['first_seen'] and \
+               (current_time - tracker['first_seen']) > 600:
+                del self.docker_escape_tracker[ip]
+
+        for ip in list(self.k8s_exploit_tracker.keys()):
+            tracker = self.k8s_exploit_tracker[ip]
+            if tracker['window_start'] and \
+               (current_time - tracker['window_start']) > 300:
+                del self.k8s_exploit_tracker[ip]
+
+        # Cleanup Phase 8: Advanced Evasion trackers
+        for ip in list(self.fragmentation_tracker.keys()):
+            tracker = self.fragmentation_tracker[ip]
+            if tracker['window_start'] and \
+               (current_time - tracker['window_start']) > 300:
+                del self.fragmentation_tracker[ip]
+
+        for ip in list(self.tunneling_tracker.keys()):
+            tracker = self.tunneling_tracker[ip]
+            if tracker['window_start'] and \
+               (current_time - tracker['window_start']) > 300:
+                del self.tunneling_tracker[ip]
+
+        for ip in list(self.polymorphic_tracker.keys()):
+            tracker = self.polymorphic_tracker[ip]
+            if tracker['first_seen'] and \
+               (current_time - tracker['first_seen']) > 1800:  # 30 min
+                del self.polymorphic_tracker[ip]
+
+        # Cleanup Phase 9: Completion Boost trackers
+        for ip in list(self.lateral_movement_tracker.keys()):
+            tracker = self.lateral_movement_tracker[ip]
+            if tracker['window_start'] and \
+               (current_time - tracker['window_start']) > 600:  # 10 min
+                del self.lateral_movement_tracker[ip]
+
+        for ip in list(self.data_exfil_tracker.keys()):
+            tracker = self.data_exfil_tracker[ip]
+            if tracker['window_start'] and \
+               (current_time - tracker['window_start']) > 300:
+                del self.data_exfil_tracker[ip]
+
+        for ip in list(self.privilege_escalation_tracker.keys()):
+            tracker = self.privilege_escalation_tracker[ip]
+            if tracker['first_seen'] and \
+               (current_time - tracker['first_seen']) > 1800:
+                del self.privilege_escalation_tracker[ip]
+
+        for ip in list(self.persistence_tracker.keys()):
+            tracker = self.persistence_tracker[ip]
+            if tracker['first_seen'] and \
+               (current_time - tracker['first_seen']) > 1800:
+                del self.persistence_tracker[ip]
+
+        for ip in list(self.credential_dumping_tracker.keys()):
+            tracker = self.credential_dumping_tracker[ip]
+            if tracker['first_seen'] and \
+               (current_time - tracker['first_seen']) > 1800:
+                del self.credential_dumping_tracker[ip]
 
         self.logger.debug("Oude tracking data opgeschoond")
