@@ -41,7 +41,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 12  # Increment this when schema changes
+        SCHEMA_VERSION = 13  # Increment this when schema changes
 
         if self._check_schema_version(SCHEMA_VERSION):
             self.logger.info(f"Database schema is up to date (v{SCHEMA_VERSION})")
@@ -481,6 +481,48 @@ class DatabaseManager:
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_service_providers_category
                 ON service_providers(category, is_active);
+            ''')
+
+            # ==================== Threat Intelligence Feeds ====================
+
+            # Threat feeds - external threat intelligence for enhanced detection
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS threat_feeds (
+                    id SERIAL PRIMARY KEY,
+                    feed_type VARCHAR(50) NOT NULL,
+                    indicator VARCHAR(255) NOT NULL,
+                    indicator_type VARCHAR(50),
+                    source VARCHAR(100),
+                    confidence_score REAL DEFAULT 1.0,
+                    first_seen TIMESTAMPTZ DEFAULT NOW(),
+                    last_updated TIMESTAMPTZ DEFAULT NOW(),
+                    expires_at TIMESTAMPTZ,
+                    metadata JSONB DEFAULT '{}',
+                    is_active BOOLEAN DEFAULT TRUE,
+                    CONSTRAINT valid_feed_type CHECK (feed_type IN (
+                        'phishing', 'tor_exit', 'cryptomining', 'vpn_exit', 'malware_c2',
+                        'botnet_c2', 'known_attacker', 'malicious_domain', 'suspicious_ip',
+                        'ransomware_ioc', 'exploit_kit', 'other'
+                    )),
+                    CONSTRAINT valid_indicator_type CHECK (indicator_type IN (
+                        'ip', 'domain', 'url', 'hash', 'cidr', 'asn', 'other'
+                    )),
+                    CONSTRAINT unique_feed_indicator UNIQUE (feed_type, indicator)
+                );
+            ''')
+
+            # Indexes for faster threat feed lookups
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_threat_feeds_type_active
+                ON threat_feeds(feed_type, is_active, last_updated DESC);
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_threat_feeds_indicator
+                ON threat_feeds(indicator, feed_type) WHERE is_active = TRUE;
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_threat_feeds_expires
+                ON threat_feeds(expires_at) WHERE expires_at IS NOT NULL AND is_active = TRUE;
             ''')
 
             # Indexes for web authentication
@@ -3050,6 +3092,290 @@ class DatabaseManager:
                     continue
 
         return None
+
+    # ==================== Threat Feed Management ====================
+
+    def add_threat_feed_indicator(self, feed_type: str, indicator: str,
+                                   indicator_type: str, source: str = None,
+                                   confidence_score: float = 1.0,
+                                   expires_at: datetime = None,
+                                   metadata: Dict = None) -> Optional[int]:
+        """Add or update a threat feed indicator
+
+        Args:
+            feed_type: Type of threat (phishing, tor_exit, cryptomining, etc.)
+            indicator: The indicator value (IP, domain, URL, hash)
+            indicator_type: Type of indicator (ip, domain, url, hash, cidr, asn)
+            source: Source of the indicator (e.g., 'PhishTank', 'Tor Project')
+            confidence_score: Confidence score (0.0 to 1.0)
+            expires_at: Optional expiration timestamp
+            metadata: Additional metadata as dict
+
+        Returns:
+            indicator ID if successful, None otherwise
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            # Upsert: update if exists, insert if not
+            cursor.execute('''
+                INSERT INTO threat_feeds
+                (feed_type, indicator, indicator_type, source, confidence_score, expires_at, metadata, last_updated)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                ON CONFLICT (feed_type, indicator)
+                DO UPDATE SET
+                    indicator_type = EXCLUDED.indicator_type,
+                    source = EXCLUDED.source,
+                    confidence_score = EXCLUDED.confidence_score,
+                    expires_at = EXCLUDED.expires_at,
+                    metadata = EXCLUDED.metadata,
+                    last_updated = NOW(),
+                    is_active = TRUE
+                RETURNING id
+            ''', (feed_type, indicator, indicator_type, source, confidence_score,
+                  expires_at, json.dumps(metadata or {})))
+
+            indicator_id = cursor.fetchone()[0]
+            conn.commit()
+            return indicator_id
+
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error adding threat feed indicator: {e}")
+            return None
+        finally:
+            self._return_connection(conn)
+
+    def get_threat_feed_indicators(self, feed_type: str = None,
+                                   indicator_type: str = None,
+                                   is_active: bool = True,
+                                   limit: int = 10000) -> List[Dict]:
+        """Get threat feed indicators
+
+        Args:
+            feed_type: Optional filter by feed type
+            indicator_type: Optional filter by indicator type
+            is_active: Only return active indicators (default True)
+            limit: Maximum number of results
+
+        Returns:
+            List of threat indicators
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            query = '''
+                SELECT id, feed_type, indicator, indicator_type, source,
+                       confidence_score, first_seen, last_updated, expires_at,
+                       metadata, is_active
+                FROM threat_feeds
+                WHERE 1=1
+            '''
+            params = []
+
+            if feed_type:
+                query += ' AND feed_type = %s'
+                params.append(feed_type)
+
+            if indicator_type:
+                query += ' AND indicator_type = %s'
+                params.append(indicator_type)
+
+            if is_active is not None:
+                query += ' AND is_active = %s'
+                params.append(is_active)
+
+            # Only return non-expired indicators
+            query += ' AND (expires_at IS NULL OR expires_at > NOW())'
+
+            query += ' ORDER BY last_updated DESC LIMIT %s'
+            params.append(limit)
+
+            cursor.execute(query, params)
+            return [dict(row) for row in cursor.fetchall()]
+
+        except Exception as e:
+            self.logger.error(f"Error getting threat feed indicators: {e}")
+            return []
+        finally:
+            self._return_connection(conn)
+
+    def check_threat_indicator(self, indicator: str, feed_types: List[str] = None) -> Optional[Dict]:
+        """Check if an indicator matches a threat feed entry
+
+        Args:
+            indicator: The indicator to check (IP, domain, etc.)
+            feed_types: Optional list of feed types to check
+
+        Returns:
+            Dict with match details if found, None otherwise
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            query = '''
+                SELECT id, feed_type, indicator, indicator_type, source,
+                       confidence_score, metadata
+                FROM threat_feeds
+                WHERE indicator = %s
+                  AND is_active = TRUE
+                  AND (expires_at IS NULL OR expires_at > NOW())
+            '''
+            params = [indicator]
+
+            if feed_types:
+                placeholders = ','.join(['%s'] * len(feed_types))
+                query += f' AND feed_type IN ({placeholders})'
+                params.extend(feed_types)
+
+            query += ' ORDER BY confidence_score DESC LIMIT 1'
+
+            cursor.execute(query, params)
+            result = cursor.fetchone()
+
+            return dict(result) if result else None
+
+        except Exception as e:
+            self.logger.error(f"Error checking threat indicator {indicator}: {e}")
+            return None
+        finally:
+            self._return_connection(conn)
+
+    def check_ip_in_threat_feeds(self, ip_address: str, feed_types: List[str] = None) -> Optional[Dict]:
+        """Check if an IP address matches threat feeds (exact match or CIDR range)
+
+        Args:
+            ip_address: IP address to check
+            feed_types: Optional list of feed types to check
+
+        Returns:
+            Dict with match details if found, None otherwise
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            # Check for exact match or CIDR range match
+            query = '''
+                SELECT id, feed_type, indicator, indicator_type, source,
+                       confidence_score, metadata
+                FROM threat_feeds
+                WHERE is_active = TRUE
+                  AND (expires_at IS NULL OR expires_at > NOW())
+                  AND indicator_type IN ('ip', 'cidr')
+                  AND (
+                    indicator = %s
+                    OR (indicator_type = 'cidr' AND inet %s <<= cidr(indicator))
+                  )
+            '''
+            params = [ip_address, ip_address]
+
+            if feed_types:
+                placeholders = ','.join(['%s'] * len(feed_types))
+                query += f' AND feed_type IN ({placeholders})'
+                params.extend(feed_types)
+
+            query += ' ORDER BY confidence_score DESC LIMIT 1'
+
+            cursor.execute(query, params)
+            result = cursor.fetchone()
+
+            return dict(result) if result else None
+
+        except Exception as e:
+            self.logger.error(f"Error checking IP in threat feeds {ip_address}: {e}")
+            return None
+        finally:
+            self._return_connection(conn)
+
+    def cleanup_expired_threat_feeds(self) -> int:
+        """Remove expired threat feed indicators
+
+        Returns:
+            Number of indicators removed
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            # Mark expired indicators as inactive instead of deleting
+            cursor.execute('''
+                UPDATE threat_feeds
+                SET is_active = FALSE
+                WHERE expires_at IS NOT NULL
+                  AND expires_at < NOW()
+                  AND is_active = TRUE
+                RETURNING id
+            ''')
+
+            count = cursor.rowcount
+            conn.commit()
+
+            if count > 0:
+                self.logger.info(f"Marked {count} expired threat feed indicators as inactive")
+
+            return count
+
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error cleaning up expired threat feeds: {e}")
+            return 0
+        finally:
+            self._return_connection(conn)
+
+    def bulk_import_threat_feed(self, feed_type: str, indicators: List[Dict],
+                               source: str = None) -> int:
+        """Bulk import threat indicators
+
+        Args:
+            feed_type: Type of threat feed
+            indicators: List of dicts with 'indicator', 'indicator_type', and optional fields
+            source: Source name for all indicators
+
+        Returns:
+            Number of indicators imported
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            count = 0
+
+            for item in indicators:
+                indicator = item.get('indicator')
+                indicator_type = item.get('indicator_type', 'ip')
+                confidence = item.get('confidence_score', 1.0)
+                expires_at = item.get('expires_at')
+                metadata = item.get('metadata', {})
+
+                if not indicator:
+                    continue
+
+                cursor.execute('''
+                    INSERT INTO threat_feeds
+                    (feed_type, indicator, indicator_type, source, confidence_score, expires_at, metadata, last_updated)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                    ON CONFLICT (feed_type, indicator)
+                    DO UPDATE SET
+                        last_updated = NOW(),
+                        is_active = TRUE
+                ''', (feed_type, indicator, indicator_type, source, confidence,
+                      expires_at, json.dumps(metadata)))
+
+                count += 1
+
+            conn.commit()
+            self.logger.info(f"Bulk imported {count} threat indicators for feed type: {feed_type}")
+            return count
+
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error bulk importing threat feed: {e}")
+            return 0
+        finally:
+            self._return_connection(conn)
 
     # ==================== Builtin Data Initialization ====================
 
