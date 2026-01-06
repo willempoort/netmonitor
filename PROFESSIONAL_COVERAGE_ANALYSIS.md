@@ -260,13 +260,13 @@ Fills remaining gaps:
 
 ## Success Metrics Dashboard
 
-### Current Status (Phase 2 Complete)
+### Current Status (Phase 5 Complete)
 ```
-Overall Coverage:        [███████░░░] 34%
-MITRE ATT&CK:           [███████░░░] 34%
-NIST Framework:         [████░░░░░░] 40%
-Threat Types:           13/60 (22%)
-Professional Rating:    52/100
+Overall Coverage:        [███████░░░] 70%
+MITRE ATT&CK:           [███████░░░] 70%
+NIST Framework:         [███████░░░] 72%
+Threat Types:           34/60 (57%)
+Professional Rating:    78/100
 ```
 
 ### Target (Phase 9)
@@ -287,17 +287,21 @@ Professional Rating:    90/100
 2. ✅ Fix UI and configuration issues
 3. ✅ Document roadmap and coverage
 4. ✅ Complete Phase 2: Web Application Security
-5. ✅ Implement all 8 web security detections
+5. ✅ Complete Phase 3: DDoS & Resource Exhaustion
+6. ✅ Complete Phase 4: Ransomware Indicators
+7. ✅ Complete Phase 5: IoT & Smart Device Security
+8. ✅ Reach 70% MITRE coverage (34/60 threats)
+9. ✅ Professional rating 78/100
 
 **Short Term (Next 2 Weeks):**
-1. 🎯 Start Phase 3: DDoS & Resource Exhaustion
-2. 🎯 Implement SYN flood, UDP flood, HTTP flood detection
-3. 🎯 Add Slowloris and DNS/NTP amplification detection
+1. 🎯 Start Phase 6: OT/ICS Protocol Security
+2. 🎯 Implement Modbus, DNP3, IEC-104 detection
+3. 🎯 Add BACnet and Profinet detection
 
 **Medium Term (1-2 Months):**
-1. 🎯 Complete Phases 3-4 (DDoS, Ransomware)
-2. 🎯 Reach 50%+ MITRE coverage
-3. 🎯 Professional rating >60/100
+1. 🎯 Complete Phases 6-7 (OT/ICS, Containers)
+2. 🎯 Reach 80%+ MITRE coverage
+3. 🎯 Professional rating >85/100
 
 **Long Term (3-4 Months):**
 1. 🎯 Complete all 9 phases

@@ -3865,6 +3865,98 @@ class DatabaseManager:
             'threat.api_abuse.rate_limit_per_minute': 100,
             'threat.api_abuse.endpoint_limit_per_minute': 50,
             'threat.api_abuse.time_window': 60,
+
+            # ===== Phase 3: DDoS & Resource Exhaustion =====
+
+            # SYN Flood detection
+            'threat.syn_flood.enabled': False,
+            'threat.syn_flood.threshold_per_sec': 100,
+            'threat.syn_flood.time_window': 1,
+
+            # UDP Flood detection
+            'threat.udp_flood.enabled': False,
+            'threat.udp_flood.threshold_per_sec': 500,
+            'threat.udp_flood.time_window': 1,
+
+            # HTTP Flood detection
+            'threat.http_flood.enabled': False,
+            'threat.http_flood.threshold_per_sec': 200,
+            'threat.http_flood.time_window': 1,
+
+            # Slowloris detection
+            'threat.slowloris.enabled': False,
+            'threat.slowloris.incomplete_request_threshold': 50,
+
+            # DNS Amplification detection
+            'threat.dns_amplification.enabled': False,
+            'threat.dns_amplification.amplification_factor_threshold': 10,
+            'threat.dns_amplification.time_window': 10,
+
+            # NTP Amplification detection
+            'threat.ntp_amplification.enabled': False,
+            'threat.ntp_amplification.amplification_factor_threshold': 10,
+
+            # Connection Exhaustion detection
+            'threat.connection_exhaustion.enabled': False,
+            'threat.connection_exhaustion.max_connections': 1000,
+
+            # Bandwidth Saturation detection
+            'threat.bandwidth_saturation.enabled': False,
+            'threat.bandwidth_saturation.threshold_mbps': 100,
+            'threat.bandwidth_saturation.time_window': 1,
+
+            # ===== Phase 4: Ransomware Indicators =====
+
+            # SMB Mass Encryption detection
+            'threat.ransomware_smb.enabled': False,
+            'threat.ransomware_smb.file_ops_per_minute': 100,
+            'threat.ransomware_smb.time_window': 60,
+
+            # Crypto Extension detection
+            'threat.ransomware_crypto_ext.enabled': False,
+            'threat.ransomware_crypto_ext.min_file_count': 5,
+
+            # Ransom Note detection
+            'threat.ransomware_ransom_note.enabled': False,
+            'threat.ransomware_ransom_note.min_keyword_matches': 3,
+            'threat.ransomware_ransom_note.min_file_creates': 2,
+
+            # Shadow Copy Deletion detection
+            'threat.ransomware_shadow_copy.enabled': False,
+
+            # Backup Deletion detection
+            'threat.ransomware_backup_deletion.enabled': False,
+
+            # ===== Phase 5: IoT & Smart Device Security =====
+
+            # IoT Botnet detection
+            'threat.iot_botnet.enabled': False,
+            'threat.iot_botnet.telnet_attempts_threshold': 10,
+            'threat.iot_botnet.default_creds_threshold': 3,
+
+            # UPnP Exploit detection
+            'threat.upnp_exploit.enabled': False,
+            'threat.upnp_exploit.ssdp_threshold': 100,
+
+            # MQTT Abuse detection
+            'threat.mqtt_abuse.enabled': False,
+            'threat.mqtt_abuse.publish_threshold_per_minute': 1000,
+            'threat.mqtt_abuse.time_window': 60,
+
+            # Smart Home Protocol Abuse
+            'threat.smart_home_abuse.enabled': False,
+
+            # Insecure RTSP Streams
+            'threat.insecure_rtsp.enabled': False,
+
+            # CoAP Protocol Abuse
+            'threat.coap_abuse.enabled': False,
+
+            # Z-Wave Attack detection
+            'threat.zwave_attack.enabled': False,
+
+            # Zigbee Attack detection
+            'threat.zigbee_attack.enabled': False,
         }
 
         count = 0

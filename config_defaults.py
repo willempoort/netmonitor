@@ -317,6 +317,140 @@ BEST_PRACTICE_CONFIG = {
             "rate_limit_per_minute": 100,
             "endpoint_limit_per_minute": 50,
             "time_window": 60
+        },
+
+        # ===== Phase 3: DDoS & Resource Exhaustion =====
+
+        # SYN Flood detection
+        "syn_flood": {
+            "enabled": False,
+            "threshold_per_sec": 100,
+            "time_window": 1
+        },
+
+        # UDP Flood detection
+        "udp_flood": {
+            "enabled": False,
+            "threshold_per_sec": 500,
+            "time_window": 1
+        },
+
+        # HTTP Flood detection
+        "http_flood": {
+            "enabled": False,
+            "threshold_per_sec": 200,
+            "time_window": 1
+        },
+
+        # Slowloris detection
+        "slowloris": {
+            "enabled": False,
+            "incomplete_request_threshold": 50
+        },
+
+        # DNS Amplification detection
+        "dns_amplification": {
+            "enabled": False,
+            "amplification_factor_threshold": 10,
+            "time_window": 10
+        },
+
+        # NTP Amplification detection
+        "ntp_amplification": {
+            "enabled": False,
+            "amplification_factor_threshold": 10
+        },
+
+        # Connection Exhaustion detection
+        "connection_exhaustion": {
+            "enabled": False,
+            "max_connections": 1000
+        },
+
+        # Bandwidth Saturation detection
+        "bandwidth_saturation": {
+            "enabled": False,
+            "threshold_mbps": 100,
+            "time_window": 1
+        },
+
+        # ===== Phase 4: Ransomware Indicators =====
+
+        # SMB Mass Encryption detection
+        "ransomware_smb": {
+            "enabled": False,
+            "file_ops_per_minute": 100,
+            "time_window": 60
+        },
+
+        # Crypto Extension detection
+        "ransomware_crypto_ext": {
+            "enabled": False,
+            "min_file_count": 5
+        },
+
+        # Ransom Note detection
+        "ransomware_ransom_note": {
+            "enabled": False,
+            "min_keyword_matches": 3,
+            "min_file_creates": 2
+        },
+
+        # Shadow Copy Deletion detection
+        "ransomware_shadow_copy": {
+            "enabled": False
+        },
+
+        # Backup Deletion detection
+        "ransomware_backup_deletion": {
+            "enabled": False
+        },
+
+        # ===== Phase 5: IoT & Smart Device Security =====
+
+        # IoT Botnet detection
+        "iot_botnet": {
+            "enabled": False,
+            "telnet_attempts_threshold": 10,
+            "default_creds_threshold": 3
+        },
+
+        # UPnP Exploit detection
+        "upnp_exploit": {
+            "enabled": False,
+            "ssdp_threshold": 100
+        },
+
+        # MQTT Abuse detection
+        "mqtt_abuse": {
+            "enabled": False,
+            "publish_threshold_per_minute": 1000,
+            "time_window": 60
+        },
+
+        # Smart Home Protocol Abuse
+        "smart_home_abuse": {
+            "enabled": False
+        },
+
+        # Insecure RTSP Streams
+        "insecure_rtsp": {
+            "enabled": False
+        },
+
+        # CoAP Protocol Abuse
+        "coap_abuse": {
+            "enabled": False
+        },
+
+        # Z-Wave Attack detection
+        "zwave_attack": {
+            "enabled": False
+        },
+
+        # Zigbee Attack detection
+        "zigbee_attack": {
+            "enabled": False
         }
     },
 
@@ -628,6 +762,98 @@ PARAMETER_DESCRIPTIONS = {
     "threat.api_abuse.endpoint_limit_per_minute": "Max requests per endpoint per minute",
     "threat.api_abuse.time_window": "Time window (seconds) for rate limiting",
 
+    # ===== Phase 3: DDoS & Resource Exhaustion =====
+
+    # SYN Flood
+    "threat.syn_flood.enabled": "Enable SYN flood detection",
+    "threat.syn_flood.threshold_per_sec": "SYN packets per second threshold",
+    "threat.syn_flood.time_window": "Time window (seconds) for SYN counting",
+
+    # UDP Flood
+    "threat.udp_flood.enabled": "Enable UDP flood detection",
+    "threat.udp_flood.threshold_per_sec": "UDP packets per second threshold",
+    "threat.udp_flood.time_window": "Time window (seconds) for UDP counting",
+
+    # HTTP Flood
+    "threat.http_flood.enabled": "Enable HTTP flood (Layer 7 DDoS) detection",
+    "threat.http_flood.threshold_per_sec": "HTTP requests per second threshold",
+    "threat.http_flood.time_window": "Time window (seconds) for HTTP counting",
+
+    # Slowloris
+    "threat.slowloris.enabled": "Enable Slowloris slow HTTP attack detection",
+    "threat.slowloris.incomplete_request_threshold": "Incomplete requests threshold",
+
+    # DNS Amplification
+    "threat.dns_amplification.enabled": "Enable DNS amplification attack detection",
+    "threat.dns_amplification.amplification_factor_threshold": "Amplification factor threshold",
+    "threat.dns_amplification.time_window": "Time window (seconds) for amplification",
+
+    # NTP Amplification
+    "threat.ntp_amplification.enabled": "Enable NTP amplification attack detection",
+    "threat.ntp_amplification.amplification_factor_threshold": "Amplification factor threshold",
+
+    # Connection Exhaustion
+    "threat.connection_exhaustion.enabled": "Enable connection exhaustion detection",
+    "threat.connection_exhaustion.max_connections": "Maximum concurrent connections threshold",
+
+    # Bandwidth Saturation
+    "threat.bandwidth_saturation.enabled": "Enable bandwidth saturation detection",
+    "threat.bandwidth_saturation.threshold_mbps": "Bandwidth threshold (Mbps)",
+    "threat.bandwidth_saturation.time_window": "Time window (seconds) for bandwidth",
+
+    # ===== Phase 4: Ransomware Indicators =====
+
+    # SMB Mass Encryption
+    "threat.ransomware_smb.enabled": "Enable SMB mass file encryption detection",
+    "threat.ransomware_smb.file_ops_per_minute": "File operations per minute threshold",
+    "threat.ransomware_smb.time_window": "Time window (seconds) for file ops",
+
+    # Crypto Extension
+    "threat.ransomware_crypto_ext.enabled": "Enable ransomware crypto extension detection",
+    "threat.ransomware_crypto_ext.min_file_count": "Minimum suspicious file count",
+
+    # Ransom Note
+    "threat.ransomware_ransom_note.enabled": "Enable ransom note detection",
+    "threat.ransomware_ransom_note.min_keyword_matches": "Minimum keyword matches",
+    "threat.ransomware_ransom_note.min_file_creates": "Minimum ransom note files",
+
+    # Shadow Copy Deletion
+    "threat.ransomware_shadow_copy.enabled": "Enable shadow copy deletion detection",
+
+    # Backup Deletion
+    "threat.ransomware_backup_deletion.enabled": "Enable backup deletion detection",
+
+    # ===== Phase 5: IoT & Smart Device Security =====
+
+    # IoT Botnet
+    "threat.iot_botnet.enabled": "Enable IoT botnet (Mirai-like) detection",
+    "threat.iot_botnet.telnet_attempts_threshold": "Telnet brute force attempts threshold",
+    "threat.iot_botnet.default_creds_threshold": "Default credentials attempts threshold",
+
+    # UPnP Exploit
+    "threat.upnp_exploit.enabled": "Enable UPnP exploitation detection",
+    "threat.upnp_exploit.ssdp_threshold": "SSDP request threshold",
+
+    # MQTT Abuse
+    "threat.mqtt_abuse.enabled": "Enable MQTT protocol abuse detection",
+    "threat.mqtt_abuse.publish_threshold_per_minute": "MQTT publish messages per minute",
+    "threat.mqtt_abuse.time_window": "Time window (seconds) for MQTT",
+
+    # Smart Home Protocol Abuse
+    "threat.smart_home_abuse.enabled": "Enable smart home protocol abuse detection",
+
+    # Insecure RTSP Streams
+    "threat.insecure_rtsp.enabled": "Enable insecure RTSP stream detection",
+
+    # CoAP Protocol Abuse
+    "threat.coap_abuse.enabled": "Enable CoAP protocol abuse detection",
+
+    # Z-Wave Attack
+    "threat.zwave_attack.enabled": "Enable Z-Wave attack detection",
+
+    # Zigbee Attack
+    "threat.zigbee_attack.enabled": "Enable Zigbee attack detection",
+
     # PCAP Export (NIS2 Forensics)
     "thresholds.pcap_export.enabled": "Enable PCAP forensic capture",
     "thresholds.pcap_export.output_dir": "Directory for PCAP file storage",
@@ -711,7 +937,31 @@ PARAMETER_CATEGORIES = {
         "threat.xxe",
         "threat.ssrf",
         "threat.webshell",
-        "threat.api_abuse"
+        "threat.api_abuse",
+        # Phase 3: DDoS & Resource Exhaustion
+        "threat.syn_flood",
+        "threat.udp_flood",
+        "threat.http_flood",
+        "threat.slowloris",
+        "threat.dns_amplification",
+        "threat.ntp_amplification",
+        "threat.connection_exhaustion",
+        "threat.bandwidth_saturation",
+        # Phase 4: Ransomware Indicators
+        "threat.ransomware_smb",
+        "threat.ransomware_crypto_ext",
+        "threat.ransomware_ransom_note",
+        "threat.ransomware_shadow_copy",
+        "threat.ransomware_backup_deletion",
+        # Phase 5: IoT & Smart Device Security
+        "threat.iot_botnet",
+        "threat.upnp_exploit",
+        "threat.mqtt_abuse",
+        "threat.smart_home_abuse",
+        "threat.insecure_rtsp",
+        "threat.coap_abuse",
+        "threat.zwave_attack",
+        "threat.zigbee_attack"
     ],
     "SOAR (Automated Response)": [
         "soar.enabled",

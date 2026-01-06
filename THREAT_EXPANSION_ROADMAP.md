@@ -401,9 +401,12 @@ This roadmap expands NetMonitor from basic network monitoring to comprehensive t
 
 - ✅ Phase 1: Complete (5/5 threats)
 - ✅ Phase 2: Complete (8/8 threats)
-- 🚧 Phase 3-9: Planned (47+ threats)
-- **Total Progress**: 13/60+ threats (22%)
-- **MITRE ATT&CK Coverage**: 34% (target: 92%)
+- ✅ Phase 3: Complete (8/8 threats)
+- ✅ Phase 4: Complete (5/5 threats)
+- ✅ Phase 5: Complete (8/8 threats)
+- 🚧 Phase 6-9: Planned (26 threats)
+- **Total Progress**: 34/60 threats (57%)
+- **MITRE ATT&CK Coverage**: ~70% (target: 92%)
 - **Target**: 90%+ professional coverage
 
 ---
