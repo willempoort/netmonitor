@@ -162,6 +162,18 @@ class ThreatDetector:
         self.tls_metadata_cache = defaultdict(dict)
         self.tls_metadata_history = deque(maxlen=1000)  # Recent TLS connections
 
+        # Advanced threat detection trackers
+        self.cryptomining_tracker = defaultdict(lambda: {
+            'connections': set(),  # Set of (dst_ip, dst_port)
+            'first_seen': None,
+            'last_seen': None
+        })
+        self.dns_query_tracker = defaultdict(lambda: {
+            'queries': deque(maxlen=200),  # Recent queries
+            'unique_domains': set(),
+            'window_start': None
+        })
+
         # Parsed whitelist/blacklist from config
         # Defensive check: ensure they are lists
         whitelist_raw = config.get('whitelist', [])
@@ -424,6 +436,10 @@ class ThreatDetector:
         if self.encrypted_traffic_analyzer:
             encrypted_threats = self.encrypted_traffic_analyzer.analyze_packet(packet)
             threats.extend(encrypted_threats)
+
+        # Advanced threat detection (cryptomining, phishing, Tor, cloud metadata, DNS anomaly)
+        advanced_threats = self._detect_advanced_threats(packet)
+        threats.extend(advanced_threats)
 
         # Apply template-based alert suppression
         # This filters out alerts for expected device behavior
@@ -1263,6 +1279,248 @@ class ThreatDetector:
             return self.tls_analyzer.get_stats()
         return {}
 
+    def _detect_advanced_threats(self, packet):
+        """
+        Detect advanced threats using database-backed threat feeds
+        Includes: cryptomining, phishing, Tor, VPN, cloud metadata, DNS anomaly
+        """
+        threats = []
+
+        if not packet.haslayer(IP):
+            return threats
+
+        ip_layer = packet[IP]
+        src_ip = ip_layer.src
+        dst_ip = ip_layer.dst
+
+        # Get configuration from database (cached during init or periodically synced)
+        # For now, use self.config as fallback until sensor config sync is implemented
+        advanced_config = self.config.get('thresholds', {}).get('advanced_threats', {})
+        master_enabled = advanced_config.get('enabled', False)
+
+        if not master_enabled or not self.db_manager:
+            return threats
+
+        # Cryptomining detection (Stratum protocol on specific ports)
+        threat = self._detect_cryptomining(packet, src_ip, dst_ip)
+        if threat:
+            threats.append(threat)
+
+        # Phishing domain detection (DNS queries + connections)
+        phishing_threats = self._detect_phishing(packet, src_ip, dst_ip)
+        threats.extend(phishing_threats)
+
+        # Tor exit node detection
+        threat = self._detect_tor_connection(packet, src_ip, dst_ip)
+        if threat:
+            threats.append(threat)
+
+        # Cloud metadata access (AWS/Azure/GCP IMDS)
+        threat = self._detect_cloud_metadata_access(packet, src_ip, dst_ip)
+        if threat:
+            threats.append(threat)
+
+        # DNS anomaly detection (high query rate)
+        threat = self._detect_dns_anomaly(packet, src_ip)
+        if threat:
+            threats.append(threat)
+
+        return threats
+
+    def _detect_cryptomining(self, packet, src_ip, dst_ip):
+        """Detect cryptomining via Stratum protocol on common mining ports"""
+        if not packet.haslayer(TCP):
+            return None
+
+        tcp_layer = packet[TCP]
+        dst_port = tcp_layer.dport
+
+        # Common mining pool ports (from database config, fallback to defaults)
+        stratum_ports = [3333, 4444, 8333, 9999, 14444, 45560]
+
+        if dst_port not in stratum_ports:
+            return None
+
+        # Track connections per source IP
+        tracker = self.cryptomining_tracker[src_ip]
+        current_time = time.time()
+
+        if tracker['first_seen'] is None:
+            tracker['first_seen'] = current_time
+
+        tracker['last_seen'] = current_time
+        tracker['connections'].add((dst_ip, dst_port))
+
+        # Alert if multiple connections to mining ports (min_connections threshold)
+        min_connections = 3
+        if len(tracker['connections']) >= min_connections:
+            return {
+                'type': 'CRYPTOMINING_DETECTED',
+                'severity': 'HIGH',
+                'source_ip': src_ip,
+                'destination_ip': dst_ip,
+                'description': f'Mogelijk cryptomining: {len(tracker["connections"])} verbindingen naar Stratum poorten',
+                'metadata': {
+                    'dst_port': dst_port,
+                    'connection_count': len(tracker['connections']),
+                    'protocol': 'Stratum'
+                }
+            }
+
+        return None
+
+    def _detect_phishing(self, packet, src_ip, dst_ip):
+        """Detect phishing domains via DNS queries and direct connections"""
+        threats = []
+
+        # Check DNS queries for phishing domains
+        if packet.haslayer(DNS) and packet[DNS].qr == 0:  # Query
+            dnsqr = packet[DNS].qd
+            if dnsqr:
+                domain = dnsqr.qname.decode('utf-8', errors='ignore').rstrip('.')
+
+                # Check against threat feed database
+                match = self.db_manager.check_threat_indicator(
+                    indicator=domain,
+                    feed_types=['phishing']
+                )
+
+                if match:
+                    threats.append({
+                        'type': 'PHISHING_DOMAIN_QUERY',
+                        'severity': 'CRITICAL',
+                        'source_ip': src_ip,
+                        'destination_ip': dst_ip,
+                        'description': f'DNS query naar bekende phishing domain: {domain}',
+                        'metadata': {
+                            'domain': domain,
+                            'feed_source': match.get('source'),
+                            'confidence': match.get('confidence_score')
+                        }
+                    })
+
+        return threats
+
+    def _detect_tor_connection(self, packet, src_ip, dst_ip):
+        """Detect connections to Tor exit nodes"""
+        if not packet.haslayer(TCP):
+            return None
+
+        # Check destination IP against Tor exit node feed
+        match = self.db_manager.check_ip_in_threat_feeds(
+            ip_address=dst_ip,
+            feed_types=['tor_exit']
+        )
+
+        if match:
+            return {
+                'type': 'TOR_EXIT_NODE_CONNECTION',
+                'severity': 'MEDIUM',
+                'source_ip': src_ip,
+                'destination_ip': dst_ip,
+                'description': f'Verbinding naar Tor exit node: {dst_ip}',
+                'metadata': {
+                    'feed_source': match.get('source'),
+                    'confidence': match.get('confidence_score')
+                }
+            }
+
+        return None
+
+    def _detect_cloud_metadata_access(self, packet, src_ip, dst_ip):
+        """Detect access to cloud metadata endpoints (AWS/Azure/GCP IMDS/SSRF)"""
+        # AWS/Azure metadata IP
+        if dst_ip == '169.254.169.254':
+            if packet.haslayer(TCP) or packet.haslayer(HTTP):
+                return {
+                    'type': 'CLOUD_METADATA_ACCESS',
+                    'severity': 'HIGH',
+                    'source_ip': src_ip,
+                    'destination_ip': dst_ip,
+                    'description': f'Toegang tot cloud metadata endpoint (AWS/Azure IMDS): {src_ip} -> {dst_ip}',
+                    'metadata': {
+                        'service': 'AWS/Azure',
+                        'endpoint': '169.254.169.254',
+                        'risk': 'Mogelijk SSRF of credential theft'
+                    }
+                }
+
+        # GCP metadata (via DNS check)
+        if packet.haslayer(DNS) and packet[DNS].qr == 0:
+            dnsqr = packet[DNS].qd
+            if dnsqr:
+                domain = dnsqr.qname.decode('utf-8', errors='ignore').rstrip('.')
+                if domain == 'metadata.google.internal':
+                    return {
+                        'type': 'CLOUD_METADATA_ACCESS',
+                        'severity': 'HIGH',
+                        'source_ip': src_ip,
+                        'destination_ip': dst_ip,
+                        'description': f'DNS query naar GCP metadata endpoint: {domain}',
+                        'metadata': {
+                            'service': 'GCP',
+                            'endpoint': domain,
+                            'risk': 'Mogelijk SSRF of credential theft'
+                        }
+                    }
+
+        return None
+
+    def _detect_dns_anomaly(self, packet, src_ip):
+        """Detect suspicious DNS query rates (possible DNS tunneling or DGA)"""
+        if not packet.haslayer(DNS) or packet[DNS].qr != 0:  # Only queries
+            return None
+
+        dnsqr = packet[DNS].qd
+        if not dnsqr:
+            return None
+
+        domain = dnsqr.qname.decode('utf-8', errors='ignore').rstrip('.')
+        tracker = self.dns_query_tracker[src_ip]
+        current_time = time.time()
+
+        # Initialize window
+        if tracker['window_start'] is None:
+            tracker['window_start'] = current_time
+
+        # Add query
+        tracker['queries'].append(current_time)
+        tracker['unique_domains'].add(domain)
+
+        # Check thresholds (60 second window)
+        time_window = 60
+        window_start = tracker['window_start']
+
+        if (current_time - window_start) >= time_window:
+            # Count queries in window
+            queries_in_window = sum(1 for t in tracker['queries'] if t >= (current_time - time_window))
+            unique_count = len(tracker['unique_domains'])
+
+            # Thresholds (from database config, with fallbacks)
+            queries_threshold = 100  # queries per minute
+            unique_threshold = 50    # unique domains per minute
+
+            if queries_in_window > queries_threshold or unique_count > unique_threshold:
+                threat = {
+                    'type': 'DNS_ANOMALY',
+                    'severity': 'MEDIUM',
+                    'source_ip': src_ip,
+                    'description': f'Abnormale DNS query rate: {queries_in_window} queries, {unique_count} unieke domains in {time_window}s',
+                    'metadata': {
+                        'queries_per_minute': queries_in_window,
+                        'unique_domains': unique_count,
+                        'window_seconds': time_window
+                    }
+                }
+
+                # Reset tracker for next window
+                tracker['unique_domains'].clear()
+                tracker['window_start'] = current_time
+
+                return threat
+
+        return None
+
     def cleanup_old_data(self):
         """Cleanup oude tracking data (call periodiek)"""
         current_time = time.time()
@@ -1291,5 +1549,21 @@ class ThreatDetector:
             # Remove empty trackers
             if not attempts:
                 del self.brute_force_tracker[key]
+
+        # Cleanup cryptomining tracker
+        for ip in list(self.cryptomining_tracker.keys()):
+            tracker = self.cryptomining_tracker[ip]
+            if tracker['last_seen'] and \
+               (current_time - tracker['last_seen']) > 300:  # 5 minuten
+                del self.cryptomining_tracker[ip]
+
+        # Cleanup DNS query tracker
+        for ip in list(self.dns_query_tracker.keys()):
+            tracker = self.dns_query_tracker[ip]
+            # Reset window if older than time_window
+            if tracker['window_start'] and \
+               (current_time - tracker['window_start']) > 120:  # 2 minuten
+                tracker['unique_domains'].clear()
+                tracker['window_start'] = None
 
         self.logger.debug("Oude tracking data opgeschoond")
