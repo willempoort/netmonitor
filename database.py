@@ -3814,6 +3814,57 @@ class DatabaseManager:
             'threat.dns_anomaly.queries_per_minute': 100,
             'threat.dns_anomaly.unique_domains': 50,
             'threat.dns_anomaly.time_window': 60,
+
+            # ===== Phase 2: Web Application Security =====
+
+            # SQL Injection detection
+            'threat.sql_injection.enabled': False,
+            'threat.sql_injection.check_http': True,
+            'threat.sql_injection.check_query_string': True,
+            'threat.sql_injection.check_post_data': True,
+            'threat.sql_injection.sensitivity': 'medium',  # low, medium, high
+
+            # XSS (Cross-Site Scripting) detection
+            'threat.xss.enabled': False,
+            'threat.xss.check_http': True,
+            'threat.xss.check_query_string': True,
+            'threat.xss.check_post_data': True,
+            'threat.xss.sensitivity': 'medium',
+
+            # Command Injection detection
+            'threat.command_injection.enabled': False,
+            'threat.command_injection.check_http': True,
+            'threat.command_injection.check_shell_chars': True,
+            'threat.command_injection.check_common_commands': True,
+
+            # Path Traversal detection
+            'threat.path_traversal.enabled': False,
+            'threat.path_traversal.check_http': True,
+            'threat.path_traversal.check_encoded': True,
+            'threat.path_traversal.check_absolute_paths': True,
+
+            # XXE (XML External Entity) detection
+            'threat.xxe.enabled': False,
+            'threat.xxe.check_post_requests': True,
+            'threat.xxe.check_put_requests': True,
+
+            # SSRF (Server-Side Request Forgery) detection
+            'threat.ssrf.enabled': False,
+            'threat.ssrf.check_internal_ips': True,
+            'threat.ssrf.check_localhost': True,
+            'threat.ssrf.check_cloud_metadata': True,
+
+            # WebShell detection
+            'threat.webshell.enabled': False,
+            'threat.webshell.check_uploads': True,
+            'threat.webshell.check_suspicious_files': True,
+            'threat.webshell.check_php_functions': True,
+
+            # API Abuse detection
+            'threat.api_abuse.enabled': False,
+            'threat.api_abuse.rate_limit_per_minute': 100,
+            'threat.api_abuse.endpoint_limit_per_minute': 50,
+            'threat.api_abuse.time_window': 60,
         }
 
         count = 0

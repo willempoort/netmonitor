@@ -174,6 +174,37 @@ class ThreatDetector:
             'window_start': None
         })
 
+        # Phase 2: Web Application Security trackers
+        self.sqli_tracker = defaultdict(lambda: {
+            'attempts': deque(maxlen=100),  # Recent SQLi attempts with timestamps
+            'first_seen': None,
+            'last_seen': None,
+            'payloads': set()  # Unique payloads seen
+        })
+        self.xss_tracker = defaultdict(lambda: {
+            'attempts': deque(maxlen=100),
+            'first_seen': None,
+            'last_seen': None,
+            'payloads': set()
+        })
+        self.command_injection_tracker = defaultdict(lambda: {
+            'attempts': deque(maxlen=100),
+            'first_seen': None,
+            'last_seen': None,
+            'payloads': set()
+        })
+        self.path_traversal_tracker = defaultdict(lambda: {
+            'attempts': deque(maxlen=100),
+            'first_seen': None,
+            'last_seen': None,
+            'paths': set()
+        })
+        self.api_abuse_tracker = defaultdict(lambda: {
+            'requests': deque(maxlen=500),  # Track API calls per IP
+            'endpoints': defaultdict(int),  # Count per endpoint
+            'window_start': None
+        })
+
         # Parsed whitelist/blacklist from config
         # Defensive check: ensure they are lists
         whitelist_raw = config.get('whitelist', [])
@@ -1325,6 +1356,47 @@ class ThreatDetector:
         if threat:
             threats.append(threat)
 
+        # ===== Phase 2: Web Application Security =====
+
+        # SQL Injection detection
+        threat = self._detect_sql_injection(packet, src_ip, dst_ip)
+        if threat:
+            threats.append(threat)
+
+        # XSS detection
+        threat = self._detect_xss(packet, src_ip, dst_ip)
+        if threat:
+            threats.append(threat)
+
+        # Command Injection detection
+        threat = self._detect_command_injection(packet, src_ip, dst_ip)
+        if threat:
+            threats.append(threat)
+
+        # Path Traversal detection
+        threat = self._detect_path_traversal(packet, src_ip, dst_ip)
+        if threat:
+            threats.append(threat)
+
+        # XXE detection
+        threat = self._detect_xxe(packet, src_ip, dst_ip)
+        if threat:
+            threats.append(threat)
+
+        # SSRF detection (extended)
+        ssrf_threats = self._detect_ssrf_extended(packet, src_ip, dst_ip)
+        threats.extend(ssrf_threats)
+
+        # WebShell detection
+        threat = self._detect_webshell(packet, src_ip, dst_ip)
+        if threat:
+            threats.append(threat)
+
+        # API Abuse detection
+        threat = self._detect_api_abuse(packet, src_ip, dst_ip)
+        if threat:
+            threats.append(threat)
+
         return threats
 
     def _detect_cryptomining(self, packet, src_ip, dst_ip):
@@ -1521,6 +1593,588 @@ class ThreatDetector:
 
         return None
 
+    # ==================== Phase 2: Web Application Security ====================
+
+    def _detect_sql_injection(self, packet, src_ip, dst_ip):
+        """Detect SQL injection attempts in HTTP traffic"""
+        if not packet.haslayer(HTTPRequest):
+            return None
+
+        try:
+            http_layer = packet[HTTPRequest]
+
+            # Extract HTTP components
+            method = http_layer.Method.decode('utf-8', errors='ignore') if http_layer.Method else ''
+            path = http_layer.Path.decode('utf-8', errors='ignore') if http_layer.Path else ''
+            host = http_layer.Host.decode('utf-8', errors='ignore') if http_layer.Host else ''
+
+            # Get POST data if available
+            payload_data = ''
+            if packet.haslayer(Raw):
+                payload_data = packet[Raw].load.decode('utf-8', errors='ignore')
+
+            # Combine all searchable content
+            full_request = f"{method} {path} {payload_data}".lower()
+
+            # SQL injection patterns (common signatures)
+            sqli_patterns = [
+                # UNION-based
+                r'union\s+(all\s+)?select',
+                # Boolean-based
+                r"or\s+['\"]?1['\"]?\s*=\s*['\"]?1",
+                r"or\s+['\"]?[a-z]\s*['\"]?\s*=\s*['\"]?[a-z]",
+                r"'\s*or\s*'1'\s*=\s*'1",
+                # Comment sequences
+                r'--\s*$',
+                r'/\*.*?\*/',
+                r'#.*$',
+                # SQL keywords in suspicious context
+                r';\s*(select|insert|update|delete|drop|create|alter)\s+',
+                r'(exec|execute)\s*\(',
+                # SQL functions
+                r'(concat|char|load_file|into\s+outfile)\s*\(',
+                # Encoded variations
+                r'%27\s*or\s*%27',  # URL-encoded '
+                r'0x[0-9a-f]+',      # Hex encoding
+                # Time-based blind SQLi
+                r'(sleep|benchmark|waitfor\s+delay)\s*\(',
+            ]
+
+            import re
+            matched_patterns = []
+            for pattern in sqli_patterns:
+                if re.search(pattern, full_request, re.IGNORECASE):
+                    matched_patterns.append(pattern)
+
+            if matched_patterns:
+                tracker = self.sqli_tracker[src_ip]
+                current_time = time.time()
+
+                if tracker['first_seen'] is None:
+                    tracker['first_seen'] = current_time
+
+                tracker['last_seen'] = current_time
+                tracker['attempts'].append(current_time)
+                tracker['payloads'].add(path[:100])  # Store truncated path
+
+                return {
+                    'type': 'SQL_INJECTION_ATTEMPT',
+                    'severity': 'CRITICAL',
+                    'source_ip': src_ip,
+                    'destination_ip': dst_ip,
+                    'description': f'SQL injection poging gedetecteerd: {len(matched_patterns)} verdachte patronen in HTTP request',
+                    'metadata': {
+                        'method': method,
+                        'path': path[:200],  # Truncate for logging
+                        'host': host,
+                        'patterns_matched': len(matched_patterns),
+                        'attempt_count': len(tracker['attempts']),
+                        'unique_payloads': len(tracker['payloads'])
+                    }
+                }
+
+        except Exception as e:
+            self.logger.debug(f"Error in SQL injection detection: {e}")
+
+        return None
+
+    def _detect_xss(self, packet, src_ip, dst_ip):
+        """Detect Cross-Site Scripting (XSS) attempts in HTTP traffic"""
+        if not packet.haslayer(HTTPRequest):
+            return None
+
+        try:
+            http_layer = packet[HTTPRequest]
+
+            # Extract HTTP components
+            method = http_layer.Method.decode('utf-8', errors='ignore') if http_layer.Method else ''
+            path = http_layer.Path.decode('utf-8', errors='ignore') if http_layer.Path else ''
+            host = http_layer.Host.decode('utf-8', errors='ignore') if http_layer.Host else ''
+
+            # Get POST data if available
+            payload_data = ''
+            if packet.haslayer(Raw):
+                payload_data = packet[Raw].load.decode('utf-8', errors='ignore')
+
+            # Combine all searchable content
+            full_request = f"{path} {payload_data}".lower()
+
+            # XSS patterns
+            xss_patterns = [
+                # Script tags
+                r'<script[^>]*>',
+                r'</script>',
+                # Event handlers
+                r'on(load|error|click|mouse|focus|blur|change|submit)\s*=',
+                # JavaScript protocol
+                r'javascript\s*:',
+                # Iframe injection
+                r'<iframe[^>]*>',
+                # Object/embed tags
+                r'<(object|embed|applet)[^>]*>',
+                # IMG with event handlers
+                r'<img[^>]*on',
+                # Data URIs
+                r'data:text/html',
+                # Encoded variations
+                r'%3cscript',  # URL-encoded <script
+                r'&#x?[0-9a-f]+;',  # HTML entities
+                # SVG-based XSS
+                r'<svg[^>]*onload',
+            ]
+
+            import re
+            matched_patterns = []
+            for pattern in xss_patterns:
+                if re.search(pattern, full_request, re.IGNORECASE):
+                    matched_patterns.append(pattern)
+
+            if matched_patterns:
+                tracker = self.xss_tracker[src_ip]
+                current_time = time.time()
+
+                if tracker['first_seen'] is None:
+                    tracker['first_seen'] = current_time
+
+                tracker['last_seen'] = current_time
+                tracker['attempts'].append(current_time)
+                tracker['payloads'].add(path[:100])
+
+                return {
+                    'type': 'XSS_ATTEMPT',
+                    'severity': 'HIGH',
+                    'source_ip': src_ip,
+                    'destination_ip': dst_ip,
+                    'description': f'Cross-Site Scripting (XSS) poging: {len(matched_patterns)} verdachte patronen',
+                    'metadata': {
+                        'method': method,
+                        'path': path[:200],
+                        'host': host,
+                        'patterns_matched': len(matched_patterns),
+                        'attempt_count': len(tracker['attempts']),
+                        'unique_payloads': len(tracker['payloads'])
+                    }
+                }
+
+        except Exception as e:
+            self.logger.debug(f"Error in XSS detection: {e}")
+
+        return None
+
+    def _detect_command_injection(self, packet, src_ip, dst_ip):
+        """Detect command injection attempts in HTTP traffic"""
+        if not packet.haslayer(HTTPRequest):
+            return None
+
+        try:
+            http_layer = packet[HTTPRequest]
+
+            path = http_layer.Path.decode('utf-8', errors='ignore') if http_layer.Path else ''
+            method = http_layer.Method.decode('utf-8', errors='ignore') if http_layer.Method else ''
+            host = http_layer.Host.decode('utf-8', errors='ignore') if http_layer.Host else ''
+
+            payload_data = ''
+            if packet.haslayer(Raw):
+                payload_data = packet[Raw].load.decode('utf-8', errors='ignore')
+
+            full_request = f"{path} {payload_data}".lower()
+
+            # Command injection patterns
+            cmd_patterns = [
+                # Shell metacharacters
+                r'[;&|`$]',
+                # Command chaining
+                r'&&|\|\|',
+                # Command substitution
+                r'\$\(',
+                r'`[^`]+`',
+                # Common commands
+                r'\b(cat|ls|wget|curl|nc|netcat|bash|sh|chmod|chown)\b',
+                r'\b(ping|nslookup|whoami|id|uname|ifconfig)\b',
+                # Encoded variations
+                r'%0a',  # URL-encoded newline
+                r'%0d',  # URL-encoded carriage return
+                # Base64 encoded commands (common pattern)
+                r'\|\s*base64\s*-d',
+            ]
+
+            import re
+            matched_patterns = []
+            for pattern in cmd_patterns:
+                if re.search(pattern, full_request, re.IGNORECASE):
+                    matched_patterns.append(pattern)
+
+            if matched_patterns:
+                tracker = self.command_injection_tracker[src_ip]
+                current_time = time.time()
+
+                if tracker['first_seen'] is None:
+                    tracker['first_seen'] = current_time
+
+                tracker['last_seen'] = current_time
+                tracker['attempts'].append(current_time)
+                tracker['payloads'].add(path[:100])
+
+                return {
+                    'type': 'COMMAND_INJECTION_ATTEMPT',
+                    'severity': 'CRITICAL',
+                    'source_ip': src_ip,
+                    'destination_ip': dst_ip,
+                    'description': f'Command injection poging: {len(matched_patterns)} verdachte shell metacharacters',
+                    'metadata': {
+                        'method': method,
+                        'path': path[:200],
+                        'host': host,
+                        'patterns_matched': len(matched_patterns),
+                        'attempt_count': len(tracker['attempts']),
+                        'unique_payloads': len(tracker['payloads'])
+                    }
+                }
+
+        except Exception as e:
+            self.logger.debug(f"Error in command injection detection: {e}")
+
+        return None
+
+    def _detect_path_traversal(self, packet, src_ip, dst_ip):
+        """Detect path traversal attempts in HTTP traffic"""
+        if not packet.haslayer(HTTPRequest):
+            return None
+
+        try:
+            http_layer = packet[HTTPRequest]
+
+            path = http_layer.Path.decode('utf-8', errors='ignore') if http_layer.Path else ''
+            method = http_layer.Method.decode('utf-8', errors='ignore') if http_layer.Method else ''
+            host = http_layer.Host.decode('utf-8', errors='ignore') if http_layer.Host else ''
+
+            payload_data = ''
+            if packet.haslayer(Raw):
+                payload_data = packet[Raw].load.decode('utf-8', errors='ignore')
+
+            full_request = f"{path} {payload_data}"
+
+            # Path traversal patterns
+            traversal_patterns = [
+                # Directory traversal
+                r'\.\./|\.\.\%2[fF]',
+                r'\.\.\x5c',  # Windows backslash
+                # Absolute paths
+                r'/etc/passwd',
+                r'/etc/shadow',
+                r'c:\\windows',
+                r'c:\\boot\.ini',
+                # Encoded variations
+                r'%2e%2e/',
+                r'\.\./',
+                # Null byte injection
+                r'%00',
+                r'\x00',
+            ]
+
+            import re
+            matched_patterns = []
+            for pattern in traversal_patterns:
+                if re.search(pattern, full_request, re.IGNORECASE):
+                    matched_patterns.append(pattern)
+
+            if matched_patterns:
+                tracker = self.path_traversal_tracker[src_ip]
+                current_time = time.time()
+
+                if tracker['first_seen'] is None:
+                    tracker['first_seen'] = current_time
+
+                tracker['last_seen'] = current_time
+                tracker['attempts'].append(current_time)
+                tracker['paths'].add(path[:100])
+
+                return {
+                    'type': 'PATH_TRAVERSAL_ATTEMPT',
+                    'severity': 'HIGH',
+                    'source_ip': src_ip,
+                    'destination_ip': dst_ip,
+                    'description': f'Path traversal poging: {len(matched_patterns)} verdachte patronen',
+                    'metadata': {
+                        'method': method,
+                        'path': path[:200],
+                        'host': host,
+                        'patterns_matched': len(matched_patterns),
+                        'attempt_count': len(tracker['attempts']),
+                        'unique_paths': len(tracker['paths'])
+                    }
+                }
+
+        except Exception as e:
+            self.logger.debug(f"Error in path traversal detection: {e}")
+
+        return None
+
+    def _detect_xxe(self, packet, src_ip, dst_ip):
+        """Detect XML External Entity (XXE) attacks"""
+        if not packet.haslayer(HTTPRequest):
+            return None
+
+        try:
+            # Only check POST/PUT requests with XML content
+            http_layer = packet[HTTPRequest]
+            method = http_layer.Method.decode('utf-8', errors='ignore') if http_layer.Method else ''
+
+            if method not in ['POST', 'PUT']:
+                return None
+
+            path = http_layer.Path.decode('utf-8', errors='ignore') if http_layer.Path else ''
+            host = http_layer.Host.decode('utf-8', errors='ignore') if http_layer.Host else ''
+
+            # Get POST data
+            if not packet.haslayer(Raw):
+                return None
+
+            payload_data = packet[Raw].load.decode('utf-8', errors='ignore')
+
+            # XXE patterns
+            xxe_patterns = [
+                # DOCTYPE with ENTITY
+                r'<!DOCTYPE[^>]*<!ENTITY',
+                r'<!ENTITY[^>]*SYSTEM',
+                # File protocol
+                r'file://',
+                # SYSTEM keyword in XML
+                r'SYSTEM\s+["\']',
+                # Data exfiltration patterns
+                r'<!ENTITY[^>]*%',  # Parameter entities
+                # XXE exploitation indicators
+                r'expect://',
+                r'php://',
+            ]
+
+            import re
+            matched_patterns = []
+            for pattern in xxe_patterns:
+                if re.search(pattern, payload_data, re.IGNORECASE):
+                    matched_patterns.append(pattern)
+
+            if matched_patterns:
+                return {
+                    'type': 'XXE_ATTEMPT',
+                    'severity': 'CRITICAL',
+                    'source_ip': src_ip,
+                    'destination_ip': dst_ip,
+                    'description': f'XML External Entity (XXE) attack poging: {len(matched_patterns)} verdachte XML patronen',
+                    'metadata': {
+                        'method': method,
+                        'path': path[:200],
+                        'host': host,
+                        'patterns_matched': len(matched_patterns),
+                        'payload_preview': payload_data[:200]
+                    }
+                }
+
+        except Exception as e:
+            self.logger.debug(f"Error in XXE detection: {e}")
+
+        return None
+
+    def _detect_ssrf_extended(self, packet, src_ip, dst_ip):
+        """Detect Server-Side Request Forgery (SSRF) - extended beyond cloud metadata"""
+        threats = []
+
+        # Check HTTP requests for internal IP targeting
+        if packet.haslayer(HTTPRequest):
+            try:
+                http_layer = packet[HTTPRequest]
+                path = http_layer.Path.decode('utf-8', errors='ignore') if http_layer.Path else ''
+                host = http_layer.Host.decode('utf-8', errors='ignore') if http_layer.Host else ''
+                method = http_layer.Method.decode('utf-8', errors='ignore') if http_layer.Method else ''
+
+                payload_data = ''
+                if packet.haslayer(Raw):
+                    payload_data = packet[Raw].load.decode('utf-8', errors='ignore')
+
+                full_request = f"{path} {payload_data}".lower()
+
+                # SSRF patterns (looking for internal IPs in parameters)
+                ssrf_patterns = [
+                    # Internal IP ranges
+                    r'(10\.\d{1,3}\.\d{1,3}\.\d{1,3})',
+                    r'(192\.168\.\d{1,3}\.\d{1,3})',
+                    r'(172\.(1[6-9]|2[0-9]|3[01])\.\d{1,3}\.\d{1,3})',
+                    # Localhost variations
+                    r'127\.0\.0\.1',
+                    r'localhost',
+                    r'\[::1\]',
+                    r'0\.0\.0\.0',
+                    # Cloud metadata (already covered but included for completeness)
+                    r'169\.254\.169\.254',
+                    r'metadata\.google\.internal',
+                ]
+
+                import re
+                matched_ips = []
+                for pattern in ssrf_patterns:
+                    matches = re.findall(pattern, full_request, re.IGNORECASE)
+                    matched_ips.extend(matches)
+
+                if matched_ips:
+                    threats.append({
+                        'type': 'SSRF_ATTEMPT',
+                        'severity': 'HIGH',
+                        'source_ip': src_ip,
+                        'destination_ip': dst_ip,
+                        'description': f'SSRF poging: interne IP adressen in HTTP request parameters',
+                        'metadata': {
+                            'method': method,
+                            'path': path[:200],
+                            'host': host,
+                            'internal_ips_found': matched_ips[:5]  # Limit to first 5
+                        }
+                    })
+
+            except Exception as e:
+                self.logger.debug(f"Error in SSRF detection: {e}")
+
+        return threats
+
+    def _detect_webshell(self, packet, src_ip, dst_ip):
+        """Detect webshell activity (uploads and suspicious POST requests)"""
+        if not packet.haslayer(HTTPRequest):
+            return None
+
+        try:
+            http_layer = packet[HTTPRequest]
+            method = http_layer.Method.decode('utf-8', errors='ignore') if http_layer.Method else ''
+            path = http_layer.Path.decode('utf-8', errors='ignore') if http_layer.Path else ''
+            host = http_layer.Host.decode('utf-8', errors='ignore') if http_layer.Host else ''
+
+            # Get POST data if available
+            payload_data = ''
+            if packet.haslayer(Raw):
+                payload_data = packet[Raw].load.decode('utf-8', errors='ignore')
+
+            # Webshell indicators
+            webshell_patterns = [
+                # Known webshell names
+                r'(c99|r57|b374k|wso|shell|cmd|backdoor)\.(php|jsp|asp|aspx)',
+                # Suspicious file uploads
+                r'\.php\d*$',
+                r'\.(phtml|php3|php4|php5|phar)$',
+                # POST to recently uploaded files (pattern in path)
+                r'upload.*\.(php|jsp|asp)',
+                # Common webshell functions
+                r'(eval|system|exec|shell_exec|passthru|base64_decode)\s*\(',
+                # Obfuscated PHP
+                r'\$_[A-Z]+\[',  # $_POST, $_GET, $_REQUEST
+            ]
+
+            import re
+            matched_patterns = []
+
+            # Check both path and payload
+            combined = f"{path} {payload_data}".lower()
+
+            for pattern in webshell_patterns:
+                if re.search(pattern, combined, re.IGNORECASE):
+                    matched_patterns.append(pattern)
+
+            if matched_patterns:
+                return {
+                    'type': 'WEBSHELL_DETECTED',
+                    'severity': 'CRITICAL',
+                    'source_ip': src_ip,
+                    'destination_ip': dst_ip,
+                    'description': f'Webshell activiteit gedetecteerd: {len(matched_patterns)} verdachte patronen',
+                    'metadata': {
+                        'method': method,
+                        'path': path[:200],
+                        'host': host,
+                        'patterns_matched': len(matched_patterns)
+                    }
+                }
+
+        except Exception as e:
+            self.logger.debug(f"Error in webshell detection: {e}")
+
+        return None
+
+    def _detect_api_abuse(self, packet, src_ip, dst_ip):
+        """Detect API abuse (excessive requests, rate limit violations)"""
+        if not packet.haslayer(HTTPRequest):
+            return None
+
+        try:
+            http_layer = packet[HTTPRequest]
+            path = http_layer.Path.decode('utf-8', errors='ignore') if http_layer.Path else ''
+            method = http_layer.Method.decode('utf-8', errors='ignore') if http_layer.Method else ''
+
+            # Track API requests per source IP
+            tracker = self.api_abuse_tracker[src_ip]
+            current_time = time.time()
+
+            if tracker['window_start'] is None:
+                tracker['window_start'] = current_time
+
+            # Add request to tracker
+            tracker['requests'].append(current_time)
+
+            # Track endpoint-specific requests (normalize path)
+            endpoint = path.split('?')[0]  # Remove query string
+            tracker['endpoints'][endpoint] += 1
+
+            # Check thresholds (60 second window)
+            time_window = 60
+            window_start = tracker['window_start']
+
+            if (current_time - window_start) >= time_window:
+                # Count requests in window
+                requests_in_window = sum(1 for t in tracker['requests'] if t >= (current_time - time_window))
+
+                # Thresholds
+                rate_limit = 100  # requests per minute (configurable)
+                endpoint_limit = 50  # requests to same endpoint per minute
+
+                # Check overall rate
+                if requests_in_window > rate_limit:
+                    # Reset tracker
+                    tracker['window_start'] = current_time
+
+                    return {
+                        'type': 'API_ABUSE_RATE_LIMIT',
+                        'severity': 'MEDIUM',
+                        'source_ip': src_ip,
+                        'destination_ip': dst_ip,
+                        'description': f'API rate limit overschreden: {requests_in_window} requests in {time_window}s',
+                        'metadata': {
+                            'requests_per_minute': requests_in_window,
+                            'threshold': rate_limit,
+                            'unique_endpoints': len(tracker['endpoints'])
+                        }
+                    }
+
+                # Check per-endpoint rate
+                for ep, count in tracker['endpoints'].items():
+                    if count > endpoint_limit:
+                        # Reset tracker
+                        tracker['endpoints'].clear()
+                        tracker['window_start'] = current_time
+
+                        return {
+                            'type': 'API_ABUSE_ENDPOINT',
+                            'severity': 'MEDIUM',
+                            'source_ip': src_ip,
+                            'destination_ip': dst_ip,
+                            'description': f'Excessive requests naar API endpoint: {count} requests in {time_window}s',
+                            'metadata': {
+                                'endpoint': ep[:200],
+                                'requests': count,
+                                'threshold': endpoint_limit
+                            }
+                        }
+
+        except Exception as e:
+            self.logger.debug(f"Error in API abuse detection: {e}")
+
+        return None
+
     def cleanup_old_data(self):
         """Cleanup oude tracking data (call periodiek)"""
         current_time = time.time()
@@ -1564,6 +2218,38 @@ class ThreatDetector:
             if tracker['window_start'] and \
                (current_time - tracker['window_start']) > 120:  # 2 minuten
                 tracker['unique_domains'].clear()
+                tracker['window_start'] = None
+
+        # Cleanup Phase 2: Web Application Security trackers
+        for ip in list(self.sqli_tracker.keys()):
+            tracker = self.sqli_tracker[ip]
+            if tracker['last_seen'] and \
+               (current_time - tracker['last_seen']) > 600:  # 10 minuten
+                del self.sqli_tracker[ip]
+
+        for ip in list(self.xss_tracker.keys()):
+            tracker = self.xss_tracker[ip]
+            if tracker['last_seen'] and \
+               (current_time - tracker['last_seen']) > 600:
+                del self.xss_tracker[ip]
+
+        for ip in list(self.command_injection_tracker.keys()):
+            tracker = self.command_injection_tracker[ip]
+            if tracker['last_seen'] and \
+               (current_time - tracker['last_seen']) > 600:
+                del self.command_injection_tracker[ip]
+
+        for ip in list(self.path_traversal_tracker.keys()):
+            tracker = self.path_traversal_tracker[ip]
+            if tracker['last_seen'] and \
+               (current_time - tracker['last_seen']) > 600:
+                del self.path_traversal_tracker[ip]
+
+        for ip in list(self.api_abuse_tracker.keys()):
+            tracker = self.api_abuse_tracker[ip]
+            if tracker['window_start'] and \
+               (current_time - tracker['window_start']) > 120:  # 2 minuten
+                tracker['endpoints'].clear()
                 tracker['window_start'] = None
 
         self.logger.debug("Oude tracking data opgeschoond")

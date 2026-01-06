@@ -69,17 +69,17 @@ This document maps NetMonitor's threat detection capabilities against industry s
 - T1496 - Resource Hijacking
 - T1566 - Phishing
 
-### Phase 2: Web Application Security
-**Coverage: 19% → 34% (+15%)**
+### Phase 2: Web Application Security ✅
+**Coverage: 19% → 34% (+15%)** - COMPLETED
 
-Adds detection for:
-- T1190 - Exploit Public-Facing Application
-- T1059.007 - Command and Scripting Interpreter: JavaScript
-- T1505 - Server Software Component
-- T1078 - Valid Accounts
-- T1110 - Brute Force
-- T1213 - Data from Information Repositories
-- T1567 - Exfiltration Over Web Service
+Implemented detections:
+- ✅ T1190 - Exploit Public-Facing Application (SQLi, XSS, Path Traversal, XXE)
+- ✅ T1059.007 - Command and Scripting Interpreter: JavaScript (XSS)
+- ✅ T1505 - Server Software Component (WebShell detection)
+- ✅ T1078 - Valid Accounts (API abuse, brute force indicators)
+- ✅ T1110 - Brute Force (API rate limiting)
+- ✅ T1213 - Data from Information Repositories (SSRF, SQLi)
+- ✅ T1567 - Exfiltration Over Web Service (API abuse detection)
 
 ### Phase 3: DDoS & Resource Exhaustion
 **Coverage: 34% → 43% (+9%)**
@@ -260,13 +260,13 @@ Fills remaining gaps:
 
 ## Success Metrics Dashboard
 
-### Current Status (Phase 1)
+### Current Status (Phase 2 Complete)
 ```
-Overall Coverage:        [████░░░░░░] 19%
-MITRE ATT&CK:           [███░░░░░░░] 19%
-NIST Framework:         [███░░░░░░░] 30%
-Threat Types:           5/60 (8%)
-Professional Rating:    37/100
+Overall Coverage:        [███████░░░] 34%
+MITRE ATT&CK:           [███████░░░] 34%
+NIST Framework:         [████░░░░░░] 40%
+Threat Types:           13/60 (22%)
+Professional Rating:    52/100
 ```
 
 ### Target (Phase 9)
@@ -282,18 +282,20 @@ Professional Rating:    90/100
 
 ## Next Steps
 
-**Immediate (This Week):**
+**Immediate (Completed):**
 1. ✅ Complete Phase 1 infrastructure
 2. ✅ Fix UI and configuration issues
 3. ✅ Document roadmap and coverage
+4. ✅ Complete Phase 2: Web Application Security
+5. ✅ Implement all 8 web security detections
 
 **Short Term (Next 2 Weeks):**
-1. 🎯 Start Phase 2: Web Application Security
-2. 🎯 Implement SQLi, XSS, Command Injection detection
-3. 🎯 Add WebShell and API abuse detection
+1. 🎯 Start Phase 3: DDoS & Resource Exhaustion
+2. 🎯 Implement SYN flood, UDP flood, HTTP flood detection
+3. 🎯 Add Slowloris and DNS/NTP amplification detection
 
 **Medium Term (1-2 Months):**
-1. 🎯 Complete Phases 2-4 (Web, DDoS, Ransomware)
+1. 🎯 Complete Phases 3-4 (DDoS, Ransomware)
 2. 🎯 Reach 50%+ MITRE coverage
 3. 🎯 Professional rating >60/100
 

@@ -250,6 +250,73 @@ BEST_PRACTICE_CONFIG = {
             "queries_per_minute": 100,
             "unique_domains": 50,
             "time_window": 60
+        },
+
+        # ===== Phase 2: Web Application Security =====
+
+        # SQL Injection detection
+        "sql_injection": {
+            "enabled": False,
+            "check_http": True,
+            "check_query_string": True,
+            "check_post_data": True,
+            "sensitivity": "medium"
+        },
+
+        # XSS (Cross-Site Scripting) detection
+        "xss": {
+            "enabled": False,
+            "check_http": True,
+            "check_query_string": True,
+            "check_post_data": True,
+            "sensitivity": "medium"
+        },
+
+        # Command Injection detection
+        "command_injection": {
+            "enabled": False,
+            "check_http": True,
+            "check_shell_chars": True,
+            "check_common_commands": True
+        },
+
+        # Path Traversal detection
+        "path_traversal": {
+            "enabled": False,
+            "check_http": True,
+            "check_encoded": True,
+            "check_absolute_paths": True
+        },
+
+        # XXE (XML External Entity) detection
+        "xxe": {
+            "enabled": False,
+            "check_post_requests": True,
+            "check_put_requests": True
+        },
+
+        # SSRF (Server-Side Request Forgery) detection
+        "ssrf": {
+            "enabled": False,
+            "check_internal_ips": True,
+            "check_localhost": True,
+            "check_cloud_metadata": True
+        },
+
+        # WebShell detection
+        "webshell": {
+            "enabled": False,
+            "check_uploads": True,
+            "check_suspicious_files": True,
+            "check_php_functions": True
+        },
+
+        # API Abuse detection
+        "api_abuse": {
+            "enabled": False,
+            "rate_limit_per_minute": 100,
+            "endpoint_limit_per_minute": 50,
+            "time_window": 60
         }
     },
 
@@ -510,6 +577,57 @@ PARAMETER_DESCRIPTIONS = {
     "threat.dns_anomaly.unique_domains": "Unique domains per time window threshold",
     "threat.dns_anomaly.time_window": "Time window (seconds) for DNS anomaly detection",
 
+    # ===== Phase 2: Web Application Security =====
+
+    # SQL Injection
+    "threat.sql_injection.enabled": "Enable SQL injection detection in HTTP traffic",
+    "threat.sql_injection.check_http": "Check HTTP requests for SQLi patterns",
+    "threat.sql_injection.check_query_string": "Check URL query strings for SQLi",
+    "threat.sql_injection.check_post_data": "Check POST data for SQLi",
+    "threat.sql_injection.sensitivity": "Detection sensitivity (low/medium/high)",
+
+    # XSS (Cross-Site Scripting)
+    "threat.xss.enabled": "Enable XSS detection in HTTP traffic",
+    "threat.xss.check_http": "Check HTTP requests for XSS patterns",
+    "threat.xss.check_query_string": "Check URL query strings for XSS",
+    "threat.xss.check_post_data": "Check POST data for XSS",
+    "threat.xss.sensitivity": "Detection sensitivity (low/medium/high)",
+
+    # Command Injection
+    "threat.command_injection.enabled": "Enable command injection detection",
+    "threat.command_injection.check_http": "Check HTTP requests for command injection",
+    "threat.command_injection.check_shell_chars": "Detect shell metacharacters",
+    "threat.command_injection.check_common_commands": "Detect common system commands",
+
+    # Path Traversal
+    "threat.path_traversal.enabled": "Enable path traversal detection",
+    "threat.path_traversal.check_http": "Check HTTP requests for path traversal",
+    "threat.path_traversal.check_encoded": "Detect URL-encoded traversal attempts",
+    "threat.path_traversal.check_absolute_paths": "Detect absolute path access",
+
+    # XXE (XML External Entity)
+    "threat.xxe.enabled": "Enable XXE attack detection",
+    "threat.xxe.check_post_requests": "Check POST requests for XXE",
+    "threat.xxe.check_put_requests": "Check PUT requests for XXE",
+
+    # SSRF (Server-Side Request Forgery)
+    "threat.ssrf.enabled": "Enable SSRF detection",
+    "threat.ssrf.check_internal_ips": "Detect internal IP targeting",
+    "threat.ssrf.check_localhost": "Detect localhost access attempts",
+    "threat.ssrf.check_cloud_metadata": "Detect cloud metadata endpoint access",
+
+    # WebShell
+    "threat.webshell.enabled": "Enable webshell detection",
+    "threat.webshell.check_uploads": "Detect suspicious file uploads",
+    "threat.webshell.check_suspicious_files": "Detect known webshell filenames",
+    "threat.webshell.check_php_functions": "Detect dangerous PHP functions",
+
+    # API Abuse
+    "threat.api_abuse.enabled": "Enable API abuse detection",
+    "threat.api_abuse.rate_limit_per_minute": "Maximum API requests per minute",
+    "threat.api_abuse.endpoint_limit_per_minute": "Max requests per endpoint per minute",
+    "threat.api_abuse.time_window": "Time window (seconds) for rate limiting",
+
     # PCAP Export (NIS2 Forensics)
     "thresholds.pcap_export.enabled": "Enable PCAP forensic capture",
     "thresholds.pcap_export.output_dir": "Directory for PCAP file storage",
@@ -578,12 +696,22 @@ PARAMETER_CATEGORIES = {
         "thresholds.pcap_export"
     ],
     "Advanced Threat Detection": [
+        # Phase 1
         "threat.cryptomining",
         "threat.phishing",
         "threat.tor",
         "threat.vpn",
         "threat.cloud_metadata",
-        "threat.dns_anomaly"
+        "threat.dns_anomaly",
+        # Phase 2: Web Application Security
+        "threat.sql_injection",
+        "threat.xss",
+        "threat.command_injection",
+        "threat.path_traversal",
+        "threat.xxe",
+        "threat.ssrf",
+        "threat.webshell",
+        "threat.api_abuse"
     ],
     "SOAR (Automated Response)": [
         "soar.enabled",
