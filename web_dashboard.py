@@ -1680,6 +1680,141 @@ def api_reset_config():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ==================== Threat Feed Endpoints ====================
+
+@app.route('/api/threat-feeds', methods=['GET'])
+@require_sensor_token_or_login()
+def api_get_threat_feeds():
+    """Get threat feed indicators
+
+    Query parameters:
+        feed_type: Optional filter by feed type (phishing, tor_exit, cryptomining, etc.)
+        indicator_type: Optional filter by indicator type (ip, domain, url, hash, cidr, asn)
+        limit: Maximum number of results (default: 10000)
+
+    Returns:
+        JSON array of threat indicators with metadata
+    """
+    try:
+        feed_type = request.args.get('feed_type')
+        indicator_type = request.args.get('indicator_type')
+        limit = request.args.get('limit', type=int, default=10000)
+
+        indicators = db.get_threat_feed_indicators(
+            feed_type=feed_type,
+            indicator_type=indicator_type,
+            is_active=True,
+            limit=limit
+        )
+
+        # Convert datetime objects to ISO format for JSON serialization
+        for indicator in indicators:
+            for key in ['first_seen', 'last_updated', 'expires_at']:
+                if indicator.get(key):
+                    indicator[key] = indicator[key].isoformat()
+
+        return jsonify({
+            'success': True,
+            'count': len(indicators),
+            'indicators': indicators
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting threat feeds: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/threat-feeds/check/ip/<ip_address>', methods=['GET'])
+@require_sensor_token_or_login()
+def api_check_threat_feed_ip(ip_address):
+    """Check if IP address matches any threat feeds
+
+    Query parameters:
+        feed_types: Optional comma-separated list of feed types to check
+
+    Returns:
+        JSON with match details or null if not found
+    """
+    try:
+        feed_types_str = request.args.get('feed_types')
+        feed_types = feed_types_str.split(',') if feed_types_str else None
+
+        match = db.check_ip_in_threat_feeds(ip_address, feed_types=feed_types)
+
+        return jsonify({
+            'success': True,
+            'ip_address': ip_address,
+            'match': match
+        })
+
+    except Exception as e:
+        logger.error(f"Error checking threat feed for IP {ip_address}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/threat-feeds/check/indicator/<indicator>', methods=['GET'])
+@require_sensor_token_or_login()
+def api_check_threat_feed_indicator(indicator):
+    """Check if indicator (domain, URL, hash) matches any threat feeds
+
+    Query parameters:
+        feed_types: Optional comma-separated list of feed types to check
+
+    Returns:
+        JSON with match details or null if not found
+    """
+    try:
+        feed_types_str = request.args.get('feed_types')
+        feed_types = feed_types_str.split(',') if feed_types_str else None
+
+        match = db.check_threat_indicator(indicator, feed_types=feed_types)
+
+        return jsonify({
+            'success': True,
+            'indicator': indicator,
+            'match': match
+        })
+
+    except Exception as e:
+        logger.error(f"Error checking threat feed for indicator {indicator}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/threat-feeds/stats', methods=['GET'])
+@require_sensor_token_or_login()
+def api_threat_feed_stats():
+    """Get threat feed statistics
+
+    Returns:
+        JSON with feed counts per type
+    """
+    try:
+        stats = {}
+
+        # Get counts per feed type
+        for feed_type in ['phishing', 'tor_exit', 'cryptomining', 'vpn_exit',
+                         'malware_c2', 'botnet_c2', 'known_attacker', 'malicious_domain']:
+            indicators = db.get_threat_feed_indicators(
+                feed_type=feed_type,
+                is_active=True,
+                limit=100000  # High limit to get accurate count
+            )
+            stats[feed_type] = {
+                'count': len(indicators),
+                'last_updated': max([i.get('last_updated') for i in indicators if i.get('last_updated')],
+                                   default=None).isoformat() if indicators else None
+            }
+
+        return jsonify({
+            'success': True,
+            'stats': stats
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting threat feed stats: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ==================== Kiosk Mode Routes (Public Access) ====================
 
 @app.route('/kiosk')
