@@ -159,18 +159,19 @@ NetMonitor is een van de eerste security monitoring tools met native **Model Con
 
 ### Wat Maakt Dit Uniek?
 
-De MCP HTTP API biedt **49 gespecialiseerde security tools** die AI-assistenten direct kunnen aanroepen:
+De MCP HTTP API biedt **52 gespecialiseerde security tools** die AI-assistenten direct kunnen aanroepen:
 
 | Categorie | Tools | Mogelijkheden |
 |-----------|-------|---------------|
-| **Analyse** | 5 | IP analyse, threat lookup, sensor status |
-| **Device Classification** | 13 | Apparaat herkenning, behavior learning, templates |
-| **TLS Analysis** | 3 | JA3 checks, TLS statistieken, blacklist beheer |
+| **Core Analysis** | 3 | IP analyse, threat lookup, sensor status |
+| **Device Classification** | 20 | Apparaat herkenning, behavior learning, templates, traffic stats |
+| **TLS Analysis** | 2 | JA3 checks, TLS statistieken |
 | **PCAP Forensics** | 5 | Capture listing, flow export, buffer status |
-| **Sensor Beheer** | 2 | Remote commands, command history |
+| **Memory Management** | 2 | RAM monitoring, garbage collection, malloc_trim |
+| **Sensor Commands** | 2 | Remote commands, command history |
 | **Whitelist** | 3 | Entries toevoegen, bekijken, verwijderen |
 | **Export** | 1 | CSV export voor SIEM integratie |
-| **Configuratie** | 5 | Parameters lezen en schrijven |
+| **Configuration** | 2 | Parameters lezen en schrijven |
 | **AD/Kerberos** | 3 | Attack stats, ticket analysis, encryption checks |
 | **Kill Chain** | 2 | Attack chains, MITRE ATT&CK mapping |
 | **Risk Scoring** | 3 | Asset scores, trends, prioritering |
@@ -283,7 +284,7 @@ Rapportage: "3 nieuwe apparaten ontdekt, 1 met verdachte TLS fingerprint"
 | Database | PostgreSQL + TimescaleDB |
 | Interface | Modern Web Dashboard |
 | API | REST + WebSocket + MCP HTTP API |
-| AI Integratie | 53 MCP tools met token auth |
+| AI Integratie | 52 MCP tools met token auth |
 | Schaalbaarheid | Multi-sensor architectuur |
 | Performance | 1Gbps+ netwerkverkeer |
 | Forensics | PCAP capture met ring buffer |
@@ -428,7 +429,7 @@ Onze experts helpen bij de productie-implementatie.
 | **SOAR** | Automated playbooks, Approval workflows, Dry-run mode, Multi-integration |
 | **GeoIP** | Land identificatie, Local/Private onderscheid, MaxMind database |
 | **Beheer** | Central dashboard, Multi-sensor, Remote config, Whitelist management |
-| **AI Integratie** | 53 MCP tools, Token auth, Permission scopes, Audit logging |
+| **AI Integratie** | 52 MCP tools, Token auth, Permission scopes, Audit logging |
 
 ### B. Compliance & Security
 
@@ -452,19 +453,20 @@ NetMonitor ondersteunt compliance met:
 
 | Categorie | Aantal | Scope |
 |-----------|--------|-------|
-| Core Analysis | 5 | read_only |
-| Device Classification | 13 | mixed |
-| TLS Analysis | 3 | mixed |
+| Core Analysis | 3 | read_only |
+| Device Classification | 20 | mixed |
+| TLS Analysis | 2 | mixed |
 | PCAP Forensics | 5 | mixed |
+| Memory Management | 2 | mixed |
 | Sensor Commands | 2 | mixed |
 | Whitelist Management | 3 | mixed |
 | Export Tools | 1 | read_only |
-| Config Management | 5 | mixed |
+| Config Management | 2 | mixed |
 | AD/Kerberos | 3 | read_only |
 | Kill Chain | 2 | read_only |
 | Risk Scoring | 3 | read_only |
 | SOAR | 4 | mixed |
-| **Totaal** | **49** | - |
+| **Totaal** | **52** | - |
 
 ---
 

@@ -64,7 +64,7 @@ Een krachtig netwerk monitoring platform voor Linux met **real-time web dashboar
   - **Token-based authentication** - Veilige Bearer tokens per AI client
   - **Permission scopes** - read_only, read_write, admin
   - **Rate limiting** - Bescherming tegen misbruik
-  - **37 AI tools** - Van monitoring tot configuratie en whitelist beheer
+  - **52 AI tools** - Van monitoring tot configuratie, memory management en whitelist beheer
   - **Auto-documentatie** - OpenAPI/Swagger docs
   - **Multi-client support** - Meerdere AI's tegelijk
   - AI-assisted sensor management via natuurlijke taal
