@@ -108,9 +108,37 @@ try:
             print(f"✓ Schema version: {version}")
             print(f"  Last updated: {updated}")
     else:
-        print("✗ netmonitor_meta table does not exist")
-        print("  This means the database was never initialized")
-        print("  NetMonitor will create all tables on next startup")
+        print("⚠️  netmonitor_meta table missing - creating now...")
+
+        # Check if old schema_version table exists (pre-v13 databases)
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables
+                WHERE table_schema = 'public'
+                AND table_name = 'schema_version'
+            )
+        """)
+        has_old_schema = cursor.fetchone()[0]
+
+        # Auto-create netmonitor_meta table for upgrades from old versions
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS netmonitor_meta (
+                id SERIAL PRIMARY KEY,
+                schema_version INTEGER NOT NULL,
+                last_updated TIMESTAMPTZ DEFAULT NOW()
+            );
+
+            INSERT INTO netmonitor_meta (schema_version)
+            VALUES (13)
+            ON CONFLICT DO NOTHING;
+        """)
+        conn.commit()
+
+        print("✓ netmonitor_meta table created with schema_version=13")
+        if has_old_schema:
+            print("  (Migrated from old schema_version table)")
+        else:
+            print("  (Upgrade from pre-versioning database detected)")
 
     # Check sensor_configs
     cursor.execute("""
@@ -126,6 +154,44 @@ try:
         cursor.execute("SELECT COUNT(*) FROM sensor_configs")
         count = cursor.fetchone()[0]
         print(f"✓ sensor_configs table exists ({count} parameters)")
+
+        # Check for old advanced_threats.* parameters that need migration
+        cursor.execute("SELECT COUNT(*) FROM sensor_configs WHERE parameter_path LIKE 'advanced_threats.%'")
+        old_count = cursor.fetchone()[0]
+
+        if old_count > 0:
+            print(f"\n⚠️  Found {old_count} old 'advanced_threats.*' parameters")
+            print("   Auto-migrating to 'threat.*' prefix...")
+
+            # Delete old advanced_threats.* parameters (replaced by threat.* in database)
+            cursor.execute("DELETE FROM sensor_configs WHERE parameter_path LIKE 'advanced_threats.%'")
+            deleted = cursor.rowcount
+
+            # Remove duplicate threat.* entries (keep most recent)
+            cursor.execute("""
+                DELETE FROM sensor_configs
+                WHERE id IN (
+                    SELECT id
+                    FROM (
+                        SELECT id,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY sensor_id, parameter_path
+                                   ORDER BY updated_at DESC
+                               ) as rn
+                        FROM sensor_configs
+                        WHERE parameter_path LIKE 'threat.%'
+                    ) t
+                    WHERE rn > 1
+                )
+            """)
+            duplicates = cursor.rowcount
+
+            conn.commit()
+
+            print(f"   ✓ Deleted {deleted} old parameters")
+            if duplicates > 0:
+                print(f"   ✓ Removed {duplicates} duplicate entries")
+            print("   ✓ Migration complete")
     else:
         print("✗ sensor_configs table does not exist")
 
