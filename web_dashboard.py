@@ -1815,6 +1815,127 @@ def api_threat_feed_stats():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/threat-detection')
+@login_required
+def threat_detection_page():
+    """Threat Detection management page - Web UI for configuring advanced threat detection"""
+    try:
+        # Import threat feed updater for stats
+        from threat_feed_updater import ThreatFeedUpdater
+
+        # Get threat feed statistics
+        updater = ThreatFeedUpdater(db)
+        feed_stats = updater.get_feed_stats()
+
+        # Get current threat detection configuration
+        config = db.get_sensor_config(sensor_id=None)  # Global config
+        threat_config = {
+            'threat.cryptomining.enabled': config.get('threat.cryptomining.enabled', {}).get('parameter_value', False),
+            'threat.phishing.enabled': config.get('threat.phishing.enabled', {}).get('parameter_value', False),
+            'threat.tor.enabled': config.get('threat.tor.enabled', {}).get('parameter_value', False),
+            'threat.cloud_metadata.enabled': config.get('threat.cloud_metadata.enabled', {}).get('parameter_value', False),
+            'threat.dns_anomaly.enabled': config.get('threat.dns_anomaly.enabled', {}).get('parameter_value', False),
+        }
+
+        return render_template('threat_detection.html',
+                             user=session.get('user'),
+                             feed_stats=feed_stats,
+                             threat_config=threat_config)
+
+    except Exception as e:
+        logger.error(f"Error loading threat detection page: {e}")
+        flash(f'Error loading threat detection settings: {str(e)}', 'danger')
+        return redirect(url_for('index'))
+
+
+@app.route('/api/threat-detection/toggle', methods=['POST'])
+@login_required
+def api_toggle_threat_detection():
+    """Toggle threat detection type on/off
+
+    Request body:
+        {
+            "threat_type": "cryptomining|phishing|tor|cloud_metadata|dns_anomaly",
+            "enabled": true/false,
+            "sensor_id": "optional_sensor_id"
+        }
+
+    Returns:
+        JSON with success status
+    """
+    try:
+        data = request.get_json()
+        threat_type = data.get('threat_type')
+        enabled = data.get('enabled')
+        sensor_id = data.get('sensor_id')
+
+        if not threat_type or enabled is None:
+            return jsonify({'success': False, 'error': 'Missing threat_type or enabled parameter'}), 400
+
+        # Validate threat type
+        valid_types = ['cryptomining', 'phishing', 'tor', 'cloud_metadata', 'dns_anomaly']
+        if threat_type not in valid_types:
+            return jsonify({'success': False, 'error': f'Invalid threat_type. Must be one of: {", ".join(valid_types)}'}), 400
+
+        # Set configuration parameter
+        param_path = f'threat.{threat_type}.enabled'
+        scope = 'sensor' if sensor_id else 'global'
+
+        success = db.set_config_parameter(
+            parameter_path=param_path,
+            value=enabled,
+            sensor_id=sensor_id,
+            scope=scope,
+            description=f'Enable/disable {threat_type} detection',
+            updated_by=session.get('user', {}).get('username', 'dashboard')
+        )
+
+        if success:
+            action = 'enabled' if enabled else 'disabled'
+            logger.info(f"Threat detection {threat_type} {action} by {session.get('user', {}).get('username')}")
+
+            return jsonify({
+                'success': True,
+                'message': f'Threat detection {threat_type} {action}',
+                'threat_type': threat_type,
+                'enabled': enabled
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to update configuration'}), 500
+
+    except Exception as e:
+        logger.error(f"Error toggling threat detection: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/threat-feeds/update', methods=['POST'])
+@login_required
+def api_update_threat_feeds():
+    """Manually trigger threat feed update
+
+    Returns:
+        JSON with update results
+    """
+    try:
+        from threat_feed_updater import ThreatFeedUpdater
+
+        # Run update
+        updater = ThreatFeedUpdater(db)
+        results = updater.update_all_feeds()
+
+        logger.info(f"Manual threat feed update completed by {session.get('user', {}).get('username')}: {results}")
+
+        return jsonify({
+            'success': True,
+            'message': 'Threat feeds updated successfully',
+            'results': results
+        })
+
+    except Exception as e:
+        logger.error(f"Error updating threat feeds: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ==================== Kiosk Mode Routes (Public Access) ====================
 
 @app.route('/kiosk')

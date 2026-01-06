@@ -379,12 +379,19 @@
         <div class="row mb-3">
             <div class="col-12">
                 <div class="card bg-secondary">
-                    <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#configCollapse">
-                        <h5 class="mb-0">
-                            <i class="bi bi-sliders"></i> Configuration Management
-                            <span class="badge bg-info ms-2" id="config-params-count">0</span>
-                        </h5>
-                        <i class="bi bi-chevron-down"></i>
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#configCollapse" class="flex-grow-1">
+                            <h5 class="mb-0">
+                                <i class="bi bi-sliders"></i> Configuration Management
+                                <span class="badge bg-info ms-2" id="config-params-count">0</span>
+                            </h5>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <a href="/threat-detection" class="btn btn-sm btn-outline-danger" title="Advanced Threat Detection">
+                                <i class="bi bi-shield-exclamation"></i> Threat Detection
+                            </a>
+                            <i class="bi bi-chevron-down" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#configCollapse"></i>
+                        </div>
                     </div>
                     <div class="collapse" id="configCollapse">
                         <div class="card-body">
