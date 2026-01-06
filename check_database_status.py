@@ -120,25 +120,47 @@ try:
         """)
         has_old_schema = cursor.fetchone()[0]
 
-        # Auto-create netmonitor_meta table for upgrades from old versions
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS netmonitor_meta (
-                id SERIAL PRIMARY KEY,
-                schema_version INTEGER NOT NULL,
-                last_updated TIMESTAMPTZ DEFAULT NOW()
-            );
+        try:
+            # Auto-create netmonitor_meta table for upgrades from old versions
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS netmonitor_meta (
+                    id SERIAL PRIMARY KEY,
+                    schema_version INTEGER NOT NULL,
+                    last_updated TIMESTAMPTZ DEFAULT NOW()
+                );
 
-            INSERT INTO netmonitor_meta (schema_version)
-            VALUES (13)
-            ON CONFLICT DO NOTHING;
-        """)
-        conn.commit()
+                INSERT INTO netmonitor_meta (schema_version)
+                VALUES (13)
+                ON CONFLICT DO NOTHING;
+            """)
+            conn.commit()
 
-        print("✓ netmonitor_meta table created with schema_version=13")
-        if has_old_schema:
-            print("  (Migrated from old schema_version table)")
-        else:
-            print("  (Upgrade from pre-versioning database detected)")
+            print("✓ netmonitor_meta table created with schema_version=13")
+            if has_old_schema:
+                print("  (Migrated from old schema_version table)")
+            else:
+                print("  (Upgrade from pre-versioning database detected)")
+        except Exception as create_error:
+            conn.rollback()
+            print(f"✗ Failed to create netmonitor_meta table: {create_error}")
+            print()
+            print("⚡ Action Required:")
+            print("   Run the database setup as postgres user:")
+            print()
+            print("   sudo -u postgres psql -d netmonitor -c \"")
+            print("   CREATE TABLE IF NOT EXISTS netmonitor_meta (")
+            print("       id SERIAL PRIMARY KEY,")
+            print("       schema_version INTEGER NOT NULL,")
+            print("       last_updated TIMESTAMPTZ DEFAULT NOW()")
+            print("   );")
+            print("   INSERT INTO netmonitor_meta (schema_version) VALUES (13);")
+            print("   GRANT ALL PRIVILEGES ON TABLE netmonitor_meta TO netmonitor;")
+            print("   GRANT USAGE, SELECT ON SEQUENCE netmonitor_meta_id_seq TO netmonitor;")
+            print("   \"")
+            print()
+            db._return_connection(conn)
+            db.close()
+            sys.exit(1)
 
     # Check sensor_configs
     cursor.execute("""
