@@ -28,14 +28,35 @@ def main():
     from config_loader import load_config
     config = load_config('config.yaml')
 
-    if not config.get('database', {}).get('enabled'):
-        print("❌ Database is not enabled in config.yaml")
+    db_config = config.get('database', {})
+    db_type = db_config.get('type', None)
+
+    if db_type not in ('postgresql', 'sqlite'):
+        print("❌ Database is not configured in config.yaml")
+        print(f"   Current type: {db_type or 'Not set'}")
+        print()
+        print("   Set database.type to 'postgresql' or 'sqlite'")
         return 1
 
     # Initialize database manager (will auto-upgrade schema)
     print("🔍 Connecting to database...")
     try:
-        db = DatabaseManager(config['database'])
+        # Initialize DatabaseManager with correct config structure
+        if db_type == 'postgresql':
+            pg_config = db_config.get('postgresql', {})
+            db = DatabaseManager(
+                host=pg_config.get('host', 'localhost'),
+                port=pg_config.get('port', 5432),
+                database=pg_config.get('database', 'netmonitor'),
+                user=pg_config.get('user', 'netmonitor'),
+                password=pg_config.get('password', 'netmonitor'),
+                min_connections=pg_config.get('min_connections', 2),
+                max_connections=pg_config.get('max_connections', 10)
+            )
+        else:
+            # SQLite
+            sqlite_config = db_config.get('sqlite', {})
+            db = DatabaseManager(db_path=sqlite_config.get('path', '/var/lib/netmonitor/netmonitor.db'))
         print("✓ Connected successfully")
         print()
 
