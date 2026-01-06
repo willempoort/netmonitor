@@ -30,6 +30,7 @@ from threat_feeds import ThreatFeedManager
 from behavior_detector import BehaviorDetector
 from abuseipdb_client import AbuseIPDBClient
 from database import DatabaseManager
+from threat_feed_updater import run_feed_updater_loop
 from metrics_collector import MetricsCollector
 from web_dashboard import DashboardServer
 from device_discovery import DeviceDiscovery
@@ -820,6 +821,20 @@ class NetworkMonitor:
                 name="ConfigSync"
             )
             self.config_sync_thread.start()
+
+        # Start threat feed updater thread (if database enabled)
+        if self.db:
+            # Check if any advanced threats are enabled
+            advanced_config = self.config.get('thresholds', {}).get('advanced_threats', {})
+            if any(threat.get('enabled', False) for threat in advanced_config.values() if isinstance(threat, dict)):
+                self.logger.info("Starting threat feed updater thread")
+                threat_feed_thread = threading.Thread(
+                    target=run_feed_updater_loop,
+                    args=(self.db, self.config),
+                    daemon=True,
+                    name="ThreatFeedUpdater"
+                )
+                threat_feed_thread.start()
 
         # Check of we root privileges hebben
         if conf.L3socket == conf.L3socket6:
