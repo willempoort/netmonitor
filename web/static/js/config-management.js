@@ -231,7 +231,7 @@ function renderConfigByCategory(config) {
     renderCategoryParams('thresholds', performanceThresholds, 'thresholds');
 
     // Render Advanced Threat Detection
-    renderCategoryParams('advanced-threats', config.advanced_threats || {}, 'advanced_threats');
+    renderCategoryParams('advanced-threats', config.threat || {}, 'threat');
 
     // Render Alert Management
     renderCategoryParams('alerts-config', config.alerts || {}, 'alerts');
@@ -263,7 +263,15 @@ function renderCategoryParams(categoryId, params, prefix) {
         if (typeof value === 'object' && !Array.isArray(value)) {
             // Nested object - render as subsection
             html += `<div class="col-12"><h6 class="text-info mt-3">${formatParamName(key)}</h6></div>`;
-            for (const [subKey, subValue] of Object.entries(value)) {
+
+            // Sort entries so 'enabled' comes first
+            const sortedEntries = Object.entries(value).sort(([keyA], [keyB]) => {
+                if (keyA === 'enabled') return -1;
+                if (keyB === 'enabled') return 1;
+                return 0;
+            });
+
+            for (const [subKey, subValue] of sortedEntries) {
                 const subPath = `${fullPath}.${subKey}`;
                 html += renderParameterCard(subPath, subKey, subValue);
             }

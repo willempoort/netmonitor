@@ -200,7 +200,8 @@ BEST_PRACTICE_CONFIG = {
     },
 
     # Advanced Threat Detection - Database-backed threat intelligence
-    "advanced_threats": {
+    # Note: Uses 'threat.' prefix to match database parameter naming
+    "threat": {
         # Cryptomining detection (Stratum protocol)
         "cryptomining": {
             "enabled": False,
@@ -477,37 +478,37 @@ PARAMETER_DESCRIPTIONS = {
     "thresholds.tls_analysis.ja3_blacklist": "Custom JA3 fingerprints to block (dict of hash:name)",
 
     # Advanced Threat Detection - Database-backed intelligence
-    "advanced_threats.cryptomining.enabled": "Enable cryptomining detection (Stratum protocol)",
-    "advanced_threats.cryptomining.stratum_ports": "List of Stratum mining ports to monitor",
-    "advanced_threats.cryptomining.min_connections": "Minimum connections to same mining pool to trigger alert",
+    "threat.cryptomining.enabled": "Enable cryptomining detection (Stratum protocol)",
+    "threat.cryptomining.stratum_ports": "List of Stratum mining ports to monitor",
+    "threat.cryptomining.min_connections": "Minimum connections to same mining pool to trigger alert",
 
-    "advanced_threats.phishing.enabled": "Enable phishing domain detection (OpenPhish feed)",
-    "advanced_threats.phishing.feed_url": "OpenPhish feed URL",
-    "advanced_threats.phishing.update_interval": "Feed update interval (seconds)",
-    "advanced_threats.phishing.cache_ttl": "Feed cache TTL (seconds)",
-    "advanced_threats.phishing.check_dns": "Check DNS queries against phishing feed",
-    "advanced_threats.phishing.check_connections": "Check HTTP connections against phishing feed",
+    "threat.phishing.enabled": "Enable phishing domain detection (OpenPhish feed)",
+    "threat.phishing.feed_url": "OpenPhish feed URL",
+    "threat.phishing.update_interval": "Feed update interval (seconds)",
+    "threat.phishing.cache_ttl": "Feed cache TTL (seconds)",
+    "threat.phishing.check_dns": "Check DNS queries against phishing feed",
+    "threat.phishing.check_connections": "Check HTTP connections against phishing feed",
 
-    "advanced_threats.tor.enabled": "Enable Tor exit node detection",
-    "advanced_threats.tor.feed_url": "Tor Project exit node list URL",
-    "advanced_threats.tor.update_interval": "Feed update interval (seconds)",
-    "advanced_threats.tor.alert_exit_node": "Alert on connections to Tor exit nodes",
-    "advanced_threats.tor.alert_onion": "Alert on .onion domain queries",
+    "threat.tor.enabled": "Enable Tor exit node detection",
+    "threat.tor.feed_url": "Tor Project exit node list URL",
+    "threat.tor.update_interval": "Feed update interval (seconds)",
+    "threat.tor.alert_exit_node": "Alert on connections to Tor exit nodes",
+    "threat.tor.alert_onion": "Alert on .onion domain queries",
 
-    "advanced_threats.vpn.enabled": "Enable VPN tunnel detection",
-    "advanced_threats.vpn.detect_openvpn": "Detect OpenVPN tunnels",
-    "advanced_threats.vpn.detect_wireguard": "Detect WireGuard tunnels",
-    "advanced_threats.vpn.detect_ipsec": "Detect IPsec tunnels",
+    "threat.vpn.enabled": "Enable VPN tunnel detection",
+    "threat.vpn.detect_openvpn": "Detect OpenVPN tunnels",
+    "threat.vpn.detect_wireguard": "Detect WireGuard tunnels",
+    "threat.vpn.detect_ipsec": "Detect IPsec tunnels",
 
-    "advanced_threats.cloud_metadata.enabled": "Enable cloud metadata access detection (SSRF/IMDS)",
-    "advanced_threats.cloud_metadata.aws_ip": "AWS metadata service IP",
-    "advanced_threats.cloud_metadata.azure_ip": "Azure metadata service IP",
-    "advanced_threats.cloud_metadata.gcp_hostname": "GCP metadata service hostname",
+    "threat.cloud_metadata.enabled": "Enable cloud metadata access detection (SSRF/IMDS)",
+    "threat.cloud_metadata.aws_ip": "AWS metadata service IP",
+    "threat.cloud_metadata.azure_ip": "Azure metadata service IP",
+    "threat.cloud_metadata.gcp_hostname": "GCP metadata service hostname",
 
-    "advanced_threats.dns_anomaly.enabled": "Enable DNS anomaly detection (DGA, tunneling)",
-    "advanced_threats.dns_anomaly.queries_per_minute": "DNS queries per minute threshold",
-    "advanced_threats.dns_anomaly.unique_domains": "Unique domains per time window threshold",
-    "advanced_threats.dns_anomaly.time_window": "Time window (seconds) for DNS anomaly detection",
+    "threat.dns_anomaly.enabled": "Enable DNS anomaly detection (DGA, tunneling)",
+    "threat.dns_anomaly.queries_per_minute": "DNS queries per minute threshold",
+    "threat.dns_anomaly.unique_domains": "Unique domains per time window threshold",
+    "threat.dns_anomaly.time_window": "Time window (seconds) for DNS anomaly detection",
 
     # PCAP Export (NIS2 Forensics)
     "thresholds.pcap_export.enabled": "Enable PCAP forensic capture",
@@ -577,12 +578,12 @@ PARAMETER_CATEGORIES = {
         "thresholds.pcap_export"
     ],
     "Advanced Threat Detection": [
-        "advanced_threats.cryptomining",
-        "advanced_threats.phishing",
-        "advanced_threats.tor",
-        "advanced_threats.vpn",
-        "advanced_threats.cloud_metadata",
-        "advanced_threats.dns_anomaly"
+        "threat.cryptomining",
+        "threat.phishing",
+        "threat.tor",
+        "threat.vpn",
+        "threat.cloud_metadata",
+        "threat.dns_anomaly"
     ],
     "SOAR (Automated Response)": [
         "soar.enabled",
