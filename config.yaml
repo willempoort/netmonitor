@@ -215,56 +215,11 @@ thresholds:
     detect_domain_fronting: true     # Detecteer domain fronting (C2 evasion)
     detect_esni_ech: true            # Detecteer ESNI/ECH (verborgen hostnames)
 
-  # Advanced Threat Detection - Phase 1 (Quick Wins)
-  # All detections are network-based (no agents required)
+  # Advanced Threat Detection (database-backed, synced to sensors)
+  # NOTE: Managed centrally via Web UI > Configuration > Advanced Threats
+  # All settings stored in database (sensor_configs) for global + per-sensor override
   advanced_threats:
-    # Cryptomining detection
-    cryptomining:
-      enabled: true
-      stratum_ports: [3333, 4444, 8333, 9999, 14444, 45560]  # Common mining pool ports
-      detect_getwork: true           # Detecteer getwork protocol
-      detect_stratum: true           # Detecteer Stratum protocol
-      min_connections: 3             # Minimum connections to flag
-
-    # Phishing domain detection (externe feed vereist)
-    phishing:
-      enabled: true
-      feed_url: "https://openphish.com/feed.txt"  # Gratis phishing feed
-      update_interval: 3600          # Update elke 3600 seconden (1 uur)
-      cache_ttl: 86400              # Cache TTL in seconden (24 uur)
-      check_dns_queries: true        # Check DNS queries tegen feed
-      check_connections: true        # Check direct connections tegen feed
-
-    # Tor exit node detection
-    tor:
-      enabled: true
-      exit_node_list_url: "https://check.torproject.org/torbulkexitlist"
-      update_interval: 3600          # Update elke 3600 seconden (1 uur)
-      alert_on_exit_node: true       # Alert bij connectie naar Tor exit node
-      alert_on_onion: true           # Alert bij .onion domain queries
-
-    # VPN tunnel detection
-    vpn:
-      enabled: true
-      detect_openvpn: true           # OpenVPN UDP/TCP signatures
-      detect_wireguard: true         # WireGuard UDP signatures
-      detect_ipsec: true             # IPSec/IKE traffic
-      alert_on_detection: false      # Waarschuwing: false = alleen loggen
-
-    # Cloud metadata access (AWS/Azure SSRF/IMDS)
-    cloud_metadata:
-      enabled: true
-      aws_metadata: "169.254.169.254"    # AWS metadata IP
-      azure_metadata: "169.254.169.254"  # Azure metadata IP (same)
-      gcp_metadata: "metadata.google.internal"  # GCP metadata hostname
-      alert_on_access: true          # Alert bij toegang tot metadata endpoints
-
-    # Suspicious DNS query rate
-    dns_anomaly:
-      enabled: true
-      queries_per_minute_threshold: 100   # Alert bij >100 queries/min
-      unique_domains_threshold: 50        # Alert bij >50 unieke domains/min
-      time_window: 60                     # Tijdvenster in seconden
+    enabled: false  # Master switch - configure via web UI after enabling
 
 # SOAR (Security Orchestration, Automation and Response)
 soar:

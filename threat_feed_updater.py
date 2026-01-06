@@ -22,42 +22,45 @@ import re
 class ThreatFeedUpdater:
     """Manages external threat intelligence feed updates"""
 
-    def __init__(self, db_manager, config: Dict):
+    def __init__(self, db_manager):
         """
         Initialize threat feed updater
 
         Args:
             db_manager: DatabaseManager instance
-            config: Configuration dict from config.yaml
         """
         self.db = db_manager
-        self.config = config
         self.logger = logging.getLogger('NetMonitor.ThreatFeeds')
-
-        # Extract configuration
-        self.advanced_config = config.get('thresholds', {}).get('advanced_threats', {})
 
         # Request timeout for external feeds
         self.request_timeout = 30
 
-    def update_all_feeds(self) -> Dict[str, int]:
+    def update_all_feeds(self, sensor_id: str = None) -> Dict[str, int]:
         """
         Update all enabled threat feeds
+
+        Args:
+            sensor_id: Optional sensor ID for sensor-specific config (None = global)
 
         Returns:
             Dict with feed names and indicator counts imported
         """
         results = {}
 
+        # Get configuration from database
+        config = self.db.get_sensor_config(sensor_id=sensor_id)
+
         # Phishing domains
-        if self.advanced_config.get('phishing', {}).get('enabled', False):
-            count = self.update_phishing_feed()
+        phishing_enabled = config.get('threat.phishing.enabled', {}).get('parameter_value', False)
+        if phishing_enabled:
+            count = self.update_phishing_feed(config)
             if count is not None:
                 results['phishing'] = count
 
         # Tor exit nodes
-        if self.advanced_config.get('tor', {}).get('enabled', False):
-            count = self.update_tor_feed()
+        tor_enabled = config.get('threat.tor.enabled', {}).get('parameter_value', False)
+        if tor_enabled:
+            count = self.update_tor_feed(config)
             if count is not None:
                 results['tor_exit'] = count
 
@@ -68,17 +71,20 @@ class ThreatFeedUpdater:
 
         return results
 
-    def update_phishing_feed(self) -> Optional[int]:
+    def update_phishing_feed(self, config: Dict) -> Optional[int]:
         """
         Update phishing domain feed from OpenPhish
+
+        Args:
+            config: Configuration dict from database
 
         Returns:
             Number of indicators imported, or None on error
         """
         try:
-            config = self.advanced_config.get('phishing', {})
-            feed_url = config.get('feed_url', 'https://openphish.com/feed.txt')
-            cache_ttl = config.get('cache_ttl', 86400)  # 24 hours default
+            # Get config values from database (already in correct format)
+            feed_url = config.get('threat.phishing.feed_url', {}).get('parameter_value', 'https://openphish.com/feed.txt')
+            cache_ttl = config.get('threat.phishing.cache_ttl', {}).get('parameter_value', 86400)
 
             self.logger.info(f"Updating phishing feed from {feed_url}")
 
@@ -120,16 +126,19 @@ class ThreatFeedUpdater:
             self.logger.error(f"Error updating phishing feed: {e}")
             return None
 
-    def update_tor_feed(self) -> Optional[int]:
+    def update_tor_feed(self, config: Dict) -> Optional[int]:
         """
         Update Tor exit node feed from Tor Project
+
+        Args:
+            config: Configuration dict from database
 
         Returns:
             Number of indicators imported, or None on error
         """
         try:
-            config = self.advanced_config.get('tor', {})
-            feed_url = config.get('exit_node_list_url',
+            # Get config values from database
+            feed_url = config.get('threat.tor.feed_url', {}).get('parameter_value',
                                  'https://check.torproject.org/torbulkexitlist')
 
             self.logger.info(f"Updating Tor exit node feed from {feed_url}")
@@ -243,18 +252,17 @@ class ThreatFeedUpdater:
         return stats
 
 
-def run_feed_updater(db_manager, config: Dict):
+def run_feed_updater(db_manager):
     """
     Run threat feed updater once
 
     Args:
         db_manager: DatabaseManager instance
-        config: Configuration dict
     """
     logger = logging.getLogger('NetMonitor.ThreatFeeds')
 
     try:
-        updater = ThreatFeedUpdater(db_manager, config)
+        updater = ThreatFeedUpdater(db_manager)
         results = updater.update_all_feeds()
 
         logger.info(f"Threat feed update completed: {results}")
@@ -274,36 +282,37 @@ def run_feed_updater(db_manager, config: Dict):
         return None
 
 
-def run_feed_updater_loop(db_manager, config: Dict):
+def run_feed_updater_loop(db_manager):
     """
     Run threat feed updater in a loop with configurable interval
 
     Args:
         db_manager: DatabaseManager instance
-        config: Configuration dict
     """
     logger = logging.getLogger('NetMonitor.ThreatFeeds')
 
-    # Get update interval from config
-    advanced_config = config.get('thresholds', {}).get('advanced_threats', {})
-
-    # Default to 3600 seconds (1 hour) if not specified
+    # Default to 3600 seconds (1 hour)
     update_interval = 3600
 
-    # Use phishing update interval as default
-    if 'phishing' in advanced_config:
-        update_interval = advanced_config['phishing'].get('update_interval', 3600)
+    # Try to get interval from database config
+    try:
+        config = db_manager.get_sensor_config(sensor_id=None)
+        db_interval = config.get('threat.phishing.update_interval', {}).get('parameter_value')
+        if db_interval:
+            update_interval = int(db_interval)
+    except Exception as e:
+        logger.warning(f"Could not read update interval from database, using default: {e}")
 
     logger.info(f"Starting threat feed updater loop (interval: {update_interval}s)")
 
     # Run initial update
-    run_feed_updater(db_manager, config)
+    run_feed_updater(db_manager)
 
     # Run in loop
     while True:
         try:
             time.sleep(update_interval)
-            run_feed_updater(db_manager, config)
+            run_feed_updater(db_manager)
         except KeyboardInterrupt:
             logger.info("Threat feed updater stopped by user")
             break
@@ -330,4 +339,4 @@ if __name__ == '__main__':
     db = DatabaseManager(config)
 
     # Run once
-    run_feed_updater(db, config)
+    run_feed_updater(db)

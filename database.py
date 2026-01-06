@@ -810,13 +810,15 @@ class DatabaseManager:
             self._return_connection(conn)
 
     def _init_builtin_data(self):
-        """Initialize builtin device templates and service providers"""
+        """Initialize builtin device templates, service providers, and threat configs"""
         try:
             templates_count = self.init_builtin_templates()
             providers_count = self.init_builtin_service_providers()
+            threats_count = self.init_advanced_threat_config()
 
-            if templates_count > 0 or providers_count > 0:
-                self.logger.info(f"Builtin data initialized: {templates_count} templates, {providers_count} service providers")
+            if templates_count > 0 or providers_count > 0 or threats_count > 0:
+                self.logger.info(f"Builtin data initialized: {templates_count} templates, "
+                               f"{providers_count} service providers, {threats_count} threat configs")
         except Exception as e:
             self.logger.warning(f"Could not initialize builtin data: {e}")
 
@@ -3768,6 +3770,80 @@ class DatabaseManager:
                 count += 1
 
         self.logger.info(f"Initialized {count} builtin service providers")
+        return count
+
+    def init_advanced_threat_config(self) -> int:
+        """Initialize default advanced threat detection configuration in database"""
+
+        # Default configurations for Phase 1 threats
+        default_configs = {
+            # Cryptomining detection
+            'threat.cryptomining.enabled': False,
+            'threat.cryptomining.stratum_ports': [3333, 4444, 8333, 9999, 14444, 45560],
+            'threat.cryptomining.min_connections': 3,
+
+            # Phishing domain detection
+            'threat.phishing.enabled': False,
+            'threat.phishing.feed_url': 'https://openphish.com/feed.txt',
+            'threat.phishing.update_interval': 3600,
+            'threat.phishing.cache_ttl': 86400,
+            'threat.phishing.check_dns': True,
+            'threat.phishing.check_connections': True,
+
+            # Tor exit node detection
+            'threat.tor.enabled': False,
+            'threat.tor.feed_url': 'https://check.torproject.org/torbulkexitlist',
+            'threat.tor.update_interval': 3600,
+            'threat.tor.alert_exit_node': True,
+            'threat.tor.alert_onion': True,
+
+            # VPN tunnel detection
+            'threat.vpn.enabled': False,
+            'threat.vpn.detect_openvpn': True,
+            'threat.vpn.detect_wireguard': True,
+            'threat.vpn.detect_ipsec': True,
+
+            # Cloud metadata access
+            'threat.cloud_metadata.enabled': False,
+            'threat.cloud_metadata.aws_ip': '169.254.169.254',
+            'threat.cloud_metadata.azure_ip': '169.254.169.254',
+            'threat.cloud_metadata.gcp_hostname': 'metadata.google.internal',
+
+            # DNS anomaly detection
+            'threat.dns_anomaly.enabled': False,
+            'threat.dns_anomaly.queries_per_minute': 100,
+            'threat.dns_anomaly.unique_domains': 50,
+            'threat.dns_anomaly.time_window': 60,
+        }
+
+        count = 0
+        for param_path, value in default_configs.items():
+            try:
+                # Check if config already exists
+                existing = self.get_sensor_config(sensor_id=None, parameter_path=param_path)
+                if existing:
+                    continue  # Skip if already configured
+
+                # Set global default
+                success = self.set_config_parameter(
+                    parameter_path=param_path,
+                    value=value,
+                    sensor_id=None,  # Global
+                    scope='global',
+                    description=f'Advanced threat detection: {param_path}',
+                    updated_by='system'
+                )
+
+                if success:
+                    count += 1
+
+            except Exception as e:
+                self.logger.warning(f"Could not initialize config {param_path}: {e}")
+                continue
+
+        if count > 0:
+            self.logger.info(f"Initialized {count} advanced threat detection parameters")
+
         return count
 
     def close(self):

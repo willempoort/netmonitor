@@ -822,19 +822,21 @@ class NetworkMonitor:
             )
             self.config_sync_thread.start()
 
-        # Start threat feed updater thread (if database enabled)
+        # Start threat feed updater thread (if database enabled and advanced threats configured)
         if self.db:
-            # Check if any advanced threats are enabled
-            advanced_config = self.config.get('thresholds', {}).get('advanced_threats', {})
-            if any(threat.get('enabled', False) for threat in advanced_config.values() if isinstance(threat, dict)):
-                self.logger.info("Starting threat feed updater thread")
+            # Check if advanced threats master switch is enabled (in config.yaml)
+            advanced_enabled = self.config.get('thresholds', {}).get('advanced_threats', {}).get('enabled', False)
+            if advanced_enabled:
+                self.logger.info("Starting threat feed updater thread (database-backed config)")
                 threat_feed_thread = threading.Thread(
                     target=run_feed_updater_loop,
-                    args=(self.db, self.config),
+                    args=(self.db,),
                     daemon=True,
                     name="ThreatFeedUpdater"
                 )
                 threat_feed_thread.start()
+            else:
+                self.logger.info("Advanced threat detection disabled (set thresholds.advanced_threats.enabled=true to enable)")
 
         # Check of we root privileges hebben
         if conf.L3socket == conf.L3socket6:
