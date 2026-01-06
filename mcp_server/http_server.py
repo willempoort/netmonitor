@@ -1058,6 +1058,77 @@ class MCPHTTPServer:
                     }
                 },
                 "scope_required": "read_only"
+            },
+            # Threat Detection Tools
+            {
+                "name": "get_threat_feed_stats",
+                "description": "Get statistics about threat intelligence feeds (phishing, Tor, cryptomining, etc.)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {}
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "get_threat_detections",
+                "description": "Get recent advanced threat detections (cryptomining, phishing, Tor, cloud metadata, DNS anomaly)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "hours": {"type": "number", "default": 24},
+                        "threat_type": {"type": "string", "enum": ["CRYPTOMINING_DETECTED", "PHISHING_DOMAIN_QUERY", "TOR_EXIT_NODE_CONNECTION", "CLOUD_METADATA_ACCESS", "DNS_ANOMALY"]},
+                        "limit": {"type": "number", "default": 50}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "get_threat_config",
+                "description": "Get current threat detection configuration (which threats are enabled, thresholds, etc.)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "sensor_id": {"type": "string", "description": "Optional sensor ID for sensor-specific config"}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "enable_threat_detection",
+                "description": "Enable or disable a specific threat detection type",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "threat_type": {"type": "string", "enum": ["cryptomining", "phishing", "tor", "vpn", "cloud_metadata", "dns_anomaly"]},
+                        "enabled": {"type": "boolean"},
+                        "sensor_id": {"type": "string", "description": "Optional sensor ID for sensor-specific config"}
+                    },
+                    "required": ["threat_type", "enabled"]
+                },
+                "scope_required": "read_write"
+            },
+            {
+                "name": "update_threat_feeds",
+                "description": "Manually trigger threat feed updates (normally runs automatically every hour)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {}
+                },
+                "scope_required": "admin"
+            },
+            {
+                "name": "check_indicator",
+                "description": "Check if an IP, domain, or hash matches any threat feeds",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "indicator": {"type": "string", "description": "IP address, domain, URL, or hash to check"},
+                        "indicator_type": {"type": "string", "enum": ["ip", "domain", "url", "hash"]},
+                        "feed_types": {"type": "array", "items": {"type": "string"}, "description": "Optional list of feed types to check"}
+                    },
+                    "required": ["indicator", "indicator_type"]
+                },
+                "scope_required": "read_only"
             }
         ]
         return tools
@@ -1145,6 +1216,13 @@ class MCPHTTPServer:
             'get_pending_approvals': self._tool_get_pending_approvals,
             'approve_soar_action': self._tool_approve_soar_action,
             'get_soar_history': self._tool_get_soar_history,
+            # Threat Detection Tools
+            'get_threat_feed_stats': self._tool_get_threat_feed_stats,
+            'get_threat_detections': self._tool_get_threat_detections,
+            'get_threat_config': self._tool_get_threat_config,
+            'enable_threat_detection': self._tool_enable_threat_detection,
+            'update_threat_feeds': self._tool_update_threat_feeds,
+            'check_indicator': self._tool_check_indicator,
         }
 
         if tool_name not in tool_map:
@@ -3575,6 +3653,294 @@ TOP THREAT TYPES:
             summary += f"  {ip_info['ip']}: {ip_info['count']} alerts\n"
 
         return summary
+
+    # ==================== Threat Detection Tool Implementations ====================
+
+    async def _tool_get_threat_feed_stats(self, params: Dict) -> Dict:
+        """Implement get_threat_feed_stats tool"""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+
+        try:
+            from database import DatabaseManager
+
+            # Create DB connection
+            host = os.environ.get('NETMONITOR_DB_HOST', os.environ.get('DB_HOST', 'localhost'))
+            database = os.environ.get('NETMONITOR_DB_NAME', os.environ.get('DB_NAME', 'netmonitor'))
+            user = os.environ.get('NETMONITOR_DB_USER', os.environ.get('DB_USER', 'netmonitor'))
+            password = os.environ.get('NETMONITOR_DB_PASSWORD', os.environ.get('DB_PASSWORD', 'netmonitor'))
+
+            db = DatabaseManager(
+                host=host, database=database, user=user, password=password,
+                min_connections=1, max_connections=2
+            )
+
+            stats = {}
+            total_indicators = 0
+
+            # Get counts per feed type
+            for feed_type in ['phishing', 'tor_exit', 'cryptomining', 'vpn_exit',
+                             'malware_c2', 'botnet_c2', 'known_attacker', 'malicious_domain']:
+                indicators = db.get_threat_feed_indicators(
+                    feed_type=feed_type,
+                    is_active=True,
+                    limit=100000
+                )
+                count = len(indicators)
+                total_indicators += count
+
+                if count > 0:
+                    last_updated = max([i.get('last_updated') for i in indicators if i.get('last_updated')],
+                                      default=None)
+                    stats[feed_type] = {
+                        'count': count,
+                        'last_updated': last_updated.isoformat() if last_updated else None
+                    }
+
+            db.close()
+
+            return {
+                'success': True,
+                'total_indicators': total_indicators,
+                'feed_stats': stats,
+                'active_feeds': len([f for f in stats.values() if f['count'] > 0])
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting threat feed stats: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def _tool_get_threat_detections(self, params: Dict) -> Dict:
+        """Implement get_threat_detections tool"""
+        hours = params.get('hours', 24)
+        threat_type = params.get('threat_type')
+        limit = params.get('limit', 50)
+
+        # Get recent alerts filtered by advanced threat types
+        advanced_threat_types = [
+            'CRYPTOMINING_DETECTED',
+            'PHISHING_DOMAIN_QUERY',
+            'TOR_EXIT_NODE_CONNECTION',
+            'CLOUD_METADATA_ACCESS',
+            'DNS_ANOMALY'
+        ]
+
+        alerts = self.db.get_recent_alerts(
+            limit=limit,
+            hours=hours,
+            threat_type=threat_type
+        )
+
+        # Filter only advanced threat detections
+        threat_alerts = [a for a in alerts if a.get('threat_type') in advanced_threat_types]
+
+        # Calculate statistics
+        by_type = {}
+        unique_sources = set()
+
+        for alert in threat_alerts:
+            t_type = alert['threat_type']
+            by_type[t_type] = by_type.get(t_type, 0) + 1
+            unique_sources.add(alert.get('source_ip', 'unknown'))
+
+        return {
+            'success': True,
+            'total_detections': len(threat_alerts),
+            'by_type': by_type,
+            'unique_sources': len(unique_sources),
+            'detections': threat_alerts
+        }
+
+    async def _tool_get_threat_config(self, params: Dict) -> Dict:
+        """Implement get_threat_config tool"""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+
+        try:
+            from database import DatabaseManager
+
+            # Create DB connection
+            host = os.environ.get('NETMONITOR_DB_HOST', os.environ.get('DB_HOST', 'localhost'))
+            database = os.environ.get('NETMONITOR_DB_NAME', os.environ.get('DB_NAME', 'netmonitor'))
+            user = os.environ.get('NETMONITOR_DB_USER', os.environ.get('DB_USER', 'netmonitor'))
+            password = os.environ.get('NETMONITOR_DB_PASSWORD', os.environ.get('DB_PASSWORD', 'netmonitor'))
+
+            db = DatabaseManager(
+                host=host, database=database, user=user, password=password,
+                min_connections=1, max_connections=2
+            )
+
+            sensor_id = params.get('sensor_id')
+            config = db.get_sensor_config(sensor_id=sensor_id)
+
+            # Extract threat-related config
+            threat_config = {}
+            for key, value in config.items():
+                if key.startswith('threat.'):
+                    threat_config[key] = value.get('parameter_value')
+
+            db.close()
+
+            return {
+                'success': True,
+                'sensor_id': sensor_id or 'global',
+                'config': threat_config
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting threat config: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def _tool_enable_threat_detection(self, params: Dict) -> Dict:
+        """Implement enable_threat_detection tool"""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+
+        try:
+            from database import DatabaseManager
+
+            # Create DB connection
+            host = os.environ.get('NETMONITOR_DB_HOST', os.environ.get('DB_HOST', 'localhost'))
+            database = os.environ.get('NETMONITOR_DB_NAME', os.environ.get('DB_NAME', 'netmonitor'))
+            user = os.environ.get('NETMONITOR_DB_USER', os.environ.get('DB_USER', 'netmonitor'))
+            password = os.environ.get('NETMONITOR_DB_PASSWORD', os.environ.get('DB_PASSWORD', 'netmonitor'))
+
+            db = DatabaseManager(
+                host=host, database=database, user=user, password=password,
+                min_connections=1, max_connections=2
+            )
+
+            threat_type = params.get('threat_type')
+            enabled = params.get('enabled')
+            sensor_id = params.get('sensor_id')
+
+            # Set config parameter
+            param_path = f'threat.{threat_type}.enabled'
+            scope = 'sensor' if sensor_id else 'global'
+
+            success = db.set_config_parameter(
+                parameter_path=param_path,
+                value=enabled,
+                sensor_id=sensor_id,
+                scope=scope,
+                description=f'Enable/disable {threat_type} detection',
+                updated_by='mcp_api'
+            )
+
+            db.close()
+
+            if success:
+                return {
+                    'success': True,
+                    'message': f'{threat_type} detection {"enabled" if enabled else "disabled"} for {sensor_id or "all sensors"}',
+                    'threat_type': threat_type,
+                    'enabled': enabled,
+                    'scope': scope
+                }
+            else:
+                return {'success': False, 'error': 'Failed to update configuration'}
+
+        except Exception as e:
+            logger.error(f"Error enabling threat detection: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def _tool_update_threat_feeds(self, params: Dict) -> Dict:
+        """Implement update_threat_feeds tool"""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+
+        try:
+            from database import DatabaseManager
+            from threat_feed_updater import run_feed_updater
+
+            # Create DB connection
+            host = os.environ.get('NETMONITOR_DB_HOST', os.environ.get('DB_HOST', 'localhost'))
+            database = os.environ.get('NETMONITOR_DB_NAME', os.environ.get('DB_NAME', 'netmonitor'))
+            user = os.environ.get('NETMONITOR_DB_USER', os.environ.get('DB_USER', 'netmonitor'))
+            password = os.environ.get('NETMONITOR_DB_PASSWORD', os.environ.get('DB_PASSWORD', 'netmonitor'))
+
+            db = DatabaseManager(
+                host=host, database=database, user=user, password=password,
+                min_connections=1, max_connections=2
+            )
+
+            # Run feed updater
+            results = run_feed_updater(db)
+
+            db.close()
+
+            if results:
+                return {
+                    'success': True,
+                    'message': 'Threat feeds updated successfully',
+                    'results': results
+                }
+            else:
+                return {'success': False, 'error': 'Failed to update threat feeds'}
+
+        except Exception as e:
+            logger.error(f"Error updating threat feeds: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def _tool_check_indicator(self, params: Dict) -> Dict:
+        """Implement check_indicator tool"""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+
+        try:
+            from database import DatabaseManager
+
+            # Create DB connection
+            host = os.environ.get('NETMONITOR_DB_HOST', os.environ.get('DB_HOST', 'localhost'))
+            database = os.environ.get('NETMONITOR_DB_NAME', os.environ.get('DB_NAME', 'netmonitor'))
+            user = os.environ.get('NETMONITOR_DB_USER', os.environ.get('DB_USER', 'netmonitor'))
+            password = os.environ.get('NETMONITOR_DB_PASSWORD', os.environ.get('DB_PASSWORD', 'netmonitor'))
+
+            db = DatabaseManager(
+                host=host, database=database, user=user, password=password,
+                min_connections=1, max_connections=2
+            )
+
+            indicator = params.get('indicator')
+            indicator_type = params.get('indicator_type')
+            feed_types = params.get('feed_types')
+
+            # Check based on indicator type
+            if indicator_type == 'ip':
+                match = db.check_ip_in_threat_feeds(indicator, feed_types=feed_types)
+            else:
+                match = db.check_threat_indicator(indicator, feed_types=feed_types)
+
+            db.close()
+
+            if match:
+                return {
+                    'success': True,
+                    'indicator': indicator,
+                    'indicator_type': indicator_type,
+                    'match_found': True,
+                    'feed_type': match.get('feed_type'),
+                    'source': match.get('source'),
+                    'confidence_score': match.get('confidence_score'),
+                    'metadata': match.get('metadata')
+                }
+            else:
+                return {
+                    'success': True,
+                    'indicator': indicator,
+                    'indicator_type': indicator_type,
+                    'match_found': False,
+                    'message': 'Indicator not found in any threat feeds'
+                }
+
+        except Exception as e:
+            logger.error(f"Error checking indicator: {e}")
+            return {'success': False, 'error': str(e)}
 
     def run(self, host: str = "0.0.0.0", port: int = 8000):
         """Run the HTTP server"""
