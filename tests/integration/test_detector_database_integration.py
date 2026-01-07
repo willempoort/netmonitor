@@ -97,11 +97,12 @@ class TestDetectorDatabaseIntegration:
         Integration test: Performance test met veel alerts
         Performance case: 1000 packets → database inserts
         """
-        # Setup database mock
+        # Setup database mock with persistent return values
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         # PostgreSQL fetchone() returns tuple, not dict
-        mock_cursor.fetchone.return_value = (1,)  # alert_id
+        # Use side_effect to return consistent values for multiple calls
+        mock_cursor.fetchone.side_effect = lambda: (1,)  # Always return tuple with ID
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_pool.return_value.getconn.return_value = mock_conn
 

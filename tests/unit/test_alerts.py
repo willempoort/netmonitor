@@ -37,7 +37,8 @@ class TestAlertManagerInitialization:
         alert_manager = AlertManager(base_config)
 
         assert alert_manager.config == base_config
-        assert hasattr(alert_manager, 'alert_count')
+        assert hasattr(alert_manager, 'alert_history')
+        assert hasattr(alert_manager, 'max_alerts_per_minute')
 
     def test_init_with_all_outputs_enabled(self):
         """

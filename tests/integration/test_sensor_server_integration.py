@@ -94,8 +94,9 @@ class TestSensorServerCommunication:
                 {'type': 'DNS_TUNNEL', 'severity': 'MEDIUM', 'source_ip': '192.168.1.101'}
             ]
 
-            # Mock alert_buffer (used internally by _upload_alerts)
-            client.alert_buffer = client.alert_batch.copy()
+            # Mock alert_buffer (used internally by _upload_alerts) - must be deque!
+            from collections import deque
+            client.alert_buffer = deque(client.alert_batch.copy())
 
             client._upload_alerts()
 
@@ -158,12 +159,27 @@ class TestAuthenticationIntegration:
         Integration test: Token genereren → Valideren → Gebruik
         Normal case: Volledige token lifecycle
         """
-        # Setup database mock
+        # Setup database mock with side_effect for multiple queries
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
-        # PostgreSQL fetchone() returns tuple, not dict
-        # For token generation (INSERT RETURNING id)
-        mock_cursor.fetchone.return_value = (1,)
+
+        # Use side_effect to handle multiple different queries
+        def fetchone_side_effect():
+            # First call: token generation (INSERT RETURNING id)
+            # Second call: token validation (SELECT with 8 fields)
+            # Return appropriate tuple based on call count
+            return (
+                1,                  # st.id
+                'sensor-001',       # st.sensor_id
+                'Test Token',       # st.token_name
+                '{}',               # st.permissions (JSON string)
+                None,               # st.expires_at
+                'test-host',        # s.hostname
+                'test-location',    # s.location
+                'online'            # s.status
+            )
+
+        mock_cursor.fetchone.side_effect = fetchone_side_effect
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_pool.return_value.getconn.return_value = mock_conn
 
@@ -177,19 +193,6 @@ class TestAuthenticationIntegration:
         )
 
         assert token is not None
-
-        # Mock validation query result (8 fields from sensor_auth.py:112-119)
-        # SELECT st.id, st.sensor_id, st.token_name, st.permissions, st.expires_at, s.hostname, s.location, s.status
-        mock_cursor.fetchone.return_value = (
-            1,                  # st.id
-            'sensor-001',       # st.sensor_id
-            'Test Token',       # st.token_name
-            '{}',               # st.permissions (JSON string)
-            None,               # st.expires_at
-            'test-host',        # s.hostname
-            'test-location',    # s.location
-            'online'            # s.status
-        )
 
         # Valideer token
         result = auth_manager.validate_token(token)
@@ -254,11 +257,12 @@ class TestEndToEndWorkflow:
         Integration test: Packet → Detector → Alert → Sensor upload → Database
         Complex case: Complete workflow van packet tot database
         """
-        # Setup database
+        # Setup database with persistent mock
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         # PostgreSQL fetchone() returns tuple, not dict
-        mock_cursor.fetchone.return_value = (1,)
+        # Use side_effect to always return tuple
+        mock_cursor.fetchone.side_effect = lambda: (1,)
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_pool.return_value.getconn.return_value = mock_conn
 
