@@ -750,10 +750,12 @@ class TestDetectorIntegration:
             assert len([t for t in threats if t.get('type') == 'PORT_SCAN']) == 0
 
         # Dan nog 15 poorten (totaal 25, moet alert triggeren)
+        all_threats = []
         for port in range(11, 26):
             packet = Ether() / IP(src=src_ip, dst=dst_ip) / TCP(dport=port, flags='S')
             threats = detector.analyze_packet(packet)
+            all_threats.extend(threats)
 
         # Nu moet port scan gedetecteerd zijn
-        port_scan_threats = [t for t in threats if t.get('type') == 'PORT_SCAN']
+        port_scan_threats = [t for t in all_threats if t.get('type') == 'PORT_SCAN']
         assert len(port_scan_threats) > 0

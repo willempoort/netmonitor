@@ -718,7 +718,18 @@ class ThreatDetector:
 
         tcp_layer = packet[TCP]
         # Check voor SYN packets (nieuwe connecties)
-        if not (tcp_layer.flags & 0x02):  # SYN flag
+        # Scapy flags can be string ('S'), int, or FlagValue object
+        flags = tcp_layer.flags
+        has_syn = False
+        if isinstance(flags, str):
+            has_syn = 'S' in flags
+        elif isinstance(flags, int):
+            has_syn = bool(flags & 0x02)
+        else:
+            # FlagValue object supports both string check and bitwise
+            has_syn = 'S' in str(flags) or bool(int(flags) & 0x02)
+
+        if not has_syn:
             return None
 
         ip_layer = packet[IP]
