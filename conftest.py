@@ -438,10 +438,43 @@ def cleanup_temp_files():
 # PYTEST HOOKS
 # ============================================================================
 
+def load_test_env():
+    """Load test environment variables from .env.test file"""
+    env_test_path = Path(__file__).parent / '.env.test'
+
+    if not env_test_path.exists():
+        print("\n" + "="*80)
+        print("WARNING: .env.test file not found!")
+        print("="*80)
+        print(f"\nExpected location: {env_test_path}")
+        print("\nThe .env.test file should contain test configuration like:")
+        print("  SOC_SERVER_URL=https://test-soc.netmonitor.local:8080")
+        print("  SENSOR_ID=test-sensor-001")
+        print("  SENSOR_LOCATION=Test Location")
+        print("  SENSOR_TOKEN=test-token-12345")
+        print("\nContinuing with defaults, but some tests may fail.")
+        print("="*80 + "\n")
+        return
+
+    # Load .env.test file
+    with open(env_test_path) as f:
+        for line in f:
+            line = line.strip()
+            # Skip comments and empty lines
+            if not line or line.startswith('#'):
+                continue
+            # Parse KEY=VALUE
+            if '=' in line:
+                key, value = line.split('=', 1)
+                os.environ[key.strip()] = value.strip()
+
 def pytest_configure(config):
     """
     Pytest configuratie hook - uitgevoerd voor tests starten
     """
+    # Load test environment from .env.test
+    load_test_env()
+
     # Zet test environment variabelen
     os.environ['NETMONITOR_TESTING'] = '1'
     os.environ['NETMONITOR_LOG_LEVEL'] = 'DEBUG'

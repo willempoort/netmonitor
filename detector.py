@@ -137,7 +137,12 @@ class ThreatDetector:
             'last_seen': None
         })
 
-        self.connection_tracker = defaultdict(lambda: deque(maxlen=1000))
+        # Calculate maxlen for connection tracker based on max possible threshold
+        # connections_per_second * time_window can be up to 1000 * 60 = 60000
+        # Use 2x for safety margin
+        max_conn_threshold = config.get('thresholds', {}).get('connection_flood', {}).get('connections_per_second', 100) * \
+                           config.get('thresholds', {}).get('connection_flood', {}).get('time_window', 10) * 2
+        self.connection_tracker = defaultdict(lambda: deque(maxlen=max(10000, max_conn_threshold)))
         self.dns_tracker = defaultdict(lambda: deque(maxlen=100))
 
         # New trackers for protocol-specific detection

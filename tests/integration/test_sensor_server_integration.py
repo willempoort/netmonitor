@@ -158,7 +158,8 @@ class TestAuthenticationIntegration:
     """Test authentication tussen sensor en server"""
 
     @patch('database.psycopg2.pool.ThreadedConnectionPool')
-    def test_token_generation_and_validation_flow(self, mock_pool):
+    @patch('database.DatabaseManager._init_builtin_data')  # Skip expensive init
+    def test_token_generation_and_validation_flow(self, mock_init, mock_pool):
         """
         Integration test: Token genereren → Valideren → Gebruik
         Normal case: Volledige token lifecycle
@@ -175,19 +176,14 @@ class TestAuthenticationIntegration:
 
             def fetchone_side_effect():
                 call_count[0] += 1
-                # First ~350 calls: database initialization (device templates, service providers, threat configs)
-                # Return generic tuple with enough fields - device templates need 2 fields
-                # Note: Some calls return None for templates, service providers return (id,), threat configs return various
-                if call_count[0] < 350:
-                    # Return a generic tuple that works for most queries
-                    return (1, 'default')
-                # Token generation - register sensor (INSERT ... RETURNING sensor_id)
-                elif call_count[0] < 352:
+                # First 2 calls: Token generation
+                # 1. Register sensor (INSERT ... RETURNING sensor_id)
+                if call_count[0] == 1:
                     return ('sensor-001',)
-                # Token generation - INSERT token RETURNING id
-                elif call_count[0] < 354:
+                # 2. INSERT token RETURNING id
+                elif call_count[0] == 2:
                     return (1,)
-                # Token validation - SELECT with JOIN (8 fields)
+                # 3+: Token validation - SELECT with JOIN (8 fields)
                 else:
                     return (
                         1,                  # st.id

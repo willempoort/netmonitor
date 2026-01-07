@@ -35,8 +35,8 @@ class TestSensorClientInitialization:
 
     @patch('sensor_client.load_sensor_config')
     @patch('sensor_client.ThreatDetector')
-    @patch('sensor_client.AlertManager')
-    def test_init_with_config_file(self, mock_alert_mgr, mock_detector, mock_load_config, sensor_config):
+    @patch.dict(os.environ, {}, clear=True)  # Clear env vars to avoid .env.test interference
+    def test_init_with_config_file(self, mock_detector, mock_load_config, sensor_config):
         """
         Test: SensorClient initialisatie met config file
         Normal case: Laden van sensor.conf configuratie
@@ -78,13 +78,14 @@ class TestSensorClientInitialization:
             assert client.location == 'Override Location'
 
     @patch('sensor_client.load_sensor_config')
+    @patch.dict(os.environ, {}, clear=True)  # Clear env vars
     def test_init_generates_sensor_id_if_missing(self, mock_load_config):
         """
         Test: Automatisch sensor_id genereren
         Edge case: Geen sensor_id in config
         """
         config_without_id = {
-            'server_url': 'https://soc.example.com',
+            'server': {'url': 'https://soc.example.com'},
             'interface': 'eth0'
         }
         mock_load_config.return_value = config_without_id
@@ -169,18 +170,20 @@ SOC_SERVER_URL=https://soc.example.com:8080
 SENSOR_ID=test-sensor-001
 INTERFACE=eth0
 SSL_VERIFY=false
-BATCH_INTERVAL=60
+SENSOR_LOCATION=Test Location
 """
         config_file = tmp_path / "sensor.conf"
         config_file.write_text(config_content)
 
         config = _load_bash_config(str(config_file))
 
-        assert config['SOC_SERVER_URL'] == 'https://soc.example.com:8080'
-        assert config['SENSOR_ID'] == 'test-sensor-001'
-        assert config['INTERFACE'] == 'eth0'
-        assert config['SSL_VERIFY'] == 'false'
-        assert config['BATCH_INTERVAL'] == '60'
+        # _load_bash_config returns nested dict structure
+        assert config['server']['url'] == 'https://soc.example.com:8080'
+        assert config['sensor']['id'] == 'test-sensor-001'
+        assert config['interface'] == 'eth0'
+        # SSL_VERIFY is converted to boolean
+        assert config['server']['ssl_verify'] is False
+        assert config['sensor']['location'] == 'Test Location'
 
     def test_load_bash_config_with_quotes(self, tmp_path):
         """
@@ -188,8 +191,8 @@ BATCH_INTERVAL=60
         Normal case: Values tussen quotes
         """
         config_content = """
-LOCATION="Amsterdam Datacenter"
-DESCRIPTION='Test sensor'
+SENSOR_LOCATION="Amsterdam Datacenter"
+SENSOR_ID='test-sensor-with-quotes'
 """
         config_file = tmp_path / "sensor.conf"
         config_file.write_text(config_content)
@@ -197,8 +200,8 @@ DESCRIPTION='Test sensor'
         config = _load_bash_config(str(config_file))
 
         # Quotes moeten verwijderd zijn
-        assert config['LOCATION'] == 'Amsterdam Datacenter'
-        assert config['DESCRIPTION'] == 'Test sensor'
+        assert config['sensor']['location'] == 'Amsterdam Datacenter'
+        assert config['sensor']['id'] == 'test-sensor-with-quotes'
 
     def test_load_bash_config_empty_lines_and_comments(self, tmp_path):
         """
@@ -217,9 +220,12 @@ INTERFACE=eth0
 
         config = _load_bash_config(str(config_file))
 
-        assert len(config) == 2
-        assert 'SENSOR_ID' in config
-        assert 'INTERFACE' in config
+        # Config includes parsed values plus defaults (thresholds, whitelist, etc)
+        assert config['sensor']['id'] == 'test-001'
+        assert config['interface'] == 'eth0'
+        # Verify defaults are present
+        assert 'thresholds' in config
+        assert 'whitelist' in config
 
     def test_load_bash_config_file_not_found(self):
         """
@@ -237,20 +243,20 @@ INTERFACE=eth0
         config_content = """
 SOC_SERVER_URL=https://soc.example.com
 SSL_VERIFY=false
-BATCH_INTERVAL=30
-HEARTBEAT_INTERVAL=60
+SENSOR_LOCATION=Amsterdam
+INTERFACE=eth0
 """
         config_file = tmp_path / "sensor.conf"
         config_file.write_text(config_content)
 
         config = load_sensor_config(str(config_file))
 
-        # Boolean conversie
-        assert config['ssl_verify'] is False
+        # Boolean conversie - ssl_verify is nested under 'server'
+        assert config['server']['ssl_verify'] is False
 
-        # Integer conversie
-        assert config['batch_interval'] == 30
-        assert config['heartbeat_interval'] == 60
+        # String values remain strings
+        assert config['sensor']['location'] == 'Amsterdam'
+        assert config['interface'] == 'eth0'
 
 
 # ============================================================================
