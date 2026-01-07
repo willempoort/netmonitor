@@ -1137,6 +1137,187 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
+    def get_disk_usage(self) -> Dict:
+        """
+        Get disk usage statistics for database and system
+
+        Returns:
+            Dict with database size, table sizes, and retention info
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            # Get database size
+            cursor.execute('''
+                SELECT pg_database_size(current_database()) as size_bytes
+            ''')
+            db_size = cursor.fetchone()['size_bytes']
+
+            # Get table sizes (top 10 largest tables)
+            cursor.execute('''
+                SELECT
+                    schemaname,
+                    tablename,
+                    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS size,
+                    pg_total_relation_size(schemaname||'.'||tablename) AS size_bytes
+                FROM pg_tables
+                WHERE schemaname = 'public'
+                ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC
+                LIMIT 10
+            ''')
+            table_sizes = [dict(row) for row in cursor.fetchall()]
+
+            # Get row counts for main tables
+            cursor.execute('SELECT COUNT(*) as count FROM alerts')
+            alerts_count = cursor.fetchone()['count']
+
+            cursor.execute('SELECT COUNT(*) as count FROM traffic_metrics')
+            metrics_count = cursor.fetchone()['count']
+
+            # Get oldest alert timestamp
+            cursor.execute('SELECT MIN(timestamp) as oldest FROM alerts')
+            oldest_alert = cursor.fetchone()['oldest']
+
+            # Calculate data age in days
+            data_age_days = 0
+            if oldest_alert:
+                data_age_days = (datetime.now() - oldest_alert).days
+
+            # Get system disk usage using psutil
+            import psutil
+            disk = psutil.disk_usage('/')
+
+            return {
+                'database': {
+                    'size_bytes': db_size,
+                    'size_human': self._bytes_to_human(db_size),
+                    'alerts_count': alerts_count,
+                    'metrics_count': metrics_count,
+                    'data_age_days': data_age_days,
+                    'oldest_alert': oldest_alert.isoformat() if oldest_alert else None
+                },
+                'tables': table_sizes,
+                'system': {
+                    'total_bytes': disk.total,
+                    'used_bytes': disk.used,
+                    'free_bytes': disk.free,
+                    'percent_used': disk.percent,
+                    'total_human': self._bytes_to_human(disk.total),
+                    'used_human': self._bytes_to_human(disk.used),
+                    'free_human': self._bytes_to_human(disk.free)
+                }
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error getting disk usage: {e}")
+            return {
+                'database': {'size_bytes': 0, 'size_human': '0 B', 'alerts_count': 0, 'metrics_count': 0, 'data_age_days': 0},
+                'tables': [],
+                'system': {'total_bytes': 0, 'used_bytes': 0, 'free_bytes': 0, 'percent_used': 0}
+            }
+        finally:
+            self._return_connection(conn)
+
+    def _bytes_to_human(self, bytes_val: int) -> str:
+        """Convert bytes to human-readable format"""
+        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+            if bytes_val < 1024.0:
+                return f"{bytes_val:.2f} {unit}"
+            bytes_val /= 1024.0
+        return f"{bytes_val:.2f} PB"
+
+    def cleanup_old_data(self, retention_config: Dict) -> Dict:
+        """
+        Clean up old data based on retention policy (NIS-2 compliant)
+
+        Args:
+            retention_config: Dict with retention periods in days:
+                - alerts_days: Retention for alerts (NIS-2: min 365)
+                - metrics_days: Retention for traffic metrics (90-180)
+                - audit_logs_days: Retention for audit logs (NIS-2: min 730)
+                - statistics_days: Retention for top_talkers etc (30)
+                - devices_inactive_days: Remove very old inactive devices (180)
+                - minimum_retention_days: Safety check (7)
+
+        Returns:
+            Dict with cleanup statistics
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            # Safety check - prevent accidental data loss
+            min_retention = retention_config.get('minimum_retention_days', 7)
+
+            results = {
+                'timestamp': datetime.now().isoformat(),
+                'deleted': {},
+                'errors': []
+            }
+
+            # 1. Clean up old alerts (NIS-2: keep minimum 365 days)
+            alerts_retention = max(retention_config.get('alerts_days', 365), 365)  # Enforce NIS-2 minimum
+            if alerts_retention >= min_retention:
+                cutoff = datetime.now() - timedelta(days=alerts_retention)
+                cursor.execute('DELETE FROM alerts WHERE timestamp < %s', (cutoff,))
+                results['deleted']['alerts'] = cursor.rowcount
+                self.logger.info(f"Cleaned up {cursor.rowcount} alerts older than {alerts_retention} days")
+
+            # 2. Clean up old traffic metrics (high volume data)
+            metrics_retention = max(retention_config.get('metrics_days', 90), min_retention)
+            cutoff = datetime.now() - timedelta(days=metrics_retention)
+            cursor.execute('DELETE FROM traffic_metrics WHERE timestamp < %s', (cutoff,))
+            results['deleted']['traffic_metrics'] = cursor.rowcount
+            self.logger.info(f"Cleaned up {cursor.rowcount} traffic metrics older than {metrics_retention} days")
+
+            # 3. Clean up old top_talkers (transient statistics)
+            stats_retention = max(retention_config.get('statistics_days', 30), min_retention)
+            cutoff = datetime.now() - timedelta(days=stats_retention)
+            cursor.execute('DELETE FROM top_talkers WHERE timestamp < %s', (cutoff,))
+            results['deleted']['top_talkers'] = cursor.rowcount
+            self.logger.info(f"Cleaned up {cursor.rowcount} top talkers older than {stats_retention} days")
+
+            # 4. Clean up old system stats
+            cutoff = datetime.now() - timedelta(days=stats_retention)
+            cursor.execute('DELETE FROM system_stats WHERE timestamp < %s', (cutoff,))
+            results['deleted']['system_stats'] = cursor.rowcount
+
+            # 5. Clean up very old inactive devices (keeps recent ones)
+            devices_retention = retention_config.get('devices_inactive_days', 180)
+            if devices_retention >= min_retention:
+                cutoff = datetime.now() - timedelta(days=devices_retention)
+                cursor.execute('DELETE FROM devices WHERE last_seen < %s', (cutoff,))
+                results['deleted']['devices'] = cursor.rowcount
+                self.logger.info(f"Cleaned up {cursor.rowcount} inactive devices older than {devices_retention} days")
+
+            # 6. VACUUM ANALYZE to reclaim disk space and update statistics
+            # Note: This is important for PostgreSQL to actually free disk space
+            conn.commit()  # Commit before VACUUM
+            old_isolation_level = conn.isolation_level
+            conn.set_isolation_level(0)  # VACUUM requires autocommit mode
+
+            cursor.execute('VACUUM ANALYZE')
+
+            conn.set_isolation_level(old_isolation_level)
+            results['vacuum'] = 'completed'
+            self.logger.info("VACUUM ANALYZE completed - disk space reclaimed")
+
+            # Calculate total records deleted
+            results['total_deleted'] = sum(results['deleted'].values())
+
+            return results
+
+        except Exception as e:
+            conn.rollback()
+            error_msg = f"Error during data cleanup: {e}"
+            self.logger.error(error_msg)
+            if 'errors' in results:
+                results['errors'].append(error_msg)
+            return results
+        finally:
+            self._return_connection(conn)
+
     def acknowledge_alert(self, alert_id: int) -> bool:
         """Mark alert as acknowledged"""
         conn = self._get_connection()

@@ -4097,6 +4097,72 @@ def api_get_device_classification_stats():
         return jsonify({'success': False, 'error': str(e), 'trace': error_trace}), 500
 
 
+# ==================== Disk Usage & Data Retention API ====================
+
+@app.route('/api/disk-usage')
+@login_required
+def api_disk_usage():
+    """
+    Get disk usage statistics
+    Returns database size, table sizes, system disk, and data retention info
+    """
+    try:
+        disk_stats = db.get_disk_usage()
+
+        # Add retention policy info from config
+        retention_config = config.get('data_retention', {})
+        disk_stats['retention'] = {
+            'alerts_days': retention_config.get('alerts_days', 365),
+            'metrics_days': retention_config.get('metrics_days', 90),
+            'audit_logs_days': retention_config.get('audit_logs_days', 730),
+            'enabled': retention_config.get('enabled', False),
+            'cleanup_hour': retention_config.get('cleanup_hour', 2)
+        }
+
+        return jsonify({
+            'success': True,
+            'data': disk_stats
+        })
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"Error getting disk usage: {e}\n{error_trace}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/data-retention/cleanup', methods=['POST'])
+@require_role('admin')  # Only admins can trigger cleanup
+def api_trigger_cleanup():
+    """
+    Manually trigger data cleanup based on retention policy
+    Admin-only endpoint for immediate cleanup (normally runs automatically at night)
+    """
+    try:
+        retention_config = config.get('data_retention', {})
+
+        if not retention_config.get('enabled', False):
+            return jsonify({
+                'success': False,
+                'error': 'Data retention is disabled in config.yaml'
+            }), 400
+
+        logger.info(f"Manual data cleanup triggered by {current_user.username}")
+
+        # Run cleanup
+        results = db.cleanup_old_data(retention_config)
+
+        return jsonify({
+            'success': True,
+            'data': results,
+            'message': f"Cleanup completed. Deleted {results.get('total_deleted', 0)} records."
+        })
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"Error during manual cleanup: {e}\n{error_trace}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ==================== ML Classification API ====================
 
 # Global ML classifier manager (initialized lazily)
