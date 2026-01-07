@@ -87,6 +87,10 @@ class TestSensorServerCommunication:
             client.sensor_token = 'test-token'
             client.logger = Mock()
             client.batch_lock = MagicMock()
+            client.alerts_sent = 0
+
+            # Mock _get_headers method
+            client._get_headers = Mock(return_value={'Authorization': 'Bearer test-token'})
 
             # Alert batch (note: attribute name should be alert_batch)
             client.alert_batch = [
@@ -103,7 +107,7 @@ class TestSensorServerCommunication:
             # Moet POST request gemaakt hebben
             mock_post.assert_called_once()
 
-            # Buffer moet geleegd zijn
+            # Buffer moet geleegd zijn (alerts zijn uit buffer gehaald en geupload)
             assert len(client.alert_buffer) == 0
 
     @patch('sensor_client.requests.get')
@@ -164,20 +168,25 @@ class TestAuthenticationIntegration:
         mock_cursor = MagicMock()
 
         # Use side_effect to handle multiple different queries
+        # Create iterator that returns different values for each call
+        call_count = [0]
         def fetchone_side_effect():
-            # First call: token generation (INSERT RETURNING id)
-            # Second call: token validation (SELECT with 8 fields)
-            # Return appropriate tuple based on call count
-            return (
-                1,                  # st.id
-                'sensor-001',       # st.sensor_id
-                'Test Token',       # st.token_name
-                '{}',               # st.permissions (JSON string)
-                None,               # st.expires_at
-                'test-host',        # s.hostname
-                'test-location',    # s.location
-                'online'            # s.status
-            )
+            call_count[0] += 1
+            if call_count[0] == 1:
+                # First call: token generation (INSERT RETURNING id)
+                return (1,)
+            else:
+                # Subsequent calls: token validation (SELECT with 8 fields)
+                return (
+                    1,                  # st.id
+                    'sensor-001',       # st.sensor_id
+                    'Test Token',       # st.token_name
+                    '{}',               # st.permissions (JSON string)
+                    None,               # st.expires_at
+                    'test-host',        # s.hostname
+                    'test-location',    # s.location
+                    'online'            # s.status
+                )
 
         mock_cursor.fetchone.side_effect = fetchone_side_effect
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
