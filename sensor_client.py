@@ -272,6 +272,10 @@ class SensorClient:
         """
         from urllib.parse import urlparse, urlunparse
 
+        # Handle None or empty URL
+        if not url:
+            return url
+
         parsed = urlparse(url)
 
         # Remove trailing slash
