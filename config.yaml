@@ -366,7 +366,10 @@ integrations:
       timeout: 30
     abuseipdb:
       enabled: false
-      api_key: ""  # Set in .env: MISP_API_KEY / OTX_API_KEY / ABUSEIPDB_API_KEY
+      api_key: ""  # Set in .env: ABUSEIPDB_API_KEY (gratis account op https://www.abuseipdb.com)
+      rate_limit: 1000  # Gratis tier = 1000 queries/dag
+      threshold: 50  # Abuse score threshold (0-100, hoger = meer malicious)
+      query_suspicious_only: true  # Query alleen verdachte IPs (beperkt API calls)
       max_age_days: 90
       min_confidence: 50
       timeout: 30
