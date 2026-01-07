@@ -2,7 +2,7 @@
 
 **NetMonitor vs Andere Security Monitoring Oplossingen**
 
-*Laatste update: December 2025*
+*Laatste update: Januari 2026*
 
 ---
 
@@ -125,7 +125,7 @@
 | **MCP Protocol Support** | ★★★★★ | ★☆☆☆☆ | ★☆☆☆☆ | ★☆☆☆☆ | ★☆☆☆☆ | ★☆☆☆☆ |
 | **AI Assistant Ready** | ★★★★★ | ★☆☆☆☆ | ★☆☆☆☆ | ★☆☆☆☆ | ★★★☆☆ | ★☆☆☆☆ |
 | **Natural Language Query** | ★★★★★ | ★☆☆☆☆ | ★☆☆☆☆ | ★☆☆☆☆ | ★★★★☆ | ★☆☆☆☆ |
-| **API Tool Count** | 53 tools | ~10 | ~5 | ~5 | ~20 | ~10 |
+| **API Tool Count** | 52 tools | ~10 | ~5 | ~5 | ~20 | ~10 |
 | **Token Authentication** | ★★★★★ | ★★★☆☆ | ★☆☆☆☆ | ★☆☆☆☆ | ★★★★☆ | ★★☆☆☆ |
 | **Permission Scopes** | ★★★★★ | ★★☆☆☆ | ★☆☆☆☆ | ★☆☆☆☆ | ★★★★☆ | ★★☆☆☆ |
 | **Rate Limiting** | ★★★★★ | ★★☆☆☆ | ★☆☆☆☆ | ★☆☆☆☆ | ★★★★☆ | ★☆☆☆☆ |
@@ -136,7 +136,7 @@
 
 ## MCP Tool Categories Detail
 
-NetMonitor biedt 53 MCP tools verdeeld over categorieën:
+NetMonitor biedt 52 MCP tools verdeeld over categorieën:
 
 | Categorie | Aantal | Beschrijving |
 |-----------|--------|--------------|
@@ -175,11 +175,12 @@ NetMonitor biedt 53 MCP tools verdeeld over categorieën:
 
 ### NetMonitor Sterke Punten
 
-1. **AI-First Design**: Enige oplossing met native MCP protocol support voor Claude en andere AI assistenten
-2. **Enterprise Security Complete**: Volledige AD/Kerberos, Kill Chain, SMB/LDAP detectie out-of-the-box
-3. **All-in-One**: Geen losse componenten nodig - detectie, forensics, response in één pakket
-4. **Lage TCO**: Open source, eenvoudige installatie, lage resource requirements
-5. **Nederlandse Documentatie**: Volledige documentatie in het Nederlands beschikbaar
+1. **59 Threat Types**: Volledige dekking van moderne aanvalsvectoren (cryptomining, phishing, ransomware, IoT, OT/ICS, containers, kill chain)
+2. **AI-First Design**: Enige oplossing met native MCP protocol support (52 tools) voor Claude en andere AI assistenten
+3. **Enterprise Security Complete**: Volledige AD/Kerberos, Kill Chain, SMB/LDAP detectie out-of-the-box
+4. **All-in-One**: Geen losse componenten nodig - detectie, forensics, response in één pakket
+5. **Lage TCO**: Open source, eenvoudige installatie, lage resource requirements
+6. **Nederlandse Documentatie**: Volledige documentatie in het Nederlands beschikbaar
 
 ### Wanneer Kiezen voor NetMonitor?
 
