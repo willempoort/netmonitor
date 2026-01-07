@@ -79,6 +79,10 @@ def base_config() -> Dict[str, Any]:
         'threat_feeds': {
             'enabled': False,
             'feeds': []
+        },
+        'logging': {
+            'file': '/tmp/netmonitor_test.log',
+            'level': 'INFO'
         }
     }
 
