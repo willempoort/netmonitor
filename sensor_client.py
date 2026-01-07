@@ -274,6 +274,9 @@ class SensorClient:
 
         parsed = urlparse(url)
 
+        # Remove trailing slash
+        url = url.rstrip('/')
+
         # If port is already specified, return as-is
         if parsed.port:
             return url

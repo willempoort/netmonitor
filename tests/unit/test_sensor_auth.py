@@ -40,8 +40,8 @@ class TestTokenGeneration:
         mock_db_manager._get_connection = Mock()
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = {'id': 1}
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_cursor.fetchone.return_value = (1,)
+        mock_conn.cursor.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
 
         token = auth_manager.generate_token(sensor_id='sensor-001')
@@ -60,8 +60,8 @@ class TestTokenGeneration:
         mock_db_manager._get_connection = Mock()
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = {'id': 1}
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_cursor.fetchone.return_value = (1,)
+        mock_conn.cursor.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
 
         token = auth_manager.generate_token(
@@ -81,8 +81,8 @@ class TestTokenGeneration:
         mock_db_manager._get_connection = Mock()
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = {'id': 1}
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_cursor.fetchone.return_value = (1,)
+        mock_conn.cursor.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
 
         token = auth_manager.generate_token(
@@ -102,8 +102,8 @@ class TestTokenGeneration:
         mock_db_manager._get_connection = Mock()
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = {'id': 1}
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_cursor.fetchone.return_value = (1,)
+        mock_conn.cursor.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
 
         permissions = {
@@ -128,8 +128,8 @@ class TestTokenGeneration:
         mock_db_manager._get_connection = Mock()
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = {'id': 1}
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_cursor.fetchone.return_value = (1,)
+        mock_conn.cursor.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
 
         tokens = set()
@@ -172,7 +172,7 @@ class TestTokenValidation:
             'online'                                # status
         )
         mock_cursor.rowcount = 1
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_conn.cursor.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
         mock_db_manager._return_connection = Mock()
 
@@ -204,7 +204,7 @@ class TestTokenValidation:
             'online'                                # status
         )
         mock_cursor.rowcount = 1
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_conn.cursor.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
         mock_db_manager._return_connection = Mock()
 
@@ -225,7 +225,7 @@ class TestTokenValidation:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_cursor.fetchone.return_value = None  # No result for inactive tokens
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_conn.cursor.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
         mock_db_manager._return_connection = Mock()
 
@@ -245,7 +245,7 @@ class TestTokenValidation:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_cursor.fetchone.return_value = None
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_conn.cursor.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
 
         result = auth_manager.validate_token('nonexistent-token')
@@ -275,7 +275,7 @@ class TestTokenValidation:
             'online'                                # status
         )
         mock_cursor.rowcount = 1
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_conn.cursor.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
         mock_db_manager._return_connection = Mock()
 
@@ -365,16 +365,18 @@ class TestTokenListing:
         """
         auth_manager = SensorAuthManager(mock_db_manager)
 
+        # Mock database query result - list_tokens expects tuples with 10 values
+        # (id, sensor_id, token_name, created_at, last_used, expires_at, is_active, permissions, hostname, location)
         mock_tokens = [
-            {'id': 1, 'sensor_id': 'sensor-001', 'token_name': 'Token 1', 'active': True},
-            {'id': 2, 'sensor_id': 'sensor-002', 'token_name': 'Token 2', 'active': True}
+            (1, 'sensor-001', 'Token 1', datetime.now(), None, None, True, {}, 'host1', 'loc1'),
+            (2, 'sensor-002', 'Token 2', datetime.now(), None, None, True, {}, 'host2', 'loc2')
         ]
 
         mock_db_manager._get_connection = Mock()
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_cursor.fetchall.return_value = mock_tokens
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_conn.cursor.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
 
         tokens = auth_manager.list_tokens()
@@ -389,15 +391,16 @@ class TestTokenListing:
         """
         auth_manager = SensorAuthManager(mock_db_manager)
 
+        # Mock database query result - list_tokens expects tuples with 10 values
         mock_tokens = [
-            {'id': 1, 'sensor_id': 'sensor-001', 'token_name': 'Token 1'}
+            (1, 'sensor-001', 'Token 1', datetime.now(), None, None, True, {}, 'host1', 'loc1')
         ]
 
         mock_db_manager._get_connection = Mock()
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_cursor.fetchall.return_value = mock_tokens
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_conn.cursor.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
 
         tokens = auth_manager.list_tokens(sensor_id='sensor-001')
@@ -412,16 +415,17 @@ class TestTokenListing:
         """
         auth_manager = SensorAuthManager(mock_db_manager)
 
+        # Mock database query result - list_tokens expects tuples with 10 values
         mock_tokens = [
-            {'id': 1, 'active': True},
-            {'id': 2, 'active': False}
+            (1, 'sensor-001', 'Token 1', datetime.now(), None, None, True, {}, 'host1', 'loc1'),
+            (2, 'sensor-002', 'Token 2', datetime.now(), None, None, False, {}, 'host2', 'loc2')
         ]
 
         mock_db_manager._get_connection = Mock()
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_cursor.fetchall.return_value = mock_tokens
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_conn.cursor.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
 
         tokens = auth_manager.list_tokens(include_inactive=True)
@@ -448,7 +452,7 @@ class TestTokenCleanup:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_cursor.rowcount = 15  # 15 tokens verwijderd
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_conn.cursor.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
 
         deleted_count = auth_manager.cleanup_expired_tokens()
@@ -466,7 +470,7 @@ class TestTokenCleanup:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_cursor.rowcount = 0  # Geen tokens verwijderd
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_conn.cursor.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
 
         deleted_count = auth_manager.cleanup_expired_tokens()
@@ -492,8 +496,8 @@ class TestSecurityAspects:
         mock_db_manager._get_connection = Mock()
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = {'id': 1}
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_cursor.fetchone.return_value = (1,)
+        mock_conn.cursor.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
 
         token = auth_manager.generate_token(sensor_id='sensor-001')
@@ -511,8 +515,8 @@ class TestSecurityAspects:
         mock_db_manager._get_connection = Mock()
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = {'id': 1}
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_cursor.fetchone.return_value = (1,)
+        mock_conn.cursor.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
 
         token1 = auth_manager.generate_token(sensor_id='sensor-001')
