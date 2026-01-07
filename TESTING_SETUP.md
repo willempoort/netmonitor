@@ -17,6 +17,7 @@ sudo -u postgres psql -d netmonitor -f init_database_for_testing.sql
 This will:
 - Grant all necessary permissions to `netmonitor` user
 - Create `netmonitor_meta` table if missing
+- **Fix parameter types** (threat.*.enabled from 'str' to 'bool')
 - **Enable ALL 60 threat detections**
 - Set more sensitive thresholds for easier testing
 
@@ -200,6 +201,37 @@ python3 app.py
 python3 check_database_status.py
 ```
 
+### Web UI Shows "str" Instead of "bool"
+
+**Problem**: Web UI shows threat.*.enabled parameters with type "str" instead of "bool"
+
+**Cause**: Old database entries from earlier versions stored parameter_type as 'str'
+
+**Solution**: Run the type fix script
+```bash
+# Quick fix (included in init_database_for_testing.sql)
+sudo -u postgres psql -d netmonitor -f fix_threat_parameter_types.sql
+
+# Or manual fix
+sudo -u postgres psql -d netmonitor << 'EOF'
+UPDATE sensor_configs
+SET parameter_type = 'bool'
+WHERE parameter_path LIKE 'threat.%.enabled'
+  AND parameter_type != 'bool';
+EOF
+```
+
+**Verify**:
+```bash
+sudo -u postgres psql -d netmonitor -c "
+SELECT parameter_path, parameter_type
+FROM sensor_configs
+WHERE parameter_path = 'threat.phishing.enabled';
+"
+```
+
+Expected output: `parameter_type = 'bool'`
+
 ---
 
 ## Testing Workflow
@@ -238,6 +270,7 @@ python3 check_database_status.py
 | Task | Command |
 |------|---------|
 | Enable all threats | `sudo -u postgres psql -d netmonitor -f init_database_for_testing.sql` |
+| Fix parameter types | `sudo -u postgres psql -d netmonitor -f fix_threat_parameter_types.sql` |
 | Check status | `python3 check_database_status.py` |
 | Interactive enable | `python3 enable_all_threats.py` |
 | Restart sensors | `sudo systemctl restart netmonitor-sensor` |

@@ -19,6 +19,13 @@ ON CONFLICT DO NOTHING;
 GRANT ALL PRIVILEGES ON TABLE netmonitor_meta TO netmonitor;
 GRANT USAGE, SELECT ON SEQUENCE netmonitor_meta_id_seq TO netmonitor;
 
+-- FIX: Update parameter_type for all threat.*.enabled to 'bool'
+-- (Some old entries may have 'str' instead of 'bool' - this fixes Web UI display)
+UPDATE sensor_configs
+SET parameter_type = 'bool'
+WHERE parameter_path LIKE 'threat.%.enabled'
+  AND parameter_type != 'bool';
+
 -- Enable ALL threat detections globally for testing
 UPDATE sensor_configs
 SET parameter_value = 'true',
@@ -48,5 +55,12 @@ SELECT
     COUNT(*) FILTER (WHERE parameter_value = 'true') as enabled,
     COUNT(*) FILTER (WHERE parameter_value = 'false') as disabled,
     COUNT(*) as total
+FROM sensor_configs
+WHERE parameter_path LIKE 'threat.%.enabled';
+
+-- Verify parameter types are correct (all should be 'bool', none 'str')
+SELECT
+    COUNT(*) FILTER (WHERE parameter_type = 'bool') as bool_count,
+    COUNT(*) FILTER (WHERE parameter_type = 'str') as str_count
 FROM sensor_configs
 WHERE parameter_path LIKE 'threat.%.enabled';
