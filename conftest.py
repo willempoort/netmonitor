@@ -22,6 +22,47 @@ from typing import Dict, Any
 # Voeg project root toe aan Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Patch scapy to avoid IPv6 routing issues in test environment
+os.environ['SCAPY_USE_LIBPCAP'] = 'no'
+
+# Monkey-patch scapy's IPv6 routing before it loads
+import sys
+from unittest.mock import MagicMock
+
+
+class MockRoute6:
+    """Mock Route6 class to avoid IPv6 routing issues"""
+    def __init__(self):
+        self.routes = []
+
+    def resync(self):
+        pass
+
+# Pre-patch scapy modules before they're imported
+def patch_scapy_ipv6():
+    """Patch scapy IPv6 to avoid routing issues in test environment"""
+    try:
+        # Import modules in correct order and patch before Route6() is called
+        import scapy.config
+        import scapy.arch.linux.rtnetlink
+
+        # Replace the failing function with a dummy that returns empty routes
+        scapy.arch.linux.rtnetlink.read_routes6 = lambda: []
+
+        # Now we can import route6
+        import scapy.route6
+        scapy.route6.read_routes6 = lambda: []
+
+        # Disable IPv6
+        scapy.config.conf.ipv6_enabled = False
+    except Exception as e:
+        # If import fails, that's fine - scapy might not be installed yet
+        pass
+
+
+# Try to patch early
+patch_scapy_ipv6()
+
 
 # ============================================================================
 # CONFIGURATIE FIXTURES
@@ -404,6 +445,13 @@ def pytest_configure(config):
     # Zet test environment variabelen
     os.environ['NETMONITOR_TESTING'] = '1'
     os.environ['NETMONITOR_LOG_LEVEL'] = 'DEBUG'
+
+    # Disable scapy IPv6 to avoid routing issues in test environment
+    try:
+        import scapy.config
+        scapy.config.conf.ipv6_enabled = False
+    except Exception:
+        pass  # Scapy not yet imported, will be handled when it loads
 
     # Maak logs directory
     logs_dir = Path(__file__).parent / 'tests' / 'logs'

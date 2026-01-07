@@ -100,6 +100,11 @@ class SensorAuthManager:
         Returns:
             Dict with sensor details if valid, None otherwise
         """
+        # Check for None or empty token
+        if not token:
+            self.logger.warning("Empty or None token provided")
+            return None
+
         # Hash the provided token
         token_hash = hashlib.sha256(token.encode()).hexdigest()
 
