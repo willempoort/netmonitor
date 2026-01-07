@@ -396,10 +396,11 @@ def flask_app(base_config, mock_db_manager):
     Returns:
         Flask test client
     """
-    from web_dashboard import init_dashboard
+    from web_dashboard import init_dashboard, app
 
-    with patch('web_dashboard.DatabaseManager', return_value=mock_db_manager):
-        app, _, _ = init_dashboard()
+    with patch('database.psycopg2.pool.ThreadedConnectionPool'), \
+         patch('database.DatabaseManager._init_builtin_data'):
+        init_dashboard()
         app.config['TESTING'] = True
         app.config['WTF_CSRF_ENABLED'] = False
 

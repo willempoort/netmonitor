@@ -23,6 +23,45 @@ import tempfile
 import os
 
 from sensor_client import SensorClient, load_sensor_config, _load_bash_config
+from collections import deque
+import time
+
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+def setup_mock_sensor_client(client, sensor_config):
+    """
+    Helper function to set up all required attributes for a mocked SensorClient.
+    Use this after patching __init__ to return None.
+
+    Args:
+        client: The SensorClient instance with mocked __init__
+        sensor_config: The sensor configuration dict from fixture
+    """
+    client.server_url = sensor_config['server']['url']
+    client.sensor_id = sensor_config['sensor']['id']
+    client.location = sensor_config['sensor'].get('location', 'Unknown')
+    client.ssl_verify = sensor_config['server'].get('ssl_verify', True)
+    client.config = sensor_config
+    client.logger = Mock()
+
+    # Attributes from __init__
+    client.batch_interval = 30
+    client.running = False
+    client.config_etag = None
+    client.token = None
+    client.packets_captured = 0
+    client.alerts_sent = 0
+    client.start_time = time.time()
+    client.bytes_received = 0
+    client.bytes_sent = 0
+    client.bandwidth_window_start = time.time()
+    client.bandwidth_window_bytes = 0
+    client.alert_buffer = deque(maxlen=10000)
+
+    return client
 
 
 # ============================================================================
@@ -287,13 +326,7 @@ class TestSensorRegistration:
 
         with patch.object(SensorClient, '__init__', return_value=None):
             client = SensorClient()
-            client.server_url = sensor_config['server']['url']
-            client.sensor_id = sensor_config['sensor']['id']
-            client.location = sensor_config['sensor'].get('location', '')
-            client.ssl_verify = sensor_config['server'].get('ssl_verify', True)
-            client.sensor_token = None
-            client.logger = Mock()
-            client.config = sensor_config
+            setup_mock_sensor_client(client, sensor_config)
 
             # Mocken van IP detection
             with patch('sensor_client.psutil.net_if_addrs', return_value={}), \
@@ -317,13 +350,7 @@ class TestSensorRegistration:
 
         with patch.object(SensorClient, '__init__', return_value=None):
             client = SensorClient()
-            client.server_url = sensor_config['server']['url']
-            client.sensor_id = sensor_config['sensor']['id']
-            client.location = ''
-            client.ssl_verify = False
-            client.sensor_token = None
-            client.logger = Mock()
-            client.config = sensor_config
+            setup_mock_sensor_client(client, sensor_config)
 
             with patch('sensor_client.psutil.net_if_addrs', return_value={}), \
                  patch('sensor_client.socket.gethostname', return_value='test-host'):
@@ -342,13 +369,7 @@ class TestSensorRegistration:
 
         with patch.object(SensorClient, '__init__', return_value=None):
             client = SensorClient()
-            client.server_url = sensor_config['server']['url']
-            client.sensor_id = sensor_config['sensor']['id']
-            client.location = ''
-            client.ssl_verify = False
-            client.sensor_token = None
-            client.logger = Mock()
-            client.config = sensor_config
+            setup_mock_sensor_client(client, sensor_config)
 
             with patch('sensor_client.psutil.net_if_addrs', return_value={}), \
                  patch('sensor_client.socket.gethostname', return_value='test-host'):
@@ -386,12 +407,13 @@ class TestConfigSynchronization:
 
         with patch.object(SensorClient, '__init__', return_value=None):
             client = SensorClient()
-            client.server_url = 'https://soc.example.com'
-            client.sensor_id = 'test-001'
-            client.ssl_verify = False
-            client.sensor_token = None
-            client.logger = Mock()
-            client.config = {'interface': 'eth0'}
+            # Create a minimal config for this test
+            test_config = {
+                'server': {'url': 'https://soc.example.com', 'ssl_verify': False},
+                'sensor': {'id': 'test-001'},
+                'interface': 'eth0'
+            }
+            setup_mock_sensor_client(client, test_config)
             client.detector = Mock()
             client.alert_manager = Mock()
 
@@ -415,12 +437,13 @@ class TestConfigSynchronization:
 
         with patch.object(SensorClient, '__init__', return_value=None):
             client = SensorClient()
-            client.server_url = 'https://soc.example.com'
-            client.sensor_id = 'test-001'
-            client.ssl_verify = False
-            client.sensor_token = None
-            client.logger = Mock()
-            client.config = {'whitelist': []}
+            # Create a minimal config for this test
+            test_config = {
+                'server': {'url': 'https://soc.example.com', 'ssl_verify': False},
+                'sensor': {'id': 'test-001'},
+                'whitelist': []
+            }
+            setup_mock_sensor_client(client, test_config)
             client.detector = Mock()
             client.detector.config_whitelist = []
 
@@ -474,15 +497,16 @@ class TestAlertBatchingAndUpload:
 
         with patch.object(SensorClient, '__init__', return_value=None):
             client = SensorClient()
-            client.server_url = 'https://soc.example.com'
-            client.sensor_id = 'test-001'
-            client.ssl_verify = False
-            client.sensor_token = 'test-token'
-            client.logger = Mock()
+            # Create test config
+            test_config = {
+                'server': {'url': 'https://soc.example.com', 'ssl_verify': False},
+                'sensor': {'id': 'test-001'}
+            }
+            setup_mock_sensor_client(client, test_config)
+            client.token = 'test-token'  # Override token for this test
 
-            # Create alert_buffer (deque) with test alerts
-            from collections import deque
-            client.alert_buffer = deque([
+            # Add test alerts to buffer
+            client.alert_buffer.extend([
                 {'type': 'PORT_SCAN', 'severity': 'HIGH'},
                 {'type': 'DNS_TUNNEL', 'severity': 'MEDIUM'}
             ])
@@ -505,11 +529,13 @@ class TestAlertBatchingAndUpload:
 
         with patch.object(SensorClient, '__init__', return_value=None):
             client = SensorClient()
-            client.server_url = 'https://soc.example.com'
-            client.sensor_id = 'test-001'
-            client.ssl_verify = False
-            client.sensor_token = 'test-token'
-            client.logger = Mock()
+            # Create test config
+            test_config = {
+                'server': {'url': 'https://soc.example.com', 'ssl_verify': False},
+                'sensor': {'id': 'test-001'}
+            }
+            setup_mock_sensor_client(client, test_config)
+            client.token = 'test-token'  # Override token for this test
 
             alert = {'type': 'C2_COMMUNICATION', 'severity': 'CRITICAL'}
 
@@ -557,11 +583,13 @@ class TestHeartbeatAndMetrics:
 
         with patch.object(SensorClient, '__init__', return_value=None):
             client = SensorClient()
-            client.server_url = 'https://soc.example.com'
-            client.sensor_id = 'test-001'
-            client.ssl_verify = False
-            client.sensor_token = 'test-token'
-            client.logger = Mock()
+            # Create test config
+            test_config = {
+                'server': {'url': 'https://soc.example.com', 'ssl_verify': False},
+                'sensor': {'id': 'test-001'}
+            }
+            setup_mock_sensor_client(client, test_config)
+            client.token = 'test-token'  # Override token for this test
 
             client._send_heartbeat()
 
@@ -583,11 +611,13 @@ class TestHeartbeatAndMetrics:
 
         with patch.object(SensorClient, '__init__', return_value=None):
             client = SensorClient()
-            client.server_url = 'https://soc.example.com'
-            client.sensor_id = 'test-001'
-            client.ssl_verify = False
-            client.sensor_token = 'test-token'
-            client.logger = Mock()
+            # Create test config
+            test_config = {
+                'server': {'url': 'https://soc.example.com', 'ssl_verify': False},
+                'sensor': {'id': 'test-001'}
+            }
+            setup_mock_sensor_client(client, test_config)
+            client.token = 'test-token'  # Override token for this test
 
             client._send_metrics()
 
@@ -671,11 +701,13 @@ class TestErrorHandlingAndRetries:
 
         with patch.object(SensorClient, '__init__', return_value=None):
             client = SensorClient()
-            client.server_url = 'https://soc.example.com'
-            client.sensor_id = 'test-001'
-            client.ssl_verify = False
-            client.sensor_token = 'test-token'
-            client.logger = Mock()
+            # Create test config
+            test_config = {
+                'server': {'url': 'https://soc.example.com', 'ssl_verify': False},
+                'sensor': {'id': 'test-001'}
+            }
+            setup_mock_sensor_client(client, test_config)
+            client.token = 'test-token'  # Override token for this test
             client.alert_batch = [{'type': 'TEST'}]
             client.batch_lock = MagicMock()
 
@@ -696,11 +728,13 @@ class TestErrorHandlingAndRetries:
 
         with patch.object(SensorClient, '__init__', return_value=None):
             client = SensorClient()
-            client.server_url = 'https://soc.example.com'
-            client.sensor_id = 'test-001'
-            client.ssl_verify = False
-            client.sensor_token = 'test-token'
-            client.logger = Mock()
+            # Create test config
+            test_config = {
+                'server': {'url': 'https://soc.example.com', 'ssl_verify': False},
+                'sensor': {'id': 'test-001'}
+            }
+            setup_mock_sensor_client(client, test_config)
+            client.token = 'test-token'  # Override token for this test
             client.alert_batch = [{'type': 'TEST'}]
             client.batch_lock = MagicMock()
 
