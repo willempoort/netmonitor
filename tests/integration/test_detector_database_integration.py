@@ -33,7 +33,8 @@ class TestDetectorDatabaseIntegration:
         # Setup database mock
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = {'id': 1}
+        # PostgreSQL fetchone() returns tuple, not dict
+        mock_cursor.fetchone.return_value = (1,)  # alert_id
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_pool.return_value.getconn.return_value = mock_conn
 
@@ -70,7 +71,8 @@ class TestDetectorDatabaseIntegration:
         # Setup database mock met whitelist
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = None
+        # Return count of 0 for whitelist check (not whitelisted)
+        mock_cursor.fetchone.return_value = (0,)
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_pool.return_value.getconn.return_value = mock_conn
 
@@ -98,7 +100,8 @@ class TestDetectorDatabaseIntegration:
         # Setup database mock
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = {'id': 1}
+        # PostgreSQL fetchone() returns tuple, not dict
+        mock_cursor.fetchone.return_value = (1,)  # alert_id
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_pool.return_value.getconn.return_value = mock_conn
 
