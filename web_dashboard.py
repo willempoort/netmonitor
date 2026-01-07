@@ -1989,6 +1989,9 @@ def api_kiosk_metrics():
             'offline': len([s for s in sensors if s['computed_status'] == 'offline'])
         }
 
+        # Get disk usage
+        disk_data = db.get_disk_usage()
+
         return jsonify({
             'success': True,
             'timestamp': datetime.now().isoformat(),
@@ -1998,7 +2001,14 @@ def api_kiosk_metrics():
                 'alerts_per_min': aggregated.get('alerts_per_min', 0),
                 'active_sensors': f"{sensor_health['online']}/{sensor_health['total']}",
                 'avg_cpu_percent': avg_cpu,
-                'avg_memory_percent': avg_memory
+                'avg_memory_percent': avg_memory,
+                # Disk & Database metrics
+                'disk_percent': disk_data.get('system', {}).get('percent_used', 0),
+                'disk_used': disk_data.get('system', {}).get('used_human', '0 GB'),
+                'disk_total': disk_data.get('system', {}).get('total_human', '0 GB'),
+                'db_size_human': disk_data.get('database', {}).get('size_human', '0 MB'),
+                'db_alerts_count': disk_data.get('database', {}).get('alerts_count', 0),
+                'db_metrics_count': disk_data.get('database', {}).get('metrics_count', 0)
             },
             'sensor_health': sensor_health,
             'critical_alerts': critical_alerts[:10],  # Max 10 for kiosk
