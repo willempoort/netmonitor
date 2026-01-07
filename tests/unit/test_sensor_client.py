@@ -479,19 +479,19 @@ class TestAlertBatchingAndUpload:
             client.ssl_verify = False
             client.sensor_token = 'test-token'
             client.logger = Mock()
-            client.alert_batch = [
+
+            # Create alert_buffer (deque) with test alerts
+            from collections import deque
+            client.alert_buffer = deque([
                 {'type': 'PORT_SCAN', 'severity': 'HIGH'},
                 {'type': 'DNS_TUNNEL', 'severity': 'MEDIUM'}
-            ]
-            client.batch_lock = Mock()
-            client.batch_lock.__enter__ = Mock()
-            client.batch_lock.__exit__ = Mock()
+            ])
 
             client._upload_alerts()
 
             mock_post.assert_called_once()
-            # Batch moet geleegd zijn
-            assert len(client.alert_batch) == 0
+            # Buffer moet geleegd zijn
+            assert len(client.alert_buffer) == 0
 
     @patch('sensor_client.requests.post')
     def test_upload_alert_immediate(self, mock_post):
