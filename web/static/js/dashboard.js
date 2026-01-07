@@ -2589,7 +2589,8 @@ document.addEventListener('DOMContentLoaded', function() {
     setInterval(loadIntegrationStatus, 60000);
 
     // Load disk usage (initial + refresh every 60 seconds)
-    setTimeout(loadDiskUsage, 2000);
+    // Call immediately after DOM is ready (charts should be initialized by now)
+    setTimeout(loadDiskUsage, 500);  // Short delay to ensure gauges are ready
     setInterval(loadDiskUsage, 60000);
 });
 
@@ -2601,18 +2602,26 @@ async function loadDiskUsage() {
         const result = await response.json();
 
         if (result.success) {
+            console.log('[Disk Usage] Data loaded:', result.data);
             updateDiskUsage(result.data);
         } else {
-            console.error('Error loading disk usage:', result.error);
+            console.error('[Disk Usage] Error loading:', result.error);
         }
     } catch (error) {
-        console.error('Error fetching disk usage:', error);
+        console.error('[Disk Usage] Error fetching:', error);
     }
 }
 
 function updateDiskUsage(data) {
+    // Check if disk gauge is initialized
+    if (!diskGauge) {
+        console.warn('[Disk Usage] Gauge not yet initialized, skipping update');
+        return;
+    }
+
     // Update disk usage gauge
     const diskPercent = data.system?.percent_used || 0;
+    console.log('[Disk Usage] Updating gauge:', diskPercent);
     updateGauge(diskGauge, diskPercent, 100);
     document.getElementById('disk-value').textContent = diskPercent.toFixed(1) + '%';
 

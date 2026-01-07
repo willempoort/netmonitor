@@ -140,14 +140,49 @@
         /* ==================== Grid Layout ==================== */
         .metrics-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(3, 1fr);
             gap: 1.5rem;
             margin-bottom: 2rem;
+            min-height: 200px; /* Prevent layout shift */
         }
 
-        @media (min-width: 1024px) {
+        /* Carousel animations */
+        .metrics-grid .card {
+            opacity: 0;
+            transform: scale(0.95);
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+
+        .metrics-grid .card.visible {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        /* Page indicator */
+        .carousel-indicator {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .carousel-indicator .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            opacity: 0.3;
+            transition: opacity 0.3s ease, background 0.3s ease;
+        }
+
+        .carousel-indicator .dot.active {
+            opacity: 1;
+            background: var(--accent-primary);
+        }
+
+        @media (max-width: 1024px) {
             .metrics-grid {
-                grid-template-columns: repeat(3, 1fr);
+                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             }
         }
 
@@ -739,7 +774,14 @@
             </div>
         </div>
 
-        <!-- Metrics Grid - Always Visible -->
+        <!-- Carousel Indicator -->
+        <div class="carousel-indicator" id="carousel-indicator">
+            <div class="dot active"></div>
+            <div class="dot"></div>
+            <div class="dot"></div>
+        </div>
+
+        <!-- Metrics Grid - Always Visible (3 cards per page, rotates every 10s) -->
         <div class="metrics-grid" id="metrics-grid">
             <!-- Metrics cards will be populated by JavaScript -->
             <div class="loading">
@@ -1096,6 +1138,12 @@
         }
 
         // ==================== UI Updates ====================
+        // Carousel state
+        let currentMetricsPage = 0;
+        let allMetricCards = [];
+        const CARDS_PER_PAGE = 3;
+        const ROTATION_INTERVAL = 10000; // 10 seconds
+
         function updateMetrics(data) {
             const metrics = data.metrics || {};
             const sensorHealth = data.sensor_health || {};
@@ -1107,7 +1155,10 @@
             const cpuTrend = calculateTrend(metrics.avg_cpu_percent || 0, 'cpu');
             const memoryTrend = calculateTrend(metrics.avg_memory_percent || 0, 'memory');
 
-            const metricsHTML = `
+            // Build all metric cards as an array
+            allMetricCards = [
+                // Page 1: Network metrics
+                `
                 <div class="card">
                     <div class="card-header">
                         <span class="card-title">Bandwidth</span>
@@ -1200,11 +1251,54 @@
                     </div>
                     <div class="card-label">${formatNumber(metrics.db_alerts_count || 0)} alerts, ${formatNumber(metrics.db_metrics_count || 0)} metrics</div>
                 </div>
-            `;
+                `
+            ];
 
-            document.getElementById('metrics-grid').innerHTML = metricsHTML;
+            // Display first page of metrics
+            showMetricsPage(0);
             updateTimestamp();
         }
+
+        function showMetricsPage(pageIndex) {
+            const totalPages = Math.ceil(allMetricCards.length / CARDS_PER_PAGE);
+            currentMetricsPage = pageIndex % totalPages;
+
+            // Get cards for current page
+            const startIdx = currentMetricsPage * CARDS_PER_PAGE;
+            const endIdx = startIdx + CARDS_PER_PAGE;
+            const pageCards = allMetricCards.slice(startIdx, endIdx);
+
+            // Update HTML
+            const metricsGrid = document.getElementById('metrics-grid');
+            metricsGrid.innerHTML = pageCards.join('');
+
+            // Trigger fade-in animation
+            setTimeout(() => {
+                const cards = metricsGrid.querySelectorAll('.card');
+                cards.forEach((card, index) => {
+                    setTimeout(() => {
+                        card.classList.add('visible');
+                    }, index * 100); // Stagger animation
+                });
+            }, 50);
+
+            // Update page indicators
+            const indicators = document.querySelectorAll('.carousel-indicator .dot');
+            indicators.forEach((dot, idx) => {
+                if (idx === currentMetricsPage) {
+                    dot.classList.add('active');
+                } else {
+                    dot.classList.remove('active');
+                }
+            });
+        }
+
+        // Start carousel auto-rotation
+        setInterval(() => {
+            if (allMetricCards.length > CARDS_PER_PAGE) {
+                showMetricsPage(currentMetricsPage + 1);
+            }
+        }, ROTATION_INTERVAL);
 
         function updateAlerts(alerts) {
             if (alerts.length === 0) {
