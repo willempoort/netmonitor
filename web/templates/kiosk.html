@@ -1155,11 +1155,10 @@
             const cpuTrend = calculateTrend(metrics.avg_cpu_percent || 0, 'cpu');
             const memoryTrend = calculateTrend(metrics.avg_memory_percent || 0, 'memory');
 
-            // Build all metric cards as an array
+            // Build all metric cards as an array (one card per item)
             allMetricCards = [
-                // Page 1: Network metrics
-                `
-                <div class="card">
+                // Card 1: Bandwidth
+                `<div class="card">
                     <div class="card-header">
                         <span class="card-title">Bandwidth</span>
                         <span class="card-icon">📊</span>
@@ -1169,9 +1168,9 @@
                         ${getTrendIndicator(bandwidthTrend)}
                     </div>
                     <div class="card-label">Mbps Total</div>
-                </div>
-
-                <div class="card">
+                </div>`,
+                // Card 2: Packets
+                `<div class="card">
                     <div class="card-header">
                         <span class="card-title">Packets</span>
                         <span class="card-icon">📦</span>
@@ -1181,9 +1180,9 @@
                         ${getTrendIndicator(packetsTrend)}
                     </div>
                     <div class="card-label">per second</div>
-                </div>
-
-                <div class="card">
+                </div>`,
+                // Card 3: Alerts
+                `<div class="card">
                     <div class="card-header">
                         <span class="card-title">Alerts</span>
                         <span class="card-icon">⚠️</span>
@@ -1193,9 +1192,9 @@
                         ${getTrendIndicator(alertsTrend)}
                     </div>
                     <div class="card-label">per minute</div>
-                </div>
-
-                <div class="card">
+                </div>`,
+                // Card 4: Sensors
+                `<div class="card">
                     <div class="card-header">
                         <span class="card-title">Sensors</span>
                         <span class="card-icon">📡</span>
@@ -1204,9 +1203,9 @@
                         ${metrics.active_sensors || '0/0'}
                     </div>
                     <div class="card-label">Online / Total</div>
-                </div>
-
-                <div class="card">
+                </div>`,
+                // Card 5: CPU Average
+                `<div class="card">
                     <div class="card-header">
                         <span class="card-title">CPU Average</span>
                         <span class="card-icon">💻</span>
@@ -1216,9 +1215,9 @@
                         ${getTrendIndicator(cpuTrend)}
                     </div>
                     <div class="card-label">Across all sensors</div>
-                </div>
-
-                <div class="card">
+                </div>`,
+                // Card 6: Memory Average
+                `<div class="card">
                     <div class="card-header">
                         <span class="card-title">Memory Average</span>
                         <span class="card-icon">🧠</span>
@@ -1228,9 +1227,9 @@
                         ${getTrendIndicator(memoryTrend)}
                     </div>
                     <div class="card-label">Across all sensors</div>
-                </div>
-
-                <div class="card">
+                </div>`,
+                // Card 7: Disk Usage
+                `<div class="card">
                     <div class="card-header">
                         <span class="card-title">Disk Usage</span>
                         <span class="card-icon">💾</span>
@@ -1239,9 +1238,9 @@
                         ${formatNumber(metrics.disk_percent || 0, 1)}%
                     </div>
                     <div class="card-label">${metrics.disk_used || '0 GB'} / ${metrics.disk_total || '0 GB'}</div>
-                </div>
-
-                <div class="card">
+                </div>`,
+                // Card 8: Database Size
+                `<div class="card">
                     <div class="card-header">
                         <span class="card-title">Database Size</span>
                         <span class="card-icon">🗄️</span>
@@ -1250,8 +1249,7 @@
                         ${metrics.db_size_human || '0 MB'}
                     </div>
                     <div class="card-label">${formatNumber(metrics.db_alerts_count || 0)} alerts, ${formatNumber(metrics.db_metrics_count || 0)} metrics</div>
-                </div>
-                `
+                </div>`
             ];
 
             // Display first page of metrics

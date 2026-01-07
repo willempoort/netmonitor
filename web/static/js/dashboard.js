@@ -2613,6 +2613,8 @@ async function loadDiskUsage() {
 }
 
 function updateDiskUsage(data) {
+    console.log('[Disk Usage] Full data received:', data);
+
     // Check if disk gauge is initialized
     if (!diskGauge) {
         console.warn('[Disk Usage] Gauge not yet initialized, skipping update');
@@ -2621,7 +2623,11 @@ function updateDiskUsage(data) {
 
     // Update disk usage gauge
     const diskPercent = data.system?.percent_used || 0;
-    console.log('[Disk Usage] Updating gauge:', diskPercent);
+    console.log('[Disk Usage] System data:', data.system);
+    console.log('[Disk Usage] Database data:', data.database);
+    console.log('[Disk Usage] Retention data:', data.retention);
+    console.log('[Disk Usage] Disk percent:', diskPercent);
+
     updateGauge(diskGauge, diskPercent, 100);
     document.getElementById('disk-value').textContent = diskPercent.toFixed(1) + '%';
 
