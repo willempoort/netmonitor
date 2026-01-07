@@ -170,7 +170,7 @@ class TestAuthenticationIntegration:
         call_count = [0]
 
         # Create cursor factory with stateful side_effect
-        def create_mock_cursor():
+        def create_mock_cursor(**kwargs):  # Accept cursor_factory and other kwargs
             mock_cursor = MagicMock()
 
             def fetchone_side_effect():

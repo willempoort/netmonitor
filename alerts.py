@@ -57,7 +57,8 @@ class AlertManager:
         alert_msg = self._format_alert(threat, packet)
 
         # Log naar console met kleuren
-        self._log_to_console(alert_msg, threat['severity'])
+        severity = threat.get('severity', 'UNKNOWN')
+        self._log_to_console(alert_msg, severity)
 
         # Log naar file
         if self.alert_file:
@@ -65,7 +66,7 @@ class AlertManager:
 
         # Log naar syslog indien geconfigureerd
         if self.config.get('alerts', {}).get('syslog_enabled', False):
-            self._log_to_syslog(alert_msg, threat['severity'])
+            self._log_to_syslog(alert_msg, severity)
 
     def _check_rate_limit(self):
         """Check of we binnen rate limits zijn"""
@@ -84,10 +85,13 @@ class AlertManager:
 
         alert_parts = [
             f"[{timestamp}]",
-            f"[{threat['severity']}]",
-            f"[{threat['type']}]",
-            f"{threat['description']}"
+            f"[{threat.get('severity', 'UNKNOWN')}]",
+            f"[{threat.get('type', 'UNKNOWN')}]",
         ]
+
+        # Add description if present
+        if 'description' in threat:
+            alert_parts.append(f"{threat['description']}")
 
         # Voeg extra details toe
         if 'source_ip' in threat:
