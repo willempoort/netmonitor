@@ -82,7 +82,8 @@ def base_config() -> Dict[str, Any]:
         },
         'logging': {
             'file': '/tmp/netmonitor_test.log',
-            'level': 'INFO'
+            'level': 'INFO',
+            'console': True
         }
     }
 

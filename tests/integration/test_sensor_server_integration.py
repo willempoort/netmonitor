@@ -165,31 +165,44 @@ class TestAuthenticationIntegration:
         """
         # Setup database mock with side_effect for multiple queries
         mock_conn = MagicMock()
-        mock_cursor = MagicMock()
 
-        # Use side_effect to handle multiple different queries
-        # Create iterator that returns different values for each call
+        # Counter to track calls across all cursors
         call_count = [0]
-        def fetchone_side_effect():
-            call_count[0] += 1
-            if call_count[0] == 1:
-                # First call: token generation (INSERT RETURNING id)
-                return (1,)
-            else:
-                # Subsequent calls: token validation (SELECT with 8 fields)
-                return (
-                    1,                  # st.id
-                    'sensor-001',       # st.sensor_id
-                    'Test Token',       # st.token_name
-                    '{}',               # st.permissions (JSON string)
-                    None,               # st.expires_at
-                    'test-host',        # s.hostname
-                    'test-location',    # s.location
-                    'online'            # s.status
-                )
 
-        mock_cursor.fetchone.side_effect = fetchone_side_effect
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        # Create cursor factory with stateful side_effect
+        def create_mock_cursor():
+            mock_cursor = MagicMock()
+
+            def fetchone_side_effect():
+                call_count[0] += 1
+                # First ~150 calls: database initialization (device templates, service providers, threat configs)
+                # Return generic tuple with enough fields
+                if call_count[0] < 200:
+                    return (1, 'default', 'default', '{}', None, None, None, None, None, None)
+                # Token generation call (INSERT RETURNING id) - returns single ID
+                elif call_count[0] < 210:
+                    return (1,)
+                # Token validation (SELECT with JOIN - 8 fields)
+                else:
+                    return (
+                        1,                  # st.id
+                        'sensor-001',       # st.sensor_id
+                        'Test Token',       # st.token_name
+                        '{}',               # st.permissions (JSON string)
+                        None,               # st.expires_at
+                        'test-host',        # s.hostname
+                        'test-location',    # s.location
+                        'online'            # s.status
+                    )
+
+            mock_cursor.fetchone.side_effect = fetchone_side_effect
+            mock_cursor.fetchall.return_value = []
+            mock_cursor.rowcount = 1
+            mock_cursor.__enter__ = Mock(return_value=mock_cursor)
+            mock_cursor.__exit__ = Mock(return_value=None)
+            return mock_cursor
+
+        mock_conn.cursor.side_effect = create_mock_cursor
         mock_pool.return_value.getconn.return_value = mock_conn
 
         db = DatabaseManager()
@@ -268,11 +281,19 @@ class TestEndToEndWorkflow:
         """
         # Setup database with persistent mock
         mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        # PostgreSQL fetchone() returns tuple, not dict
-        # Use side_effect to always return tuple
-        mock_cursor.fetchone.side_effect = lambda: (1,)
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+        # Create cursor factory that returns properly mocked cursors
+        def create_mock_cursor():
+            mock_cursor = MagicMock()
+            # PostgreSQL fetchone() returns tuple - use generous tuple to satisfy all queries
+            mock_cursor.fetchone.side_effect = lambda: (1, 'default', 'default', '{}', None, None, None, None, None, None)
+            mock_cursor.fetchall.return_value = []
+            mock_cursor.rowcount = 1
+            mock_cursor.__enter__ = Mock(return_value=mock_cursor)
+            mock_cursor.__exit__ = Mock(return_value=None)
+            return mock_cursor
+
+        mock_conn.cursor.side_effect = create_mock_cursor
         mock_pool.return_value.getconn.return_value = mock_conn
 
         db = DatabaseManager()

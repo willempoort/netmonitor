@@ -32,11 +32,19 @@ class TestDetectorDatabaseIntegration:
         """
         # Setup database mock with persistent return values
         mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        # PostgreSQL fetchone() returns tuple, not dict
-        # Use side_effect to return consistent values for multiple calls
-        mock_cursor.fetchone.side_effect = lambda: (1,)  # Always return tuple with ID
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+        # Create cursor factory that returns properly mocked cursors
+        def create_mock_cursor():
+            mock_cursor = MagicMock()
+            # PostgreSQL fetchone() returns tuple - use generous tuple to satisfy all queries
+            mock_cursor.fetchone.side_effect = lambda: (1, 'default', 'default', '{}', None, None, None, None, None, None)
+            mock_cursor.fetchall.return_value = []
+            mock_cursor.rowcount = 1
+            mock_cursor.__enter__ = Mock(return_value=mock_cursor)
+            mock_cursor.__exit__ = Mock(return_value=None)
+            return mock_cursor
+
+        mock_conn.cursor.side_effect = create_mock_cursor
         mock_pool.return_value.getconn.return_value = mock_conn
 
         # Create database en detector

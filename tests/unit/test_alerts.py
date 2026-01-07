@@ -233,7 +233,11 @@ class TestRateLimiting:
 
         alert_manager = AlertManager(base_config)
 
-        threat = {'type': 'TEST', 'severity': 'LOW'}
+        threat = {
+            'type': 'TEST',
+            'severity': 'LOW',
+            'description': 'Test alert'
+        }
         packet = Mock()
 
         # Moet alle alerts verwerken zonder rate limit
