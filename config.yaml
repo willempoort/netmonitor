@@ -323,6 +323,48 @@ performance:
   whitelist_sync_interval: 300
 
 # =============================================================================
+# DATA RETENTION - Compliance & Disk Management (NIS-2 Compliant)
+# =============================================================================
+# Automatic cleanup of old data based on configurable retention periods
+# Minimum retention periods according to NIS-2 directive:
+#   - Security alerts/incidents: 12 months minimum (recommended: 24-60 months)
+#   - Audit logs: 24 months minimum
+#   - Traffic metrics: 30-90 days (high volume data)
+#
+# IMPORTANT: Ensure you comply with your local regulations before reducing these values
+data_retention:
+  # Enable automatic data cleanup
+  enabled: true
+
+  # Retention periods (in days)
+  # Alerts & security incidents (NIS-2: minimum 365 days, recommended 730-1825)
+  alerts_days: 365  # 12 months (NIS-2 compliant minimum)
+
+  # Traffic metrics and flow data (high volume - shorter retention)
+  metrics_days: 90  # 3 months (reasonable for most environments)
+
+  # Audit logs (configuration changes, logins, etc.)
+  # NIS-2: minimum 730 days (24 months)
+  audit_logs_days: 730  # 24 months (NIS-2 compliant)
+
+  # Top talkers and temporary statistics
+  statistics_days: 30  # 1 month (transient data)
+
+  # Device last_seen timestamps (keeps device list, only removes very old entries)
+  devices_inactive_days: 180  # 6 months
+
+  # Cleanup schedule (daily at specified hour, UTC)
+  cleanup_hour: 2  # 02:00 UTC (night time for most locations)
+
+  # Safety: require at least this many days of data before cleanup runs
+  # Prevents accidental data loss if misconfigured
+  minimum_retention_days: 7
+
+  # Log cleanup operations
+  log_cleanup: true
+
+
+# =============================================================================
 # INTEGRATIONS - SIEM & Threat Intelligence (optional)
 # =============================================================================
 # All integrations are disabled by default.
