@@ -721,13 +721,24 @@ class ThreatDetector:
         # Scapy flags can be string ('S'), int, or FlagValue object
         flags = tcp_layer.flags
         has_syn = False
-        if isinstance(flags, str):
-            has_syn = 'S' in flags
-        elif isinstance(flags, int):
-            has_syn = bool(flags & 0x02)
-        else:
-            # FlagValue object supports both string check and bitwise
-            has_syn = 'S' in str(flags) or bool(int(flags) & 0x02)
+        try:
+            if isinstance(flags, str):
+                has_syn = 'S' in flags
+            elif isinstance(flags, int):
+                has_syn = bool(flags & 0x02)
+            else:
+                # FlagValue object - try string conversion first
+                flags_str = str(flags)
+                has_syn = 'S' in flags_str
+                # If string check didn't work, try bitwise
+                if not has_syn:
+                    try:
+                        has_syn = bool(int(flags) & 0x02)
+                    except (ValueError, TypeError):
+                        pass
+        except Exception:
+            # If all else fails, assume it's not a SYN packet
+            return None
 
         if not has_syn:
             return None

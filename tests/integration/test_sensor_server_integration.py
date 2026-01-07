@@ -175,15 +175,17 @@ class TestAuthenticationIntegration:
 
             def fetchone_side_effect():
                 call_count[0] += 1
-                # First ~180 calls: database initialization (device templates, service providers, threat configs)
+                # First ~200 calls: database initialization (device templates, service providers, threat configs)
                 # Return generic tuple with enough fields - device templates need 2 fields
-                if call_count[0] < 180:
+                # Note: Some calls return None for templates, service providers return (id,), threat configs return various
+                if call_count[0] < 200:
+                    # Return a generic tuple that works for most queries
                     return (1, 'default')
-                # Token generation - register sensor first (returns sensor_id)
-                elif call_count[0] < 182:
+                # Token generation - register sensor (INSERT ... RETURNING sensor_id)
+                elif call_count[0] < 202:
                     return ('sensor-001',)
-                # Token generation - INSERT RETURNING id
-                elif call_count[0] < 184:
+                # Token generation - INSERT token RETURNING id
+                elif call_count[0] < 204:
                     return (1,)
                 # Token validation - SELECT with JOIN (8 fields)
                 else:

@@ -188,18 +188,25 @@ class TestTokenValidation:
         """
         auth_manager = SensorAuthManager(mock_db_manager)
 
-        # Mock database query result - expired token
+        # Mock database query result - expired token (tuple format)
         mock_db_manager._get_connection = Mock()
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = {
-            'sensor_id': 'sensor-001',
-            'active': True,
-            'expires_at': datetime.now() - timedelta(days=1),  # Expired yesterday
-            'permissions': {}
-        }
+        # Return tuple: (token_id, sensor_id, token_name, permissions, expires_at, hostname, location, status)
+        mock_cursor.fetchone.return_value = (
+            1,                                      # token_id
+            'sensor-001',                           # sensor_id
+            'Test Token',                           # token_name
+            {'alerts': True},                       # permissions
+            datetime.now() - timedelta(days=1),     # expires_at (expired)
+            'test-host',                            # hostname
+            'test-location',                        # location
+            'online'                                # status
+        )
+        mock_cursor.rowcount = 1
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
+        mock_db_manager._return_connection = Mock()
 
         result = auth_manager.validate_token('expired-token')
 
@@ -209,22 +216,18 @@ class TestTokenValidation:
     def test_validate_token_inactive(self, mock_db_manager):
         """
         Test: Validatie van inactieve token
-        Edge case: Token is gerevoked
+        Edge case: Token is gerevoked (query retourneert geen resultaten)
         """
         auth_manager = SensorAuthManager(mock_db_manager)
 
-        # Mock database query result - inactive token
+        # Mock database query result - inactive token returns None (filtered by WHERE is_active = TRUE)
         mock_db_manager._get_connection = Mock()
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = {
-            'sensor_id': 'sensor-001',
-            'active': False,  # Revoked
-            'expires_at': None,
-            'permissions': {}
-        }
+        mock_cursor.fetchone.return_value = None  # No result for inactive tokens
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
+        mock_db_manager._return_connection = Mock()
 
         result = auth_manager.validate_token('inactive-token')
 
@@ -256,28 +259,44 @@ class TestTokenValidation:
         """
         auth_manager = SensorAuthManager(mock_db_manager)
 
-        # Mock database query result
+        # Test 1: Check permission that exists and is True
         mock_db_manager._get_connection = Mock()
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = {
-            'sensor_id': 'sensor-001',
-            'active': True,
-            'expires_at': None,
-            'permissions': {'can_upload_alerts': True, 'can_modify_config': False}
-        }
+        # Return tuple: (token_id, sensor_id, token_name, permissions, expires_at, hostname, location, status)
+        mock_cursor.fetchone.return_value = (
+            1,                                      # token_id
+            'sensor-001',                           # sensor_id
+            'Test Token',                           # token_name
+            {'can_upload_alerts': True, 'can_modify_config': False},  # permissions
+            None,                                   # expires_at
+            'test-host',                            # hostname
+            'test-location',                        # location
+            'online'                                # status
+        )
+        mock_cursor.rowcount = 1
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
+        mock_db_manager._return_connection = Mock()
 
-        # Check permission that exists and is True
         result = auth_manager.validate_token('token', required_permission='can_upload_alerts')
         assert result is not None
 
-        # Check permission that is False
+        # Test 2: Check permission that is False
+        mock_cursor.fetchone.return_value = (
+            1, 'sensor-001', 'Test Token',
+            {'can_upload_alerts': True, 'can_modify_config': False},
+            None, 'test-host', 'test-location', 'online'
+        )
         result = auth_manager.validate_token('token', required_permission='can_modify_config')
         assert result is None
 
-        # Check permission that doesn't exist
+        # Test 3: Check permission that doesn't exist
+        mock_cursor.fetchone.return_value = (
+            1, 'sensor-001', 'Test Token',
+            {'can_upload_alerts': True, 'can_modify_config': False},
+            None, 'test-host', 'test-location', 'online'
+        )
         result = auth_manager.validate_token('token', required_permission='nonexistent_permission')
         assert result is None
 
@@ -301,8 +320,10 @@ class TestTokenRevocation:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_cursor.rowcount = 1  # 1 row affected
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        # revoke_token calls conn.cursor() directly (not as context manager)
+        mock_conn.cursor.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
+        mock_db_manager._return_connection = Mock()
 
         result = auth_manager.revoke_token(token_id=123)
 
@@ -319,8 +340,10 @@ class TestTokenRevocation:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_cursor.rowcount = 0  # No rows affected
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        # revoke_token calls conn.cursor() directly (not as context manager)
+        mock_conn.cursor.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
+        mock_db_manager._return_connection = Mock()
 
         result = auth_manager.revoke_token(token_id=999)
 
