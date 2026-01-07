@@ -156,18 +156,25 @@ class TestTokenValidation:
         """
         auth_manager = SensorAuthManager(mock_db_manager)
 
-        # Mock database query result
+        # Mock database query result - validate_token expects tuple of 8 values
         mock_db_manager._get_connection = Mock()
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = {
-            'sensor_id': 'sensor-001',
-            'active': True,
-            'expires_at': datetime.now() + timedelta(days=30),
-            'permissions': {}
-        }
+        # Return tuple: (token_id, sensor_id, token_name, permissions, expires_at, hostname, location, status)
+        mock_cursor.fetchone.return_value = (
+            1,                                      # token_id
+            'sensor-001',                           # sensor_id
+            'Test Token',                           # token_name
+            {'alerts': True, 'metrics': True},      # permissions (dict)
+            datetime.now() + timedelta(days=30),    # expires_at
+            'test-host',                            # hostname
+            'test-location',                        # location
+            'online'                                # status
+        )
+        mock_cursor.rowcount = 1
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_db_manager._get_connection.return_value = mock_conn
+        mock_db_manager._return_connection = Mock()
 
         result = auth_manager.validate_token('valid-token-123')
 

@@ -8,6 +8,7 @@ Token-based authentication for remote sensors
 import secrets
 import hashlib
 import logging
+import json
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
@@ -130,6 +131,15 @@ class SensorAuthManager:
                 return None
 
             token_id, sensor_id, token_name, permissions, expires_at, hostname, location, status = result
+
+            # Deserialize permissions if it's a JSON string
+            if isinstance(permissions, str):
+                try:
+                    permissions = json.loads(permissions)
+                except json.JSONDecodeError:
+                    permissions = {}
+            elif permissions is None:
+                permissions = {}
 
             # Check expiration
             if expires_at and datetime.now() > expires_at:

@@ -373,7 +373,8 @@ class TestAlertStatistics:
         stats = alert_manager.get_stats()
 
         assert stats is not None
-        assert 'total' in stats or stats.get('alert_count', 0) >= 3
+        assert 'total_alerts' in stats
+        assert stats['total_alerts'] >= 3
 
     def test_get_stats_no_alerts(self, base_config):
         """
