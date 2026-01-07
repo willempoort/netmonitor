@@ -35,7 +35,7 @@ class TestSensorServerCommunication:
         Normal case: Volledige authentication flow
         """
         # Setup config with server_url
-        sensor_config['server_url'] = 'http://localhost:8080'
+        sensor_config['server']['url'] = 'http://localhost:8080'
         mock_load_config.return_value = sensor_config
 
         # Mock registration response met token
@@ -43,7 +43,7 @@ class TestSensorServerCommunication:
         mock_post_response.status_code = 200
         mock_post_response.json.return_value = {
             'success': True,
-            'sensor_id': sensor_config['sensor_id'],
+            'sensor_id': sensor_config['sensor']['id'],
             'token': 'generated-auth-token'
         }
         mock_post.return_value = mock_post_response
@@ -81,8 +81,8 @@ class TestSensorServerCommunication:
 
         with patch.object(SensorClient, '__init__', return_value=None):
             client = SensorClient()
-            client.server_url = sensor_config['server_url']
-            client.sensor_id = sensor_config['sensor_id']
+            client.server_url = sensor_config['server']['url']
+            client.sensor_id = sensor_config['sensor']['id']
             client.ssl_verify = False
             client.sensor_token = 'test-token'
             client.logger = Mock()
@@ -133,8 +133,8 @@ class TestSensorServerCommunication:
 
         with patch.object(SensorClient, '__init__', return_value=None):
             client = SensorClient()
-            client.server_url = sensor_config['server_url']
-            client.sensor_id = sensor_config['sensor_id']
+            client.server_url = sensor_config['server']['url']
+            client.sensor_id = sensor_config['sensor']['id']
             client.ssl_verify = False
             client.sensor_token = 'test-token'
             client.logger = Mock()
