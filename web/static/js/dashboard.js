@@ -4,7 +4,7 @@
 let socket;
 let trafficChart;
 let alertPieChart;
-let packetsGauge, alertsGauge, cpuGauge, memoryGauge;
+let packetsGauge, alertsGauge, cpuGauge, memoryGauge, diskGauge;
 
 // Threat Type Information Database
 const THREAT_INFO = {
@@ -425,6 +425,18 @@ function initGauges() {
             datasets: [{
                 data: [0, 100],
                 backgroundColor: ['#fd7e14', '#333'],
+                borderWidth: 0
+            }]
+        }
+    });
+
+    // Disk Usage Gauge
+    diskGauge = new Chart(document.getElementById('diskGauge').getContext('2d'), {
+        ...gaugeOptions,
+        data: {
+            datasets: [{
+                data: [0, 100],
+                backgroundColor: ['#6f42c1', '#333'],
                 borderWidth: 0
             }]
         }
@@ -2575,7 +2587,120 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Refresh integration status every 60 seconds
     setInterval(loadIntegrationStatus, 60000);
+
+    // Load disk usage (initial + refresh every 60 seconds)
+    setTimeout(loadDiskUsage, 2000);
+    setInterval(loadDiskUsage, 60000);
 });
+
+// ==================== Disk Usage & Data Retention ====================
+
+async function loadDiskUsage() {
+    try {
+        const response = await fetch('/api/disk-usage');
+        const result = await response.json();
+
+        if (result.success) {
+            updateDiskUsage(result.data);
+        } else {
+            console.error('Error loading disk usage:', result.error);
+        }
+    } catch (error) {
+        console.error('Error fetching disk usage:', error);
+    }
+}
+
+function updateDiskUsage(data) {
+    // Update disk usage gauge
+    const diskPercent = data.system?.percent_used || 0;
+    updateGauge(diskGauge, diskPercent, 100);
+    document.getElementById('disk-value').textContent = diskPercent.toFixed(1) + '%';
+
+    // Update disk details
+    const diskUsed = data.system?.used_human || '0 GB';
+    const diskTotal = data.system?.total_human || '0 GB';
+    document.getElementById('disk-details').textContent = `${diskUsed} / ${diskTotal}`;
+
+    // Update database size
+    document.getElementById('db-size-value').textContent = data.database?.size_human || '0 MB';
+    document.getElementById('db-alerts-count').textContent = formatNumber(data.database?.alerts_count || 0);
+    document.getElementById('db-metrics-count').textContent = formatNumber(data.database?.metrics_count || 0);
+
+    // Update data age
+    const dataAge = data.database?.data_age_days || 0;
+    document.getElementById('data-age').textContent = `${dataAge} days`;
+
+    // Update retention settings
+    if (data.retention) {
+        document.getElementById('retention-alerts').textContent = data.retention.alerts_days + 'd';
+        document.getElementById('retention-metrics').textContent = data.retention.metrics_days + 'd';
+    }
+
+    // Color code disk usage
+    const diskCard = document.getElementById('diskGauge').closest('.card');
+    if (diskPercent > 90) {
+        diskCard.classList.remove('bg-secondary');
+        diskCard.classList.add('bg-danger');
+    } else if (diskPercent > 75) {
+        diskCard.classList.remove('bg-secondary', 'bg-danger');
+        diskCard.classList.add('bg-warning');
+    } else {
+        diskCard.classList.remove('bg-danger', 'bg-warning');
+        diskCard.classList.add('bg-secondary');
+    }
+}
+
+async function triggerDataCleanup() {
+    const btn = document.getElementById('cleanup-btn');
+    const originalText = btn.innerHTML;
+
+    if (!confirm('Are you sure you want to run data cleanup now?\n\nThis will delete old data according to the retention policy.')) {
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="spinner-border spinner-border-sm"></i> Cleaning...';
+
+    try {
+        const response = await fetch('/api/data-retention/cleanup', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            alert(`✅ Cleanup completed!\n\nDeleted records:\n${JSON.stringify(result.data.deleted, null, 2)}`);
+            document.getElementById('last-cleanup').textContent = 'Last cleanup: Just now';
+
+            // Reload disk usage to show updated stats
+            loadDiskUsage();
+        } else {
+            alert('❌ Cleanup failed: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Error triggering cleanup:', error);
+        alert('❌ Error: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
+function showRetentionSettings() {
+    alert('Retention settings are configured in config.yaml\n\nCurrent settings:\n- Alerts: 365 days (NIS-2 minimum)\n- Metrics: 90 days\n- Audit logs: 730 days (NIS-2 minimum)\n\nTo change these values, edit the data_retention section in config.yaml and restart the SOC server.');
+}
+
+function formatNumber(num) {
+    if (num >= 1000000) {
+        return (num / 1000000).toFixed(1) + 'M';
+    } else if (num >= 1000) {
+        return (num / 1000).toFixed(1) + 'K';
+    }
+    return num.toString();
+}
 
 // ==================== Export for debugging ====================
 

@@ -167,6 +167,78 @@
             </div>
         </div>
 
+        <!-- Disk & Database Row -->
+        <div class="row mb-3">
+            <!-- Disk Usage -->
+            <div class="col-md-3">
+                <div class="card bg-secondary text-white h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title"><i class="bi bi-hdd"></i> Disk Usage</h6>
+                        <canvas id="diskGauge" height="150"></canvas>
+                        <h3 class="mt-2" id="disk-value">0%</h3>
+                        <small class="text-muted" id="disk-details">Loading...</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Database Size -->
+            <div class="col-md-3">
+                <div class="card bg-secondary text-white h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title"><i class="bi bi-database"></i> Database Size</h6>
+                        <div class="mt-3">
+                            <h3 id="db-size-value">0 MB</h3>
+                            <div class="mt-2">
+                                <small class="text-muted"><i class="bi bi-exclamation-triangle"></i> Alerts: <span id="db-alerts-count">0</span></small><br>
+                                <small class="text-muted"><i class="bi bi-graph-up"></i> Metrics: <span id="db-metrics-count">0</span></small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Retention -->
+            <div class="col-md-3">
+                <div class="card bg-secondary text-white h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title"><i class="bi bi-clock-history"></i> Data Retention</h6>
+                        <div class="mt-3">
+                            <div class="mb-2">
+                                <i class="bi bi-calendar-check text-info"></i>
+                                <small>Oldest Data: <strong id="data-age">0 days</strong></small>
+                            </div>
+                            <div class="mb-2">
+                                <i class="bi bi-shield-check text-success"></i>
+                                <small>Alerts: <strong id="retention-alerts">365d</strong></small>
+                            </div>
+                            <div>
+                                <i class="bi bi-speedometer2 text-warning"></i>
+                                <small>Metrics: <strong id="retention-metrics">90d</strong></small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cleanup Actions -->
+            <div class="col-md-3">
+                <div class="card bg-secondary text-white h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title"><i class="bi bi-trash"></i> Data Management</h6>
+                        <div class="mt-3">
+                            <button class="btn btn-outline-warning btn-sm mb-2 w-100" onclick="triggerDataCleanup()" id="cleanup-btn">
+                                <i class="bi bi-broom"></i> Cleanup Now
+                            </button>
+                            <button class="btn btn-outline-info btn-sm w-100" onclick="showRetentionSettings()">
+                                <i class="bi bi-gear"></i> Settings
+                            </button>
+                            <small class="text-muted mt-2 d-block" id="last-cleanup">Last cleanup: Never</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Remote Sensors Row -->
         <div class="row mb-3">
             <div class="col-12">
