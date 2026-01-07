@@ -150,19 +150,25 @@ def config_file(base_config, tmp_path) -> Path:
 @pytest.fixture
 def sensor_config() -> Dict[str, Any]:
     """
-    Sensor-specifieke configuratie
+    Sensor-specifieke configuratie (geneste structuur zoals _load_bash_config)
 
     Returns:
         Dict met sensor configuratie
     """
     return {
-        'sensor_id': 'test-sensor-001',
-        'location': 'Test Location',
-        'server_url': 'https://soc.example.com:8080',
-        'ssl_verify': False,
+        'sensor': {
+            'id': 'test-sensor-001',
+            'location': 'Test Location'
+        },
+        'server': {
+            'url': 'https://soc.example.com:8080',
+            'ssl_verify': False
+        },
         'interface': 'eth0',
-        'batch_interval': 30,
-        'heartbeat_interval': 60
+        'thresholds': {},
+        'whitelist': [],
+        'blacklist': [],
+        'internal_networks': ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']
     }
 
 

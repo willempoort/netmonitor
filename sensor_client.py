@@ -691,12 +691,15 @@ class SensorClient:
 
             if response.status_code == 200:
                 self.logger.info("✓ Sensor registered successfully")
+                return True
             else:
                 self.logger.warning(f"Registration failed: {response.text}")
+                return False
 
         except Exception as e:
             self.logger.error(f"Failed to register sensor: {e}")
             self.logger.warning("Continuing without registration...")
+            return False
 
     def _send_heartbeat(self):
         """Send heartbeat to server"""

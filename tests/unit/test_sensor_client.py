@@ -49,8 +49,8 @@ class TestSensorClientInitialization:
 
             client = SensorClient(config_file='sensor.conf')
 
-            assert client.sensor_id == sensor_config['sensor_id']
-            assert client.server_url == sensor_config['server_url']
+            assert client.sensor_id == sensor_config['sensor']['id']
+            assert client.server_url == sensor_config['server']['url']
 
     @patch('sensor_client.load_sensor_config')
     def test_init_with_override_params(self, mock_load_config, sensor_config):
@@ -251,12 +251,15 @@ INTERFACE=eth0
 
         config = load_sensor_config(str(config_file))
 
-        # Boolean conversie - ssl_verify is nested under 'server'
-        assert config['server']['ssl_verify'] is False
+        # Boolean conversie - load_config uses 'verify_ssl' key
+        assert config['server']['verify_ssl'] is False
 
-        # String values remain strings
+        # String values and nested structure
         assert config['sensor']['location'] == 'Amsterdam'
         assert config['interface'] == 'eth0'
+        # Config includes defaults from load_config
+        assert 'thresholds' in config
+        assert 'performance' in config
 
 
 # ============================================================================
@@ -284,10 +287,10 @@ class TestSensorRegistration:
 
         with patch.object(SensorClient, '__init__', return_value=None):
             client = SensorClient()
-            client.server_url = sensor_config['server_url']
-            client.sensor_id = sensor_config['sensor_id']
-            client.location = sensor_config.get('location', '')
-            client.ssl_verify = sensor_config.get('ssl_verify', True)
+            client.server_url = sensor_config['server']['url']
+            client.sensor_id = sensor_config['sensor']['id']
+            client.location = sensor_config['sensor'].get('location', '')
+            client.ssl_verify = sensor_config['server'].get('ssl_verify', True)
             client.sensor_token = None
             client.logger = Mock()
             client.config = sensor_config
@@ -314,8 +317,8 @@ class TestSensorRegistration:
 
         with patch.object(SensorClient, '__init__', return_value=None):
             client = SensorClient()
-            client.server_url = sensor_config['server_url']
-            client.sensor_id = sensor_config['sensor_id']
+            client.server_url = sensor_config['server']['url']
+            client.sensor_id = sensor_config['sensor']['id']
             client.location = ''
             client.ssl_verify = False
             client.sensor_token = None
@@ -339,8 +342,8 @@ class TestSensorRegistration:
 
         with patch.object(SensorClient, '__init__', return_value=None):
             client = SensorClient()
-            client.server_url = sensor_config['server_url']
-            client.sensor_id = sensor_config['sensor_id']
+            client.server_url = sensor_config['server']['url']
+            client.sensor_id = sensor_config['sensor']['id']
             client.location = ''
             client.ssl_verify = False
             client.sensor_token = None
