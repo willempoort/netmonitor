@@ -10,7 +10,7 @@ from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 import logging
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Any
 import threading
 
@@ -1182,7 +1182,8 @@ class DatabaseManager:
             # Calculate data age in days
             data_age_days = 0
             if oldest_alert:
-                data_age_days = (datetime.now() - oldest_alert).days
+                # Use timezone-aware datetime to match database timestamp
+                data_age_days = (datetime.now(timezone.utc) - oldest_alert).days
 
             # Get system disk usage using psutil
             import psutil
