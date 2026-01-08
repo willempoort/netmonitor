@@ -1249,6 +1249,17 @@
                         ${metrics.db_size_human || '0 MB'}
                     </div>
                     <div class="card-label">${formatNumber(metrics.db_alerts_count || 0)} alerts, ${formatNumber(metrics.db_metrics_count || 0)} metrics</div>
+                </div>`,
+                // Card 9: Data Retention
+                `<div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Data Retention</span>
+                        <span class="card-icon">🕐</span>
+                    </div>
+                    <div class="card-value">
+                        ${metrics.data_age_days || 0} days
+                    </div>
+                    <div class="card-label">Alerts: ${metrics.retention_alerts || 365}d | Metrics: ${metrics.retention_metrics || 90}d</div>
                 </div>`
             ];
 

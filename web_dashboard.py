@@ -1992,6 +1992,9 @@ def api_kiosk_metrics():
         # Get disk usage
         disk_data = db.get_disk_usage()
 
+        # Get retention policy from config
+        retention_config = config.get('data_retention', {})
+
         return jsonify({
             'success': True,
             'timestamp': datetime.now().isoformat(),
@@ -2008,7 +2011,10 @@ def api_kiosk_metrics():
                 'disk_total': disk_data.get('system', {}).get('total_human', '0 GB'),
                 'db_size_human': disk_data.get('database', {}).get('size_human', '0 MB'),
                 'db_alerts_count': disk_data.get('database', {}).get('alerts_count', 0),
-                'db_metrics_count': disk_data.get('database', {}).get('metrics_count', 0)
+                'db_metrics_count': disk_data.get('database', {}).get('metrics_count', 0),
+                'data_age_days': disk_data.get('database', {}).get('data_age_days', 0),
+                'retention_alerts': retention_config.get('alerts_days', 365),
+                'retention_metrics': retention_config.get('metrics_days', 90)
             },
             'sensor_health': sensor_health,
             'critical_alerts': critical_alerts[:10],  # Max 10 for kiosk
@@ -2027,7 +2033,16 @@ def api_kiosk_metrics():
                 'alerts_per_min': 0,
                 'active_sensors': '0/0',
                 'avg_cpu_percent': 0,
-                'avg_memory_percent': 0
+                'avg_memory_percent': 0,
+                'disk_percent': 0,
+                'disk_used': '0 GB',
+                'disk_total': '0 GB',
+                'db_size_human': '0 MB',
+                'db_alerts_count': 0,
+                'db_metrics_count': 0,
+                'data_age_days': 0,
+                'retention_alerts': 365,
+                'retention_metrics': 90
             }
         }), 500
 
