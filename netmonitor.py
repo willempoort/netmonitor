@@ -81,7 +81,8 @@ class NetworkMonitor:
 
                     # Database credentials - prioritize environment variables over config.yaml
                     # This allows secrets to be kept in .env instead of config files
-                    db_password = os.environ.get('DB_PASSWORD') or pg_config.get('password', 'netmonitor')
+                    # Treat empty strings in config as "not set"
+                    db_password = os.environ.get('DB_PASSWORD') or pg_config.get('password') or 'netmonitor'
 
                     self.db = DatabaseManager(
                         host=pg_config.get('host', 'localhost'),
