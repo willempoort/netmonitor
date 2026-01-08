@@ -89,10 +89,12 @@ def init_dashboard(config_file='config.yaml'):
     config = load_config(config_file)
 
     # Configure SECRET_KEY from config if not already set by environment variable
+    # Treat empty strings as "not set" (same logic as database password)
     if 'FLASK_SECRET_KEY' not in os.environ:
         dashboard_config = config.get('dashboard', {})
-        if 'secret_key' in dashboard_config:
-            app.config['SECRET_KEY'] = dashboard_config['secret_key']
+        secret_key = dashboard_config.get('secret_key')
+        if secret_key:  # Only use if non-empty
+            app.config['SECRET_KEY'] = secret_key
             logger_temp = logging.getLogger('NetMonitor.WebDashboard')
             logger_temp.info("SECRET_KEY loaded from config file")
 
