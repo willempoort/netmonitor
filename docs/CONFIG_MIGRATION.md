@@ -13,9 +13,15 @@ NetMonitor configuration has been consolidated for better security and clarity:
 
 | File | Purpose | Version Control | Contents |
 |------|---------|----------------|----------|
-| `.env` | Secrets & credentials | ❌ No (gitignored) | API keys, passwords, tokens |
+| `.env` | Secrets & deployment settings | ❌ No (gitignored) | API keys, passwords, tokens, DASHBOARD_SERVER |
 | `config.yaml` | Application config | ✅ Yes (tracked) | Settings, thresholds, features |
 | `config_defaults.py` | Best practices | ✅ Yes (tracked) | Default values |
+
+**Why deployment settings are in `.env`:**
+- `install_services.sh` reads `DASHBOARD_SERVER` to determine which systemd services to create
+- `netmonitor.py` reads `DASHBOARD_SERVER` at startup to decide embedded vs separate dashboard
+- These settings are deployment-specific (dev might use embedded, prod uses gunicorn)
+- They're not secrets, but they control infrastructure (1 vs 2 services)
 
 ### Priority Order
 
@@ -171,6 +177,28 @@ sudo systemctl restart netmonitor
 FLASK_SECRET_KEY=<run: python3 -c "import secrets; print(secrets.token_hex(32))">
 ```
 
+### Deployment Settings (Infrastructure)
+
+```bash
+# Dashboard server mode (controls service architecture)
+DASHBOARD_SERVER=embedded  # or 'gunicorn' for production
+DASHBOARD_HOST=0.0.0.0     # Network interface
+DASHBOARD_PORT=8080        # Dashboard port
+DASHBOARD_WORKERS=4        # Gunicorn workers (only if DASHBOARD_SERVER=gunicorn)
+
+# MCP HTTP API (AI integration)
+MCP_API_ENABLED=false      # Set to 'true' to enable
+MCP_API_PORT=8000          # API port
+```
+
+**About DASHBOARD_SERVER:**
+- `embedded` = 1 service (netmonitor.service with embedded Flask)
+  - Good for: testing, small deployments, 1-10 users
+  - Simple setup, lower resource usage
+- `gunicorn` = 2 services (netmonitor.service + netmonitor-dashboard.service)
+  - Good for: production, 10+ concurrent users, high availability
+  - Better performance, process isolation
+
 ### Optional (Database)
 
 ```bash
@@ -290,12 +318,22 @@ integrations:
 
 | What | Where | Why |
 |------|-------|-----|
+| **Secrets** | | |
 | API Keys | `.env` | Not in git, secure |
 | Passwords | `.env` | Not in git, secure |
 | Tokens | `.env` | Not in git, secure |
-| Settings | `config.yaml` | In git, shared config |
-| Thresholds | `config.yaml` | In git, tunable |
-| Features | `config.yaml` | In git, documented |
-| Defaults | `config_defaults.py` | In git, best practices |
+| **Deployment** | | |
+| DASHBOARD_SERVER | `.env` | Deployment-specific, controls services |
+| Host/Port settings | `.env` | Deployment-specific, can differ per env |
+| MCP API settings | `.env` | Deployment-specific |
+| **Application** | | |
+| Thresholds | `config.yaml` | In git, shared config |
+| Features | `config.yaml` | In git, tunable |
+| Network ranges | `config.yaml` | In git, documented |
+| **Defaults** | | |
+| Best practices | `config_defaults.py` | In git, fallback values |
 
-**Remember**: Secrets in `.env`, everything else in `config.yaml`!
+**Remember**:
+- **Secrets** → `.env` (never commit!)
+- **Deployment settings** → `.env` (controls infrastructure)
+- **Application logic** → `config.yaml` (shared across deployments)
