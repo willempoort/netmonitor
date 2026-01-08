@@ -296,6 +296,116 @@ def _log_config_status(user_config: Dict, merged_config: Dict):
         logger.debug("Config: all parameters specified in config file")
 
 
+def _inject_env_secrets(config: Dict) -> Dict:
+    """
+    Inject secrets from environment variables into configuration.
+    Environment variables have priority over config.yaml values.
+
+    Security note: Warns if secrets are found in config.yaml (should be in .env instead)
+
+    Mapping:
+    - ABUSEIPDB_API_KEY → integrations.threat_intel.abuseipdb.api_key
+    - MISP_API_KEY → integrations.threat_intel.misp.api_key
+    - MISP_URL → integrations.threat_intel.misp.url
+    - OTX_API_KEY → integrations.threat_intel.otx.api_key
+    - WAZUH_API_URL → integrations.siem.wazuh.api_url
+    - WAZUH_API_USER → integrations.siem.wazuh.api_user
+    - WAZUH_API_PASSWORD → integrations.siem.wazuh.api_password
+    - FLASK_SECRET_KEY → dashboard.secret_key
+    - DB_PASSWORD → database.postgresql.password
+    """
+    import os
+
+    # Dashboard secrets
+    flask_secret = os.environ.get('FLASK_SECRET_KEY')
+    if flask_secret:
+        if 'dashboard' not in config:
+            config['dashboard'] = {}
+        config['dashboard']['secret_key'] = flask_secret
+        logger.debug("Using FLASK_SECRET_KEY from environment")
+    elif config.get('dashboard', {}).get('secret_key'):
+        logger.warning("SECURITY: dashboard.secret_key found in config.yaml - should be in .env as FLASK_SECRET_KEY")
+
+    # Database password
+    db_password = os.environ.get('DB_PASSWORD')
+    if db_password:
+        if 'database' not in config:
+            config['database'] = {}
+        if 'postgresql' not in config['database']:
+            config['database']['postgresql'] = {}
+        config['database']['postgresql']['password'] = db_password
+        logger.debug("Using DB_PASSWORD from environment")
+    elif config.get('database', {}).get('postgresql', {}).get('password'):
+        logger.warning("SECURITY: database.postgresql.password found in config.yaml - should be in .env as DB_PASSWORD")
+
+    # Ensure integrations structure exists
+    if 'integrations' not in config:
+        config['integrations'] = {}
+    if 'threat_intel' not in config['integrations']:
+        config['integrations']['threat_intel'] = {}
+    if 'siem' not in config['integrations']:
+        config['integrations']['siem'] = {}
+
+    threat_intel = config['integrations']['threat_intel']
+    siem = config['integrations']['siem']
+
+    # AbuseIPDB
+    abuseipdb_key = os.environ.get('ABUSEIPDB_API_KEY')
+    if abuseipdb_key:
+        if 'abuseipdb' not in threat_intel:
+            threat_intel['abuseipdb'] = {}
+        threat_intel['abuseipdb']['api_key'] = abuseipdb_key
+        logger.debug("Using ABUSEIPDB_API_KEY from environment")
+    elif threat_intel.get('abuseipdb', {}).get('api_key'):
+        logger.warning("SECURITY: abuseipdb.api_key found in config.yaml - should be in .env as ABUSEIPDB_API_KEY")
+
+    # MISP
+    misp_url = os.environ.get('MISP_URL')
+    misp_key = os.environ.get('MISP_API_KEY')
+    if misp_url or misp_key:
+        if 'misp' not in threat_intel:
+            threat_intel['misp'] = {}
+        if misp_url:
+            threat_intel['misp']['url'] = misp_url
+            logger.debug("Using MISP_URL from environment")
+        if misp_key:
+            threat_intel['misp']['api_key'] = misp_key
+            logger.debug("Using MISP_API_KEY from environment")
+    elif threat_intel.get('misp', {}).get('api_key'):
+        logger.warning("SECURITY: misp.api_key found in config.yaml - should be in .env as MISP_API_KEY")
+
+    # OTX
+    otx_key = os.environ.get('OTX_API_KEY')
+    if otx_key:
+        if 'otx' not in threat_intel:
+            threat_intel['otx'] = {}
+        threat_intel['otx']['api_key'] = otx_key
+        logger.debug("Using OTX_API_KEY from environment")
+    elif threat_intel.get('otx', {}).get('api_key'):
+        logger.warning("SECURITY: otx.api_key found in config.yaml - should be in .env as OTX_API_KEY")
+
+    # Wazuh
+    wazuh_url = os.environ.get('WAZUH_API_URL')
+    wazuh_user = os.environ.get('WAZUH_API_USER')
+    wazuh_password = os.environ.get('WAZUH_API_PASSWORD')
+    if wazuh_url or wazuh_user or wazuh_password:
+        if 'wazuh' not in siem:
+            siem['wazuh'] = {}
+        if wazuh_url:
+            siem['wazuh']['api_url'] = wazuh_url
+            logger.debug("Using WAZUH_API_URL from environment")
+        if wazuh_user:
+            siem['wazuh']['api_user'] = wazuh_user
+            logger.debug("Using WAZUH_API_USER from environment")
+        if wazuh_password:
+            siem['wazuh']['api_password'] = wazuh_password
+            logger.debug("Using WAZUH_API_PASSWORD from environment")
+    elif siem.get('wazuh', {}).get('api_password'):
+        logger.warning("SECURITY: wazuh.api_password found in config.yaml - should be in .env as WAZUH_API_PASSWORD")
+
+    return config
+
+
 def load_config(config_file, apply_defaults: bool = True):
     """
     Load configuration from file with automatic default population.
@@ -360,6 +470,9 @@ def load_config(config_file, apply_defaults: bool = True):
 
     else:
         raise ValueError(f"Unsupported config file format: {config_path.suffix}. Use .yaml or .conf")
+
+    # Inject environment variables (secrets) with priority over config.yaml
+    config = _inject_env_secrets(config)
 
     return config
 
