@@ -999,10 +999,9 @@
             const screens = ['screen-traffic', 'screen-threats', 'screen-alerts', 'screen-sensors'];
             document.getElementById(screens[currentScreen]).classList.add('active');
 
-            // Reset metrics carousel to page 0 when screen changes
+            // Reset metrics carousel to page 0 and restart timer
             // This ensures all 3 widget pages are shown during each screen's 30s display
-            currentMetricsPage = 0;
-            showMetricsPage(0);
+            resetMetricsCarousel();
 
             // Update indicators
             document.querySelectorAll('.screen-dot').forEach((dot, index) => {
@@ -1146,6 +1145,7 @@
         // Carousel state
         let currentMetricsPage = 0;
         let allMetricCards = [];
+        let metricsCarouselTimer = null;
         const CARDS_PER_PAGE = 3;
         const ROTATION_INTERVAL = 10000; // 10 seconds
 
@@ -1307,12 +1307,37 @@
             });
         }
 
-        // Start carousel auto-rotation
-        setInterval(() => {
-            if (allMetricCards.length > CARDS_PER_PAGE) {
-                showMetricsPage(currentMetricsPage + 1);
+        // Start/stop carousel auto-rotation
+        function startMetricsCarousel() {
+            // Clear any existing timer
+            if (metricsCarouselTimer) {
+                clearInterval(metricsCarouselTimer);
             }
-        }, ROTATION_INTERVAL);
+
+            // Start new timer
+            metricsCarouselTimer = setInterval(() => {
+                if (allMetricCards.length > CARDS_PER_PAGE) {
+                    showMetricsPage(currentMetricsPage + 1);
+                }
+            }, ROTATION_INTERVAL);
+        }
+
+        function stopMetricsCarousel() {
+            if (metricsCarouselTimer) {
+                clearInterval(metricsCarouselTimer);
+                metricsCarouselTimer = null;
+            }
+        }
+
+        function resetMetricsCarousel() {
+            stopMetricsCarousel();
+            currentMetricsPage = 0;
+            showMetricsPage(0);
+            startMetricsCarousel();
+        }
+
+        // Start carousel on page load
+        startMetricsCarousel();
 
         function updateAlerts(alerts) {
             if (alerts.length === 0) {
