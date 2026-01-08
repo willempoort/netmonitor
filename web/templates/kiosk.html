@@ -1267,7 +1267,7 @@
                     <div class="card-value">
                         ${metrics.storage_total_human || metrics.db_size_human || '0 MB'}
                     </div>
-                    <div class="card-label">DB: ${formatNumber(metrics.db_alerts_count || 0)} alerts${metrics.pcap_file_count > 0 ? ` • PCAP: ${formatNumber(metrics.pcap_file_count)} files` : ''}</div>
+                    <div class="card-label">DB: ${metrics.db_size_human || '0 MB'} (${formatNumber(metrics.db_alerts_count || 0)} alerts)${metrics.pcap_file_count > 0 ? ` • PCAP: ${metrics.pcap_size_human || '0 MB'} (${formatNumber(metrics.pcap_file_count)} files)` : ''}</div>
                 </div>`,
                 // Card 9: Data Retention
                 `<div class="card">

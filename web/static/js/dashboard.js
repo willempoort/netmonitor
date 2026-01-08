@@ -2678,17 +2678,13 @@ function updateDiskUsage(data) {
 
     document.getElementById('db-size-value').textContent = totalSizeText;
 
-    // Update counts - show DB alerts/metrics and PCAP files
-    const alertsText = formatNumber(data.database?.alerts_count || 0);
-    const pcapText = formatNumber(data.pcap?.file_count || 0);
-    document.getElementById('db-alerts-count').textContent = alertsText;
-    document.getElementById('db-metrics-count').textContent = `${formatNumber(data.database?.metrics_count || 0)} metrics`;
+    // Update individual storage sizes
+    document.getElementById('db-only-size').textContent = dbSizeHuman;
+    document.getElementById('pcap-size').textContent = pcapSizeHuman;
 
-    // Add PCAP info to metrics display
-    const metricsEl = document.getElementById('db-metrics-count');
-    if (metricsEl && data.pcap?.file_count > 0) {
-        metricsEl.textContent = `${formatNumber(data.database?.metrics_count || 0)} metrics • ${pcapText} pcaps`;
-    }
+    // Update counts - show DB alerts count only
+    const alertsText = formatNumber(data.database?.alerts_count || 0);
+    document.getElementById('db-alerts-count').textContent = alertsText;
 
     // Update data age
     const dataAge = data.database?.data_age_days || 0;
