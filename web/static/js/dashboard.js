@@ -2657,10 +2657,38 @@ function updateDiskUsage(data) {
         console.error('[Disk Usage] Element disk-details not found!');
     }
 
-    // Update database size
-    document.getElementById('db-size-value').textContent = data.database?.size_human || '0 MB';
-    document.getElementById('db-alerts-count').textContent = formatNumber(data.database?.alerts_count || 0);
-    document.getElementById('db-metrics-count').textContent = formatNumber(data.database?.metrics_count || 0);
+    // Update database size (DB + PCAP combined)
+    const dbSizeHuman = data.database?.size_human || '0 MB';
+    const pcapSizeHuman = data.pcap?.size_human || '0 MB';
+    const dbSize = data.database?.size_bytes || 0;
+    const pcapSize = data.pcap?.size_bytes || 0;
+
+    // Format combined size
+    const totalSizeBytes = dbSize + pcapSize;
+    let totalSizeText = '0 B';
+    if (totalSizeBytes >= 1024 * 1024 * 1024) {
+        totalSizeText = (totalSizeBytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+    } else if (totalSizeBytes >= 1024 * 1024) {
+        totalSizeText = (totalSizeBytes / (1024 * 1024)).toFixed(2) + ' MB';
+    } else if (totalSizeBytes >= 1024) {
+        totalSizeText = (totalSizeBytes / 1024).toFixed(2) + ' KB';
+    } else {
+        totalSizeText = totalSizeBytes + ' B';
+    }
+
+    document.getElementById('db-size-value').textContent = totalSizeText;
+
+    // Update counts - show DB alerts/metrics and PCAP files
+    const alertsText = formatNumber(data.database?.alerts_count || 0);
+    const pcapText = formatNumber(data.pcap?.file_count || 0);
+    document.getElementById('db-alerts-count').textContent = alertsText;
+    document.getElementById('db-metrics-count').textContent = `${formatNumber(data.database?.metrics_count || 0)} metrics`;
+
+    // Add PCAP info to metrics display
+    const metricsEl = document.getElementById('db-metrics-count');
+    if (metricsEl && data.pcap?.file_count > 0) {
+        metricsEl.textContent = `${formatNumber(data.database?.metrics_count || 0)} metrics • ${pcapText} pcaps`;
+    }
 
     // Update data age
     const dataAge = data.database?.data_age_days || 0;

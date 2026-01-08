@@ -1258,16 +1258,16 @@
                     </div>
                     <div class="card-label">${metrics.disk_used || '0 GB'} / ${metrics.disk_total || '0 GB'}</div>
                 </div>`,
-                // Card 8: Database Size
+                // Card 8: Database & Storage Size
                 `<div class="card">
                     <div class="card-header">
-                        <span class="card-title">Database Size</span>
+                        <span class="card-title">Storage Size</span>
                         <span class="card-icon">🗄️</span>
                     </div>
                     <div class="card-value">
-                        ${metrics.db_size_human || '0 MB'}
+                        ${metrics.storage_total_human || metrics.db_size_human || '0 MB'}
                     </div>
-                    <div class="card-label">${formatNumber(metrics.db_alerts_count || 0)} alerts, ${formatNumber(metrics.db_metrics_count || 0)} metrics</div>
+                    <div class="card-label">DB: ${formatNumber(metrics.db_alerts_count || 0)} alerts${metrics.pcap_file_count > 0 ? ` • PCAP: ${formatNumber(metrics.pcap_file_count)} files` : ''}</div>
                 </div>`,
                 // Card 9: Data Retention
                 `<div class="card">

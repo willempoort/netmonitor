@@ -1187,7 +1187,25 @@ class DatabaseManager:
 
             # Get system disk usage using psutil
             import psutil
+            import os
             disk = psutil.disk_usage('/')
+
+            # Calculate PCAP storage size
+            pcap_dir = '/var/log/netmonitor/pcap'
+            pcap_size_bytes = 0
+            pcap_file_count = 0
+            try:
+                if os.path.exists(pcap_dir):
+                    for dirpath, dirnames, filenames in os.walk(pcap_dir):
+                        for filename in filenames:
+                            filepath = os.path.join(dirpath, filename)
+                            try:
+                                pcap_size_bytes += os.path.getsize(filepath)
+                                pcap_file_count += 1
+                            except (OSError, PermissionError):
+                                pass  # Skip files we can't access
+            except Exception as e:
+                self.logger.warning(f"Could not calculate PCAP storage size: {e}")
 
             return {
                 'database': {
@@ -1197,6 +1215,12 @@ class DatabaseManager:
                     'metrics_count': metrics_count,
                     'data_age_days': data_age_days,
                     'oldest_alert': oldest_alert.isoformat() if oldest_alert else None
+                },
+                'pcap': {
+                    'size_bytes': pcap_size_bytes,
+                    'size_human': self._bytes_to_human(pcap_size_bytes),
+                    'file_count': pcap_file_count,
+                    'path': pcap_dir
                 },
                 'tables': table_sizes,
                 'system': {
@@ -1234,6 +1258,7 @@ class DatabaseManager:
 
             return {
                 'database': {'size_bytes': 0, 'size_human': '0 B', 'alerts_count': 0, 'metrics_count': 0, 'data_age_days': 0},
+                'pcap': {'size_bytes': 0, 'size_human': '0 B', 'file_count': 0, 'path': '/var/log/netmonitor/pcap'},
                 'tables': [],
                 'system': system_data
             }

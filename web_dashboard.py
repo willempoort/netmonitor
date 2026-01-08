@@ -2014,7 +2014,15 @@ def api_kiosk_metrics():
                 'db_metrics_count': disk_data.get('database', {}).get('metrics_count', 0),
                 'data_age_days': disk_data.get('database', {}).get('data_age_days', 0),
                 'retention_alerts': retention_config.get('alerts_days', 365),
-                'retention_metrics': retention_config.get('metrics_days', 90)
+                'retention_metrics': retention_config.get('metrics_days', 90),
+                # PCAP storage metrics
+                'pcap_size_human': disk_data.get('pcap', {}).get('size_human', '0 MB'),
+                'pcap_file_count': disk_data.get('pcap', {}).get('file_count', 0),
+                # Combined storage (DB + PCAP)
+                'storage_total_human': db._bytes_to_human(
+                    disk_data.get('database', {}).get('size_bytes', 0) +
+                    disk_data.get('pcap', {}).get('size_bytes', 0)
+                )
             },
             'sensor_health': sensor_health,
             'critical_alerts': critical_alerts[:10],  # Max 10 for kiosk
@@ -2042,7 +2050,10 @@ def api_kiosk_metrics():
                 'db_metrics_count': 0,
                 'data_age_days': 0,
                 'retention_alerts': 365,
-                'retention_metrics': 90
+                'retention_metrics': 90,
+                'pcap_size_human': '0 MB',
+                'pcap_file_count': 0,
+                'storage_total_human': '0 MB'
             }
         }), 500
 
