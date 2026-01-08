@@ -6,6 +6,7 @@ Network Monitor - Detecteert verdacht netwerkverkeer
 Geschikt voor gebruik op een monitoring/span port
 """
 
+import os
 import sys
 import signal
 import argparse
@@ -80,7 +81,6 @@ class NetworkMonitor:
 
                     # Database credentials - prioritize environment variables over config.yaml
                     # This allows secrets to be kept in .env instead of config files
-                    import os
                     db_password = os.environ.get('DB_PASSWORD') or pg_config.get('password', 'netmonitor')
 
                     self.db = DatabaseManager(
@@ -252,7 +252,6 @@ class NetworkMonitor:
         # Initialiseer web dashboard (alleen embedded mode)
         # Als DASHBOARD_SERVER=gunicorn, dan draait dashboard als separate service
         self.dashboard = None
-        import os
         dashboard_server = os.environ.get('DASHBOARD_SERVER', 'embedded')
 
         if self.config.get('dashboard', {}).get('enabled', True):

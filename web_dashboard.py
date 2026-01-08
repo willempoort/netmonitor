@@ -120,7 +120,6 @@ def init_dashboard(config_file='config.yaml'):
 
         # Database credentials - prioritize environment variables over config.yaml
         # This allows secrets to be kept in .env instead of config files
-        import os
         db_password = os.environ.get('DB_PASSWORD') or pg_config.get('password', 'netmonitor')
 
         db = DatabaseManager(
