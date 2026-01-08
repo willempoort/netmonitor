@@ -999,6 +999,11 @@
             const screens = ['screen-traffic', 'screen-threats', 'screen-alerts', 'screen-sensors'];
             document.getElementById(screens[currentScreen]).classList.add('active');
 
+            // Reset metrics carousel to page 0 when screen changes
+            // This ensures all 3 widget pages are shown during each screen's 30s display
+            currentMetricsPage = 0;
+            showMetricsPage(0);
+
             // Update indicators
             document.querySelectorAll('.screen-dot').forEach((dot, index) => {
                 dot.classList.toggle('active', index === currentScreen);
