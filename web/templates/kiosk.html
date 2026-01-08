@@ -1264,10 +1264,11 @@
                         <span class="card-title">Storage Size</span>
                         <span class="card-icon">🗄️</span>
                     </div>
-                    <div class="card-value">
-                        ${metrics.storage_total_human || metrics.db_size_human || '0 MB'}
+                    <div class="card-value" style="font-size: 1rem; line-height: 1.6;">
+                        DB: ${formatNumber(metrics.db_alerts_count || 0)} alerts • ${metrics.db_size_human || '0 MB'}<br>
+                        PCAP: ${formatNumber(metrics.pcap_file_count || 0)} files • ${metrics.pcap_size_human || '0 MB'}
                     </div>
-                    <div class="card-label">DB: ${metrics.db_size_human || '0 MB'} (${formatNumber(metrics.db_alerts_count || 0)} alerts)${metrics.pcap_file_count > 0 ? ` • PCAP: ${metrics.pcap_size_human || '0 MB'} (${formatNumber(metrics.pcap_file_count)} files)` : ''}</div>
+                    <div class="card-label"></div>
                 </div>`,
                 // Card 9: Data Retention
                 `<div class="card">
