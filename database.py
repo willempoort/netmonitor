@@ -1210,11 +1210,31 @@ class DatabaseManager:
             }
 
         except Exception as e:
+            import traceback
             self.logger.error(f"Error getting disk usage: {e}")
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+
+            # Try to at least get system disk usage even if DB queries fail
+            try:
+                import psutil
+                disk = psutil.disk_usage('/')
+                system_data = {
+                    'total_bytes': disk.total,
+                    'used_bytes': disk.used,
+                    'free_bytes': disk.free,
+                    'percent_used': disk.percent,
+                    'total_human': self._bytes_to_human(disk.total),
+                    'used_human': self._bytes_to_human(disk.used),
+                    'free_human': self._bytes_to_human(disk.free)
+                }
+            except Exception as disk_error:
+                self.logger.error(f"Failed to get system disk usage: {disk_error}")
+                system_data = {'total_bytes': 0, 'used_bytes': 0, 'free_bytes': 0, 'percent_used': 0}
+
             return {
                 'database': {'size_bytes': 0, 'size_human': '0 B', 'alerts_count': 0, 'metrics_count': 0, 'data_age_days': 0},
                 'tables': [],
-                'system': {'total_bytes': 0, 'used_bytes': 0, 'free_bytes': 0, 'percent_used': 0}
+                'system': system_data
             }
         finally:
             self._return_connection(conn)
