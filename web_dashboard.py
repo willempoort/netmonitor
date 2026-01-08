@@ -117,12 +117,18 @@ def init_dashboard(config_file='config.yaml'):
 
     if db_type == 'postgresql':
         pg_config = db_config.get('postgresql', {})
+
+        # Database credentials - prioritize environment variables over config.yaml
+        # This allows secrets to be kept in .env instead of config files
+        import os
+        db_password = os.environ.get('DB_PASSWORD') or pg_config.get('password', 'netmonitor')
+
         db = DatabaseManager(
             host=pg_config.get('host', 'localhost'),
             port=pg_config.get('port', 5432),
             database=pg_config.get('database', 'netmonitor'),
             user=pg_config.get('user', 'netmonitor'),
-            password=pg_config.get('password', 'netmonitor'),
+            password=db_password,
             min_connections=pg_config.get('min_connections', 2),
             max_connections=pg_config.get('max_connections', 10)
         )
