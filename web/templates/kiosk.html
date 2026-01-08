@@ -1268,8 +1268,9 @@
                 </div>`
             ];
 
-            // Display first page of metrics
-            showMetricsPage(0);
+            // Update current page with new data (don't reset to page 0)
+            // This preserves carousel position during API data refreshes
+            showMetricsPage(currentMetricsPage);
             updateTimestamp();
         }
 
