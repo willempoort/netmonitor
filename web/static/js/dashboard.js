@@ -2628,13 +2628,34 @@ function updateDiskUsage(data) {
     console.log('[Disk Usage] Retention data:', data.retention);
     console.log('[Disk Usage] Disk percent:', diskPercent);
 
-    updateGauge(diskGauge, diskPercent, 100);
-    document.getElementById('disk-value').textContent = diskPercent.toFixed(1) + '%';
+    console.log('[Disk Usage] Attempting to update gauge...');
+    try {
+        updateGauge(diskGauge, diskPercent, 100);
+        console.log('[Disk Usage] Gauge updated successfully');
+    } catch (e) {
+        console.error('[Disk Usage] Error updating gauge:', e);
+    }
+
+    console.log('[Disk Usage] Updating disk-value element...');
+    const diskValueEl = document.getElementById('disk-value');
+    if (diskValueEl) {
+        diskValueEl.textContent = diskPercent.toFixed(1) + '%';
+        console.log('[Disk Usage] disk-value updated to:', diskValueEl.textContent);
+    } else {
+        console.error('[Disk Usage] Element disk-value not found!');
+    }
 
     // Update disk details
+    console.log('[Disk Usage] Updating disk-details...');
     const diskUsed = data.system?.used_human || '0 GB';
     const diskTotal = data.system?.total_human || '0 GB';
-    document.getElementById('disk-details').textContent = `${diskUsed} / ${diskTotal}`;
+    const diskDetailsEl = document.getElementById('disk-details');
+    if (diskDetailsEl) {
+        diskDetailsEl.textContent = `${diskUsed} / ${diskTotal}`;
+        console.log('[Disk Usage] disk-details updated to:', diskDetailsEl.textContent);
+    } else {
+        console.error('[Disk Usage] Element disk-details not found!');
+    }
 
     // Update database size
     document.getElementById('db-size-value').textContent = data.database?.size_human || '0 MB';
