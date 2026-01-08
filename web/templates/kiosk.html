@@ -1269,12 +1269,12 @@
             ];
 
             // Update current page with new data (don't reset to page 0)
-            // This preserves carousel position during API data refreshes
-            showMetricsPage(currentMetricsPage);
+            // Skip animation for data refreshes to avoid visual "flickering"
+            showMetricsPage(currentMetricsPage, true);
             updateTimestamp();
         }
 
-        function showMetricsPage(pageIndex) {
+        function showMetricsPage(pageIndex, skipAnimation = false) {
             const totalPages = Math.ceil(allMetricCards.length / CARDS_PER_PAGE);
             currentMetricsPage = pageIndex % totalPages;
 
@@ -1287,15 +1287,21 @@
             const metricsGrid = document.getElementById('metrics-grid');
             metricsGrid.innerHTML = pageCards.join('');
 
-            // Trigger fade-in animation
-            setTimeout(() => {
+            // Trigger fade-in animation only for actual page changes, not data refreshes
+            if (!skipAnimation) {
+                setTimeout(() => {
+                    const cards = metricsGrid.querySelectorAll('.card');
+                    cards.forEach((card, index) => {
+                        setTimeout(() => {
+                            card.classList.add('visible');
+                        }, index * 100); // Stagger animation
+                    });
+                }, 50);
+            } else {
+                // Data refresh - show cards immediately without animation
                 const cards = metricsGrid.querySelectorAll('.card');
-                cards.forEach((card, index) => {
-                    setTimeout(() => {
-                        card.classList.add('visible');
-                    }, index * 100); // Stagger animation
-                });
-            }, 50);
+                cards.forEach(card => card.classList.add('visible'));
+            }
 
             // Update page indicators
             const indicators = document.querySelectorAll('.carousel-indicator .dot');
