@@ -903,6 +903,16 @@
             'PHISHING': '🎣',
             'UNKNOWN': '❓',
 
+            // Advanced threat types
+            'CREDENTIAL_DUMPING': '🔑',
+            'PRIVILEGE_ESCALATION': '⬆️',
+            'POLYMORPHIC_MALWARE': '🦠',
+            'CONNECTION_EXHAUSTION': '💤',
+            'DATA_EXFILTRATION': '📤',
+            'RANSOMWARE': '🔒',
+            'CRYPTOMINING': '⛏️',
+            'ZERO_DAY': '🔥',
+
             // TLS/SSL threat types
             'TLS_WEAK_CIPHER_OFFERED': '🔓',
             'TLS_MISSING_SNI': '🔐',
@@ -931,6 +941,10 @@
             'DDoS': '💥',
             'Malware': '🦠',
             'Exploit': '⚡',
+            'Credential Dumping': '🔑',
+            'Privilege Escalation': '⬆️',
+            'Polymorphic Malware': '🦠',
+            'Connection Exhaustion': '💤',
             'Anomaly': '⚠️',
             'Phishing': '🎣',
             'Tls Weak Cipher Offered': '🔓',
@@ -1358,20 +1372,38 @@
                 return;
             }
 
-            const alertsHTML = alerts.map(alert => `
-                <div class="alert-item severity-${alert.severity}">
-                    <div class="alert-header">
-                        <span class="alert-type">${escapeHtml(alert.alert_type || 'Unknown')}</span>
-                        <span class="alert-severity ${alert.severity}">${alert.severity}</span>
+            const alertsHTML = alerts.map(alert => {
+                // Format alert type - convert UPPERCASE_WITH_UNDERSCORES to readable format
+                let alertType = alert.alert_type || 'Security Alert';
+                if (alertType && alertType !== 'Security Alert') {
+                    alertType = formatThreatName(alertType);
+                }
+
+                // Try to infer type from description if missing
+                if (!alert.alert_type && alert.description) {
+                    const desc = alert.description.toLowerCase();
+                    if (desc.includes('brute force')) alertType = 'Brute Force';
+                    else if (desc.includes('port scan')) alertType = 'Port Scan';
+                    else if (desc.includes('ddos')) alertType = 'DDoS Attack';
+                    else if (desc.includes('malware')) alertType = 'Malware';
+                    else if (desc.includes('exploit')) alertType = 'Exploit';
+                }
+
+                return `
+                    <div class="alert-item severity-${alert.severity}">
+                        <div class="alert-header">
+                            <span class="alert-type">${escapeHtml(alertType)}</span>
+                            <span class="alert-severity ${alert.severity}">${alert.severity}</span>
+                        </div>
+                        <div class="alert-description">${escapeHtml(alert.description || 'No description')}</div>
+                        <div class="alert-meta">
+                            <span>📡 ${escapeHtml(alert.sensor_id || 'N/A')}</span>
+                            <span>🕐 ${formatTimestamp(alert.timestamp)}</span>
+                            ${alert.source_ip ? `<span>🌐 ${escapeHtml(alert.source_ip)}</span>` : ''}
+                        </div>
                     </div>
-                    <div class="alert-description">${escapeHtml(alert.description || 'No description')}</div>
-                    <div class="alert-meta">
-                        <span>📡 ${escapeHtml(alert.sensor_id || 'N/A')}</span>
-                        <span>🕐 ${formatTimestamp(alert.timestamp)}</span>
-                        ${alert.source_ip ? `<span>🌐 ${escapeHtml(alert.source_ip)}</span>` : ''}
-                    </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
 
             document.getElementById('alerts-list').innerHTML = alertsHTML;
         }
