@@ -204,9 +204,9 @@ class MetricsCollector:
         else:
             bandwidth_mbps = 0.0
 
-        # Reset bandwidth window
-        self.bandwidth_window_start = current_time
-        self.bandwidth_window_bytes = 0
+        # NOTE: Don't reset bandwidth_window here - it's reset in save_metrics()
+        # This allows consistent measurement windows even when get_current_stats()
+        # is called frequently by dashboard polls
 
         return {
             'total_packets': self.total_packets,
@@ -316,6 +316,10 @@ class MetricsCollector:
             # Save system stats
             current_stats = self.get_current_stats()
             system_stats = self.get_system_stats()
+
+            # Reset bandwidth window after getting stats (consistent 10-second intervals)
+            self.bandwidth_window_start = time.time()
+            self.bandwidth_window_bytes = 0
 
             combined_stats = {
                 **system_stats,
