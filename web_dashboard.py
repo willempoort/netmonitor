@@ -2131,13 +2131,12 @@ def api_kiosk_traffic():
                 else:
                     labels.append('')
 
-                # Convert bytes to Mbps (bytes per 5 minutes -> Mbps)
-                # Formula: (bytes * 8) / (5 * 60 * 1000000) = bytes / 37500000
+                # Convert bytes to MB (megabytes)
                 inbound = record.get('inbound_bytes', 0) or 0
                 outbound = record.get('outbound_bytes', 0) or 0
 
-                bandwidth_in.append(round(inbound / 37500000, 2))
-                bandwidth_out.append(round(outbound / 37500000, 2))
+                bandwidth_in.append(round(inbound / (1024 * 1024), 2))
+                bandwidth_out.append(round(outbound / (1024 * 1024), 2))
 
         # If no data, generate empty data points for last 24 hours
         if len(labels) == 0:
@@ -2155,7 +2154,7 @@ def api_kiosk_traffic():
                 'bandwidth_in': bandwidth_in,
                 'bandwidth_out': bandwidth_out
             },
-            'unit': 'Mbps',
+            'unit': 'MB',
             'period': '24 hours'
         })
 
