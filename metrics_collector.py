@@ -138,6 +138,17 @@ class MetricsCollector:
                 self.ip_stats[dst_ip]['bytes'] += packet_size
                 self.ip_stats[dst_ip]['direction'] = 'inbound'
 
+            elif src_internal and dst_internal:
+                # Internal-to-internal traffic
+                # Track both source and destination for top talkers
+                self.ip_stats[src_ip]['packets'] += 1
+                self.ip_stats[src_ip]['bytes'] += packet_size
+                self.ip_stats[src_ip]['direction'] = 'internal'
+
+                self.ip_stats[dst_ip]['packets'] += 1
+                self.ip_stats[dst_ip]['bytes'] += packet_size
+                self.ip_stats[dst_ip]['direction'] = 'internal'
+
             # Track packet rate
             current_time = time.time()
             self.packet_timestamps.append(current_time)
