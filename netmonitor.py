@@ -7,6 +7,7 @@ Geschikt voor gebruik op een monitoring/span port
 """
 
 import sys
+import os
 import signal
 import argparse
 import logging
@@ -76,12 +77,14 @@ class NetworkMonitor:
 
                 if db_type == 'postgresql':
                     pg_config = db_config.get('postgresql', {})
+                    # Use config value if set, otherwise fall back to environment variable
+                    db_password = pg_config.get('password') or os.environ.get('DB_PASSWORD', 'netmonitor')
                     self.db = DatabaseManager(
-                        host=pg_config.get('host', 'localhost'),
-                        port=pg_config.get('port', 5432),
-                        database=pg_config.get('database', 'netmonitor'),
-                        user=pg_config.get('user', 'netmonitor'),
-                        password=pg_config.get('password', 'netmonitor'),
+                        host=pg_config.get('host') or os.environ.get('DB_HOST', 'localhost'),
+                        port=pg_config.get('port') or int(os.environ.get('DB_PORT', '5432')),
+                        database=pg_config.get('database') or os.environ.get('DB_NAME', 'netmonitor'),
+                        user=pg_config.get('user') or os.environ.get('DB_USER', 'netmonitor'),
+                        password=db_password,
                         min_connections=pg_config.get('min_connections', 2),
                         max_connections=pg_config.get('max_connections', 10)
                     )
@@ -245,7 +248,6 @@ class NetworkMonitor:
         # Initialiseer web dashboard (alleen embedded mode)
         # Als DASHBOARD_SERVER=gunicorn, dan draait dashboard als separate service
         self.dashboard = None
-        import os
         dashboard_server = os.environ.get('DASHBOARD_SERVER', 'embedded')
 
         if self.config.get('dashboard', {}).get('enabled', True):

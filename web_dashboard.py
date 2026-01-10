@@ -117,12 +117,14 @@ def init_dashboard(config_file='config.yaml'):
 
     if db_type == 'postgresql':
         pg_config = db_config.get('postgresql', {})
+        # Use config value if set, otherwise fall back to environment variable
+        db_password = pg_config.get('password') or os.environ.get('DB_PASSWORD', 'netmonitor')
         db = DatabaseManager(
-            host=pg_config.get('host', 'localhost'),
-            port=pg_config.get('port', 5432),
-            database=pg_config.get('database', 'netmonitor'),
-            user=pg_config.get('user', 'netmonitor'),
-            password=pg_config.get('password', 'netmonitor'),
+            host=pg_config.get('host') or os.environ.get('DB_HOST', 'localhost'),
+            port=pg_config.get('port') or int(os.environ.get('DB_PORT', '5432')),
+            database=pg_config.get('database') or os.environ.get('DB_NAME', 'netmonitor'),
+            user=pg_config.get('user') or os.environ.get('DB_USER', 'netmonitor'),
+            password=db_password,
             min_connections=pg_config.get('min_connections', 2),
             max_connections=pg_config.get('max_connections', 10)
         )

@@ -6,7 +6,7 @@ Optimized for time-series security data with hypertables and continuous aggregat
 """
 
 import psycopg2
-from psycopg2 import pool
+from psycopg2 import pool, errors
 from psycopg2.extras import RealDictCursor
 import logging
 import json
@@ -767,6 +767,10 @@ class DatabaseManager:
             # Get sensor_id from alert (defaults to 'central' in DB if not provided)
             sensor_id = alert.get('sensor_id')
 
+            # Convert empty strings to None for inet type (PostgreSQL rejects empty strings)
+            source_ip = alert.get('source_ip') or None
+            destination_ip = alert.get('destination_ip') or None
+
             cursor.execute('''
                 INSERT INTO alerts (severity, threat_type, source_ip, destination_ip, description, metadata, sensor_id)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -774,8 +778,8 @@ class DatabaseManager:
             ''', (
                 alert.get('severity', 'INFO'),
                 alert.get('type', 'UNKNOWN'),
-                alert.get('source_ip'),
-                alert.get('destination_ip'),
+                source_ip,
+                destination_ip,
                 alert.get('description', ''),
                 metadata_json,
                 sensor_id
@@ -2429,19 +2433,34 @@ class DatabaseManager:
 
                     # Only update if IP actually changed
                     if old_ip != ip_address:
-                        cursor.execute('''
-                            UPDATE devices SET
-                                ip_address = %s,
-                                hostname = COALESCE(%s, hostname),
-                                vendor = COALESCE(%s, vendor),
-                                last_seen = NOW(),
-                                is_active = TRUE
-                            WHERE id = %s
-                            RETURNING id
-                        ''', (ip_address, hostname, vendor, device_id))
-                        device_id = cursor.fetchone()[0]
-                        conn.commit()
-                        self.logger.info(f"Device IP updated: {old_ip} -> {ip_address} (MAC: {mac_address})")
+                        try:
+                            cursor.execute('''
+                                UPDATE devices SET
+                                    ip_address = %s,
+                                    hostname = COALESCE(%s, hostname),
+                                    vendor = COALESCE(%s, vendor),
+                                    last_seen = NOW(),
+                                    is_active = TRUE
+                                WHERE id = %s
+                                RETURNING id
+                            ''', (ip_address, hostname, vendor, device_id))
+                            device_id = cursor.fetchone()[0]
+                            conn.commit()
+                            self.logger.info(f"Device IP updated: {old_ip} -> {ip_address} (MAC: {mac_address})")
+                        except errors.UniqueViolation:
+                            # New IP already exists for another device - just update last_seen
+                            conn.rollback()
+                            cursor.execute('''
+                                UPDATE devices SET
+                                    hostname = COALESCE(%s, hostname),
+                                    vendor = COALESCE(%s, vendor),
+                                    last_seen = NOW(),
+                                    is_active = TRUE
+                                WHERE id = %s
+                                RETURNING id
+                            ''', (hostname, vendor, device_id))
+                            device_id = cursor.fetchone()[0]
+                            conn.commit()
                     else:
                         # Just update last_seen, hostname, vendor
                         cursor.execute('''
@@ -2458,7 +2477,7 @@ class DatabaseManager:
 
                     return device_id
 
-            # No MAC or MAC not found - use IP-based matching
+            # No MAC or MAC not found - use IP-based matching with UPSERT
             cursor.execute('''
                 INSERT INTO devices
                 (ip_address, sensor_id, mac_address, hostname, vendor, template_id, created_by)
@@ -2475,6 +2494,27 @@ class DatabaseManager:
             device_id = cursor.fetchone()[0]
             conn.commit()
             return device_id
+        except errors.UniqueViolation:
+            # Race condition or constraint violation - try simple UPDATE
+            conn.rollback()
+            try:
+                cursor.execute('''
+                    UPDATE devices SET
+                        mac_address = COALESCE(%s, mac_address),
+                        hostname = COALESCE(%s, hostname),
+                        vendor = COALESCE(%s, vendor),
+                        last_seen = NOW(),
+                        is_active = TRUE
+                    WHERE ip_address = %s AND sensor_id = %s
+                    RETURNING id
+                ''', (mac_address, hostname, vendor, ip_address, sensor_id))
+                result = cursor.fetchone()
+                if result:
+                    conn.commit()
+                    return result[0]
+            except Exception:
+                conn.rollback()
+            return None
         except Exception as e:
             conn.rollback()
             self.logger.error(f"Error registering device: {e}")
