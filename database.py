@@ -834,6 +834,10 @@ class DatabaseManager:
             # Get sensor_id from alert (defaults to 'central' in DB if not provided)
             sensor_id = alert.get('sensor_id')
 
+            # Convert empty strings to None for INET fields (PostgreSQL rejects empty strings)
+            source_ip = alert.get('source_ip') or None
+            destination_ip = alert.get('destination_ip') or None
+
             cursor.execute('''
                 INSERT INTO alerts (severity, threat_type, source_ip, destination_ip, description, metadata, sensor_id)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -841,8 +845,8 @@ class DatabaseManager:
             ''', (
                 alert.get('severity', 'INFO'),
                 alert.get('type', 'UNKNOWN'),
-                alert.get('source_ip'),
-                alert.get('destination_ip'),
+                source_ip,
+                destination_ip,
                 alert.get('description', ''),
                 metadata_json,
                 sensor_id
