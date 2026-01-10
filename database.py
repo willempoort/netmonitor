@@ -2757,6 +2757,26 @@ class DatabaseManager:
 
                     # Only update if IP actually changed
                     if old_ip != ip_address:
+                        # Check if the new IP is already in use by another device
+                        # This can happen in DHCP environments where IPs get reassigned
+                        cursor.execute('''
+                            SELECT id FROM devices
+                            WHERE ip_address = %s AND sensor_id = %s AND id != %s
+                        ''', (ip_address, sensor_id, device_id))
+                        conflicting_device = cursor.fetchone()
+
+                        if conflicting_device:
+                            # Another device has this IP - mark it as inactive since
+                            # the IP was reassigned to a different MAC address
+                            conflicting_id = conflicting_device[0]
+                            cursor.execute('''
+                                UPDATE devices SET
+                                    is_active = FALSE,
+                                    last_seen = NOW()
+                                WHERE id = %s
+                            ''', (conflicting_id,))
+                            self.logger.info(f"Deactivated device {conflicting_id} - IP {ip_address} reassigned to MAC {mac_address}")
+
                         cursor.execute('''
                             UPDATE devices SET
                                 ip_address = %s,
