@@ -311,7 +311,8 @@ class MetricsCollector:
 
             # Save top talkers
             top_talkers = self.get_top_talkers(limit=20)
-            self.db.update_top_talkers(top_talkers)
+            if top_talkers:
+                self.db.update_top_talkers(top_talkers)
 
             # Reset IP stats after saving (track per interval, not cumulative)
             # This ensures top talkers shows most active hosts in last interval
