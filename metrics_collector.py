@@ -254,10 +254,13 @@ class MetricsCollector:
             cpu_percent = psutil.cpu_percent(interval=0.1)
             memory = psutil.virtual_memory()
             memory_percent = memory.percent
+            disk = psutil.disk_usage('/')
+            disk_percent = disk.percent
 
             return {
                 'cpu_percent': cpu_percent,
                 'memory_percent': memory_percent,
+                'disk_percent': disk_percent,
                 'memory_used_gb': round(memory.used / (1024**3), 2),
                 'memory_total_gb': round(memory.total / (1024**3), 2)
             }
@@ -266,6 +269,7 @@ class MetricsCollector:
             return {
                 'cpu_percent': 0,
                 'memory_percent': 0,
+                'disk_percent': 0,
                 'memory_used_gb': 0,
                 'memory_total_gb': 0
             }

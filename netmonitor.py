@@ -849,6 +849,7 @@ class NetworkMonitor:
                             sensor_id=self.sensor_id,
                             cpu_percent=system_stats.get('cpu_percent'),
                             memory_percent=system_stats.get('memory_percent'),
+                            disk_percent=system_stats.get('disk_percent'),
                             packets_captured=traffic_stats.get('total_packets'),
                             alerts_sent=traffic_stats.get('alerts'),
                             network_interface=self.interface_display,

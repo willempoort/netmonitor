@@ -1714,6 +1714,90 @@ def api_kiosk_metrics():
         avg_cpu = round(total_cpu / sensor_count, 1) if sensor_count > 0 else 0
         avg_memory = round(total_memory / sensor_count, 1) if sensor_count > 0 else 0
 
+        # Get disk/storage metrics (from SOC server sensor)
+        disk_info = {}
+        pcap_info = {}
+        db_info = {}
+
+        # Find SOC server sensor for disk metrics
+        soc_sensor = next((s for s in sensors if 'soc-server' in s.get('sensor_id', '')), None)
+        if soc_sensor:
+            disk_info = {
+                'disk_percent': soc_sensor.get('disk_percent', 0),
+                'disk_used': '0 GB',  # Not stored separately
+                'disk_total': '0 GB'  # Not stored separately
+            }
+
+        # Get database storage info
+        try:
+            import psutil
+            # Get database size
+            conn = db._get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT pg_database_size(current_database())")
+            db_size_bytes = cursor.fetchone()[0]
+            db_size_mb = db_size_bytes / (1024 * 1024)
+            db_size_gb = db_size_bytes / (1024 * 1024 * 1024)
+
+            # Get alert count
+            cursor.execute("SELECT COUNT(*) FROM alerts")
+            db_alerts_count = cursor.fetchone()[0]
+
+            # Get oldest alert date
+            cursor.execute("SELECT MIN(timestamp) FROM alerts")
+            oldest_alert = cursor.fetchone()[0]
+            data_age_days = 0
+            if oldest_alert:
+                data_age_days = (datetime.now() - oldest_alert.replace(tzinfo=None)).days
+
+            db._return_connection(conn)
+
+            db_info = {
+                'db_size_human': f"{db_size_mb:.0f} MB" if db_size_mb < 1024 else f"{db_size_gb:.1f} GB",
+                'db_alerts_count': db_alerts_count,
+                'data_age_days': data_age_days
+            }
+        except Exception as e:
+            logger.error(f"Error getting database info: {e}")
+            db_info = {
+                'db_size_human': '0 MB',
+                'db_alerts_count': 0,
+                'data_age_days': 0
+            }
+
+        # Get PCAP storage info
+        try:
+            import os
+            pcap_dir = '/var/log/netmonitor/pcap'
+            if os.path.exists(pcap_dir):
+                pcap_files = []
+                pcap_size_bytes = 0
+                for root, dirs, files in os.walk(pcap_dir):
+                    for file in files:
+                        if file.endswith('.pcap'):
+                            file_path = os.path.join(root, file)
+                            pcap_size_bytes += os.path.getsize(file_path)
+                            pcap_files.append(file)
+
+                pcap_size_mb = pcap_size_bytes / (1024 * 1024)
+                pcap_size_gb = pcap_size_bytes / (1024 * 1024 * 1024)
+
+                pcap_info = {
+                    'pcap_file_count': len(pcap_files),
+                    'pcap_size_human': f"{pcap_size_mb:.0f} MB" if pcap_size_mb < 1024 else f"{pcap_size_gb:.1f} GB"
+                }
+            else:
+                pcap_info = {
+                    'pcap_file_count': 0,
+                    'pcap_size_human': '0 MB'
+                }
+        except Exception as e:
+            logger.error(f"Error getting PCAP info: {e}")
+            pcap_info = {
+                'pcap_file_count': 0,
+                'pcap_size_human': '0 MB'
+            }
+
         # Get critical/high alerts (last hour)
         alerts = db.get_recent_alerts(limit=20, hours=1)
         critical_alerts = [a for a in alerts if a['severity'] in ['CRITICAL', 'HIGH']]
@@ -1729,17 +1813,25 @@ def api_kiosk_metrics():
             'offline': len([s for s in sensors if s['computed_status'] == 'offline'])
         }
 
+        # Merge all metrics
+        metrics_dict = {
+            'bandwidth_mbps': aggregated.get('bandwidth_mbps', 0),
+            'packets_per_sec': aggregated.get('packets_per_sec', 0),
+            'alerts_per_min': aggregated.get('alerts_per_min', 0),
+            'active_sensors': f"{sensor_health['online']}/{sensor_health['total']}",
+            'avg_cpu_percent': avg_cpu,
+            'avg_memory_percent': avg_memory,
+            **disk_info,
+            **db_info,
+            **pcap_info,
+            'retention_alerts': 365,  # From config
+            'retention_metrics': 90    # From config
+        }
+
         return jsonify({
             'success': True,
             'timestamp': datetime.now().isoformat(),
-            'metrics': {
-                'bandwidth_mbps': aggregated.get('bandwidth_mbps', 0),
-                'packets_per_sec': aggregated.get('packets_per_sec', 0),
-                'alerts_per_min': aggregated.get('alerts_per_min', 0),
-                'active_sensors': f"{sensor_health['online']}/{sensor_health['total']}",
-                'avg_cpu_percent': avg_cpu,
-                'avg_memory_percent': avg_memory
-            },
+            'metrics': metrics_dict,
             'sensor_health': sensor_health,
             'critical_alerts': critical_alerts[:10],  # Max 10 for kiosk
             'top_threats': dict(list(stats.get('by_type', {}).items())[:5]),
