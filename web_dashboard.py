@@ -1719,18 +1719,29 @@ def api_kiosk_metrics():
         pcap_info = {}
         db_info = {}
 
-        # Find SOC server sensor for disk metrics
-        soc_sensor = next((s for s in sensors if 'soc-server' in s.get('sensor_id', '')), None)
-        if soc_sensor:
+        # Get disk usage (from SOC server)
+        try:
+            import psutil
+            disk = psutil.disk_usage('/')
+            disk_used_gb = disk.used / (1024**3)
+            disk_total_gb = disk.total / (1024**3)
             disk_info = {
-                'disk_percent': soc_sensor.get('disk_percent', 0),
-                'disk_used': '0 GB',  # Not stored separately
-                'disk_total': '0 GB'  # Not stored separately
+                'disk_percent': disk.percent,
+                'disk_used': f"{disk_used_gb:.1f} GB",
+                'disk_total': f"{disk_total_gb:.1f} GB"
+            }
+        except Exception as e:
+            logger.error(f"Error getting disk usage: {e}")
+            # Fallback to sensor data if available
+            soc_sensor = next((s for s in sensors if 'soc-server' in s.get('sensor_id', '')), None)
+            disk_info = {
+                'disk_percent': soc_sensor.get('disk_percent', 0) if soc_sensor else 0,
+                'disk_used': '0 GB',
+                'disk_total': '0 GB'
             }
 
         # Get database storage info
         try:
-            import psutil
             # Get database size
             conn = db._get_connection()
             cursor = conn.cursor()
@@ -1965,6 +1976,96 @@ def api_kiosk_traffic():
             },
             'unit': 'MB',
             'period': '24 hours'
+        }), 500
+
+@app.route('/api/disk-usage')
+@login_required
+def api_disk_usage():
+    """
+    Get disk usage and storage metrics for dashboard
+    """
+    try:
+        import psutil
+
+        # Get disk usage
+        disk = psutil.disk_usage('/')
+
+        # Get database size and info
+        conn = db._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT pg_database_size(current_database())")
+        db_size_bytes = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM alerts")
+        db_alerts_count = cursor.fetchone()[0]
+
+        cursor.execute("SELECT MIN(timestamp) FROM alerts")
+        oldest_alert = cursor.fetchone()[0]
+        data_age_days = 0
+        if oldest_alert:
+            data_age_days = (datetime.now() - oldest_alert.replace(tzinfo=None)).days
+
+        db._return_connection(conn)
+
+        # Get PCAP storage info
+        import os
+        pcap_dir = '/var/log/netmonitor/pcap'
+        pcap_size_bytes = 0
+        pcap_file_count = 0
+
+        if os.path.exists(pcap_dir):
+            for root, dirs, files in os.walk(pcap_dir):
+                for file in files:
+                    if file.endswith('.pcap'):
+                        file_path = os.path.join(root, file)
+                        pcap_size_bytes += os.path.getsize(file_path)
+                        pcap_file_count += 1
+
+        # Format sizes
+        def format_bytes(bytes_val):
+            if bytes_val >= 1024**3:
+                return f"{bytes_val / (1024**3):.2f} GB"
+            elif bytes_val >= 1024**2:
+                return f"{bytes_val / (1024**2):.2f} MB"
+            elif bytes_val >= 1024:
+                return f"{bytes_val / 1024:.2f} KB"
+            else:
+                return f"{bytes_val} B"
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'system': {
+                    'percent_used': disk.percent,
+                    'used_human': format_bytes(disk.used),
+                    'total_human': format_bytes(disk.total)
+                },
+                'database': {
+                    'size_human': format_bytes(db_size_bytes),
+                    'size_bytes': db_size_bytes,
+                    'alerts_count': db_alerts_count,
+                    'data_age_days': data_age_days
+                },
+                'pcap': {
+                    'size_human': format_bytes(pcap_size_bytes),
+                    'size_bytes': pcap_size_bytes,
+                    'file_count': pcap_file_count
+                },
+                'retention': {
+                    'alerts_days': 365,
+                    'metrics_days': 90
+                }
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting disk usage: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'success': False,
+            'error': str(e)
         }), 500
 
 
