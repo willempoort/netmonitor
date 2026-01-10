@@ -492,8 +492,8 @@ class KillChainDetector:
         return {
             'type': 'ATTACK_CHAIN_DETECTED',
             'severity': 'HIGH' if chain.risk_score >= 30 else 'MEDIUM',
-            'source_ip': list(chain.source_ips)[0] if chain.source_ips else '',
-            'destination_ip': list(chain.target_ips)[0] if chain.target_ips else '',
+            'source_ip': list(chain.source_ips)[0] if chain.source_ips else None,
+            'destination_ip': list(chain.target_ips)[0] if chain.target_ips else None,
             'description': f'Multi-stage attack chain detected: {len(chain.events)} events across {len(chain.stages_observed)} stages',
             'details': {
                 'chain_id': chain.chain_id,
@@ -532,8 +532,8 @@ class KillChainDetector:
         return {
             'type': 'HIGH_RISK_ATTACK_CHAIN',
             'severity': 'CRITICAL',
-            'source_ip': list(chain.source_ips)[0] if chain.source_ips else '',
-            'destination_ip': list(chain.target_ips)[0] if chain.target_ips else '',
+            'source_ip': list(chain.source_ips)[0] if chain.source_ips else None,
+            'destination_ip': list(chain.target_ips)[0] if chain.target_ips else None,
             'description': f'High-risk attack chain (score: {chain.risk_score:.0f}): {chain._get_progression()}',
             'details': {
                 'chain_id': chain.chain_id,
