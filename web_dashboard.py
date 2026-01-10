@@ -89,12 +89,10 @@ def init_dashboard(config_file='config.yaml'):
     config = load_config(config_file)
 
     # Configure SECRET_KEY from config if not already set by environment variable
-    # Treat empty strings as "not set" (same logic as database password)
     if 'FLASK_SECRET_KEY' not in os.environ:
         dashboard_config = config.get('dashboard', {})
-        secret_key = dashboard_config.get('secret_key')
-        if secret_key:  # Only use if non-empty
-            app.config['SECRET_KEY'] = secret_key
+        if 'secret_key' in dashboard_config:
+            app.config['SECRET_KEY'] = dashboard_config['secret_key']
             logger_temp = logging.getLogger('NetMonitor.WebDashboard')
             logger_temp.info("SECRET_KEY loaded from config file")
 
@@ -119,17 +117,13 @@ def init_dashboard(config_file='config.yaml'):
 
     if db_type == 'postgresql':
         pg_config = db_config.get('postgresql', {})
-
-        # Database credentials - prioritize environment variables over config.yaml
-        # This allows secrets to be kept in .env instead of config files
-        # Treat empty strings in config as "not set"
-        db_password = os.environ.get('DB_PASSWORD') or pg_config.get('password') or 'netmonitor'
-
+        # Use config value if set, otherwise fall back to environment variable
+        db_password = pg_config.get('password') or os.environ.get('DB_PASSWORD', 'netmonitor')
         db = DatabaseManager(
-            host=pg_config.get('host', 'localhost'),
-            port=pg_config.get('port', 5432),
-            database=pg_config.get('database', 'netmonitor'),
-            user=pg_config.get('user', 'netmonitor'),
+            host=pg_config.get('host') or os.environ.get('DB_HOST', 'localhost'),
+            port=pg_config.get('port') or int(os.environ.get('DB_PORT', '5432')),
+            database=pg_config.get('database') or os.environ.get('DB_NAME', 'netmonitor'),
+            user=pg_config.get('user') or os.environ.get('DB_USER', 'netmonitor'),
             password=db_password,
             min_connections=pg_config.get('min_connections', 2),
             max_connections=pg_config.get('max_connections', 10)
@@ -1196,12 +1190,6 @@ def api_submit_sensor_alerts(sensor_id):
                         'metadata': metadata
                     }
                     should_suppress, suppression_reason = behavior_matcher.should_suppress_alert(threat_for_check)
-
-                    # Debug logging for suppression decisions
-                    if should_suppress:
-                        logger.info(f"[SUPPRESSED] {alert.get('threat_type')} from {alert.get('source_ip')} → {alert.get('destination_ip')}: {suppression_reason}")
-                    else:
-                        logger.debug(f"[NOT SUPPRESSED] {alert.get('threat_type')} from {alert.get('source_ip')} → {alert.get('destination_ip')} (severity: {alert.get('severity')})")
                 except Exception as e:
                     logger.debug(f"Error checking alert suppression: {e}")
 
@@ -1688,262 +1676,6 @@ def api_reset_config():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-# ==================== Threat Feed Endpoints ====================
-
-@app.route('/api/threat-feeds', methods=['GET'])
-@require_sensor_token_or_login()
-def api_get_threat_feeds():
-    """Get threat feed indicators
-
-    Query parameters:
-        feed_type: Optional filter by feed type (phishing, tor_exit, cryptomining, etc.)
-        indicator_type: Optional filter by indicator type (ip, domain, url, hash, cidr, asn)
-        limit: Maximum number of results (default: 10000)
-
-    Returns:
-        JSON array of threat indicators with metadata
-    """
-    try:
-        feed_type = request.args.get('feed_type')
-        indicator_type = request.args.get('indicator_type')
-        limit = request.args.get('limit', type=int, default=10000)
-
-        indicators = db.get_threat_feed_indicators(
-            feed_type=feed_type,
-            indicator_type=indicator_type,
-            is_active=True,
-            limit=limit
-        )
-
-        # Convert datetime objects to ISO format for JSON serialization
-        for indicator in indicators:
-            for key in ['first_seen', 'last_updated', 'expires_at']:
-                if indicator.get(key):
-                    indicator[key] = indicator[key].isoformat()
-
-        return jsonify({
-            'success': True,
-            'count': len(indicators),
-            'indicators': indicators
-        })
-
-    except Exception as e:
-        logger.error(f"Error getting threat feeds: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/threat-feeds/check/ip/<ip_address>', methods=['GET'])
-@require_sensor_token_or_login()
-def api_check_threat_feed_ip(ip_address):
-    """Check if IP address matches any threat feeds
-
-    Query parameters:
-        feed_types: Optional comma-separated list of feed types to check
-
-    Returns:
-        JSON with match details or null if not found
-    """
-    try:
-        feed_types_str = request.args.get('feed_types')
-        feed_types = feed_types_str.split(',') if feed_types_str else None
-
-        match = db.check_ip_in_threat_feeds(ip_address, feed_types=feed_types)
-
-        return jsonify({
-            'success': True,
-            'ip_address': ip_address,
-            'match': match
-        })
-
-    except Exception as e:
-        logger.error(f"Error checking threat feed for IP {ip_address}: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/threat-feeds/check/indicator/<indicator>', methods=['GET'])
-@require_sensor_token_or_login()
-def api_check_threat_feed_indicator(indicator):
-    """Check if indicator (domain, URL, hash) matches any threat feeds
-
-    Query parameters:
-        feed_types: Optional comma-separated list of feed types to check
-
-    Returns:
-        JSON with match details or null if not found
-    """
-    try:
-        feed_types_str = request.args.get('feed_types')
-        feed_types = feed_types_str.split(',') if feed_types_str else None
-
-        match = db.check_threat_indicator(indicator, feed_types=feed_types)
-
-        return jsonify({
-            'success': True,
-            'indicator': indicator,
-            'match': match
-        })
-
-    except Exception as e:
-        logger.error(f"Error checking threat feed for indicator {indicator}: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/threat-feeds/stats', methods=['GET'])
-@require_sensor_token_or_login()
-def api_threat_feed_stats():
-    """Get threat feed statistics
-
-    Returns:
-        JSON with feed counts per type
-    """
-    try:
-        stats = {}
-
-        # Get counts per feed type
-        for feed_type in ['phishing', 'tor_exit', 'cryptomining', 'vpn_exit',
-                         'malware_c2', 'botnet_c2', 'known_attacker', 'malicious_domain']:
-            indicators = db.get_threat_feed_indicators(
-                feed_type=feed_type,
-                is_active=True,
-                limit=100000  # High limit to get accurate count
-            )
-            stats[feed_type] = {
-                'count': len(indicators),
-                'last_updated': max([i.get('last_updated') for i in indicators if i.get('last_updated')],
-                                   default=None).isoformat() if indicators else None
-            }
-
-        return jsonify({
-            'success': True,
-            'stats': stats
-        })
-
-    except Exception as e:
-        logger.error(f"Error getting threat feed stats: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/threat-detection')
-@login_required
-def threat_detection_page():
-    """Threat Detection management page - Web UI for configuring advanced threat detection"""
-    try:
-        # Import threat feed updater for stats
-        from threat_feed_updater import ThreatFeedUpdater
-
-        # Get threat feed statistics
-        updater = ThreatFeedUpdater(db)
-        feed_stats = updater.get_feed_stats()
-
-        # Get current threat detection configuration
-        config = db.get_sensor_config(sensor_id=None)  # Global config
-        threat_config = {
-            'threat.cryptomining.enabled': config.get('threat.cryptomining.enabled', {}).get('parameter_value', False),
-            'threat.phishing.enabled': config.get('threat.phishing.enabled', {}).get('parameter_value', False),
-            'threat.tor.enabled': config.get('threat.tor.enabled', {}).get('parameter_value', False),
-            'threat.cloud_metadata.enabled': config.get('threat.cloud_metadata.enabled', {}).get('parameter_value', False),
-            'threat.dns_anomaly.enabled': config.get('threat.dns_anomaly.enabled', {}).get('parameter_value', False),
-        }
-
-        return render_template('threat_detection.html',
-                             user=session.get('user'),
-                             feed_stats=feed_stats,
-                             threat_config=threat_config)
-
-    except Exception as e:
-        logger.error(f"Error loading threat detection page: {e}")
-        flash(f'Error loading threat detection settings: {str(e)}', 'danger')
-        return redirect(url_for('index'))
-
-
-@app.route('/api/threat-detection/toggle', methods=['POST'])
-@login_required
-def api_toggle_threat_detection():
-    """Toggle threat detection type on/off
-
-    Request body:
-        {
-            "threat_type": "cryptomining|phishing|tor|cloud_metadata|dns_anomaly",
-            "enabled": true/false,
-            "sensor_id": "optional_sensor_id"
-        }
-
-    Returns:
-        JSON with success status
-    """
-    try:
-        data = request.get_json()
-        threat_type = data.get('threat_type')
-        enabled = data.get('enabled')
-        sensor_id = data.get('sensor_id')
-
-        if not threat_type or enabled is None:
-            return jsonify({'success': False, 'error': 'Missing threat_type or enabled parameter'}), 400
-
-        # Validate threat type
-        valid_types = ['cryptomining', 'phishing', 'tor', 'cloud_metadata', 'dns_anomaly']
-        if threat_type not in valid_types:
-            return jsonify({'success': False, 'error': f'Invalid threat_type. Must be one of: {", ".join(valid_types)}'}), 400
-
-        # Set configuration parameter
-        param_path = f'threat.{threat_type}.enabled'
-        scope = 'sensor' if sensor_id else 'global'
-
-        success = db.set_config_parameter(
-            parameter_path=param_path,
-            value=enabled,
-            sensor_id=sensor_id,
-            scope=scope,
-            description=f'Enable/disable {threat_type} detection',
-            updated_by=session.get('user', {}).get('username', 'dashboard')
-        )
-
-        if success:
-            action = 'enabled' if enabled else 'disabled'
-            logger.info(f"Threat detection {threat_type} {action} by {session.get('user', {}).get('username')}")
-
-            return jsonify({
-                'success': True,
-                'message': f'Threat detection {threat_type} {action}',
-                'threat_type': threat_type,
-                'enabled': enabled
-            })
-        else:
-            return jsonify({'success': False, 'error': 'Failed to update configuration'}), 500
-
-    except Exception as e:
-        logger.error(f"Error toggling threat detection: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/threat-feeds/update', methods=['POST'])
-@login_required
-def api_update_threat_feeds():
-    """Manually trigger threat feed update
-
-    Returns:
-        JSON with update results
-    """
-    try:
-        from threat_feed_updater import ThreatFeedUpdater
-
-        # Run update
-        updater = ThreatFeedUpdater(db)
-        results = updater.update_all_feeds()
-
-        logger.info(f"Manual threat feed update completed by {session.get('user', {}).get('username')}: {results}")
-
-        return jsonify({
-            'success': True,
-            'message': 'Threat feeds updated successfully',
-            'results': results
-        })
-
-    except Exception as e:
-        logger.error(f"Error updating threat feeds: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
 # ==================== Kiosk Mode Routes (Public Access) ====================
 
 @app.route('/kiosk')
@@ -1997,12 +1729,6 @@ def api_kiosk_metrics():
             'offline': len([s for s in sensors if s['computed_status'] == 'offline'])
         }
 
-        # Get disk usage
-        disk_data = db.get_disk_usage()
-
-        # Get retention policy from config
-        retention_config = config.get('data_retention', {})
-
         return jsonify({
             'success': True,
             'timestamp': datetime.now().isoformat(),
@@ -2012,25 +1738,7 @@ def api_kiosk_metrics():
                 'alerts_per_min': aggregated.get('alerts_per_min', 0),
                 'active_sensors': f"{sensor_health['online']}/{sensor_health['total']}",
                 'avg_cpu_percent': avg_cpu,
-                'avg_memory_percent': avg_memory,
-                # Disk & Database metrics
-                'disk_percent': disk_data.get('system', {}).get('percent_used', 0),
-                'disk_used': disk_data.get('system', {}).get('used_human', '0 GB'),
-                'disk_total': disk_data.get('system', {}).get('total_human', '0 GB'),
-                'db_size_human': disk_data.get('database', {}).get('size_human', '0 MB'),
-                'db_alerts_count': disk_data.get('database', {}).get('alerts_count', 0),
-                'db_metrics_count': disk_data.get('database', {}).get('metrics_count', 0),
-                'data_age_days': disk_data.get('database', {}).get('data_age_days', 0),
-                'retention_alerts': retention_config.get('alerts_days', 365),
-                'retention_metrics': retention_config.get('metrics_days', 90),
-                # PCAP storage metrics
-                'pcap_size_human': disk_data.get('pcap', {}).get('size_human', '0 MB'),
-                'pcap_file_count': disk_data.get('pcap', {}).get('file_count', 0),
-                # Combined storage (DB + PCAP)
-                'storage_total_human': db._bytes_to_human(
-                    disk_data.get('database', {}).get('size_bytes', 0) +
-                    disk_data.get('pcap', {}).get('size_bytes', 0)
-                )
+                'avg_memory_percent': avg_memory
             },
             'sensor_health': sensor_health,
             'critical_alerts': critical_alerts[:10],  # Max 10 for kiosk
@@ -2049,19 +1757,7 @@ def api_kiosk_metrics():
                 'alerts_per_min': 0,
                 'active_sensors': '0/0',
                 'avg_cpu_percent': 0,
-                'avg_memory_percent': 0,
-                'disk_percent': 0,
-                'disk_used': '0 GB',
-                'disk_total': '0 GB',
-                'db_size_human': '0 MB',
-                'db_alerts_count': 0,
-                'db_metrics_count': 0,
-                'data_age_days': 0,
-                'retention_alerts': 365,
-                'retention_metrics': 90,
-                'pcap_size_human': '0 MB',
-                'pcap_file_count': 0,
-                'storage_total_human': '0 MB'
+                'avg_memory_percent': 0
             }
         }), 500
 
@@ -2131,12 +1827,13 @@ def api_kiosk_traffic():
                 else:
                     labels.append('')
 
-                # Convert bytes to MB (megabytes)
+                # Convert bytes to Mbps (bytes per 5 minutes -> Mbps)
+                # Formula: (bytes * 8) / (5 * 60 * 1000000) = bytes / 37500000
                 inbound = record.get('inbound_bytes', 0) or 0
                 outbound = record.get('outbound_bytes', 0) or 0
 
-                bandwidth_in.append(round(inbound / (1024 * 1024), 2))
-                bandwidth_out.append(round(outbound / (1024 * 1024), 2))
+                bandwidth_in.append(round(inbound / 37500000, 2))
+                bandwidth_out.append(round(outbound / 37500000, 2))
 
         # If no data, generate empty data points for last 24 hours
         if len(labels) == 0:
@@ -2154,7 +1851,7 @@ def api_kiosk_traffic():
                 'bandwidth_in': bandwidth_in,
                 'bandwidth_out': bandwidth_out
             },
-            'unit': 'MB',
+            'unit': 'Mbps',
             'period': '24 hours'
         })
 
@@ -3227,116 +2924,6 @@ def api_internal_packet_buffer_summary():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/internal/memory/status')
-@local_or_login_required
-def api_internal_memory_status():
-    """
-    Internal API: Get current memory usage of SOC server
-    Allows localhost access for monitoring
-    """
-    try:
-        import psutil
-        import gc
-
-        memory = psutil.virtual_memory()
-        process = psutil.Process()
-        process_memory = process.memory_info()
-
-        # Get garbage collector stats
-        gc_stats = {
-            f'gen{i}': gc.get_count()[i] for i in range(3)
-        }
-
-        return jsonify({
-            'success': True,
-            'memory': {
-                'system': {
-                    'total_mb': round(memory.total / 1024 / 1024, 1),
-                    'available_mb': round(memory.available / 1024 / 1024, 1),
-                    'used_mb': round(memory.used / 1024 / 1024, 1),
-                    'percent': memory.percent
-                },
-                'process': {
-                    'rss_mb': round(process_memory.rss / 1024 / 1024, 1),
-                    'vms_mb': round(process_memory.vms / 1024 / 1024, 1),
-                    'percent': process.memory_percent()
-                },
-                'gc': gc_stats
-            }
-        })
-
-    except Exception as e:
-        logger.error(f"Error getting memory status: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/internal/memory/flush', methods=['POST'])
-@local_or_login_required
-def api_internal_memory_flush():
-    """
-    Internal API: Emergency memory flush for SOC server
-    Forces garbage collection and malloc_trim to release memory to OS
-    """
-    try:
-        import psutil
-        import gc
-        import ctypes
-
-        # Get memory before flush
-        memory_before = psutil.virtual_memory().percent
-        process = psutil.Process()
-        process_before = process.memory_percent()
-
-        logger.warning(f"⚠️ Manual memory flush triggered - System RAM: {memory_before:.1f}%, Process: {process_before:.1f}%")
-
-        # Aggressive garbage collection
-        collected = 0
-        for generation in range(3):
-            collected += gc.collect(generation)
-        logger.info(f"Garbage collected {collected} objects")
-
-        # Force memory release to OS using malloc_trim (Linux only)
-        try:
-            libc = ctypes.CDLL('libc.so.6')
-            freed = libc.malloc_trim(0)
-            if freed:
-                logger.info("✓ Forced memory release to OS (malloc_trim)")
-            else:
-                logger.debug("malloc_trim: no memory released")
-        except Exception as e:
-            logger.debug(f"malloc_trim not available: {e}")
-
-        # Get memory after flush
-        memory_after = psutil.virtual_memory().percent
-        process_after = process.memory_percent()
-
-        reduction = memory_before - memory_after
-        process_reduction = process_before - process_after
-
-        logger.info(f"✓ Memory flush complete - System RAM: {memory_after:.1f}% (Δ{reduction:+.1f}%), Process: {process_after:.1f}% (Δ{process_reduction:+.1f}%)")
-
-        return jsonify({
-            'success': True,
-            'before': {
-                'system_percent': round(memory_before, 1),
-                'process_percent': round(process_before, 1)
-            },
-            'after': {
-                'system_percent': round(memory_after, 1),
-                'process_percent': round(process_after, 1)
-            },
-            'reduction': {
-                'system_percent': round(reduction, 1),
-                'process_percent': round(process_reduction, 1)
-            },
-            'collected_objects': collected
-        })
-
-    except Exception as e:
-        logger.error(f"Error during memory flush: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
 # ==================== Sensor PCAP API (NIS2 Compliance) ====================
 
 @app.route('/api/pcap/sensors')
@@ -3754,29 +3341,6 @@ def api_add_template_behavior(template_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/device-templates/behaviors/<int:behavior_id>', methods=['PUT', 'PATCH'])
-@login_required
-def api_update_template_behavior(behavior_id):
-    """Update a behavior rule"""
-    try:
-        data = request.get_json()
-
-        success = db.update_template_behavior(
-            behavior_id=behavior_id,
-            parameters=data.get('parameters'),
-            action=data.get('action'),
-            description=data.get('description')
-        )
-
-        if success:
-            return jsonify({'success': True, 'message': 'Behavior updated'})
-        else:
-            return jsonify({'success': False, 'error': 'Behavior not found'}), 404
-    except Exception as e:
-        logger.error(f"Error updating behavior {behavior_id}: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
 @app.route('/api/device-templates/behaviors/<int:behavior_id>', methods=['DELETE'])
 @login_required
 def api_delete_template_behavior(behavior_id):
@@ -4138,72 +3702,6 @@ def api_get_device_classification_stats():
         error_trace = traceback.format_exc()
         logger.error(f"Error getting classification stats: {e}\n{error_trace}")
         return jsonify({'success': False, 'error': str(e), 'trace': error_trace}), 500
-
-
-# ==================== Disk Usage & Data Retention API ====================
-
-@app.route('/api/disk-usage')
-@login_required
-def api_disk_usage():
-    """
-    Get disk usage statistics
-    Returns database size, table sizes, system disk, and data retention info
-    """
-    try:
-        disk_stats = db.get_disk_usage()
-
-        # Add retention policy info from config
-        retention_config = config.get('data_retention', {})
-        disk_stats['retention'] = {
-            'alerts_days': retention_config.get('alerts_days', 365),
-            'metrics_days': retention_config.get('metrics_days', 90),
-            'audit_logs_days': retention_config.get('audit_logs_days', 730),
-            'enabled': retention_config.get('enabled', False),
-            'cleanup_hour': retention_config.get('cleanup_hour', 2)
-        }
-
-        return jsonify({
-            'success': True,
-            'data': disk_stats
-        })
-
-    except Exception as e:
-        error_trace = traceback.format_exc()
-        logger.error(f"Error getting disk usage: {e}\n{error_trace}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/data-retention/cleanup', methods=['POST'])
-@require_role('admin')  # Only admins can trigger cleanup
-def api_trigger_cleanup():
-    """
-    Manually trigger data cleanup based on retention policy
-    Admin-only endpoint for immediate cleanup (normally runs automatically at night)
-    """
-    try:
-        retention_config = config.get('data_retention', {})
-
-        if not retention_config.get('enabled', False):
-            return jsonify({
-                'success': False,
-                'error': 'Data retention is disabled in config.yaml'
-            }), 400
-
-        logger.info(f"Manual data cleanup triggered by {current_user.username}")
-
-        # Run cleanup
-        results = db.cleanup_old_data(retention_config)
-
-        return jsonify({
-            'success': True,
-            'data': results,
-            'message': f"Cleanup completed. Deleted {results.get('total_deleted', 0)} records."
-        })
-
-    except Exception as e:
-        error_trace = traceback.format_exc()
-        logger.error(f"Error during manual cleanup: {e}\n{error_trace}")
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ==================== ML Classification API ====================

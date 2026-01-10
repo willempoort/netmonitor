@@ -6,11 +6,11 @@ Optimized for time-series security data with hypertables and continuous aggregat
 """
 
 import psycopg2
-from psycopg2 import pool
+from psycopg2 import pool, errors
 from psycopg2.extras import RealDictCursor
 import logging
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 import threading
 
@@ -41,7 +41,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 13  # Increment this when schema changes
+        SCHEMA_VERSION = 12  # Increment this when schema changes
 
         if self._check_schema_version(SCHEMA_VERSION):
             self.logger.info(f"Database schema is up to date (v{SCHEMA_VERSION})")
@@ -408,7 +408,7 @@ class DatabaseManager:
                     CONSTRAINT valid_behavior_type CHECK (behavior_type IN (
                         'allowed_ports', 'allowed_protocols', 'allowed_sources',
                         'expected_destinations', 'traffic_pattern', 'connection_behavior',
-                        'dns_behavior', 'time_restrictions', 'bandwidth_limit', 'suppress_alert_types'
+                        'dns_behavior', 'time_restrictions', 'bandwidth_limit'
                     )),
                     CONSTRAINT valid_action CHECK (action IN ('allow', 'alert', 'suppress'))
                 );
@@ -481,48 +481,6 @@ class DatabaseManager:
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_service_providers_category
                 ON service_providers(category, is_active);
-            ''')
-
-            # ==================== Threat Intelligence Feeds ====================
-
-            # Threat feeds - external threat intelligence for enhanced detection
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS threat_feeds (
-                    id SERIAL PRIMARY KEY,
-                    feed_type VARCHAR(50) NOT NULL,
-                    indicator VARCHAR(255) NOT NULL,
-                    indicator_type VARCHAR(50),
-                    source VARCHAR(100),
-                    confidence_score REAL DEFAULT 1.0,
-                    first_seen TIMESTAMPTZ DEFAULT NOW(),
-                    last_updated TIMESTAMPTZ DEFAULT NOW(),
-                    expires_at TIMESTAMPTZ,
-                    metadata JSONB DEFAULT '{}',
-                    is_active BOOLEAN DEFAULT TRUE,
-                    CONSTRAINT valid_feed_type CHECK (feed_type IN (
-                        'phishing', 'tor_exit', 'cryptomining', 'vpn_exit', 'malware_c2',
-                        'botnet_c2', 'known_attacker', 'malicious_domain', 'suspicious_ip',
-                        'ransomware_ioc', 'exploit_kit', 'other'
-                    )),
-                    CONSTRAINT valid_indicator_type CHECK (indicator_type IN (
-                        'ip', 'domain', 'url', 'hash', 'cidr', 'asn', 'other'
-                    )),
-                    CONSTRAINT unique_feed_indicator UNIQUE (feed_type, indicator)
-                );
-            ''')
-
-            # Indexes for faster threat feed lookups
-            cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_threat_feeds_type_active
-                ON threat_feeds(feed_type, is_active, last_updated DESC);
-            ''')
-            cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_threat_feeds_indicator
-                ON threat_feeds(indicator, feed_type) WHERE is_active = TRUE;
-            ''')
-            cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_threat_feeds_expires
-                ON threat_feeds(expires_at) WHERE expires_at IS NOT NULL AND is_active = TRUE;
             ''')
 
             # Indexes for web authentication
@@ -622,30 +580,7 @@ class DatabaseManager:
                             behavior_type IN (
                                 'allowed_ports', 'allowed_protocols', 'allowed_sources',
                                 'expected_destinations', 'traffic_pattern', 'connection_behavior',
-                                'dns_behavior', 'time_restrictions', 'bandwidth_limit', 'suppress_alert_types'
-                            )
-                        );
-                    END IF;
-                END $$;
-            """)
-
-            # Migration v2.8: Add suppress_alert_types to valid_behavior_type constraint
-            # This allows management interfaces (UniFi, etc.) to suppress specific CRITICAL alerts
-            cursor.execute("""
-                DO $$
-                BEGIN
-                    -- Check if constraint doesn't include 'suppress_alert_types'
-                    IF EXISTS (
-                        SELECT 1 FROM information_schema.check_constraints
-                        WHERE constraint_name = 'valid_behavior_type'
-                        AND check_clause NOT LIKE '%suppress_alert_types%'
-                    ) THEN
-                        ALTER TABLE template_behaviors DROP CONSTRAINT valid_behavior_type;
-                        ALTER TABLE template_behaviors ADD CONSTRAINT valid_behavior_type CHECK (
-                            behavior_type IN (
-                                'allowed_ports', 'allowed_protocols', 'allowed_sources',
-                                'expected_destinations', 'traffic_pattern', 'connection_behavior',
-                                'dns_behavior', 'time_restrictions', 'bandwidth_limit', 'suppress_alert_types'
+                                'dns_behavior', 'time_restrictions', 'bandwidth_limit'
                             )
                         );
                     END IF;
@@ -810,15 +745,13 @@ class DatabaseManager:
             self._return_connection(conn)
 
     def _init_builtin_data(self):
-        """Initialize builtin device templates, service providers, and threat configs"""
+        """Initialize builtin device templates and service providers"""
         try:
             templates_count = self.init_builtin_templates()
             providers_count = self.init_builtin_service_providers()
-            threats_count = self.init_advanced_threat_config()
 
-            if templates_count > 0 or providers_count > 0 or threats_count > 0:
-                self.logger.info(f"Builtin data initialized: {templates_count} templates, "
-                               f"{providers_count} service providers, {threats_count} threat configs")
+            if templates_count > 0 or providers_count > 0:
+                self.logger.info(f"Builtin data initialized: {templates_count} templates, {providers_count} service providers")
         except Exception as e:
             self.logger.warning(f"Could not initialize builtin data: {e}")
 
@@ -834,7 +767,7 @@ class DatabaseManager:
             # Get sensor_id from alert (defaults to 'central' in DB if not provided)
             sensor_id = alert.get('sensor_id')
 
-            # Convert empty strings to None for INET fields (PostgreSQL rejects empty strings)
+            # Convert empty strings to None for inet type (PostgreSQL rejects empty strings)
             source_ip = alert.get('source_ip') or None
             destination_ip = alert.get('destination_ip') or None
 
@@ -1138,233 +1071,6 @@ class DatabaseManager:
                 'traffic': {'packets_per_second': 0, 'alerts_per_minute': 0},
                 'system': {'cpu_percent': 0, 'memory_percent': 0}
             }
-        finally:
-            self._return_connection(conn)
-
-    def get_disk_usage(self) -> Dict:
-        """
-        Get disk usage statistics for database and system
-
-        Returns:
-            Dict with database size, table sizes, and retention info
-        """
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-            # Get database size
-            cursor.execute('''
-                SELECT pg_database_size(current_database()) as size_bytes
-            ''')
-            db_size = cursor.fetchone()['size_bytes']
-
-            # Get table sizes (top 10 largest tables)
-            cursor.execute('''
-                SELECT
-                    schemaname,
-                    tablename,
-                    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS size,
-                    pg_total_relation_size(schemaname||'.'||tablename) AS size_bytes
-                FROM pg_tables
-                WHERE schemaname = 'public'
-                ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC
-                LIMIT 10
-            ''')
-            table_sizes = [dict(row) for row in cursor.fetchall()]
-
-            # Get row counts for main tables
-            cursor.execute('SELECT COUNT(*) as count FROM alerts')
-            alerts_count = cursor.fetchone()['count']
-
-            cursor.execute('SELECT COUNT(*) as count FROM traffic_metrics')
-            metrics_count = cursor.fetchone()['count']
-
-            # Get oldest alert timestamp
-            cursor.execute('SELECT MIN(timestamp) as oldest FROM alerts')
-            oldest_alert = cursor.fetchone()['oldest']
-
-            # Calculate data age in days
-            data_age_days = 0
-            if oldest_alert:
-                # Use timezone-aware datetime to match database timestamp
-                data_age_days = (datetime.now(timezone.utc) - oldest_alert).days
-
-            # Get system disk usage using psutil
-            import psutil
-            import os
-            disk = psutil.disk_usage('/')
-
-            # Calculate PCAP storage size
-            pcap_dir = '/var/log/netmonitor/pcap'
-            pcap_size_bytes = 0
-            pcap_file_count = 0
-            try:
-                if os.path.exists(pcap_dir):
-                    for dirpath, dirnames, filenames in os.walk(pcap_dir):
-                        for filename in filenames:
-                            filepath = os.path.join(dirpath, filename)
-                            try:
-                                pcap_size_bytes += os.path.getsize(filepath)
-                                pcap_file_count += 1
-                            except (OSError, PermissionError):
-                                pass  # Skip files we can't access
-            except Exception as e:
-                self.logger.warning(f"Could not calculate PCAP storage size: {e}")
-
-            return {
-                'database': {
-                    'size_bytes': db_size,
-                    'size_human': self._bytes_to_human(db_size),
-                    'alerts_count': alerts_count,
-                    'metrics_count': metrics_count,
-                    'data_age_days': data_age_days,
-                    'oldest_alert': oldest_alert.isoformat() if oldest_alert else None
-                },
-                'pcap': {
-                    'size_bytes': pcap_size_bytes,
-                    'size_human': self._bytes_to_human(pcap_size_bytes),
-                    'file_count': pcap_file_count,
-                    'path': pcap_dir
-                },
-                'tables': table_sizes,
-                'system': {
-                    'total_bytes': disk.total,
-                    'used_bytes': disk.used,
-                    'free_bytes': disk.free,
-                    'percent_used': disk.percent,
-                    'total_human': self._bytes_to_human(disk.total),
-                    'used_human': self._bytes_to_human(disk.used),
-                    'free_human': self._bytes_to_human(disk.free)
-                }
-            }
-
-        except Exception as e:
-            import traceback
-            self.logger.error(f"Error getting disk usage: {e}")
-            self.logger.error(f"Traceback: {traceback.format_exc()}")
-
-            # Try to at least get system disk usage even if DB queries fail
-            try:
-                import psutil
-                disk = psutil.disk_usage('/')
-                system_data = {
-                    'total_bytes': disk.total,
-                    'used_bytes': disk.used,
-                    'free_bytes': disk.free,
-                    'percent_used': disk.percent,
-                    'total_human': self._bytes_to_human(disk.total),
-                    'used_human': self._bytes_to_human(disk.used),
-                    'free_human': self._bytes_to_human(disk.free)
-                }
-            except Exception as disk_error:
-                self.logger.error(f"Failed to get system disk usage: {disk_error}")
-                system_data = {'total_bytes': 0, 'used_bytes': 0, 'free_bytes': 0, 'percent_used': 0}
-
-            return {
-                'database': {'size_bytes': 0, 'size_human': '0 B', 'alerts_count': 0, 'metrics_count': 0, 'data_age_days': 0},
-                'pcap': {'size_bytes': 0, 'size_human': '0 B', 'file_count': 0, 'path': '/var/log/netmonitor/pcap'},
-                'tables': [],
-                'system': system_data
-            }
-        finally:
-            self._return_connection(conn)
-
-    def _bytes_to_human(self, bytes_val: int) -> str:
-        """Convert bytes to human-readable format"""
-        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-            if bytes_val < 1024.0:
-                return f"{bytes_val:.2f} {unit}"
-            bytes_val /= 1024.0
-        return f"{bytes_val:.2f} PB"
-
-    def cleanup_old_data(self, retention_config: Dict) -> Dict:
-        """
-        Clean up old data based on retention policy (NIS-2 compliant)
-
-        Args:
-            retention_config: Dict with retention periods in days:
-                - alerts_days: Retention for alerts (NIS-2: min 365)
-                - metrics_days: Retention for traffic metrics (90-180)
-                - audit_logs_days: Retention for audit logs (NIS-2: min 730)
-                - statistics_days: Retention for top_talkers etc (30)
-                - devices_inactive_days: Remove very old inactive devices (180)
-                - minimum_retention_days: Safety check (7)
-
-        Returns:
-            Dict with cleanup statistics
-        """
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor()
-
-            # Safety check - prevent accidental data loss
-            min_retention = retention_config.get('minimum_retention_days', 7)
-
-            results = {
-                'timestamp': datetime.now().isoformat(),
-                'deleted': {},
-                'errors': []
-            }
-
-            # 1. Clean up old alerts (NIS-2: keep minimum 365 days)
-            alerts_retention = max(retention_config.get('alerts_days', 365), 365)  # Enforce NIS-2 minimum
-            if alerts_retention >= min_retention:
-                cutoff = datetime.now() - timedelta(days=alerts_retention)
-                cursor.execute('DELETE FROM alerts WHERE timestamp < %s', (cutoff,))
-                results['deleted']['alerts'] = cursor.rowcount
-                self.logger.info(f"Cleaned up {cursor.rowcount} alerts older than {alerts_retention} days")
-
-            # 2. Clean up old traffic metrics (high volume data)
-            metrics_retention = max(retention_config.get('metrics_days', 90), min_retention)
-            cutoff = datetime.now() - timedelta(days=metrics_retention)
-            cursor.execute('DELETE FROM traffic_metrics WHERE timestamp < %s', (cutoff,))
-            results['deleted']['traffic_metrics'] = cursor.rowcount
-            self.logger.info(f"Cleaned up {cursor.rowcount} traffic metrics older than {metrics_retention} days")
-
-            # 3. Clean up old top_talkers (transient statistics)
-            stats_retention = max(retention_config.get('statistics_days', 30), min_retention)
-            cutoff = datetime.now() - timedelta(days=stats_retention)
-            cursor.execute('DELETE FROM top_talkers WHERE timestamp < %s', (cutoff,))
-            results['deleted']['top_talkers'] = cursor.rowcount
-            self.logger.info(f"Cleaned up {cursor.rowcount} top talkers older than {stats_retention} days")
-
-            # 4. Clean up old system stats
-            cutoff = datetime.now() - timedelta(days=stats_retention)
-            cursor.execute('DELETE FROM system_stats WHERE timestamp < %s', (cutoff,))
-            results['deleted']['system_stats'] = cursor.rowcount
-
-            # 5. Clean up very old inactive devices (keeps recent ones)
-            devices_retention = retention_config.get('devices_inactive_days', 180)
-            if devices_retention >= min_retention:
-                cutoff = datetime.now() - timedelta(days=devices_retention)
-                cursor.execute('DELETE FROM devices WHERE last_seen < %s', (cutoff,))
-                results['deleted']['devices'] = cursor.rowcount
-                self.logger.info(f"Cleaned up {cursor.rowcount} inactive devices older than {devices_retention} days")
-
-            # 6. VACUUM ANALYZE to reclaim disk space and update statistics
-            # Note: This is important for PostgreSQL to actually free disk space
-            conn.commit()  # Commit before VACUUM
-            old_isolation_level = conn.isolation_level
-            conn.set_isolation_level(0)  # VACUUM requires autocommit mode
-
-            cursor.execute('VACUUM ANALYZE')
-
-            conn.set_isolation_level(old_isolation_level)
-            results['vacuum'] = 'completed'
-            self.logger.info("VACUUM ANALYZE completed - disk space reclaimed")
-
-            # Calculate total records deleted
-            results['total_deleted'] = sum(results['deleted'].values())
-
-            return results
-
-        except Exception as e:
-            conn.rollback()
-            error_msg = f"Error during data cleanup: {e}"
-            self.logger.error(error_msg)
-            if 'errors' in results:
-                results['errors'].append(error_msg)
-            return results
         finally:
             self._return_connection(conn)
 
@@ -1709,41 +1415,7 @@ class DatabaseManager:
             ''', (sensor_id,))
 
             result = cursor.fetchone()
-            if not result:
-                return None
-
-            sensor_dict = dict(result)
-
-            # Initialize config if None
-            if sensor_dict.get('config') is None:
-                sensor_dict['config'] = {}
-            # Parse config if it's a string (JSONB column)
-            elif isinstance(sensor_dict['config'], str):
-                try:
-                    sensor_dict['config'] = json.loads(sensor_dict['config'])
-                except (json.JSONDecodeError, TypeError):
-                    self.logger.warning(f"Failed to parse config for sensor {sensor_id}, using empty dict")
-                    sensor_dict['config'] = {}
-
-            # Merge interface setting from sensor_configs into config
-            # This ensures UI saves and loads from the same place
-            try:
-                cursor.execute('''
-                    SELECT parameter_value#>>'{}'
-                    FROM sensor_configs
-                    WHERE sensor_id = %s
-                    AND parameter_path = 'interface'
-                    LIMIT 1
-                ''', (sensor_id,))
-
-                interface_result = cursor.fetchone()
-                if interface_result and interface_result[0]:
-                    # Merge interface into sensor.config
-                    sensor_dict['config']['interface'] = interface_result[0]
-            except Exception as e:
-                self.logger.warning(f"Could not fetch interface config for sensor {sensor_id}: {e}")
-
-            return sensor_dict
+            return dict(result) if result else None
 
         except Exception as e:
             self.logger.error(f"Error getting sensor: {e}")
@@ -2761,39 +2433,34 @@ class DatabaseManager:
 
                     # Only update if IP actually changed
                     if old_ip != ip_address:
-                        # Check if the new IP is already in use by another device
-                        # This can happen in DHCP environments where IPs get reassigned
-                        cursor.execute('''
-                            SELECT id FROM devices
-                            WHERE ip_address = %s AND sensor_id = %s AND id != %s
-                        ''', (ip_address, sensor_id, device_id))
-                        conflicting_device = cursor.fetchone()
-
-                        if conflicting_device:
-                            # Another device has this IP - mark it as inactive since
-                            # the IP was reassigned to a different MAC address
-                            conflicting_id = conflicting_device[0]
+                        try:
                             cursor.execute('''
                                 UPDATE devices SET
-                                    is_active = FALSE,
-                                    last_seen = NOW()
+                                    ip_address = %s,
+                                    hostname = COALESCE(%s, hostname),
+                                    vendor = COALESCE(%s, vendor),
+                                    last_seen = NOW(),
+                                    is_active = TRUE
                                 WHERE id = %s
-                            ''', (conflicting_id,))
-                            self.logger.info(f"Deactivated device {conflicting_id} - IP {ip_address} reassigned to MAC {mac_address}")
-
-                        cursor.execute('''
-                            UPDATE devices SET
-                                ip_address = %s,
-                                hostname = COALESCE(%s, hostname),
-                                vendor = COALESCE(%s, vendor),
-                                last_seen = NOW(),
-                                is_active = TRUE
-                            WHERE id = %s
-                            RETURNING id
-                        ''', (ip_address, hostname, vendor, device_id))
-                        device_id = cursor.fetchone()[0]
-                        conn.commit()
-                        self.logger.info(f"Device IP updated: {old_ip} -> {ip_address} (MAC: {mac_address})")
+                                RETURNING id
+                            ''', (ip_address, hostname, vendor, device_id))
+                            device_id = cursor.fetchone()[0]
+                            conn.commit()
+                            self.logger.info(f"Device IP updated: {old_ip} -> {ip_address} (MAC: {mac_address})")
+                        except errors.UniqueViolation:
+                            # New IP already exists for another device - just update last_seen
+                            conn.rollback()
+                            cursor.execute('''
+                                UPDATE devices SET
+                                    hostname = COALESCE(%s, hostname),
+                                    vendor = COALESCE(%s, vendor),
+                                    last_seen = NOW(),
+                                    is_active = TRUE
+                                WHERE id = %s
+                                RETURNING id
+                            ''', (hostname, vendor, device_id))
+                            device_id = cursor.fetchone()[0]
+                            conn.commit()
                     else:
                         # Just update last_seen, hostname, vendor
                         cursor.execute('''
@@ -2810,7 +2477,7 @@ class DatabaseManager:
 
                     return device_id
 
-            # No MAC or MAC not found - use IP-based matching
+            # No MAC or MAC not found - use IP-based matching with UPSERT
             cursor.execute('''
                 INSERT INTO devices
                 (ip_address, sensor_id, mac_address, hostname, vendor, template_id, created_by)
@@ -2827,6 +2494,27 @@ class DatabaseManager:
             device_id = cursor.fetchone()[0]
             conn.commit()
             return device_id
+        except errors.UniqueViolation:
+            # Race condition or constraint violation - try simple UPDATE
+            conn.rollback()
+            try:
+                cursor.execute('''
+                    UPDATE devices SET
+                        mac_address = COALESCE(%s, mac_address),
+                        hostname = COALESCE(%s, hostname),
+                        vendor = COALESCE(%s, vendor),
+                        last_seen = NOW(),
+                        is_active = TRUE
+                    WHERE ip_address = %s AND sensor_id = %s
+                    RETURNING id
+                ''', (mac_address, hostname, vendor, ip_address, sensor_id))
+                result = cursor.fetchone()
+                if result:
+                    conn.commit()
+                    return result[0]
+            except Exception:
+                conn.rollback()
+            return None
         except Exception as e:
             conn.rollback()
             self.logger.error(f"Error registering device: {e}")
@@ -3346,290 +3034,6 @@ class DatabaseManager:
 
         return None
 
-    # ==================== Threat Feed Management ====================
-
-    def add_threat_feed_indicator(self, feed_type: str, indicator: str,
-                                   indicator_type: str, source: str = None,
-                                   confidence_score: float = 1.0,
-                                   expires_at: datetime = None,
-                                   metadata: Dict = None) -> Optional[int]:
-        """Add or update a threat feed indicator
-
-        Args:
-            feed_type: Type of threat (phishing, tor_exit, cryptomining, etc.)
-            indicator: The indicator value (IP, domain, URL, hash)
-            indicator_type: Type of indicator (ip, domain, url, hash, cidr, asn)
-            source: Source of the indicator (e.g., 'PhishTank', 'Tor Project')
-            confidence_score: Confidence score (0.0 to 1.0)
-            expires_at: Optional expiration timestamp
-            metadata: Additional metadata as dict
-
-        Returns:
-            indicator ID if successful, None otherwise
-        """
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor()
-
-            # Upsert: update if exists, insert if not
-            cursor.execute('''
-                INSERT INTO threat_feeds
-                (feed_type, indicator, indicator_type, source, confidence_score, expires_at, metadata, last_updated)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
-                ON CONFLICT (feed_type, indicator)
-                DO UPDATE SET
-                    indicator_type = EXCLUDED.indicator_type,
-                    source = EXCLUDED.source,
-                    confidence_score = EXCLUDED.confidence_score,
-                    expires_at = EXCLUDED.expires_at,
-                    metadata = EXCLUDED.metadata,
-                    last_updated = NOW(),
-                    is_active = TRUE
-                RETURNING id
-            ''', (feed_type, indicator, indicator_type, source, confidence_score,
-                  expires_at, json.dumps(metadata or {})))
-
-            indicator_id = cursor.fetchone()[0]
-            conn.commit()
-            return indicator_id
-
-        except Exception as e:
-            conn.rollback()
-            self.logger.error(f"Error adding threat feed indicator: {e}")
-            return None
-        finally:
-            self._return_connection(conn)
-
-    def get_threat_feed_indicators(self, feed_type: str = None,
-                                   indicator_type: str = None,
-                                   is_active: bool = True,
-                                   limit: int = 10000) -> List[Dict]:
-        """Get threat feed indicators
-
-        Args:
-            feed_type: Optional filter by feed type
-            indicator_type: Optional filter by indicator type
-            is_active: Only return active indicators (default True)
-            limit: Maximum number of results
-
-        Returns:
-            List of threat indicators
-        """
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-            query = '''
-                SELECT id, feed_type, indicator, indicator_type, source,
-                       confidence_score, first_seen, last_updated, expires_at,
-                       metadata, is_active
-                FROM threat_feeds
-                WHERE 1=1
-            '''
-            params = []
-
-            if feed_type:
-                query += ' AND feed_type = %s'
-                params.append(feed_type)
-
-            if indicator_type:
-                query += ' AND indicator_type = %s'
-                params.append(indicator_type)
-
-            if is_active is not None:
-                query += ' AND is_active = %s'
-                params.append(is_active)
-
-            # Only return non-expired indicators
-            query += ' AND (expires_at IS NULL OR expires_at > NOW())'
-
-            query += ' ORDER BY last_updated DESC LIMIT %s'
-            params.append(limit)
-
-            cursor.execute(query, params)
-            return [dict(row) for row in cursor.fetchall()]
-
-        except Exception as e:
-            self.logger.error(f"Error getting threat feed indicators: {e}")
-            return []
-        finally:
-            self._return_connection(conn)
-
-    def check_threat_indicator(self, indicator: str, feed_types: List[str] = None) -> Optional[Dict]:
-        """Check if an indicator matches a threat feed entry
-
-        Args:
-            indicator: The indicator to check (IP, domain, etc.)
-            feed_types: Optional list of feed types to check
-
-        Returns:
-            Dict with match details if found, None otherwise
-        """
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-            query = '''
-                SELECT id, feed_type, indicator, indicator_type, source,
-                       confidence_score, metadata
-                FROM threat_feeds
-                WHERE indicator = %s
-                  AND is_active = TRUE
-                  AND (expires_at IS NULL OR expires_at > NOW())
-            '''
-            params = [indicator]
-
-            if feed_types:
-                placeholders = ','.join(['%s'] * len(feed_types))
-                query += f' AND feed_type IN ({placeholders})'
-                params.extend(feed_types)
-
-            query += ' ORDER BY confidence_score DESC LIMIT 1'
-
-            cursor.execute(query, params)
-            result = cursor.fetchone()
-
-            return dict(result) if result else None
-
-        except Exception as e:
-            self.logger.error(f"Error checking threat indicator {indicator}: {e}")
-            return None
-        finally:
-            self._return_connection(conn)
-
-    def check_ip_in_threat_feeds(self, ip_address: str, feed_types: List[str] = None) -> Optional[Dict]:
-        """Check if an IP address matches threat feeds (exact match or CIDR range)
-
-        Args:
-            ip_address: IP address to check
-            feed_types: Optional list of feed types to check
-
-        Returns:
-            Dict with match details if found, None otherwise
-        """
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-            # Check for exact match or CIDR range match
-            query = '''
-                SELECT id, feed_type, indicator, indicator_type, source,
-                       confidence_score, metadata
-                FROM threat_feeds
-                WHERE is_active = TRUE
-                  AND (expires_at IS NULL OR expires_at > NOW())
-                  AND indicator_type IN ('ip', 'cidr')
-                  AND (
-                    indicator = %s
-                    OR (indicator_type = 'cidr' AND inet %s <<= cidr(indicator))
-                  )
-            '''
-            params = [ip_address, ip_address]
-
-            if feed_types:
-                placeholders = ','.join(['%s'] * len(feed_types))
-                query += f' AND feed_type IN ({placeholders})'
-                params.extend(feed_types)
-
-            query += ' ORDER BY confidence_score DESC LIMIT 1'
-
-            cursor.execute(query, params)
-            result = cursor.fetchone()
-
-            return dict(result) if result else None
-
-        except Exception as e:
-            self.logger.error(f"Error checking IP in threat feeds {ip_address}: {e}")
-            return None
-        finally:
-            self._return_connection(conn)
-
-    def cleanup_expired_threat_feeds(self) -> int:
-        """Remove expired threat feed indicators
-
-        Returns:
-            Number of indicators removed
-        """
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor()
-
-            # Mark expired indicators as inactive instead of deleting
-            cursor.execute('''
-                UPDATE threat_feeds
-                SET is_active = FALSE
-                WHERE expires_at IS NOT NULL
-                  AND expires_at < NOW()
-                  AND is_active = TRUE
-                RETURNING id
-            ''')
-
-            count = cursor.rowcount
-            conn.commit()
-
-            if count > 0:
-                self.logger.info(f"Marked {count} expired threat feed indicators as inactive")
-
-            return count
-
-        except Exception as e:
-            conn.rollback()
-            self.logger.error(f"Error cleaning up expired threat feeds: {e}")
-            return 0
-        finally:
-            self._return_connection(conn)
-
-    def bulk_import_threat_feed(self, feed_type: str, indicators: List[Dict],
-                               source: str = None) -> int:
-        """Bulk import threat indicators
-
-        Args:
-            feed_type: Type of threat feed
-            indicators: List of dicts with 'indicator', 'indicator_type', and optional fields
-            source: Source name for all indicators
-
-        Returns:
-            Number of indicators imported
-        """
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor()
-            count = 0
-
-            for item in indicators:
-                indicator = item.get('indicator')
-                indicator_type = item.get('indicator_type', 'ip')
-                confidence = item.get('confidence_score', 1.0)
-                expires_at = item.get('expires_at')
-                metadata = item.get('metadata', {})
-
-                if not indicator:
-                    continue
-
-                cursor.execute('''
-                    INSERT INTO threat_feeds
-                    (feed_type, indicator, indicator_type, source, confidence_score, expires_at, metadata, last_updated)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
-                    ON CONFLICT (feed_type, indicator)
-                    DO UPDATE SET
-                        last_updated = NOW(),
-                        is_active = TRUE
-                ''', (feed_type, indicator, indicator_type, source, confidence,
-                      expires_at, json.dumps(metadata)))
-
-                count += 1
-
-            conn.commit()
-            self.logger.info(f"Bulk imported {count} threat indicators for feed type: {feed_type}")
-            return count
-
-        except Exception as e:
-            conn.rollback()
-            self.logger.error(f"Error bulk importing threat feed: {e}")
-            return 0
-        finally:
-            self._return_connection(conn)
-
     # ==================== Builtin Data Initialization ====================
 
     def init_builtin_templates(self) -> int:
@@ -3773,21 +3177,18 @@ class DatabaseManager:
             },
             {
                 'name': 'UniFi Controller',
-                'description': 'Ubiquiti UniFi Network Controller - suppresses false positives for management traffic',
+                'description': 'Ubiquiti UniFi Network Controller - create a COPY with your allowed external source IPs',
                 'icon': 'cloud',
                 'category': 'server',
                 'behaviors': [
-                    # UniFi Controller inbound ports (8443=HTTPS, 8080=HTTP inform, 8843=guest portal, 6789=speedtest, 27117=MongoDB)
+                    # UniFi Controller inbound ports
                     {'type': 'allowed_ports', 'params': {'ports': [8443, 8080, 8880, 8843, 6789, 27117], 'direction': 'inbound'}, 'action': 'allow'},
                     # STUN port for remote APs
                     {'type': 'allowed_ports', 'params': {'ports': [3478], 'protocols': ['UDP'], 'direction': 'inbound'}, 'action': 'allow'},
                     {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP']}, 'action': 'allow'},
-                    # Suppress HTTP_SENSITIVE_DATA alerts - UniFi sends JSON config data which may contain sensitive-looking patterns
-                    {'type': 'suppress_alert_types', 'params': {'alert_types': ['HTTP_SENSITIVE_DATA', 'HTTP_HIGH_ENTROPY_PAYLOAD']}, 'action': 'allow'},
-                    # Allow high connection rate from managed devices
+                    # Example: Add your external AP IPs here (create custom template)
+                    # {'type': 'allowed_sources', 'params': {'subnets': ['203.0.113.0/24']}, 'action': 'allow'},
                     {'type': 'connection_behavior', 'params': {'high_connection_rate': True, 'accepts_connections': True}, 'action': 'allow'},
-                    # Allow internal sources only (add external AP IPs via allowed_sources if needed)
-                    {'type': 'allowed_sources', 'params': {'internal': True}, 'action': 'allow'},
                 ]
             },
             {
@@ -4021,326 +3422,6 @@ class DatabaseManager:
                 count += 1
 
         self.logger.info(f"Initialized {count} builtin service providers")
-        return count
-
-    def init_advanced_threat_config(self) -> int:
-        """Initialize default advanced threat detection configuration in database"""
-
-        # Default configurations for Phase 1 threats
-        default_configs = {
-            # Cryptomining detection
-            'threat.cryptomining.enabled': False,
-            'threat.cryptomining.stratum_ports': [3333, 4444, 8333, 9999, 14444, 45560],
-            'threat.cryptomining.min_connections': 3,
-
-            # Phishing domain detection
-            'threat.phishing.enabled': False,
-            'threat.phishing.feed_url': 'https://openphish.com/feed.txt',
-            'threat.phishing.update_interval': 3600,
-            'threat.phishing.cache_ttl': 86400,
-            'threat.phishing.check_dns': True,
-            'threat.phishing.check_connections': True,
-
-            # Tor exit node detection
-            'threat.tor.enabled': False,
-            'threat.tor.feed_url': 'https://check.torproject.org/torbulkexitlist',
-            'threat.tor.update_interval': 3600,
-            'threat.tor.alert_exit_node': True,
-            'threat.tor.alert_onion': True,
-
-            # VPN tunnel detection
-            'threat.vpn.enabled': False,
-            'threat.vpn.detect_openvpn': True,
-            'threat.vpn.detect_wireguard': True,
-            'threat.vpn.detect_ipsec': True,
-
-            # Cloud metadata access
-            'threat.cloud_metadata.enabled': False,
-            'threat.cloud_metadata.aws_ip': '169.254.169.254',
-            'threat.cloud_metadata.azure_ip': '169.254.169.254',
-            'threat.cloud_metadata.gcp_hostname': 'metadata.google.internal',
-
-            # DNS anomaly detection
-            'threat.dns_anomaly.enabled': False,
-            'threat.dns_anomaly.queries_per_minute': 100,
-            'threat.dns_anomaly.unique_domains': 50,
-            'threat.dns_anomaly.time_window': 60,
-
-            # ===== Phase 2: Web Application Security =====
-
-            # SQL Injection detection
-            'threat.sql_injection.enabled': False,
-            'threat.sql_injection.check_http': True,
-            'threat.sql_injection.check_query_string': True,
-            'threat.sql_injection.check_post_data': True,
-            'threat.sql_injection.sensitivity': 'medium',  # low, medium, high
-
-            # XSS (Cross-Site Scripting) detection
-            'threat.xss.enabled': False,
-            'threat.xss.check_http': True,
-            'threat.xss.check_query_string': True,
-            'threat.xss.check_post_data': True,
-            'threat.xss.sensitivity': 'medium',
-
-            # Command Injection detection
-            'threat.command_injection.enabled': False,
-            'threat.command_injection.check_http': True,
-            'threat.command_injection.check_shell_chars': True,
-            'threat.command_injection.check_common_commands': True,
-
-            # Path Traversal detection
-            'threat.path_traversal.enabled': False,
-            'threat.path_traversal.check_http': True,
-            'threat.path_traversal.check_encoded': True,
-            'threat.path_traversal.check_absolute_paths': True,
-
-            # XXE (XML External Entity) detection
-            'threat.xxe.enabled': False,
-            'threat.xxe.check_post_requests': True,
-            'threat.xxe.check_put_requests': True,
-
-            # SSRF (Server-Side Request Forgery) detection
-            'threat.ssrf.enabled': False,
-            'threat.ssrf.check_internal_ips': True,
-            'threat.ssrf.check_localhost': True,
-            'threat.ssrf.check_cloud_metadata': True,
-
-            # WebShell detection
-            'threat.webshell.enabled': False,
-            'threat.webshell.check_uploads': True,
-            'threat.webshell.check_suspicious_files': True,
-            'threat.webshell.check_php_functions': True,
-
-            # API Abuse detection
-            'threat.api_abuse.enabled': False,
-            'threat.api_abuse.rate_limit_per_minute': 100,
-            'threat.api_abuse.endpoint_limit_per_minute': 50,
-            'threat.api_abuse.time_window': 60,
-
-            # ===== Phase 3: DDoS & Resource Exhaustion =====
-
-            # SYN Flood detection
-            'threat.syn_flood.enabled': False,
-            'threat.syn_flood.threshold_per_sec': 100,
-            'threat.syn_flood.time_window': 1,
-
-            # UDP Flood detection
-            'threat.udp_flood.enabled': False,
-            'threat.udp_flood.threshold_per_sec': 500,
-            'threat.udp_flood.time_window': 1,
-
-            # HTTP Flood detection
-            'threat.http_flood.enabled': False,
-            'threat.http_flood.threshold_per_sec': 200,
-            'threat.http_flood.time_window': 1,
-
-            # Slowloris detection
-            'threat.slowloris.enabled': False,
-            'threat.slowloris.incomplete_request_threshold': 50,
-
-            # DNS Amplification detection
-            'threat.dns_amplification.enabled': False,
-            'threat.dns_amplification.amplification_factor_threshold': 10,
-            'threat.dns_amplification.time_window': 10,
-
-            # NTP Amplification detection
-            'threat.ntp_amplification.enabled': False,
-            'threat.ntp_amplification.amplification_factor_threshold': 10,
-
-            # Connection Exhaustion detection
-            'threat.connection_exhaustion.enabled': False,
-            'threat.connection_exhaustion.max_connections': 1000,
-
-            # Bandwidth Saturation detection
-            'threat.bandwidth_saturation.enabled': False,
-            'threat.bandwidth_saturation.threshold_mbps': 100,
-            'threat.bandwidth_saturation.time_window': 1,
-
-            # ===== Phase 4: Ransomware Indicators =====
-
-            # SMB Mass Encryption detection
-            'threat.ransomware_smb.enabled': False,
-            'threat.ransomware_smb.file_ops_per_minute': 100,
-            'threat.ransomware_smb.time_window': 60,
-
-            # Crypto Extension detection
-            'threat.ransomware_crypto_ext.enabled': False,
-            'threat.ransomware_crypto_ext.min_file_count': 5,
-
-            # Ransom Note detection
-            'threat.ransomware_ransom_note.enabled': False,
-            'threat.ransomware_ransom_note.min_keyword_matches': 3,
-            'threat.ransomware_ransom_note.min_file_creates': 2,
-
-            # Shadow Copy Deletion detection
-            'threat.ransomware_shadow_copy.enabled': False,
-
-            # Backup Deletion detection
-            'threat.ransomware_backup_deletion.enabled': False,
-
-            # ===== Phase 5: IoT & Smart Device Security =====
-
-            # IoT Botnet detection
-            'threat.iot_botnet.enabled': False,
-            'threat.iot_botnet.telnet_attempts_threshold': 10,
-            'threat.iot_botnet.default_creds_threshold': 3,
-
-            # UPnP Exploit detection
-            'threat.upnp_exploit.enabled': False,
-            'threat.upnp_exploit.ssdp_threshold': 100,
-
-            # MQTT Abuse detection
-            'threat.mqtt_abuse.enabled': False,
-            'threat.mqtt_abuse.publish_threshold_per_minute': 1000,
-            'threat.mqtt_abuse.time_window': 60,
-
-            # Smart Home Protocol Abuse
-            'threat.smart_home_abuse.enabled': False,
-
-            # Insecure RTSP Streams
-            'threat.insecure_rtsp.enabled': False,
-
-            # CoAP Protocol Abuse
-            'threat.coap_abuse.enabled': False,
-
-            # Z-Wave Attack detection
-            'threat.zwave_attack.enabled': False,
-
-            # Zigbee Attack detection
-            'threat.zigbee_attack.enabled': False,
-
-            # ===== Phase 6: OT/ICS Protocol Security =====
-
-            # Modbus attack detection
-            'threat.modbus_attack.enabled': False,
-            'threat.modbus_attack.write_ops_threshold': 50,
-            'threat.modbus_attack.time_window': 60,
-
-            # DNP3 attack detection
-            'threat.dnp3_attack.enabled': False,
-            'threat.dnp3_attack.ops_threshold': 100,
-            'threat.dnp3_attack.time_window': 60,
-
-            # IEC-104 attack detection
-            'threat.iec104_attack.enabled': False,
-            'threat.iec104_attack.control_commands_threshold': 50,
-            'threat.iec104_attack.time_window': 60,
-
-            # BACnet abuse
-            'threat.bacnet_abuse.enabled': False,
-
-            # Profinet vulnerabilities
-            'threat.profinet_vuln.enabled': False,
-
-            # EtherNet/IP attacks
-            'threat.ethernetip_attack.enabled': False,
-
-            # ===== Phase 7: Container & Orchestration =====
-
-            # Docker escape attempts
-            'threat.docker_escape.enabled': False,
-            'threat.docker_escape.privileged_ops_threshold': 3,
-
-            # Kubernetes API exploits
-            'threat.k8s_exploit.enabled': False,
-            'threat.k8s_exploit.api_calls_threshold': 100,
-
-            # Container registry poisoning
-            'threat.container_registry_poison.enabled': False,
-
-            # Privileged container detection
-            'threat.privileged_container.enabled': False,
-
-            # ===== Phase 8: Advanced Evasion =====
-
-            # IP fragmentation attacks
-            'threat.fragmentation_attack.enabled': False,
-            'threat.fragmentation_attack.fragment_threshold': 100,
-            'threat.fragmentation_attack.overlapping_threshold': 10,
-
-            # Protocol tunneling
-            'threat.tunneling.enabled': False,
-            'threat.tunneling.packet_threshold': 50,
-            'threat.tunneling.time_window': 60,
-
-            # Polymorphic malware
-            'threat.polymorphic_malware.enabled': False,
-            'threat.polymorphic_malware.signature_variation_threshold': 20,
-
-            # Domain Generation Algorithm (DGA)
-            'threat.dga.enabled': False,
-            'threat.dga.subdomain_length_threshold': 12,
-
-            # ===== Phase 9: Completion Boost =====
-
-            # Lateral movement
-            'threat.lateral_movement.enabled': False,
-            'threat.lateral_movement.smb_targets_threshold': 5,
-            'threat.lateral_movement.rdp_attempts_threshold': 3,
-            'threat.lateral_movement.time_window': 300,
-
-            # Data exfiltration
-            'threat.data_exfiltration.enabled': False,
-            'threat.data_exfiltration.megabytes_threshold': 100,
-            'threat.data_exfiltration.destinations_threshold': 20,
-            'threat.data_exfiltration.time_window': 60,
-
-            # Privilege escalation
-            'threat.privilege_escalation.enabled': False,
-            'threat.privilege_escalation.attempts_threshold': 5,
-
-            # Persistence mechanisms
-            'threat.persistence.enabled': False,
-            'threat.persistence.mechanisms_threshold': 3,
-
-            # Credential dumping
-            'threat.credential_dumping.enabled': False,
-            'threat.credential_dumping.indicators_threshold': 2,
-
-            # Living-off-the-land (LOLBins)
-            'threat.lolbins.enabled': False,
-
-            # Memory injection
-            'threat.memory_injection.enabled': False,
-
-            # Process hollowing
-            'threat.process_hollowing.enabled': False,
-
-            # Registry manipulation
-            'threat.registry_manipulation.enabled': False,
-
-            # Scheduled task abuse
-            'threat.scheduled_task_abuse.enabled': False,
-        }
-
-        count = 0
-        for param_path, value in default_configs.items():
-            try:
-                # Check if config already exists
-                existing = self.get_sensor_config(sensor_id=None, parameter_path=param_path)
-                if existing:
-                    continue  # Skip if already configured
-
-                # Set global default
-                success = self.set_config_parameter(
-                    parameter_path=param_path,
-                    value=value,
-                    sensor_id=None,  # Global
-                    scope='global',
-                    description=f'Advanced threat detection: {param_path}',
-                    updated_by='system'
-                )
-
-                if success:
-                    count += 1
-
-            except Exception as e:
-                self.logger.warning(f"Could not initialize config {param_path}: {e}")
-                continue
-
-        if count > 0:
-            self.logger.info(f"Initialized {count} advanced threat detection parameters")
-
         return count
 
     def close(self):

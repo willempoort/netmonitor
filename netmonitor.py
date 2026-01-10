@@ -6,8 +6,8 @@ Network Monitor - Detecteert verdacht netwerkverkeer
 Geschikt voor gebruik op een monitoring/span port
 """
 
-import os
 import sys
+import os
 import signal
 import argparse
 import logging
@@ -31,7 +31,6 @@ from threat_feeds import ThreatFeedManager
 from behavior_detector import BehaviorDetector
 from abuseipdb_client import AbuseIPDBClient
 from database import DatabaseManager
-from threat_feed_updater import run_feed_updater_loop
 from metrics_collector import MetricsCollector
 from web_dashboard import DashboardServer
 from device_discovery import DeviceDiscovery
@@ -78,17 +77,13 @@ class NetworkMonitor:
 
                 if db_type == 'postgresql':
                     pg_config = db_config.get('postgresql', {})
-
-                    # Database credentials - prioritize environment variables over config.yaml
-                    # This allows secrets to be kept in .env instead of config files
-                    # Treat empty strings in config as "not set"
-                    db_password = os.environ.get('DB_PASSWORD') or pg_config.get('password') or 'netmonitor'
-
+                    # Use config value if set, otherwise fall back to environment variable
+                    db_password = pg_config.get('password') or os.environ.get('DB_PASSWORD', 'netmonitor')
                     self.db = DatabaseManager(
-                        host=pg_config.get('host', 'localhost'),
-                        port=pg_config.get('port', 5432),
-                        database=pg_config.get('database', 'netmonitor'),
-                        user=pg_config.get('user', 'netmonitor'),
+                        host=pg_config.get('host') or os.environ.get('DB_HOST', 'localhost'),
+                        port=pg_config.get('port') or int(os.environ.get('DB_PORT', '5432')),
+                        database=pg_config.get('database') or os.environ.get('DB_NAME', 'netmonitor'),
+                        user=pg_config.get('user') or os.environ.get('DB_USER', 'netmonitor'),
                         password=db_password,
                         min_connections=pg_config.get('min_connections', 2),
                         max_connections=pg_config.get('max_connections', 10)
@@ -827,22 +822,6 @@ class NetworkMonitor:
                 name="ConfigSync"
             )
             self.config_sync_thread.start()
-
-        # Start threat feed updater thread (if database enabled and advanced threats configured)
-        if self.db:
-            # Check if advanced threats master switch is enabled (in config.yaml)
-            advanced_enabled = self.config.get('thresholds', {}).get('advanced_threats', {}).get('enabled', False)
-            if advanced_enabled:
-                self.logger.info("Starting threat feed updater thread (database-backed config)")
-                threat_feed_thread = threading.Thread(
-                    target=run_feed_updater_loop,
-                    args=(self.db,),
-                    daemon=True,
-                    name="ThreatFeedUpdater"
-                )
-                threat_feed_thread.start()
-            else:
-                self.logger.info("Advanced threat detection disabled (set thresholds.advanced_threats.enabled=true to enable)")
 
         # Check of we root privileges hebben
         if conf.L3socket == conf.L3socket6:
