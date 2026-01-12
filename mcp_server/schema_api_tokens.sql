@@ -1,4 +1,11 @@
 -- MCP API Tokens Schema
+-- DEPRECATED: This file is for reference only!
+-- Schema is now managed by database.py _init_mcp_schema() method
+-- and is automatically created/updated during NetMonitor startup.
+--
+-- This file remains as documentation and for manual database recovery only.
+-- DO NOT USE THIS FILE IN PRODUCTION SCRIPTS.
+--
 -- Manages API tokens for HTTP-based MCP server access
 
 -- API Tokens table

@@ -62,18 +62,23 @@ echo "  Database: $DB_NAME"
 echo "  User:     $DB_USER"
 echo ""
 
-# Step 1: Create database schema
-echo "Step 1: Creating database schema for API tokens..."
+# Step 1: Check database schema (auto-created by NetMonitor)
+echo "Step 1: Checking database schema for API tokens..."
+echo ""
+echo "ℹ️  MCP API schema is now auto-managed by database.py"
+echo "   Tables are created automatically when NetMonitor starts."
 echo ""
 
-PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
-    -f "$SCRIPT_DIR/schema_api_tokens.sql"
+# Verify tables exist
+TABLES_EXIST=$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
+    -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_name IN ('mcp_api_tokens', 'mcp_api_token_usage')")
 
-if [ $? -eq 0 ]; then
-    echo "✅ Database schema created successfully"
+if [ "$TABLES_EXIST" -eq 2 ]; then
+    echo "✅ MCP API tables exist"
 else
-    echo "❌ Failed to create database schema"
-    exit 1
+    echo "⚠️  MCP API tables not found"
+    echo "   They will be created automatically when NetMonitor starts."
+    echo "   Or start netmonitor service now: sudo systemctl start netmonitor"
 fi
 
 echo ""

@@ -41,13 +41,16 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 14  # Increment this when schema changes
+        SCHEMA_VERSION = 15  # Increment this when schema changes
 
         if self._check_schema_version(SCHEMA_VERSION):
             self.logger.info(f"Database schema is up to date (v{SCHEMA_VERSION})")
         else:
             # Initialize database schema
             self._init_database()
+
+            # Initialize MCP API schema (for token authentication)
+            self._init_mcp_schema()
 
             # Create hypertables and continuous aggregates
             self._setup_timescaledb()
@@ -634,6 +637,78 @@ class DatabaseManager:
         except Exception as e:
             conn.rollback()
             self.logger.error(f"Error creating schema: {e}")
+            raise
+        finally:
+            self._return_connection(conn)
+
+    def _init_mcp_schema(self):
+        """Initialize MCP API token tables for HTTP-based API authentication"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            # MCP API Tokens table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS mcp_api_tokens (
+                    id SERIAL PRIMARY KEY,
+                    token VARCHAR(64) UNIQUE NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    description TEXT,
+                    scope VARCHAR(50) NOT NULL DEFAULT 'read_only',
+                    enabled BOOLEAN NOT NULL DEFAULT true,
+                    rate_limit_per_minute INTEGER DEFAULT 60,
+                    rate_limit_per_hour INTEGER DEFAULT 1000,
+                    rate_limit_per_day INTEGER DEFAULT 10000,
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    created_by VARCHAR(255),
+                    last_used_at TIMESTAMP,
+                    expires_at TIMESTAMP,
+                    request_count BIGINT DEFAULT 0,
+                    last_ip_address INET,
+                    CONSTRAINT mcp_valid_scope CHECK (scope IN ('read_only', 'read_write', 'admin'))
+                );
+            ''')
+
+            # MCP Token Usage table (audit log)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS mcp_api_token_usage (
+                    id BIGSERIAL PRIMARY KEY,
+                    token_id INTEGER REFERENCES mcp_api_tokens(id) ON DELETE CASCADE,
+                    timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
+                    endpoint VARCHAR(255) NOT NULL,
+                    method VARCHAR(10) NOT NULL,
+                    ip_address INET,
+                    user_agent TEXT,
+                    status_code INTEGER,
+                    response_time_ms INTEGER,
+                    error_message TEXT
+                );
+            ''')
+
+            # Indexes for performance
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_mcp_tokens_token
+                ON mcp_api_tokens(token);
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_mcp_tokens_enabled
+                ON mcp_api_tokens(enabled) WHERE enabled = true;
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_mcp_usage_token_id
+                ON mcp_api_token_usage(token_id);
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_mcp_usage_timestamp
+                ON mcp_api_token_usage(timestamp);
+            ''')
+
+            conn.commit()
+            self.logger.info("MCP API schema created")
+
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error creating MCP schema: {e}")
             raise
         finally:
             self._return_connection(conn)
