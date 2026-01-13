@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "netmonitor-soc": {
-      "url": "http://soc.poort.net:3000/sse",
-      "transport": "sse"
-    }
-  }
-}
