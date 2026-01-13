@@ -312,16 +312,24 @@ else
     echo_info "Dashboard server mode is 'embedded' - dashboard runs within netmonitor.service"
 fi
 
-# 3. MCP HTTP API Service (only if enabled)
+# 3. MCP Streamable HTTP Service (only if enabled)
 if [ "$MCP_API_ENABLED" = "true" ]; then
-    echo_info "MCP HTTP API enabled - installing MCP service"
+    echo_info "MCP API enabled - installing MCP Streamable HTTP service (NEW)"
     if generate_service \
-        "$INSTALL_DIR/services/netmonitor-mcp-http.service.template" \
-        "/etc/systemd/system/netmonitor-mcp-http.service"; then
+        "$INSTALL_DIR/services/netmonitor-mcp-streamable.service.template" \
+        "/etc/systemd/system/netmonitor-mcp-streamable.service"; then
         SERVICES_INSTALLED=$((SERVICES_INSTALLED + 1))
     fi
+
+    # Legacy HTTP service (optional backwards compatibility)
+    if [ -f "$INSTALL_DIR/services/netmonitor-mcp-http.service.template" ]; then
+        echo_info "Also installing legacy MCP HTTP service (port 8001) for backwards compatibility"
+        generate_service \
+            "$INSTALL_DIR/services/netmonitor-mcp-http.service.template" \
+            "/etc/systemd/system/netmonitor-mcp-http.service" || true
+    fi
 else
-    echo_info "MCP HTTP API disabled (set MCP_API_ENABLED=true in .env to enable)"
+    echo_info "MCP API disabled (set MCP_API_ENABLED=true in .env to enable)"
 fi
 
 # 4. Feed Update Service (always install)
@@ -407,7 +415,7 @@ fi
 
 # Enable MCP HTTP API (if installed)
 if [ "$MCP_API_ENABLED" = "true" ]; then
-    enable_service "netmonitor-mcp-http.service" "MCP HTTP API" "$AUTO_ENABLE"
+    enable_service "netmonitor-mcp-streamable.service" "MCP Streamable HTTP" "$AUTO_ENABLE"
 fi
 
 # Enable feed update timer
@@ -433,7 +441,7 @@ show_service_status() {
 
 show_service_status "netmonitor.service"
 [ "$DASHBOARD_SERVER" = "gunicorn" ] && show_service_status "netmonitor-dashboard.service"
-[ "$MCP_API_ENABLED" = "true" ] && show_service_status "netmonitor-mcp-http.service"
+[ "$MCP_API_ENABLED" = "true" ] && show_service_status "netmonitor-mcp-streamable.service"
 show_service_status "netmonitor-feed-update.timer"
 
 echo ""
@@ -458,7 +466,7 @@ fi
 if [ "$MCP_API_ENABLED" = "true" ]; then
     echo "3. MCP HTTP API:"
     echo "   http://localhost:$MCP_API_PORT/docs (API documentation)"
-    echo "   Logs: sudo journalctl -u netmonitor-mcp-http -f"
+    echo "   Logs: sudo journalctl -u netmonitor-mcp-streamable -f"
     echo ""
 fi
 

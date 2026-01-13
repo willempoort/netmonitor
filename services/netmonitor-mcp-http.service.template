@@ -1,5 +1,5 @@
 [Unit]
-Description=NetMonitor MCP HTTP API Server (AI Integration)
+Description=NetMonitor MCP Streamable HTTP Server (LEGACY - use netmonitor-mcp-streamable instead)
 Documentation=https://github.com/willempoort/netmonitor
 After=network.target postgresql.service
 Wants=postgresql.service
@@ -9,9 +9,12 @@ Type=simple
 User=root
 WorkingDirectory=__INSTALL_DIR__
 
+# DEPRECATED: This service uses the old REST API server
+# Use netmonitor-mcp-streamable.service for the new MCP Streamable HTTP server
+
 # Set defaults first - these can be overridden by EnvironmentFile
 Environment="MCP_API_HOST=0.0.0.0"
-Environment="MCP_API_PORT=8000"
+Environment="MCP_API_PORT=8001"
 Environment="PYTHONUNBUFFERED=1"
 Environment="LOG_DIR=/var/log/netmonitor"
 
@@ -19,7 +22,7 @@ Environment="LOG_DIR=/var/log/netmonitor"
 EnvironmentFile=-__INSTALL_DIR__/.env
 EnvironmentFile=-/etc/netmonitor/netmonitor.env
 
-# Start MCP HTTP API server
+# Start MCP HTTP API server (LEGACY)
 ExecStart=__INSTALL_DIR__/venv/bin/python3 __INSTALL_DIR__/mcp_server/http_server.py \
     --host $MCP_API_HOST \
     --port $MCP_API_PORT
