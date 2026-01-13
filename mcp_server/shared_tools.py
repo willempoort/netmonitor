@@ -36,16 +36,18 @@ class NetMonitorTools:
     Used by stdio, SSE, and Streamable HTTP transports.
     """
 
-    def __init__(self, db: MCPDatabaseClient, ollama: OllamaClient = None):
+    def __init__(self, db: MCPDatabaseClient, ollama: OllamaClient = None, dashboard_url: str = "http://localhost:8080"):
         """
         Initialize shared tools
 
         Args:
             db: Database client instance
             ollama: Ollama AI client instance (optional)
+            dashboard_url: Base URL for dashboard API calls (default: http://localhost:8080)
         """
         self.db = db
         self.ollama = ollama
+        self.base_url = dashboard_url  # For memory management tools
         logger.info(f"NetMonitorTools initialized with {len(TOOL_DEFINITIONS)} tools")
 
     # ==================== Tool Implementations ====================
