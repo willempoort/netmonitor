@@ -112,7 +112,12 @@ class NetMonitorStreamableHTTPServer:
             raise
 
         # Initialize shared tools
-        self.tools = NetMonitorTools(self.db, self.ollama)
+        # Dashboard URL for memory management tools
+        dashboard_host = os.getenv('DASHBOARD_HOST', '127.0.0.1')
+        dashboard_port = os.getenv('DASHBOARD_PORT', '8080')
+        dashboard_url = f"http://{dashboard_host}:{dashboard_port}"
+
+        self.tools = NetMonitorTools(self.db, self.ollama, dashboard_url=dashboard_url)
         logger.info(f"Loaded {len(TOOL_DEFINITIONS)} tools")
 
         # Register MCP protocol handlers
@@ -196,8 +201,9 @@ class NetMonitorStreamableHTTPServer:
                 yield
             logger.info("StreamableHTTP session manager stopped")
 
-        async def handle_mcp_request(scope: Scope, receive: Receive, send: Send):
-            """Handle MCP Streamable HTTP requests"""
+        # Create ASGI app for MCP endpoint
+        async def mcp_asgi_app(scope: Scope, receive: Receive, send: Send):
+            """Raw ASGI app for MCP Streamable HTTP requests"""
             await self.session_manager.handle_request(scope, receive, send)
 
         async def health_check(request):
@@ -229,10 +235,16 @@ class NetMonitorStreamableHTTPServer:
             })
 
         # Routes
+        # Order matters: specific routes first, then mount points
+        from starlette.routing import Mount
         routes = [
-            Route("/mcp", endpoint=handle_mcp_request, methods=["GET", "POST"]),
+            # Specific routes (must come before Mount points)
             Route("/health", endpoint=health_check, methods=["GET"]),
             Route("/metrics", endpoint=metrics, methods=["GET"]),
+            # MCP endpoint
+            Mount("/mcp", app=mcp_asgi_app),
+            # Also mount on root for Open-WebUI compatibility
+            Mount("/", app=mcp_asgi_app),
         ]
 
         # Create app with middleware
