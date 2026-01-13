@@ -197,7 +197,7 @@ class MCPStreamableHTTPBridge:
         logger.info(f"Handling tools/call request: {tool_name}")
         return self.send_mcp_request("tools/call", params)
 
-    def handle_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
+    def handle_request(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Route incoming JSON-RPC request to appropriate handler
 
@@ -205,13 +205,18 @@ class MCPStreamableHTTPBridge:
             request: JSON-RPC request
 
         Returns:
-            JSON-RPC response
+            JSON-RPC response or None for notifications
         """
         method = request.get("method")
         params = request.get("params")
         request_id = request.get("id")
 
         logger.debug(f"Received request: {method}")
+
+        # Handle notifications (no response needed)
+        if method and method.startswith("notifications/"):
+            logger.debug(f"Ignoring notification: {method}")
+            return None
 
         # Route to handler
         if method == "initialize":
@@ -239,7 +244,9 @@ class MCPStreamableHTTPBridge:
             }
 
         # Ensure response has correct ID
-        if "id" in response:
+        if response and "id" not in response:
+            response["id"] = request_id
+        elif response and response.get("id") != request_id:
             response["id"] = request_id
 
         return response
@@ -269,8 +276,9 @@ class MCPStreamableHTTPBridge:
                     # Handle request
                     response = self.handle_request(request)
 
-                    # Send response to STDOUT
-                    print(json.dumps(response), flush=True)
+                    # Send response to STDOUT (skip if None, e.g., notifications)
+                    if response is not None:
+                        print(json.dumps(response), flush=True)
 
                 except json.JSONDecodeError as e:
                     logger.error(f"Invalid JSON received: {e}")
