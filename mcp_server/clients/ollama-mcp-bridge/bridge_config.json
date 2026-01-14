@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "netmonitor": {
+      "command": "python3",
+      "args": [
+        "./mcp_bridge.py"
+      ],
+      "env": {
+        "MCP_SERVER_URL": "https://soc.poort.net/mcp",
+        "MCP_AUTH_TOKEN": "725de5512afc284f4f2a02de242434ac5170659bbb2614ba4667c6d612dee34f"
+      }
+    }
+  },
+  "llm": {
+    "model": "qwen2.5:14b",
+    "baseUrl": "http://localhost:11434",
+    "apiKey": "ollama",
+    "temperature": 0.7,
+    "maxTokens": 8000
+  },
+  "systemPrompt": "You are a cybersecurity assistant with access to NetMonitor SOC tools. You can analyze threats, check IPs, monitor sensors, and investigate security incidents. When users ask about security, threats, IPs, devices, or network monitoring, you should use the appropriate NetMonitor tools to get real-time data. Available tools include: get_recent_threats, analyze_ip, get_sensor_status, check_indicator, get_devices, and 55 more security tools."
+}
