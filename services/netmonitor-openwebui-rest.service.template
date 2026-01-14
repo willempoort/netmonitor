@@ -1,0 +1,18 @@
+[Unit]
+Description=NetMonitor Open-WebUI REST Wrapper
+After=network.target postgresql.service netmonitor-mcp-streamable.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=INSTALL_DIR
+Environment="PATH=INSTALL_DIR/venv/bin:/usr/bin:/bin"
+Environment="OPENWEBUI_REST_HOST=127.0.0.1"
+Environment="OPENWEBUI_REST_PORT=8001"
+ExecStart=INSTALL_DIR/venv/bin/python3 INSTALL_DIR/mcp_server/openwebui_rest_wrapper.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
