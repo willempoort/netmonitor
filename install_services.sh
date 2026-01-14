@@ -321,9 +321,17 @@ if [ "$MCP_API_ENABLED" = "true" ]; then
         SERVICES_INSTALLED=$((SERVICES_INSTALLED + 1))
     fi
 
+    # Open-WebUI REST Wrapper (for Open-WebUI compatibility)
+    echo_info "Installing Open-WebUI REST Wrapper service (port 8001)"
+    if generate_service \
+        "$INSTALL_DIR/services/netmonitor-openwebui-rest.service.template" \
+        "/etc/systemd/system/netmonitor-openwebui-rest.service"; then
+        SERVICES_INSTALLED=$((SERVICES_INSTALLED + 1))
+    fi
+
     # Legacy HTTP service (optional backwards compatibility)
     if [ -f "$INSTALL_DIR/services/netmonitor-mcp-http.service.template" ]; then
-        echo_info "Also installing legacy MCP HTTP service (port 8001) for backwards compatibility"
+        echo_info "Also installing legacy MCP HTTP service for backwards compatibility"
         generate_service \
             "$INSTALL_DIR/services/netmonitor-mcp-http.service.template" \
             "/etc/systemd/system/netmonitor-mcp-http.service" || true
@@ -416,6 +424,7 @@ fi
 # Enable MCP HTTP API (if installed)
 if [ "$MCP_API_ENABLED" = "true" ]; then
     enable_service "netmonitor-mcp-streamable.service" "MCP Streamable HTTP" "$AUTO_ENABLE"
+    enable_service "netmonitor-openwebui-rest.service" "Open-WebUI REST Wrapper" "$AUTO_ENABLE"
 fi
 
 # Enable feed update timer
@@ -442,6 +451,7 @@ show_service_status() {
 show_service_status "netmonitor.service"
 [ "$DASHBOARD_SERVER" = "gunicorn" ] && show_service_status "netmonitor-dashboard.service"
 [ "$MCP_API_ENABLED" = "true" ] && show_service_status "netmonitor-mcp-streamable.service"
+[ "$MCP_API_ENABLED" = "true" ] && show_service_status "netmonitor-openwebui-rest.service"
 show_service_status "netmonitor-feed-update.timer"
 
 echo ""
