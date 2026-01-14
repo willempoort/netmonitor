@@ -3493,6 +3493,29 @@ TOOL_DEFINITIONS = [
                 },
                 "scope_required": "read_only"
             },
+            {
+                "name": "check_indicator",
+                "description": "Check if an IP, domain, or hash matches any threat feeds",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "indicator": {"type": "string", "description": "IP address, domain, URL, or hash to check"},
+                        "indicator_type": {"type": "string", "enum": ["ip", "domain", "url", "hash"]},
+                        "feed_types": {"type": "array", "items": {"type": "string"}, "description": "Optional list of feed types to check"}
+                    },
+                    "required": ["indicator", "indicator_type"]
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "update_threat_feeds",
+                "description": "Manually trigger threat feed updates (normally runs automatically every hour)",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {}
+                },
+                "scope_required": "admin"
+            },
             # Threat Detection Tools
             {
                 "name": "get_threat_feed_stats",
@@ -3597,29 +3620,6 @@ TOOL_DEFINITIONS = [
                     "required": ["threat_type", "enabled"]
                 },
                 "scope_required": "read_write"
-            },
-            {
-                "name": "update_threat_feeds",
-                "description": "Manually trigger threat feed updates (normally runs automatically every hour)",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {}
-                },
-                "scope_required": "admin"
-            },
-            {
-                "name": "check_indicator",
-                "description": "Check if an IP, domain, or hash matches any threat feeds",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "indicator": {"type": "string", "description": "IP address, domain, URL, or hash to check"},
-                        "indicator_type": {"type": "string", "enum": ["ip", "domain", "url", "hash"]},
-                        "feed_types": {"type": "array", "items": {"type": "string"}, "description": "Optional list of feed types to check"}
-                    },
-                    "required": ["indicator", "indicator_type"]
-                },
-                "scope_required": "read_only"
             }
         ]
 
