@@ -1,0 +1,12 @@
+# Environment variables met secrets
+.env
+
+# Open-WebUI data directory
+data/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
