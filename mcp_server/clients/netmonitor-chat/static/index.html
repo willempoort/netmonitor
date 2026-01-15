@@ -345,9 +345,43 @@
                     await this.loadTools();
                     await this.checkHealth();
 
-                    // Auto-select first model if available
-                    if (this.models.length > 0 && !this.selectedModel) {
-                        this.selectedModel = this.models[0].name;
+                    // Select model: localStorage > qwen2.5-coder:14b > qwen > first
+                    const savedModel = localStorage.getItem('netmonitor-chat-model');
+                    if (savedModel && this.models.find(m => m.name === savedModel)) {
+                        this.selectedModel = savedModel;
+                    } else if (this.models.length > 0) {
+                        // Prefer qwen2.5-coder:14b
+                        const qwen14b = this.models.find(m => m.name === 'qwen2.5-coder:14b');
+                        if (qwen14b) {
+                            this.selectedModel = qwen14b.name;
+                        } else {
+                            // Fallback to any qwen model
+                            const anyQwen = this.models.find(m => m.name.includes('qwen'));
+                            if (anyQwen) {
+                                this.selectedModel = anyQwen.name;
+                            } else {
+                                // Last resort: first model
+                                this.selectedModel = this.models[0].name;
+                            }
+                        }
+                    }
+
+                    // Watch for model changes and save to localStorage
+                    this.$watch('selectedModel', (value) => {
+                        if (value) {
+                            localStorage.setItem('netmonitor-chat-model', value);
+                        }
+                    });
+
+                    // Watch for debugMode changes and save to localStorage
+                    this.$watch('debugMode', (value) => {
+                        localStorage.setItem('netmonitor-chat-debug', value);
+                    });
+
+                    // Load saved debugMode
+                    const savedDebugMode = localStorage.getItem('netmonitor-chat-debug');
+                    if (savedDebugMode !== null) {
+                        this.debugMode = savedDebugMode === 'true';
                     }
                 },
 
