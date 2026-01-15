@@ -31,6 +31,23 @@ if [ "$PYTHON_MAJOR" -lt 3 ] || [ "$PYTHON_MINOR" -lt 11 ]; then
     echo -e "${RED}✗ Python 3.11+ required, found $PYTHON_VERSION${NC}"
     exit 1
 fi
+
+if [ "$PYTHON_MINOR" -ge 14 ]; then
+    echo -e "${YELLOW}⚠ Python $PYTHON_VERSION detected${NC}"
+    echo -e "${YELLOW}  FastAPI/pydantic may have issues with Python 3.14+${NC}"
+    echo -e "${YELLOW}  Recommended: Use Python 3.13 or 3.12${NC}"
+    echo
+    read -p "Continue anyway? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo -e "${RED}✗ Aborted${NC}"
+        echo
+        echo "Create venv with Python 3.13:"
+        echo "  python3.13 -m venv venv"
+        exit 1
+    fi
+fi
+
 echo -e "${GREEN}✓ Python $PYTHON_VERSION${NC}"
 
 # Check if virtual environment exists

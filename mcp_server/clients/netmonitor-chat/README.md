@@ -46,6 +46,32 @@ Simple, reliable web interface for Ollama + NetMonitor MCP Tools. Built after di
 
 ## 🚀 Quick Start (Development)
 
+### ⚠️ Mac M1/M2 Users - Python Version
+
+**BELANGRIJK voor Mac gebruikers:**
+
+Als je Python 3.14 hebt, krijg je een build error met pydantic. Gebruik Python 3.13 of 3.12:
+
+```bash
+# Check welke Python versies je hebt
+which -a python3.12 python3.13
+
+# Maak venv met Python 3.13 (aanbevolen)
+python3.13 -m venv venv
+
+# Of met Python 3.12
+python3.12 -m venv venv
+```
+
+**Als je tóch Python 3.14 wilt gebruiken:**
+```bash
+# Gebruik alternatieve requirements
+pip install -r requirements-py314.txt
+
+# Of force build met compatibility flag
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 pip install -r requirements.txt
+```
+
 ### Stap 1: Installeer Dependencies
 
 ```bash
