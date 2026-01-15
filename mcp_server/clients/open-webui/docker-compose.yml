@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:0.7.2
+    container_name: open-webui-mcp
+    ports:
+      - "3000:8080"
+    volumes:
+      # Open-WebUI data persistence
+      - ./data:/app/backend/data
+
+      # MCP bridge script (mounted as read-only)
+      - ./mcp:/app/mcp:ro
+
+      # Python voor MCP bridge
+      - /usr/bin/python3:/usr/bin/python3:ro
+      - /usr/lib:/usr/lib:ro
+
+    environment:
+      # Ollama configuration
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+
+      # MCP configuration
+      - ENABLE_MCP=true
+      - MCP_SERVER_URL=https://soc.poort.net/mcp
+      - MCP_AUTH_TOKEN=725de5512afc284f4f2a02de242434ac5170659bbb2614ba4667c6d612dee34f
+
+      # Open-WebUI settings
+      - WEBUI_NAME=NetMonitor SOC Assistant
+      - DEFAULT_LOCALE=nl-NL
+      - ENABLE_SIGNUP=false
+      - DEFAULT_USER_ROLE=user
+
+    extra_hosts:
+      # Allow container to reach host's Ollama
+      - "host.docker.internal:host-gateway"
+
+    restart: unless-stopped
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  default:
+    name: open-webui-network

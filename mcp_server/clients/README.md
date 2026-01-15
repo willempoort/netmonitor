@@ -13,34 +13,35 @@ This directory contains client configurations and setup guides for connecting va
 
 [Setup Guide](./claude-desktop/README.md)
 
-### 2. Ollama-MCP-Bridge-WebUI
-- **Directory:** `ollama-mcp-bridge/`
-- **Protocol:** MCP via custom bridge with WebUI
-- **Status:** ✅ Recommended for local models
-- **Models:** Any Ollama model (qwen2.5, mistral, llama3, etc.)
-- **Best for:** Privacy-focused local AI with NetMonitor tools
-
-[Setup Guide](./ollama-mcp-bridge/README.md)
-
-### 3. Open-WebUI (REST API)
+### 2. Open-WebUI 0.7.2 (Docker) ⭐ **RECOMMENDED FOR ON-PREMISE**
 - **Directory:** `open-webui/`
-- **Protocol:** REST wrapper (workaround for Open-WebUI MCP bugs)
-- **Status:** ⚠️ Limited - requires function calling support
-- **Models:** GPT-4, Claude API, or function-calling capable models
-- **Best for:** Web-based interface with API-based models
+- **Protocol:** Native MCP support
+- **Status:** ✅ Recommended for local/on-premise
+- **Models:** Any Ollama model (qwen2.5-coder:14b recommended)
+- **Best for:** On-premise deployments, privacy-focused, mature project
 
-[Setup Guide](./open-webui/README.md)
+[Setup Guide](./open-webui/SETUP.md) | [Quick Start](./open-webui/start.sh)
+
+### 3. Ollama-MCP-Bridge-WebUI
+- **Directory:** `ollama-mcp-bridge/`
+- **Protocol:** MCP via custom Node.js bridge
+- **Status:** ⚠️ Experimental - known tool calling issues
+- **Models:** Any Ollama model (but tools often fail)
+- **Best for:** Testing only, NOT recommended for production
+
+[Troubleshooting](./ollama-mcp-bridge/OLLAMA_TOOL_CALLING_FIX.md)
 
 ## Quick Comparison
 
-| Feature | Claude Desktop | Ollama-MCP-Bridge | Open-WebUI |
-|---------|---------------|-------------------|------------|
-| All 60 tools | ✅ Yes | ✅ Yes | ⚠️ Manual setup |
+| Feature | Claude Desktop | Open-WebUI 0.7.2 | Ollama-MCP-Bridge |
+|---------|---------------|------------------|-------------------|
+| All 60 tools | ✅ Yes | ✅ Yes | ✅ Yes |
+| Tool calling works | ✅ Perfect | ✅ Good | ⚠️ Problematic |
 | Local model | ❌ No | ✅ Yes | ✅ Yes |
-| Function calling required | ❌ No | ❌ No | ✅ Yes |
-| Privacy | Cloud | Hybrid | Hybrid |
-| Setup complexity | Easy | Medium | Hard |
+| Privacy | Cloud | 100% On-Premise | 100% On-Premise |
+| Setup complexity | Easy | Medium (Docker) | Hard + Debugging |
 | WebUI included | ❌ No | ✅ Yes | ✅ Yes |
+| Production ready | ✅ Yes | ✅ Yes | ❌ No |
 
 ## Server Information
 
