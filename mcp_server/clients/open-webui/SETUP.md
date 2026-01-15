@@ -140,19 +140,42 @@ Open in je browser: **http://localhost:3000**
    - Naam: `Admin`
 
 2. **Configureer Ollama**:
-   - Ga naar: **Settings** (tandwiel rechtsbovenin)
-   - **Connections** → **Ollama**
-   - Base URL: `http://host.docker.internal:11434`
-   - Klik **Verify connection**
-   - Zou groen moeten worden ✅
+   - Klik op je **naam links onderin**
+   - Kies **Beheerders paneel**
+   - Ga naar **Instellingen**
+   - Onder **Verbindingen** → **Ollama**:
+     - Base URL: `http://host.docker.internal:11434`
+     - Klik **Verbinding verifiëren**
+     - Zou groen moeten worden ✅
+
+3. **Directe verbindingen** (optioneel):
+   - Deze boolean laat gebruikers hun eigen OpenAI-compatible endpoints gebruiken
+   - Voor ons niet nodig (we gebruiken lokale Ollama)
+   - Je mag dit **UIT** laten staan
 
 ## 🔌 Stap 5: Configureer MCP Server
 
-### Via Web Interface:
+**LET OP**: Open-WebUI 0.7.2 heeft native MCP support, maar de configuratie werkt via het `config.json` file dat al gemount is.
 
-1. Ga naar **Settings** → **Admin Settings** → **MCP**
-2. Enable MCP: **ON**
-3. Klik **Add MCP Server**
+### Optie 1: Via Gemounte Config (Aanbevolen)
+
+De `mcp/config.json` is al gemount in de container. Open-WebUI leest deze automatisch.
+
+**Verificatie dat MCP werkt**:
+
+1. **Start een nieuwe chat**
+2. Klik op het **"+"** icoon bij de prompt (tools/functies)
+3. Je zou **"netmonitor"** server moeten zien met tools lijst
+
+Als je de tools niet ziet:
+
+### Optie 2: Via Admin Panel (Als config.json niet werkt)
+
+1. Klik op je **naam links onderin**
+2. Kies **Beheerders paneel**
+3. Ga naar **Instellingen**
+4. Zoek naar **"MCP"** of **"Model Context Protocol"** sectie
+5. Klik **Add MCP Server** of **Configure**
 
 **Server configuratie**:
 ```json
@@ -162,17 +185,50 @@ Open in je browser: **http://localhost:3000**
   "args": ["/app/mcp/mcp_bridge.py"],
   "env": {
     "MCP_SERVER_URL": "https://soc.poort.net/mcp",
-    "MCP_AUTH_TOKEN": "725de5512afc284f4f2a02de242434ac5170659bbb2614ba4667c6d612dee34f"
+    "MCP_AUTH_TOKEN": "je_token_hier"
   }
 }
 ```
 
-4. Klik **Test Connection**
-5. Als succesvol, klik **Save**
+6. Klik **Test Connection** (als beschikbaar)
+7. Klik **Save**
+8. **Herstart de container**:
+   ```bash
+   docker-compose restart
+   ```
 
-### Via Config File (Alternatief):
+### Optie 3: Via Admin Panel - Enable MCP
 
-De configuratie staat al in `mcp/config.json`. Open-WebUI leest dit automatisch.
+Sommige versies hebben een simpele toggle:
+
+1. **Beheerders paneel** → **Instellingen**
+2. Zoek naar **"Enable MCP"** of **"Model Context Protocol"**
+3. Zet deze **AAN**
+4. Herstart container als gevraagd
+
+### Troubleshooting MCP Configuratie
+
+**Als je geen MCP sectie ziet in settings**:
+
+De configuratie werkt waarschijnlijk al via het gemounte `config.json` file. Check:
+
+```bash
+# Check container logs
+docker-compose logs | grep -i mcp
+
+# Check of bridge script draait
+docker exec open-webui-mcp ps aux | grep mcp_bridge
+
+# Test bridge direct
+docker exec open-webui-mcp python3 /app/mcp/mcp_bridge.py <<< '{"jsonrpc":"2.0","method":"tools/list","id":1}'
+```
+
+**Als tools niet verschijnen in chat**:
+
+1. Check of je token correct is in `mcp/config.json`
+2. Herstart container: `docker-compose restart`
+3. Check bridge logs: `tail -f ~/.mcp_bridge.log`
+4. Probeer een ander model in de chat (sommige models hebben betere tool support)
 
 ## ✅ Stap 6: Test de Setup
 
