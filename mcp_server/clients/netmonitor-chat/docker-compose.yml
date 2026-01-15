@@ -1,0 +1,34 @@
+# NetMonitor Chat - Docker Compose Configuration
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2025 Willem M. Poort
+
+services:
+  netmonitor-chat:
+    build: .
+    container_name: netmonitor-chat
+    ports:
+      - "8000:8000"
+    environment:
+      # Ollama API (running on host)
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+
+      # MCP Server
+      - MCP_SERVER_URL=https://soc.poort.net/mcp
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
+
+    volumes:
+      # Mount mcp_bridge.py from ollama-mcp-bridge directory
+      - ../ollama-mcp-bridge/mcp_bridge.py:/app/mcp/mcp_bridge.py:ro
+
+    extra_hosts:
+      # Allow container to reach host's Ollama
+      - "host.docker.internal:host-gateway"
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
