@@ -68,7 +68,7 @@ class NetMonitorTools:
         country = get_country_for_ip(ip_address)
 
         # Determine if internal
-        internal = is_private_ip(ip_address)
+        internal = not is_private_ip(ip_address)  # is_private_ip returns True for RFC1918 IPs NOT in configured internal_networks
 
         # Try hostname resolution
         hostname = None
