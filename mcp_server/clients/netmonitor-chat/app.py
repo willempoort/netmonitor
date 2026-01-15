@@ -363,6 +363,8 @@ async def websocket_chat(websocket: WebSocket):
 
             # Stream response from Ollama with tools
             full_response = ""
+            has_tool_call = False
+
             async for chunk in ollama.chat(
                 model,
                 messages,
@@ -381,16 +383,27 @@ async def websocket_chat(websocket: WebSocket):
                     msg = chunk["message"]
                     content = msg.get("content", "")
 
+                    # Accumulate response
                     if content:
                         full_response += content
-                        await websocket.send_json({
-                            "type": "token",
-                            "content": content
-                        })
 
-                    # Check for tool calls (if model supports it)
-                    if "tool_calls" in msg and msg["tool_calls"]:
-                        for tool_call in msg["tool_calls"]:
+                    # Only stream content if we're sure it's not a tool call
+                    # (tool calls starting with { won't be streamed until we verify)
+                    if content and not has_tool_call:
+                        # If response looks like JSON, wait until end to determine if tool call
+                        if not full_response.strip().startswith("{"):
+                            await websocket.send_json({
+                                "type": "token",
+                                "content": content
+                            })
+
+                    # Check for native tool calls (preferred)
+                    tool_calls = msg.get("tool_calls")
+
+                    # Process tool calls (native format)
+                    if tool_calls:
+                        has_tool_call = True
+                        for tool_call in tool_calls:
                             func = tool_call.get("function", {})
                             tool_name = func.get("name")
                             tool_args = func.get("arguments", {})
@@ -437,6 +450,73 @@ async def websocket_chat(websocket: WebSocket):
 
                 # Check if done
                 if chunk.get("done"):
+                    # For models without native tool calling: parse JSON from response
+                    if not has_tool_call and full_response.strip():
+                        response_stripped = full_response.strip()
+                        is_tool_call = False
+
+                        # Try to parse as tool call JSON
+                        if response_stripped.startswith("{") and "\"name\":" in response_stripped:
+                            try:
+                                tool_data = json.loads(response_stripped)
+                                if "name" in tool_data and "arguments" in tool_data:
+                                    is_tool_call = True
+                                    # Valid tool call JSON!
+                                    tool_name = tool_data["name"]
+                                    tool_args = tool_data.get("arguments", {})
+
+                                    # Notify client of tool call
+                                    await websocket.send_json({
+                                        "type": "tool_call",
+                                        "tool": tool_name,
+                                        "args": tool_args
+                                    })
+
+                                    # Execute tool
+                                    result = await mcp_bridge.call_tool(tool_name, tool_args)
+
+                                    # Send result to client
+                                    await websocket.send_json({
+                                        "type": "tool_result",
+                                        "tool": tool_name,
+                                        "result": result
+                                    })
+
+                                    # Add tool result to conversation and get final response
+                                    messages.append({"role": "assistant", "content": full_response})
+                                    messages.append({
+                                        "role": "user",
+                                        "content": f"Tool {tool_name} returned: {json.dumps(result)}. Please provide a natural language response based on this data."
+                                    })
+
+                                    # Get final natural language response
+                                    async for chunk2 in ollama.chat(
+                                        model,
+                                        messages,
+                                        stream=True,
+                                        temperature=temperature,
+                                        tools=None  # No tools on follow-up to avoid loop
+                                    ):
+                                        if "message" in chunk2:
+                                            content2 = chunk2["message"].get("content", "")
+                                            if content2:
+                                                await websocket.send_json({
+                                                    "type": "token",
+                                                    "content": content2
+                                                })
+                                        if chunk2.get("done"):
+                                            break
+
+                            except json.JSONDecodeError:
+                                pass  # Not valid JSON, treat as regular text
+
+                        # If response looked like JSON but wasn't a tool call, send it now
+                        if not is_tool_call and response_stripped.startswith("{"):
+                            await websocket.send_json({
+                                "type": "token",
+                                "content": full_response
+                            })
+
                     await websocket.send_json({"type": "done"})
                     break
 
