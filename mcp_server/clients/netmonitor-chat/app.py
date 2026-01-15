@@ -23,12 +23,17 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, AsyncGenerator
 from datetime import datetime
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
+from dotenv import load_dotenv
 import httpx
 import uvicorn
+
+# Load .env file
+load_dotenv()
 
 # Add parent directory to path for mcp_bridge import
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -37,13 +42,31 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "https://soc.poort.net/mcp")
 MCP_AUTH_TOKEN = os.getenv("MCP_AUTH_TOKEN", "")
-MCP_BRIDGE_PATH = Path(__file__).parent.parent / "ollama-mcp-bridge" / "mcp_bridge.py"
+
+# MCP Bridge path - configurable for different deployments
+_mcp_bridge_env = os.getenv("MCP_BRIDGE_PATH")
+if _mcp_bridge_env:
+    MCP_BRIDGE_PATH = Path(_mcp_bridge_env)
+else:
+    # Default: relative to this file (Linux server layout)
+    MCP_BRIDGE_PATH = Path(__file__).parent.parent / "ollama-mcp-bridge" / "mcp_bridge.py"
+
+
+# Lifespan event handler (replaces on_event)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    yield
+    # Shutdown
+    await ollama.close()
+
 
 # Initialize FastAPI
 app = FastAPI(
     title="NetMonitor Chat",
     description="On-premise chat interface with NetMonitor MCP tools",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Mount static files
@@ -401,12 +424,6 @@ async def websocket_chat(websocket: WebSocket):
             })
         except:
             pass
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    """Cleanup on shutdown"""
-    await ollama.close()
 
 
 if __name__ == "__main__":
