@@ -321,13 +321,20 @@ if [ "$MCP_API_ENABLED" = "true" ]; then
         SERVICES_INSTALLED=$((SERVICES_INSTALLED + 1))
     fi
 
-    # Open-WebUI REST Wrapper (for Open-WebUI compatibility)
-    echo_info "Installing Open-WebUI REST Wrapper service (port 8001)"
-    if generate_service \
-        "$INSTALL_DIR/services/netmonitor-openwebui-rest.service.template" \
-        "/etc/systemd/system/netmonitor-openwebui-rest.service"; then
-        SERVICES_INSTALLED=$((SERVICES_INSTALLED + 1))
-    fi
+    # Open-WebUI REST Wrapper (DEPRECATED - Open-WebUI doesn't support Streamable HTTP)
+    # NOTE: Open-WebUI only supports STDIO MCP, not Streamable HTTP
+    # For on-premise Ollama + MCP, use NetMonitor Chat instead:
+    #   - Location: mcp_server/clients/netmonitor-chat/
+    #   - See: mcp_server/clients/LESSONS_LEARNED.md
+    # Skipping installation of netmonitor-openwebui-rest.service
+    # Uncomment below ONLY if you have a specific use case for this service
+    #
+    # echo_info "Installing Open-WebUI REST Wrapper service (port 8001)"
+    # if generate_service \
+    #     "$INSTALL_DIR/services/netmonitor-openwebui-rest.service.template" \
+    #     "/etc/systemd/system/netmonitor-openwebui-rest.service"; then
+    #     SERVICES_INSTALLED=$((SERVICES_INSTALLED + 1))
+    # fi
 
     # Legacy HTTP service (optional backwards compatibility)
     if [ -f "$INSTALL_DIR/services/netmonitor-mcp-http.service.template" ]; then
@@ -424,7 +431,8 @@ fi
 # Enable MCP HTTP API (if installed)
 if [ "$MCP_API_ENABLED" = "true" ]; then
     enable_service "netmonitor-mcp-streamable.service" "MCP Streamable HTTP" "$AUTO_ENABLE"
-    enable_service "netmonitor-openwebui-rest.service" "Open-WebUI REST Wrapper" "$AUTO_ENABLE"
+    # Skipping netmonitor-openwebui-rest.service (deprecated - see above)
+    # enable_service "netmonitor-openwebui-rest.service" "Open-WebUI REST Wrapper" "$AUTO_ENABLE"
 fi
 
 # Enable feed update timer
@@ -451,7 +459,8 @@ show_service_status() {
 show_service_status "netmonitor.service"
 [ "$DASHBOARD_SERVER" = "gunicorn" ] && show_service_status "netmonitor-dashboard.service"
 [ "$MCP_API_ENABLED" = "true" ] && show_service_status "netmonitor-mcp-streamable.service"
-[ "$MCP_API_ENABLED" = "true" ] && show_service_status "netmonitor-openwebui-rest.service"
+# Skipping netmonitor-openwebui-rest.service (deprecated)
+# [ "$MCP_API_ENABLED" = "true" ] && show_service_status "netmonitor-openwebui-rest.service"
 show_service_status "netmonitor-feed-update.timer"
 
 echo ""
