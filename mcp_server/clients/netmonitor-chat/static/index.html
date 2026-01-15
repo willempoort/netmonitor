@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetMonitor Chat - MCP Interface</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <style>
+        [x-cloak] { display: none !important; }
+
+        .message-user {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .message-assistant {
+            background: #f3f4f6;
+            color: #1f2937;
+        }
+
+        .tool-call {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+        }
+
+        .tool-result {
+            background: #dbeafe;
+            border-left: 4px solid #3b82f6;
+        }
+
+        /* Scrollbar styling */
+        .chat-messages::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .chat-messages::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        /* Typing indicator */
+        .typing-indicator span {
+            animation: blink 1.4s infinite;
+            animation-fill-mode: both;
+        }
+
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes blink {
+            0%, 80%, 100% { opacity: 0; }
+            40% { opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 h-screen flex flex-col">
+    <div x-data="chatApp()" x-init="init()" class="flex flex-col h-screen">
+        <!-- Header -->
+        <header class="bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg">
+            <div class="container mx-auto px-4 py-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h1 class="text-2xl font-bold">NetMonitor Chat</h1>
+                        <p class="text-blue-100 text-sm">On-Premise AI met MCP Security Tools</p>
+                    </div>
+
+                    <!-- Status Indicators -->
+                    <div class="flex items-center space-x-4">
+                        <!-- Ollama Status -->
+                        <div class="flex items-center space-x-2">
+                            <div :class="health.ollama === 'connected' ? 'bg-green-400' : 'bg-red-400'"
+                                 class="w-3 h-3 rounded-full"></div>
+                            <span class="text-sm">Ollama</span>
+                        </div>
+
+                        <!-- MCP Status -->
+                        <div class="flex items-center space-x-2">
+                            <div :class="health.mcp === 'connected' ? 'bg-green-400' : 'bg-red-400'"
+                                 class="w-3 h-3 rounded-full"></div>
+                            <span class="text-sm">MCP</span>
+                        </div>
+
+                        <!-- Tools Count -->
+                        <div class="text-sm bg-blue-500 px-3 py-1 rounded-full">
+                            <span x-text="toolsCount"></span> tools
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="flex-1 container mx-auto px-4 py-6 flex gap-6 overflow-hidden">
+            <!-- Sidebar -->
+            <aside class="w-80 bg-white rounded-lg shadow-lg p-6 overflow-y-auto">
+                <h2 class="text-lg font-semibold mb-4 text-gray-800">Instellingen</h2>
+
+                <!-- Model Selection -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Model
+                    </label>
+                    <select x-model="selectedModel"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <option value="">Laden...</option>
+                        <template x-for="model in models" :key="model.name">
+                            <option :value="model.name" x-text="model.name"></option>
+                        </template>
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">
+                        Aanbevolen: llama3.1:8b of qwen2.5-coder:14b
+                    </p>
+                </div>
+
+                <!-- Temperature Slider -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Temperature: <span x-text="temperature"></span>
+                    </label>
+                    <input type="range"
+                           x-model.number="temperature"
+                           min="0"
+                           max="1"
+                           step="0.1"
+                           class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                    <div class="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>Precies</span>
+                        <span>Creatief</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">
+                        0.0 = geen hallucinaties, 0.3 = balans, 0.7 = creatief
+                    </p>
+                </div>
+
+                <!-- Available Tools -->
+                <div class="mb-6">
+                    <h3 class="text-sm font-medium text-gray-700 mb-2">Beschikbare Tools</h3>
+                    <div class="bg-gray-50 rounded-lg p-3 max-h-64 overflow-y-auto">
+                        <template x-if="tools.length === 0">
+                            <p class="text-sm text-gray-500">Laden...</p>
+                        </template>
+                        <template x-for="tool in tools.slice(0, 10)" :key="tool.name">
+                            <div class="text-xs text-gray-700 py-1 border-b border-gray-200 last:border-0">
+                                <span class="font-mono" x-text="tool.name"></span>
+                            </div>
+                        </template>
+                        <template x-if="tools.length > 10">
+                            <p class="text-xs text-gray-500 mt-2 italic">
+                                + <span x-text="tools.length - 10"></span> meer...
+                            </p>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Clear Chat Button -->
+                <button @click="clearChat()"
+                        class="w-full bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+                    🗑️ Wis Chat
+                </button>
+            </aside>
+
+            <!-- Chat Area -->
+            <main class="flex-1 bg-white rounded-lg shadow-lg flex flex-col overflow-hidden">
+                <!-- Messages -->
+                <div class="flex-1 overflow-y-auto p-6 space-y-4 chat-messages"
+                     x-ref="messagesContainer">
+
+                    <!-- Welcome Message -->
+                    <template x-if="messages.length === 0">
+                        <div class="text-center text-gray-500 mt-20">
+                            <div class="text-6xl mb-4">🛡️</div>
+                            <h2 class="text-2xl font-bold text-gray-700 mb-2">Welkom bij NetMonitor Chat</h2>
+                            <p class="text-gray-600 mb-4">Stel vragen over je netwerk security</p>
+                            <div class="text-left max-w-md mx-auto bg-blue-50 rounded-lg p-4">
+                                <p class="text-sm text-gray-700 font-medium mb-2">Voorbeeldvragen:</p>
+                                <ul class="text-sm text-gray-600 space-y-1">
+                                    <li>• Laat recente bedreigingen zien</li>
+                                    <li>• Analyseer IP 10.100.0.4</li>
+                                    <li>• Welke tools zijn beschikbaar?</li>
+                                    <li>• Toon actieve sensors</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Message List -->
+                    <template x-for="(msg, index) in messages" :key="index">
+                        <div>
+                            <!-- User Message -->
+                            <template x-if="msg.role === 'user'">
+                                <div class="flex justify-end">
+                                    <div class="message-user rounded-lg px-4 py-3 max-w-2xl">
+                                        <p class="text-sm whitespace-pre-wrap" x-text="msg.content"></p>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Assistant Message -->
+                            <template x-if="msg.role === 'assistant'">
+                                <div class="flex justify-start">
+                                    <div class="message-assistant rounded-lg px-4 py-3 max-w-2xl">
+                                        <p class="text-sm whitespace-pre-wrap" x-text="msg.content"></p>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Tool Call -->
+                            <template x-if="msg.role === 'tool_call'">
+                                <div class="flex justify-start">
+                                    <div class="tool-call rounded-lg px-4 py-3 max-w-2xl">
+                                        <p class="text-xs font-semibold text-amber-800 mb-1">🔧 Tool Aanroep</p>
+                                        <p class="text-sm font-mono text-amber-900">
+                                            <span x-text="msg.tool"></span>(<span x-text="JSON.stringify(msg.args)"></span>)
+                                        </p>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Tool Result -->
+                            <template x-if="msg.role === 'tool_result'">
+                                <div class="flex justify-start">
+                                    <div class="tool-result rounded-lg px-4 py-3 max-w-2xl">
+                                        <p class="text-xs font-semibold text-blue-800 mb-1">✓ Tool Resultaat</p>
+                                        <pre class="text-xs font-mono text-blue-900 whitespace-pre-wrap"
+                                             x-text="JSON.stringify(msg.result, null, 2)"></pre>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    <!-- Typing Indicator -->
+                    <template x-if="isTyping">
+                        <div class="flex justify-start">
+                            <div class="message-assistant rounded-lg px-4 py-3">
+                                <div class="typing-indicator flex space-x-1">
+                                    <span class="w-2 h-2 bg-gray-500 rounded-full"></span>
+                                    <span class="w-2 h-2 bg-gray-500 rounded-full"></span>
+                                    <span class="w-2 h-2 bg-gray-500 rounded-full"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Error Message -->
+                    <template x-if="error">
+                        <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded">
+                            <p class="text-sm text-red-700">
+                                <span class="font-semibold">Fout:</span> <span x-text="error"></span>
+                            </p>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Input Area -->
+                <div class="border-t border-gray-200 p-4">
+                    <form @submit.prevent="sendMessage()" class="flex gap-2">
+                        <input type="text"
+                               x-model="inputMessage"
+                               :disabled="isTyping || !selectedModel"
+                               placeholder="Type een vraag..."
+                               class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed">
+                        <button type="submit"
+                                :disabled="isTyping || !inputMessage.trim() || !selectedModel"
+                                class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium px-6 py-3 rounded-lg transition-colors">
+                            <span x-show="!isTyping">Verstuur</span>
+                            <span x-show="isTyping">...</span>
+                        </button>
+                    </form>
+                    <p class="text-xs text-gray-500 mt-2" x-show="!selectedModel">
+                        ⚠️ Selecteer eerst een model
+                    </p>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        function chatApp() {
+            return {
+                // State
+                messages: [],
+                inputMessage: '',
+                isTyping: false,
+                error: null,
+
+                // Settings
+                selectedModel: '',
+                temperature: 0.3,
+                models: [],
+                tools: [],
+                toolsCount: 0,
+                health: {
+                    ollama: 'disconnected',
+                    mcp: 'disconnected'
+                },
+
+                // WebSocket
+                ws: null,
+                currentAssistantMessage: '',
+
+                // Initialize
+                async init() {
+                    await this.loadModels();
+                    await this.loadTools();
+                    await this.checkHealth();
+
+                    // Auto-select first model if available
+                    if (this.models.length > 0 && !this.selectedModel) {
+                        this.selectedModel = this.models[0].name;
+                    }
+                },
+
+                // Load available models
+                async loadModels() {
+                    try {
+                        const response = await fetch('/api/models');
+                        const data = await response.json();
+                        this.models = data.models;
+                    } catch (err) {
+                        console.error('Error loading models:', err);
+                        this.error = 'Kon modellen niet laden';
+                    }
+                },
+
+                // Load available tools
+                async loadTools() {
+                    try {
+                        const response = await fetch('/api/tools');
+                        const data = await response.json();
+                        this.tools = data.tools;
+                        this.toolsCount = data.count;
+                    } catch (err) {
+                        console.error('Error loading tools:', err);
+                        this.error = 'Kon tools niet laden';
+                    }
+                },
+
+                // Check health status
+                async checkHealth() {
+                    try {
+                        const response = await fetch('/api/health');
+                        const data = await response.json();
+                        this.health.ollama = data.ollama;
+                        this.health.mcp = data.mcp;
+                    } catch (err) {
+                        console.error('Error checking health:', err);
+                    }
+                },
+
+                // Send message
+                async sendMessage() {
+                    if (!this.inputMessage.trim() || this.isTyping || !this.selectedModel) {
+                        return;
+                    }
+
+                    const userMessage = this.inputMessage.trim();
+                    this.inputMessage = '';
+                    this.error = null;
+
+                    // Add user message to chat
+                    this.messages.push({
+                        role: 'user',
+                        content: userMessage
+                    });
+
+                    this.scrollToBottom();
+
+                    // Connect WebSocket and send message
+                    this.connectWebSocket(userMessage);
+                },
+
+                // Connect to WebSocket
+                connectWebSocket(userMessage) {
+                    this.isTyping = true;
+                    this.currentAssistantMessage = '';
+
+                    // Build conversation history (last 10 messages)
+                    const history = this.messages
+                        .filter(m => m.role === 'user' || m.role === 'assistant')
+                        .slice(-10)
+                        .slice(0, -1);  // Exclude the message we just added
+
+                    // Connect WebSocket
+                    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    this.ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/chat`);
+
+                    this.ws.onopen = () => {
+                        // Send message with configuration
+                        this.ws.send(JSON.stringify({
+                            model: this.selectedModel,
+                            message: userMessage,
+                            history: history,
+                            temperature: this.temperature
+                        }));
+                    };
+
+                    this.ws.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        this.handleWebSocketMessage(data);
+                    };
+
+                    this.ws.onerror = (error) => {
+                        console.error('WebSocket error:', error);
+                        this.error = 'Verbindingsfout';
+                        this.isTyping = false;
+                    };
+
+                    this.ws.onclose = () => {
+                        this.isTyping = false;
+                    };
+                },
+
+                // Handle WebSocket message
+                handleWebSocketMessage(data) {
+                    switch (data.type) {
+                        case 'token':
+                            // Stream token
+                            this.currentAssistantMessage += data.content;
+
+                            // Update or add assistant message
+                            const lastMsg = this.messages[this.messages.length - 1];
+                            if (lastMsg && lastMsg.role === 'assistant') {
+                                lastMsg.content = this.currentAssistantMessage;
+                            } else {
+                                this.messages.push({
+                                    role: 'assistant',
+                                    content: this.currentAssistantMessage
+                                });
+                            }
+
+                            this.scrollToBottom();
+                            break;
+
+                        case 'tool_call':
+                            // Tool is being called
+                            this.messages.push({
+                                role: 'tool_call',
+                                tool: data.tool,
+                                args: data.args
+                            });
+                            this.scrollToBottom();
+                            break;
+
+                        case 'tool_result':
+                            // Tool result received
+                            this.messages.push({
+                                role: 'tool_result',
+                                tool: data.tool,
+                                result: data.result
+                            });
+                            this.scrollToBottom();
+                            break;
+
+                        case 'done':
+                            // Response complete
+                            this.isTyping = false;
+                            if (this.ws) {
+                                this.ws.close();
+                            }
+                            break;
+
+                        case 'error':
+                            // Error occurred
+                            this.error = data.content;
+                            this.isTyping = false;
+                            if (this.ws) {
+                                this.ws.close();
+                            }
+                            break;
+                    }
+                },
+
+                // Scroll to bottom of messages
+                scrollToBottom() {
+                    this.$nextTick(() => {
+                        const container = this.$refs.messagesContainer;
+                        if (container) {
+                            container.scrollTop = container.scrollHeight;
+                        }
+                    });
+                },
+
+                // Clear chat
+                clearChat() {
+                    if (confirm('Weet je zeker dat je de chat wilt wissen?')) {
+                        this.messages = [];
+                        this.error = null;
+                        this.currentAssistantMessage = '';
+                    }
+                }
+            };
+        }
+    </script>
+</body>
+</html>
