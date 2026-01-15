@@ -46,3 +46,4 @@ Thumbs.db
 # Config overrides (optioneel, commentaar uit als je custom configs wilt ignoren)
 # config.local.yaml
 config.yaml
+nginx-rapidsteelservice-unified.conf
