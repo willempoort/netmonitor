@@ -2,6 +2,17 @@
 
 This directory contains client configurations and setup guides for connecting various AI assistants to the NetMonitor MCP server.
 
+## 📊 Aanbevelingen
+
+**→ [LESSONS_LEARNED.md](./LESSONS_LEARNED.md)** - Uitgebreide analyse van alle geteste oplossingen
+
+### Snel Kiezen:
+- **Cloud OK?** → Claude Desktop (perfect, betrouwbaar)
+- **On-Premise vereist?** → Open-WebUI 0.7.2 (aanbevolen)
+- **Experimenteren?** → Ollama-MCP-Bridge (verwacht issues)
+
+---
+
 ## Available Clients
 
 ### 1. Claude Desktop (Anthropic)
