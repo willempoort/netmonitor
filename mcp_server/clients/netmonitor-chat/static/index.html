@@ -78,9 +78,13 @@
         <header class="bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg">
             <div class="container mx-auto px-4 py-4">
                 <div class="flex items-center justify-between">
-                    <div>
-                        <h1 class="text-2xl font-bold">NetMonitor Chat</h1>
-                        <p class="text-blue-100 text-sm">On-Premise AI met MCP Security Tools</p>
+                    <div class="flex items-center space-x-4">
+                        <!-- NetMonitor Logo -->
+                        <img src="/static/logo.png" alt="NetMonitor" class="h-12 w-auto">
+                        <div>
+                            <h1 class="text-2xl font-bold">NetMonitor Chat</h1>
+                            <p class="text-blue-100 text-sm">On-Premise AI met MCP Security Tools</p>
+                        </div>
                     </div>
 
                     <!-- Status Indicators -->
@@ -171,6 +175,22 @@
                     </div>
                 </div>
 
+                <!-- Debug Mode Toggle -->
+                <div class="mb-6">
+                    <label class="flex items-center justify-between cursor-pointer">
+                        <span class="text-sm font-medium text-gray-700">Debug Mode</span>
+                        <div class="relative">
+                            <input type="checkbox"
+                                   x-model="debugMode"
+                                   class="sr-only peer">
+                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </div>
+                    </label>
+                    <p class="text-xs text-gray-500 mt-1">
+                        Toon tool aanroepen & resultaten
+                    </p>
+                </div>
+
                 <!-- Clear Chat Button -->
                 <button @click="clearChat()"
                         class="w-full bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded-lg transition-colors">
@@ -223,8 +243,8 @@
                                 </div>
                             </template>
 
-                            <!-- Tool Call -->
-                            <template x-if="msg.role === 'tool_call'">
+                            <!-- Tool Call (only shown in debug mode) -->
+                            <template x-if="msg.role === 'tool_call' && debugMode">
                                 <div class="flex justify-start">
                                     <div class="tool-call rounded-lg px-4 py-3 max-w-2xl">
                                         <p class="text-xs font-semibold text-amber-800 mb-1">🔧 Tool Aanroep</p>
@@ -235,8 +255,8 @@
                                 </div>
                             </template>
 
-                            <!-- Tool Result -->
-                            <template x-if="msg.role === 'tool_result'">
+                            <!-- Tool Result (only shown in debug mode) -->
+                            <template x-if="msg.role === 'tool_result' && debugMode">
                                 <div class="flex justify-start">
                                     <div class="tool-result rounded-lg px-4 py-3 max-w-2xl">
                                         <p class="text-xs font-semibold text-blue-800 mb-1">✓ Tool Resultaat</p>
@@ -302,6 +322,7 @@
                 inputMessage: '',
                 isTyping: false,
                 error: null,
+                debugMode: true,  // Show tool calls/results by default
 
                 // Settings
                 selectedModel: '',
