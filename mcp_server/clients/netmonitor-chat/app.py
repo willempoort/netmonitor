@@ -346,9 +346,30 @@ async def websocket_chat(websocket: WebSocket):
             # Build messages
             messages = history + [{"role": "user", "content": message}]
 
-            # Stream response from Ollama
+            # Get available tools and convert to Ollama format
+            mcp_tools = await mcp_bridge.list_tools()
+            ollama_tools = []
+
+            for tool in mcp_tools:
+                # Convert MCP tool schema to Ollama function calling format
+                ollama_tools.append({
+                    "type": "function",
+                    "function": {
+                        "name": tool["name"],
+                        "description": tool.get("description", ""),
+                        "parameters": tool.get("inputSchema", {})
+                    }
+                })
+
+            # Stream response from Ollama with tools
             full_response = ""
-            async for chunk in ollama.chat(model, messages, stream=True, temperature=temperature):
+            async for chunk in ollama.chat(
+                model,
+                messages,
+                stream=True,
+                temperature=temperature,
+                tools=ollama_tools if ollama_tools else None
+            ):
                 if "error" in chunk:
                     await websocket.send_json({
                         "type": "error",
@@ -399,7 +420,13 @@ async def websocket_chat(websocket: WebSocket):
                             })
 
                             # Get final response with tool result
-                            async for chunk2 in ollama.chat(model, messages, stream=True, temperature=temperature):
+                            async for chunk2 in ollama.chat(
+                                model,
+                                messages,
+                                stream=True,
+                                temperature=temperature,
+                                tools=ollama_tools if ollama_tools else None
+                            ):
                                 if "message" in chunk2:
                                     content2 = chunk2["message"].get("content", "")
                                     if content2:
