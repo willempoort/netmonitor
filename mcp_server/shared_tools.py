@@ -2352,7 +2352,7 @@ class NetMonitorTools:
 
         try:
             # Get top assets first
-            top_result = await self._tool_get_top_risk_assets({'limit': limit})
+            top_result = await self.get_top_risk_assets({'limit': limit})
             if not top_result.get('success'):
                 return top_result
 
