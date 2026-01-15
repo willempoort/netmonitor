@@ -7,7 +7,7 @@
       ],
       "env": {
         "MCP_SERVER_URL": "https://soc.poort.net/mcp",
-        "MCP_AUTH_TOKEN": "725de5512afc284f4f2a02de242434ac5170659bbb2614ba4667c6d612dee34f"
+        "MCP_AUTH_TOKEN": "YOUR_MCP_TOKEN_HERE"
       }
     }
   },

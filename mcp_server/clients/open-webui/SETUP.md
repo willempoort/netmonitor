@@ -62,6 +62,50 @@ De huidige directory structuur is:
 - **Op host**: `/opt/netmonitor/mcp_server/clients/open-webui/mcp/mcp_bridge.py`
 - **In container**: `/app/mcp/mcp_bridge.py` (via volume mount)
 
+## 🔑 Stap 2b: Configureer MCP Token
+
+**BELANGRIJK**: Je moet je MCP auth token configureren voordat je start.
+
+### Optie 1: Via .env file (Aanbevolen)
+
+```bash
+cd /opt/netmonitor/mcp_server/clients/open-webui
+
+# Kopieer .env.example naar .env
+cp .env.example .env
+
+# Edit .env en vul je token in
+nano .env
+
+# Vervang "your_mcp_bearer_token_here" met je echte token
+```
+
+### Optie 2: Direct in docker-compose.yml
+
+Edit `docker-compose.yml` en vervang `${MCP_AUTH_TOKEN}` met je token.
+
+**⚠️ Let op**: Als je optie 2 gebruikt, commit de docker-compose.yml NIET naar git!
+
+### Token verkrijgen
+
+Als je nog geen token hebt:
+
+```bash
+cd /opt/netmonitor
+python3 mcp_server/manage_tokens.py create \
+  --name "Open-WebUI Client" \
+  --scope read_only \
+  --rate-minute 120
+```
+
+Dit geeft een token zoals: `725de551...dee34f`
+
+**Update ook** `mcp/config.json`:
+```bash
+nano mcp/config.json
+# Vervang "YOUR_TOKEN_HERE" met je echte token
+```
+
 ## 🔧 Stap 3: Start Open-WebUI
 
 ```bash
