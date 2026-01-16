@@ -1327,6 +1327,7 @@ class DatabaseManager:
             # Calculate average bandwidth (Mbps) over 5-minute buckets
             # Formula: (total_bytes * 8 / 1000000) / 300 seconds = Mbps
             # Also track MAX to show peak bandwidth within each bucket
+            # Note: Use total_bytes as fallback when inbound_bytes is 0 (mirror port scenarios)
             cursor.execute('''
                 SELECT
                     time_bucket('5 minutes', timestamp) AS timestamp,
@@ -1337,10 +1338,11 @@ class DatabaseManager:
                     SUM(outbound_packets) as outbound_packets,
                     SUM(outbound_bytes) as outbound_bytes,
                     -- Average bandwidth in Mbps over 5-minute window
-                    ROUND((SUM(inbound_bytes) * 8.0 / 1000000.0 / 300.0)::numeric, 2) as inbound_mbps,
+                    -- Use total_bytes if inbound is 0 (mirror port sees only one direction)
+                    ROUND((GREATEST(SUM(inbound_bytes), SUM(total_bytes) - SUM(outbound_bytes)) * 8.0 / 1000000.0 / 300.0)::numeric, 2) as inbound_mbps,
                     ROUND((SUM(outbound_bytes) * 8.0 / 1000000.0 / 300.0)::numeric, 2) as outbound_mbps,
                     -- Peak bandwidth from individual samples (10-second samples)
-                    ROUND((MAX(inbound_bytes) * 8.0 / 1000000.0 / 10.0)::numeric, 2) as inbound_mbps_peak,
+                    ROUND((GREATEST(MAX(inbound_bytes), MAX(total_bytes) - MAX(outbound_bytes)) * 8.0 / 1000000.0 / 10.0)::numeric, 2) as inbound_mbps_peak,
                     ROUND((MAX(outbound_bytes) * 8.0 / 1000000.0 / 10.0)::numeric, 2) as outbound_mbps_peak
                 FROM traffic_metrics
                 WHERE timestamp > %s
