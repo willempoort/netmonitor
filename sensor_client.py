@@ -229,6 +229,25 @@ class SensorClient:
         self.alerts_sent = 0
         self.start_time = time.time()
 
+        # Traffic metrics (cumulative counters)
+        self.total_packets = 0
+        self.total_bytes = 0
+        self.inbound_packets = 0
+        self.inbound_bytes = 0
+        self.outbound_packets = 0
+        self.outbound_bytes = 0
+
+        # Track last sent values for delta calculation
+        self.last_sent_packets = 0
+        self.last_sent_bytes = 0
+        self.last_sent_inbound_packets = 0
+        self.last_sent_inbound_bytes = 0
+        self.last_sent_outbound_packets = 0
+        self.last_sent_outbound_bytes = 0
+
+        # Per-IP statistics for top talkers (reset after each send)
+        self.ip_stats = {}
+
         # Bandwidth tracking
         self.bytes_received = 0
         self.bytes_sent = 0
@@ -237,6 +256,9 @@ class SensorClient:
 
         # Alert buffer for batching
         self.alert_buffer = deque(maxlen=10000)  # Max 10k alerts in buffer
+
+        # Parse internal networks for direction detection
+        self.internal_networks = self._parse_internal_networks()
 
         # Validate configuration
         if not self.server_url:
@@ -259,6 +281,40 @@ class SensorClient:
         hostname = socket.gethostname()
         self.logger.info(f"SENSOR_ID not specified, using hostname: {hostname}")
         return hostname
+
+    def _parse_internal_networks(self):
+        """Parse internal network ranges for direction detection"""
+        import ipaddress
+        networks = []
+        internal_ranges = self.config.get('internal_networks', [
+            '10.0.0.0/8',
+            '172.16.0.0/12',
+            '192.168.0.0/16'
+        ])
+
+        if internal_ranges is None:
+            internal_ranges = [
+                '10.0.0.0/8',
+                '172.16.0.0/12',
+                '192.168.0.0/16'
+            ]
+
+        for net_str in internal_ranges:
+            try:
+                networks.append(ipaddress.ip_network(net_str, strict=False))
+            except ValueError as e:
+                self.logger.warning(f"Invalid internal network: {net_str}: {e}")
+
+        return networks
+
+    def is_internal_ip(self, ip_str: str) -> bool:
+        """Check if IP is in internal network"""
+        import ipaddress
+        try:
+            ip = ipaddress.ip_address(ip_str)
+            return any(ip in network for network in self.internal_networks)
+        except ValueError:
+            return False
 
     def _normalize_server_url(self, url):
         """
@@ -1034,6 +1090,94 @@ class SensorClient:
         except Exception as e:
             self.logger.error(f"Error sending metrics: {e}")
 
+    def _send_traffic_metrics(self):
+        """Send detailed traffic metrics to SOC server for aggregation
+
+        Sends delta metrics (traffic since last send) to avoid duplicate counting
+        when multiple sensors report to the same SOC server.
+        """
+        try:
+            # Calculate deltas since last send
+            delta_packets = self.total_packets - self.last_sent_packets
+            delta_bytes = self.total_bytes - self.last_sent_bytes
+            delta_inbound_packets = self.inbound_packets - self.last_sent_inbound_packets
+            delta_inbound_bytes = self.inbound_bytes - self.last_sent_inbound_bytes
+            delta_outbound_packets = self.outbound_packets - self.last_sent_outbound_packets
+            delta_outbound_bytes = self.outbound_bytes - self.last_sent_outbound_bytes
+
+            # Skip if no traffic since last send
+            if delta_packets == 0:
+                self.logger.debug("No traffic to send")
+                return
+
+            # Prepare metrics payload
+            metrics = {
+                'total_packets': delta_packets,
+                'total_bytes': delta_bytes,
+                'inbound_packets': delta_inbound_packets,
+                'inbound_bytes': delta_inbound_bytes,
+                'outbound_packets': delta_outbound_packets,
+                'outbound_bytes': delta_outbound_bytes
+            }
+
+            # Prepare top talkers (top 20)
+            top_talkers = []
+            if self.ip_stats:
+                sorted_ips = sorted(
+                    self.ip_stats.items(),
+                    key=lambda x: x[1]['bytes'],
+                    reverse=True
+                )[:20]
+
+                for ip, stats in sorted_ips:
+                    # Try to resolve hostname
+                    try:
+                        hostname = socket.gethostbyaddr(ip)[0]
+                    except:
+                        hostname = ip
+
+                    top_talkers.append({
+                        'ip': ip,
+                        'hostname': hostname,
+                        'packets': stats['packets'],
+                        'bytes': stats['bytes'],
+                        'direction': stats['direction']
+                    })
+
+            # Send to SOC server
+            response = requests.post(
+                f"{self.server_url}/api/sensors/{self.sensor_id}/traffic",
+                headers=self._get_headers(),
+                json={
+                    'metrics': metrics,
+                    'top_talkers': top_talkers
+                },
+                timeout=10,
+                verify=self.ssl_verify
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                # Update last sent values
+                self.last_sent_packets = self.total_packets
+                self.last_sent_bytes = self.total_bytes
+                self.last_sent_inbound_packets = self.inbound_packets
+                self.last_sent_inbound_bytes = self.inbound_bytes
+                self.last_sent_outbound_packets = self.outbound_packets
+                self.last_sent_outbound_bytes = self.outbound_bytes
+
+                # Reset IP stats (they are per-interval, not cumulative)
+                self.ip_stats.clear()
+
+                # Log success
+                mb_sent = delta_bytes / (1024 * 1024)
+                self.logger.info(f"✓ Traffic metrics sent: {delta_packets} packets, {mb_sent:.2f} MB, {len(top_talkers)} top talkers")
+            else:
+                self.logger.warning(f"Failed to send traffic metrics: {response.text}")
+
+        except Exception as e:
+            self.logger.error(f"Error sending traffic metrics: {e}")
+
     def _emergency_pcap_flush(self):
         """Emergency flush of PCAP buffer when RAM is critically high.
 
@@ -1223,12 +1367,62 @@ class SensorClient:
     def _handle_packet(self, packet):
         """Process captured packet"""
         try:
+            from scapy.layers.inet import IP
+
             self.packets_captured += 1
 
             # Track bandwidth (packet size in bytes)
             # Note: len(packet) includes all layers starting from where scapy captures
             packet_size = len(packet) if hasattr(packet, '__len__') else 0
             self.bandwidth_window_bytes += packet_size
+
+            # Track traffic metrics (for SOC server aggregation)
+            self.total_packets += 1
+            self.total_bytes += packet_size
+
+            # Track direction and top talkers if IP layer present
+            if packet.haslayer(IP):
+                ip_layer = packet[IP]
+                src_ip = ip_layer.src
+                dst_ip = ip_layer.dst
+
+                # Determine direction
+                src_internal = self.is_internal_ip(src_ip)
+                dst_internal = self.is_internal_ip(dst_ip)
+
+                if src_internal and not dst_internal:
+                    # Outbound
+                    self.outbound_packets += 1
+                    self.outbound_bytes += packet_size
+
+                    # Track source IP for top talkers
+                    if src_ip not in self.ip_stats:
+                        self.ip_stats[src_ip] = {'packets': 0, 'bytes': 0, 'direction': 'outbound'}
+                    self.ip_stats[src_ip]['packets'] += 1
+                    self.ip_stats[src_ip]['bytes'] += packet_size
+
+                elif not src_internal and dst_internal:
+                    # Inbound
+                    self.inbound_packets += 1
+                    self.inbound_bytes += packet_size
+
+                    # Track destination IP for top talkers
+                    if dst_ip not in self.ip_stats:
+                        self.ip_stats[dst_ip] = {'packets': 0, 'bytes': 0, 'direction': 'inbound'}
+                    self.ip_stats[dst_ip]['packets'] += 1
+                    self.ip_stats[dst_ip]['bytes'] += packet_size
+
+                elif src_internal and dst_internal:
+                    # Internal-to-internal traffic - track both
+                    if src_ip not in self.ip_stats:
+                        self.ip_stats[src_ip] = {'packets': 0, 'bytes': 0, 'direction': 'internal'}
+                    self.ip_stats[src_ip]['packets'] += 1
+                    self.ip_stats[src_ip]['bytes'] += packet_size
+
+                    if dst_ip not in self.ip_stats:
+                        self.ip_stats[dst_ip] = {'packets': 0, 'bytes': 0, 'direction': 'internal'}
+                    self.ip_stats[dst_ip]['packets'] += 1
+                    self.ip_stats[dst_ip]['bytes'] += packet_size
 
             # Debug: log high packet rates (every 1000 packets)
             if self.packets_captured % 1000 == 0:
@@ -1330,9 +1524,10 @@ class SensorClient:
         import threading
 
         def upload_loop():
-            """Background thread for uploading alerts, metrics, and polling commands"""
+            """Background thread for uploading alerts, metrics, traffic data, and polling commands"""
             last_upload = time.time()
             last_metrics = time.time()
+            last_traffic = time.time()
             last_command_poll = time.time()
             last_whitelist_update = time.time()
             last_config_update = time.time()
@@ -1354,6 +1549,12 @@ class SensorClient:
                 # Send heartbeat every X seconds (configurable)
                 elif now - last_metrics >= heartbeat_interval:
                     self._send_heartbeat()
+
+                # Send traffic metrics every X seconds (configurable, default 30s)
+                traffic_interval = self.config.get('performance', {}).get('traffic_metrics_interval', 30)
+                if now - last_traffic >= traffic_interval:
+                    self._send_traffic_metrics()
+                    last_traffic = now
 
                 # Poll for commands every X seconds (configurable)
                 command_poll_interval = self.config.get('performance', {}).get('command_poll_interval', 30)

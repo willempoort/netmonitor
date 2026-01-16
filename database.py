@@ -41,7 +41,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 15  # Increment this when schema changes
+        SCHEMA_VERSION = 16  # Increment this when schema changes
 
         if self._check_schema_version(SCHEMA_VERSION):
             self.logger.info(f"Database schema is up to date (v{SCHEMA_VERSION})")
@@ -628,6 +628,34 @@ class DatabaseManager:
                                 'dns_behavior', 'time_restrictions', 'bandwidth_limit'
                             )
                         );
+                    END IF;
+                END $$;
+            """)
+
+            # Migration v16: Add sensor_id column to traffic_metrics for distributed collection
+            cursor.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'traffic_metrics' AND column_name = 'sensor_id'
+                    ) THEN
+                        ALTER TABLE traffic_metrics ADD COLUMN sensor_id TEXT DEFAULT 'central';
+                        CREATE INDEX IF NOT EXISTS idx_traffic_metrics_sensor_id ON traffic_metrics(sensor_id);
+                    END IF;
+                END $$;
+            """)
+
+            # Migration v16: Add sensor_id column to top_talkers for distributed collection
+            cursor.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'top_talkers' AND column_name = 'sensor_id'
+                    ) THEN
+                        ALTER TABLE top_talkers ADD COLUMN sensor_id TEXT DEFAULT 'central';
+                        CREATE INDEX IF NOT EXISTS idx_top_talkers_sensor_id ON top_talkers(sensor_id);
                     END IF;
                 END $$;
             """)
@@ -1288,17 +1316,18 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
-    def add_traffic_metrics(self, metrics: Dict):
-        """Add traffic metrics"""
+    def add_traffic_metrics(self, metrics: Dict, sensor_id: str = 'central'):
+        """Add traffic metrics with sensor identification"""
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
 
             cursor.execute('''
                 INSERT INTO traffic_metrics
-                (total_packets, total_bytes, inbound_packets, inbound_bytes, outbound_packets, outbound_bytes)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                (sensor_id, total_packets, total_bytes, inbound_packets, inbound_bytes, outbound_packets, outbound_bytes)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
             ''', (
+                sensor_id,
                 metrics.get('total_packets', 0),
                 metrics.get('total_bytes', 0),
                 metrics.get('inbound_packets', 0),
@@ -1361,8 +1390,8 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
-    def update_top_talkers(self, talkers: List[Dict]):
-        """Batch insert top talkers"""
+    def update_top_talkers(self, talkers: List[Dict], sensor_id: str = 'central'):
+        """Batch insert top talkers with sensor identification"""
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
@@ -1370,6 +1399,7 @@ class DatabaseManager:
             # Use executemany for batch insert
             values = [
                 (
+                    sensor_id,
                     talker['ip'],
                     talker.get('hostname'),  # Include hostname
                     talker.get('packets', 0),
@@ -1380,8 +1410,8 @@ class DatabaseManager:
             ]
 
             cursor.executemany('''
-                INSERT INTO top_talkers (ip_address, hostname, packet_count, byte_count, direction)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO top_talkers (sensor_id, ip_address, hostname, packet_count, byte_count, direction)
+                VALUES (%s, %s, %s, %s, %s, %s)
             ''', values)
 
             conn.commit()

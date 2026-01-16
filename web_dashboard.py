@@ -1094,6 +1094,63 @@ def api_submit_sensor_metrics(sensor_id):
         logger.error(f"Error submitting metrics: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/sensors/<sensor_id>/traffic', methods=['POST'])
+def api_submit_sensor_traffic(sensor_id):
+    """Submit traffic metrics from remote sensor
+
+    Accepts traffic metrics (packets, bytes, top talkers) from sensors
+    for aggregated network-wide traffic visibility.
+
+    Expected JSON format:
+    {
+        "metrics": {
+            "total_packets": 12345,
+            "total_bytes": 9876543,
+            "inbound_packets": 6789,
+            "inbound_bytes": 4567890,
+            "outbound_packets": 5556,
+            "outbound_bytes": 5308653
+        },
+        "top_talkers": [
+            {
+                "ip": "192.168.1.100",
+                "hostname": "server.local",
+                "packets": 1234,
+                "bytes": 567890,
+                "direction": "inbound"
+            }
+        ]
+    }
+    """
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+        # Update heartbeat
+        db.update_sensor_heartbeat(sensor_id)
+
+        # Save traffic metrics
+        metrics = data.get('metrics')
+        if metrics:
+            db.add_traffic_metrics(metrics, sensor_id=sensor_id)
+
+        # Save top talkers if provided
+        top_talkers = data.get('top_talkers', [])
+        if top_talkers and isinstance(top_talkers, list):
+            db.update_top_talkers(top_talkers, sensor_id=sensor_id)
+
+        return jsonify({
+            'success': True,
+            'metrics_saved': bool(metrics),
+            'top_talkers_count': len(top_talkers) if top_talkers else 0
+        })
+
+    except Exception as e:
+        logger.error(f"Error submitting traffic metrics from sensor {sensor_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/sensors/<sensor_id>/alerts', methods=['POST'])
 def api_submit_sensor_alerts(sensor_id):
     """Submit alerts from remote sensor (batch)
