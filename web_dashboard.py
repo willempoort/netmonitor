@@ -1904,7 +1904,7 @@ def api_kiosk_traffic():
     """
     Get network traffic data for last 24 hours for kiosk chart
     Public API - no auth required
-    Returns bandwidth in/out over time
+    Returns bandwidth in Mbps with peak tracking
     """
     try:
         from datetime import datetime, timedelta
@@ -1914,8 +1914,10 @@ def api_kiosk_traffic():
 
         # Format data for Chart.js
         labels = []
-        bandwidth_in = []
-        bandwidth_out = []
+        bandwidth_in_avg = []
+        bandwidth_in_peak = []
+        bandwidth_out_avg = []
+        bandwidth_out_peak = []
 
         if traffic_data and len(traffic_data) > 0:
             for record in traffic_data:
@@ -1930,13 +1932,11 @@ def api_kiosk_traffic():
                 else:
                     labels.append('')
 
-                # Convert bytes to MB (same as dashboard)
-                # Formula: bytes / (1024 * 1024) = bytes / 1048576
-                inbound = record.get('inbound_bytes', 0) or 0
-                outbound = record.get('outbound_bytes', 0) or 0
-
-                bandwidth_in.append(round(inbound / 1048576, 2))
-                bandwidth_out.append(round(outbound / 1048576, 2))
+                # Use pre-calculated Mbps values from database
+                bandwidth_in_avg.append(record.get('inbound_mbps', 0) or 0)
+                bandwidth_in_peak.append(record.get('inbound_mbps_peak', 0) or 0)
+                bandwidth_out_avg.append(record.get('outbound_mbps', 0) or 0)
+                bandwidth_out_peak.append(record.get('outbound_mbps_peak', 0) or 0)
 
         # If no data, generate empty data points for last 24 hours
         if len(labels) == 0:
@@ -1944,17 +1944,21 @@ def api_kiosk_traffic():
             for i in range(24):
                 hour = (now - timedelta(hours=23-i)).strftime('%H:%M')
                 labels.append(hour)
-                bandwidth_in.append(0)
-                bandwidth_out.append(0)
+                bandwidth_in_avg.append(0)
+                bandwidth_in_peak.append(0)
+                bandwidth_out_avg.append(0)
+                bandwidth_out_peak.append(0)
 
         return jsonify({
             'success': True,
             'labels': labels,
             'datasets': {
-                'bandwidth_in': bandwidth_in,
-                'bandwidth_out': bandwidth_out
+                'bandwidth_in_avg': bandwidth_in_avg,
+                'bandwidth_in_peak': bandwidth_in_peak,
+                'bandwidth_out_avg': bandwidth_out_avg,
+                'bandwidth_out_peak': bandwidth_out_peak
             },
-            'unit': 'MB',
+            'unit': 'Mbps',
             'period': '24 hours'
         })
 
@@ -1971,10 +1975,12 @@ def api_kiosk_traffic():
             'error': str(e),
             'labels': labels,
             'datasets': {
-                'bandwidth_in': [0] * 24,
-                'bandwidth_out': [0] * 24
+                'bandwidth_in_avg': [0] * 24,
+                'bandwidth_in_peak': [0] * 24,
+                'bandwidth_out_avg': [0] * 24,
+                'bandwidth_out_peak': [0] * 24
             },
-            'unit': 'MB',
+            'unit': 'Mbps',
             'period': '24 hours'
         }), 500
 

@@ -287,7 +287,7 @@ function updateDashboard(data) {
 // ==================== Charts ====================
 
 function initCharts() {
-    // Traffic Chart
+    // Traffic Chart (now showing bandwidth in Mbps with peaks)
     const trafficCtx = document.getElementById('trafficChart').getContext('2d');
     trafficChart = new Chart(trafficCtx, {
         type: 'line',
@@ -295,20 +295,42 @@ function initCharts() {
             labels: [],
             datasets: [
                 {
-                    label: 'Inbound (MB)',
+                    label: 'Inbound Avg (Mbps)',
                     data: [],
                     borderColor: '#28a745',
                     backgroundColor: 'rgba(40, 167, 69, 0.1)',
                     fill: true,
-                    tension: 0.4
+                    tension: 0.4,
+                    borderWidth: 2
                 },
                 {
-                    label: 'Outbound (MB)',
+                    label: 'Inbound Peak (Mbps)',
+                    data: [],
+                    borderColor: '#20c997',
+                    backgroundColor: 'rgba(32, 201, 151, 0.05)',
+                    fill: false,
+                    tension: 0.4,
+                    borderWidth: 1,
+                    borderDash: [5, 5]
+                },
+                {
+                    label: 'Outbound Avg (Mbps)',
                     data: [],
                     borderColor: '#dc3545',
                     backgroundColor: 'rgba(220, 53, 69, 0.1)',
                     fill: true,
-                    tension: 0.4
+                    tension: 0.4,
+                    borderWidth: 2
+                },
+                {
+                    label: 'Outbound Peak (Mbps)',
+                    data: [],
+                    borderColor: '#fd7e14',
+                    backgroundColor: 'rgba(253, 126, 20, 0.05)',
+                    fill: false,
+                    tension: 0.4,
+                    borderWidth: 1,
+                    borderDash: [5, 5]
                 }
             ]
         },
@@ -327,7 +349,12 @@ function initCharts() {
                 },
                 y: {
                     ticks: { color: '#aaa' },
-                    grid: { color: '#333' }
+                    grid: { color: '#333' },
+                    title: {
+                        display: true,
+                        text: 'Bandwidth (Mbps)',
+                        color: '#ddd'
+                    }
                 }
             }
         }
@@ -452,20 +479,25 @@ function updateGauge(chart, value, max = 100) {
 function updateTrafficChart(history) {
     if (!history || history.length === 0) return;
 
-    // Take last 24 data points (1 per hour if sampling every hour)
+    // Take last 24 data points (5-minute intervals = 2 hours of data)
     const data = history.slice(-24);
 
     const labels = data.map(item => {
         const date = new Date(item.timestamp);
-        return date.getHours() + ':00';
+        return date.getHours() + ':' + String(date.getMinutes()).padStart(2, '0');
     });
 
-    const inboundData = data.map(item => (item.inbound_bytes / (1024 * 1024)).toFixed(2));
-    const outboundData = data.map(item => (item.outbound_bytes / (1024 * 1024)).toFixed(2));
+    // Use pre-calculated Mbps values from database
+    const inboundAvg = data.map(item => item.inbound_mbps || 0);
+    const inboundPeak = data.map(item => item.inbound_mbps_peak || 0);
+    const outboundAvg = data.map(item => item.outbound_mbps || 0);
+    const outboundPeak = data.map(item => item.outbound_mbps_peak || 0);
 
     trafficChart.data.labels = labels;
-    trafficChart.data.datasets[0].data = inboundData;
-    trafficChart.data.datasets[1].data = outboundData;
+    trafficChart.data.datasets[0].data = inboundAvg;      // Inbound Avg
+    trafficChart.data.datasets[1].data = inboundPeak;     // Inbound Peak
+    trafficChart.data.datasets[2].data = outboundAvg;     // Outbound Avg
+    trafficChart.data.datasets[3].data = outboundPeak;    // Outbound Peak
     trafficChart.update();
 }
 
