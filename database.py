@@ -1357,6 +1357,9 @@ class DatabaseManager:
             # Formula: (total_bytes * 8 / 1000000) / 300 seconds = Mbps
             # Also track MAX to show peak bandwidth within each bucket
             # Note: Use total_bytes as fallback when inbound_bytes is 0 (mirror port scenarios)
+            # Peak calculation uses sensor-specific sample intervals:
+            #   - soc-server: 10 seconds (metrics_collector saves every 10s)
+            #   - sensors: 30 seconds (sensor_client sends every 30s by default)
             cursor.execute('''
                 SELECT
                     time_bucket('5 minutes', timestamp) AS timestamp,
@@ -1366,13 +1369,29 @@ class DatabaseManager:
                     SUM(inbound_bytes) as inbound_bytes,
                     SUM(outbound_packets) as outbound_packets,
                     SUM(outbound_bytes) as outbound_bytes,
-                    -- Average bandwidth in Mbps over 5-minute window
+                    -- Average bandwidth in Mbps over 5-minute window (300 seconds)
                     -- Use total_bytes if inbound is 0 (mirror port sees only one direction)
                     ROUND((GREATEST(SUM(inbound_bytes), SUM(total_bytes) - SUM(outbound_bytes)) * 8.0 / 1000000.0 / 300.0)::numeric, 2) as inbound_mbps,
                     ROUND((SUM(outbound_bytes) * 8.0 / 1000000.0 / 300.0)::numeric, 2) as outbound_mbps,
-                    -- Peak bandwidth from individual samples (10-second samples)
-                    ROUND((GREATEST(MAX(inbound_bytes), MAX(total_bytes) - MAX(outbound_bytes)) * 8.0 / 1000000.0 / 10.0)::numeric, 2) as inbound_mbps_peak,
-                    ROUND((MAX(outbound_bytes) * 8.0 / 1000000.0 / 10.0)::numeric, 2) as outbound_mbps_peak
+                    -- Peak bandwidth: calculate Mbps per sample using sensor-specific interval
+                    ROUND(MAX(
+                        GREATEST(
+                            CASE
+                                WHEN sensor_id = 'soc-server' THEN inbound_bytes * 8.0 / 1000000.0 / 10.0
+                                ELSE inbound_bytes * 8.0 / 1000000.0 / 30.0
+                            END,
+                            CASE
+                                WHEN sensor_id = 'soc-server' THEN (total_bytes - outbound_bytes) * 8.0 / 1000000.0 / 10.0
+                                ELSE (total_bytes - outbound_bytes) * 8.0 / 1000000.0 / 30.0
+                            END
+                        )
+                    )::numeric, 2) as inbound_mbps_peak,
+                    ROUND(MAX(
+                        CASE
+                            WHEN sensor_id = 'soc-server' THEN outbound_bytes * 8.0 / 1000000.0 / 10.0
+                            ELSE outbound_bytes * 8.0 / 1000000.0 / 30.0
+                        END
+                    )::numeric, 2) as outbound_mbps_peak
                 FROM traffic_metrics
                 WHERE timestamp > %s
                 GROUP BY time_bucket('5 minutes', timestamp)

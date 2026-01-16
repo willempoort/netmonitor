@@ -298,7 +298,7 @@ class MetricsCollector:
                 'outbound_packets': delta_outbound_packets,
                 'outbound_bytes': delta_outbound_bytes
             }
-            self.db.add_traffic_metrics(metrics)
+            self.db.add_traffic_metrics(metrics, sensor_id='soc-server')
 
             # Update last saved values (do NOT reset counters to 0!)
             # Counters keep running for real-time dashboard display
@@ -312,7 +312,7 @@ class MetricsCollector:
             # Save top talkers
             top_talkers = self.get_top_talkers(limit=20)
             if top_talkers:
-                self.db.update_top_talkers(top_talkers)
+                self.db.update_top_talkers(top_talkers, sensor_id='soc-server')
 
             # Reset IP stats after saving (track per interval, not cumulative)
             # This ensures top talkers shows most active hosts in last interval
