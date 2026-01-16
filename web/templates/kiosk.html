@@ -1647,13 +1647,18 @@
             }
         }
 
-        // Calculate a good Y-axis max for the traffic chart (MB scale)
-        function calculateSuggestedMax(inboundData, outboundData) {
-            // Find the maximum value in both datasets
-            const allValues = [...(inboundData || []), ...(outboundData || [])];
+        // Calculate a good Y-axis max for the traffic chart (Mbps scale)
+        function calculateSuggestedMax(datasets) {
+            // Find the maximum value across all datasets (including peaks)
+            const allValues = [
+                ...(datasets.bandwidth_in_avg || []),
+                ...(datasets.bandwidth_in_peak || []),
+                ...(datasets.bandwidth_out_avg || []),
+                ...(datasets.bandwidth_out_peak || [])
+            ];
             const maxValue = Math.max(...allValues, 0);
 
-            // Simply use 110% of max value, with minimum of 0.1 MB
+            // Simply use 110% of max value, with minimum of 0.1 Mbps
             return Math.max(maxValue * 1.1, 0.1);
         }
 
@@ -1674,15 +1679,15 @@
                 trafficChart.destroy();
             }
 
-            // Create new chart
+            // Create new chart with 4 datasets (avg + peak for both directions)
             trafficChart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: data.labels,
                     datasets: [
                         {
-                            label: 'Inbound',
-                            data: data.datasets.bandwidth_in,
+                            label: 'Inbound Avg',
+                            data: data.datasets.bandwidth_in_avg,
                             borderColor: '#3b82f6',
                             backgroundColor: 'rgba(59, 130, 246, 0.1)',
                             borderWidth: 2,
@@ -1693,8 +1698,21 @@
                             pointHoverBackgroundColor: '#3b82f6'
                         },
                         {
-                            label: 'Outbound',
-                            data: data.datasets.bandwidth_out,
+                            label: 'Inbound Peak',
+                            data: data.datasets.bandwidth_in_peak,
+                            borderColor: '#60a5fa',
+                            backgroundColor: 'rgba(96, 165, 250, 0.05)',
+                            borderWidth: 1,
+                            borderDash: [5, 5],
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 0,
+                            pointHoverRadius: 3,
+                            pointHoverBackgroundColor: '#60a5fa'
+                        },
+                        {
+                            label: 'Outbound Avg',
+                            data: data.datasets.bandwidth_out_avg,
                             borderColor: '#10b981',
                             backgroundColor: 'rgba(16, 185, 129, 0.1)',
                             borderWidth: 2,
@@ -1703,6 +1721,19 @@
                             pointRadius: 0,
                             pointHoverRadius: 4,
                             pointHoverBackgroundColor: '#10b981'
+                        },
+                        {
+                            label: 'Outbound Peak',
+                            data: data.datasets.bandwidth_out_peak,
+                            borderColor: '#34d399',
+                            backgroundColor: 'rgba(52, 211, 153, 0.05)',
+                            borderWidth: 1,
+                            borderDash: [5, 5],
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 0,
+                            pointHoverRadius: 3,
+                            pointHoverBackgroundColor: '#34d399'
                         }
                     ]
                 },
@@ -1727,7 +1758,7 @@
                             displayColors: true,
                             callbacks: {
                                 label: function(context) {
-                                    return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' MB';
+                                    return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' Mbps';
                                 }
                             }
                         }
@@ -1746,7 +1777,7 @@
                         },
                         y: {
                             beginAtZero: true,
-                            suggestedMax: calculateSuggestedMax(data.datasets.bandwidth_in, data.datasets.bandwidth_out),
+                            suggestedMax: calculateSuggestedMax(data.datasets),
                             grid: {
                                 color: gridColor,
                                 drawBorder: false
@@ -1756,7 +1787,7 @@
                                 callback: function(value) {
                                     // Show 2 decimals for low volumes, 1 decimal for higher
                                     const decimals = value < 10 ? 2 : 1;
-                                    return value.toFixed(decimals) + ' MB';
+                                    return value.toFixed(decimals) + ' Mbps';
                                 }
                             }
                         }

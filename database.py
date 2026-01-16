@@ -1316,7 +1316,7 @@ class DatabaseManager:
             self._return_connection(conn)
 
     def get_traffic_history(self, hours: int = 24, limit: int = 100) -> List[Dict]:
-        """Get traffic history - optimized with time_bucket for aggregation"""
+        """Get traffic history with bandwidth in Mbps and peak tracking"""
         conn = self._get_connection()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -1324,8 +1324,9 @@ class DatabaseManager:
             cutoff_time = datetime.now() - timedelta(hours=hours)
 
             # Use time_bucket for efficient aggregation
-            # SUM instead of AVG because traffic_metrics contains delta values per ~10s
-            # We want total bytes/packets in each 5-minute bucket, not average
+            # Calculate average bandwidth (Mbps) over 5-minute buckets
+            # Formula: (total_bytes * 8 / 1000000) / 300 seconds = Mbps
+            # Also track MAX to show peak bandwidth within each bucket
             cursor.execute('''
                 SELECT
                     time_bucket('5 minutes', timestamp) AS timestamp,
@@ -1334,7 +1335,13 @@ class DatabaseManager:
                     SUM(inbound_packets) as inbound_packets,
                     SUM(inbound_bytes) as inbound_bytes,
                     SUM(outbound_packets) as outbound_packets,
-                    SUM(outbound_bytes) as outbound_bytes
+                    SUM(outbound_bytes) as outbound_bytes,
+                    -- Average bandwidth in Mbps over 5-minute window
+                    ROUND((SUM(inbound_bytes) * 8.0 / 1000000.0 / 300.0)::numeric, 2) as inbound_mbps,
+                    ROUND((SUM(outbound_bytes) * 8.0 / 1000000.0 / 300.0)::numeric, 2) as outbound_mbps,
+                    -- Peak bandwidth from individual samples (10-second samples)
+                    ROUND((MAX(inbound_bytes) * 8.0 / 1000000.0 / 10.0)::numeric, 2) as inbound_mbps_peak,
+                    ROUND((MAX(outbound_bytes) * 8.0 / 1000000.0 / 10.0)::numeric, 2) as outbound_mbps_peak
                 FROM traffic_metrics
                 WHERE timestamp > %s
                 GROUP BY time_bucket('5 minutes', timestamp)
@@ -1383,27 +1390,30 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
-    def get_top_talkers(self, limit: int = 10) -> List[Dict]:
-        """Get current top talkers (last 5 minutes)"""
+    def get_top_talkers(self, limit: int = 10, minutes: int = 5) -> List[Dict]:
+        """Get top talkers with bandwidth in Mbps (default: last 5 minutes, configurable for historical analysis)"""
         conn = self._get_connection()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-            cutoff_time = datetime.now() - timedelta(minutes=5)
+            cutoff_time = datetime.now() - timedelta(minutes=minutes)
 
+            # Calculate bandwidth in Mbps from total bytes over time period
+            # Formula: (bytes * 8 / 1000000) / (minutes * 60) = Mbps
             cursor.execute('''
                 SELECT
                     ip_address::text as ip,
                     MAX(hostname) as hostname,
                     SUM(packet_count) as packets,
                     SUM(byte_count) as bytes,
+                    ROUND((SUM(byte_count) * 8.0 / 1000000.0 / %s / 60.0)::numeric, 2) as mbps,
                     direction
                 FROM top_talkers
                 WHERE timestamp > %s
                 GROUP BY ip_address, direction
                 ORDER BY bytes DESC
                 LIMIT %s
-            ''', (cutoff_time, limit))
+            ''', (minutes, cutoff_time, limit))
 
             return [dict(row) for row in cursor.fetchall()]
 
