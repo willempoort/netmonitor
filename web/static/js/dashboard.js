@@ -1795,6 +1795,9 @@ async function editSensorSettings(sensorId, sensorName, currentLocation) {
     document.getElementById('edit-sensor-id-display').textContent = sensorId;
     document.getElementById('edit-sensor-location').value = currentLocation || '';
 
+    // Store merged config to use for interface selection later
+    let mergedConfig = null;
+
     // Fetch current settings from config
     try {
         const response = await fetch(`/api/config?sensor_id=${encodeURIComponent(sensorId)}&include_defaults=true`);
@@ -1802,6 +1805,7 @@ async function editSensorSettings(sensorId, sensorName, currentLocation) {
 
         if (result.success) {
             const config = result.config;
+            mergedConfig = config; // Store for interface selection
 
             // Populate location (override currentLocation if set in config)
             const configLocation = config.sensor?.location;
@@ -1851,22 +1855,45 @@ async function editSensorSettings(sensorId, sensorName, currentLocation) {
         if (sensorResult.success && sensorResult.data) {
             const sensor = sensorResult.data;
             const availableInterfaces = sensor.config?.available_interfaces || [];
-            const currentInterface = sensor.config?.interface || 'eth0';
+
+            // Get current interface from merged config (sensor_configs table) not sensor registration config
+            const currentInterface = mergedConfig?.interface || sensor.config?.interface || '';
 
             const interfaceContainer = document.getElementById('edit-sensor-interface');
             interfaceContainer.innerHTML = ''; // Clear loading message
 
             // Parse current interface(s)
-            const currentInterfaces = currentInterface.includes(',')
-                ? currentInterface.split(',').map(i => i.trim())
-                : [currentInterface];
+            const currentInterfaces = currentInterface
+                ? (currentInterface.includes(',')
+                    ? currentInterface.split(',').map(i => i.trim())
+                    : [currentInterface])
+                : [];
 
             if (availableInterfaces.length === 0) {
-                // No interfaces reported yet, show common defaults
-                ['eth0', 'eth1', 'ens192', 'ens33'].forEach(iface => {
-                    const checkboxDiv = createInterfaceCheckbox(iface, '', false, 'unknown', currentInterfaces.includes(iface));
-                    interfaceContainer.appendChild(checkboxDiv);
-                });
+                // No interfaces reported yet - show warning and current selection if any
+                if (currentInterfaces.length > 0) {
+                    // Show currently configured interfaces (even though sensor hasn't reported yet)
+                    interfaceContainer.innerHTML = `
+                        <div class="alert alert-warning mb-2">
+                            <i class="bi bi-exclamation-triangle"></i> Sensor has not reported available interfaces yet.
+                            Showing currently configured interfaces below.
+                        </div>
+                    `;
+                    currentInterfaces.forEach(iface => {
+                        if (iface) { // Skip empty strings
+                            const checkboxDiv = createInterfaceCheckbox(iface, '', false, 'unknown', true);
+                            interfaceContainer.appendChild(checkboxDiv);
+                        }
+                    });
+                } else {
+                    // No interfaces reported and none configured - show message
+                    interfaceContainer.innerHTML = `
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> Sensor has not reported available interfaces yet.
+                            <br><small>Wait for sensor to connect and report its network interfaces, or manually add interfaces below.</small>
+                        </div>
+                    `;
+                }
             } else {
                 // Use reported interfaces from sensor (with PROMISC status)
                 availableInterfaces.forEach(ifaceData => {
