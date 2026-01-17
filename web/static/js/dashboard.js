@@ -1966,6 +1966,16 @@ async function saveSensorSettings() {
         .map(cb => cb.value);
     const interfaceValue = selectedInterfaces.join(',');
 
+    // Validation: At least one interface must be selected
+    if (!interfaceValue || interfaceValue.trim() === '') {
+        alert('⚠️ ERROR: You must select at least one network interface!\n\n' +
+              'The sensor cannot monitor network traffic without an interface.\n' +
+              'Please select one or more interfaces before saving.');
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="bi bi-save"></i> Save Settings';
+        return;
+    }
+
     // PCAP Forensics settings
     const pcapEnabled = document.getElementById('edit-pcap-enabled').value === 'true';
     const pcapUpload = document.getElementById('edit-pcap-upload').value === 'true';

@@ -839,6 +839,12 @@ class NetworkMonitor:
         # Get interface from self_monitor config, fallback to legacy 'interface' key
         interface_config = self.self_monitor_config.get('interface', self.config.get('interface', 'lo'))
 
+        # Safety: If interface is empty string, use 'lo' as fallback
+        if not interface_config or (isinstance(interface_config, str) and interface_config.strip() == ''):
+            self.logger.warning("Interface configuration is empty! Using 'lo' (loopback) as fallback.")
+            self.logger.warning("Please configure an interface in the dashboard to ensure correct monitoring.")
+            interface_config = 'lo'
+
         # Parse interface configuration (support comma-separated list)
         if interface_config in ('any', 'all') or interface_config is None:
             interface = None  # Listen on all interfaces

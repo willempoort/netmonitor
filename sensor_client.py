@@ -1505,6 +1505,12 @@ class SensorClient:
         # Parse interface configuration (support comma-separated list)
         interface_config = self.config.get('interface', 'eth0')
 
+        # Safety: If interface is empty string, use 'eth0' as fallback
+        if not interface_config or (isinstance(interface_config, str) and interface_config.strip() == ''):
+            self.logger.warning("Interface configuration is empty! Using 'eth0' as fallback.")
+            self.logger.warning("Please configure an interface in the dashboard to ensure correct monitoring.")
+            interface_config = 'eth0'
+
         if interface_config in ('any', 'all') or interface_config is None:
             interface = None  # Listen on all interfaces
             interface_display = "all interfaces"
