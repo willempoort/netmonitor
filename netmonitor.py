@@ -782,14 +782,57 @@ class NetworkMonitor:
                     self.logger.debug(f"Could not detect IP address: {e}")
                     ip_address = None
 
+                # Detect available network interfaces with PROMISC mode status (same as sensor_client.py)
+                available_interfaces = []
+                try:
+                    net_ifs = psutil.net_if_addrs()
+                    net_stats = psutil.net_if_stats()
+
+                    for iface in net_ifs.keys():
+                        if iface == 'lo' or iface.startswith('docker'):
+                            continue
+
+                        # Check if interface is in promiscuous mode
+                        promisc = False
+                        try:
+                            # On Linux, check /sys/class/net/{iface}/flags
+                            # IFF_PROMISC = 0x100 (256 decimal)
+                            flags_path = f'/sys/class/net/{iface}/flags'
+                            if os.path.exists(flags_path):
+                                with open(flags_path, 'r') as f:
+                                    flags = int(f.read().strip(), 16)
+                                    promisc = bool(flags & 0x100)
+                        except:
+                            # Fallback: assume not in promisc mode
+                            promisc = False
+
+                        # Get interface status
+                        is_up = net_stats.get(iface, None)
+                        status = 'up' if (is_up and is_up.isup) else 'down'
+
+                        available_interfaces.append({
+                            'name': iface,
+                            'promisc': promisc,
+                            'status': status
+                        })
+                except Exception as e:
+                    self.logger.debug(f"Could not detect available interfaces: {e}")
+
+                # Build config with available_interfaces and current interface
+                sensor_config = {
+                    'interface': self.self_monitor_config.get('interface', self.config.get('interface', 'lo')),
+                    'available_interfaces': available_interfaces
+                }
+
                 self.db.register_sensor(
                     sensor_id=self.sensor_id,
                     hostname=hostname,
                     location=location,
-                    ip_address=ip_address
+                    ip_address=ip_address,
+                    config=sensor_config
                     # Note: status is automatically set to 'online' by register_sensor()
                 )
-                self.logger.info(f"SOC server registered as sensor: {self.sensor_id} ({hostname}, IP: {ip_address or 'unknown'})")
+                self.logger.info(f"SOC server registered as sensor: {self.sensor_id} ({hostname}, IP: {ip_address or 'unknown'}, {len(available_interfaces)} interfaces)")
             except Exception as e:
                 self.logger.warning(f"Could not register SOC server as sensor: {e}")
 
