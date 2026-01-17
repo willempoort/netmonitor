@@ -1447,8 +1447,7 @@ class DatabaseManager:
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-            cutoff_time = datetime.now() - timedelta(minutes=minutes)
-
+            # Use PostgreSQL NOW() instead of Python datetime to avoid timezone issues
             # Calculate bandwidth in Mbps from total bytes over time period
             # Formula: (bytes * 8 / 1000000) / (minutes * 60) = Mbps
             cursor.execute('''
@@ -1460,16 +1459,18 @@ class DatabaseManager:
                     ROUND((SUM(byte_count) * 8.0 / 1000000.0 / %s / 60.0)::numeric, 2) as mbps,
                     direction
                 FROM top_talkers
-                WHERE timestamp > %s
+                WHERE timestamp > NOW() - INTERVAL '%s minutes'
                 GROUP BY ip_address, direction
                 ORDER BY bytes DESC
                 LIMIT %s
-            ''', (minutes, cutoff_time, limit))
+            ''', (minutes, minutes, limit))
 
-            return [dict(row) for row in cursor.fetchall()]
+            results = cursor.fetchall()
+            self.logger.debug(f"get_top_talkers returned {len(results)} results for last {minutes} minutes")
+            return [dict(row) for row in results]
 
         except Exception as e:
-            self.logger.error(f"Error getting top talkers: {e}")
+            self.logger.error(f"Error getting top talkers: {e}", exc_info=True)
             return []
         finally:
             self._return_connection(conn)
