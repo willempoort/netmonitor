@@ -54,6 +54,41 @@ def main():
         print("❌ Sensor ID is required!")
         sys.exit(1)
 
+    # Check if sensor exists, if not create it
+    print(f"\nChecking if sensor '{sensor_id}' exists...")
+    conn = db._get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT sensor_id FROM sensors WHERE sensor_id = %s", (sensor_id,))
+        sensor_exists = cursor.fetchone() is not None
+    finally:
+        db._return_connection(conn)
+
+    if not sensor_exists:
+        print(f"⚠️  Sensor '{sensor_id}' does not exist yet.")
+        print("Creating sensor first...")
+        print()
+
+        hostname = input(f"Hostname (default: {sensor_id}): ").strip() or sensor_id
+        location = input("Location (optional, e.g., 'SOC-Office-VLAN10'): ").strip() or None
+
+        # Register the sensor
+        success = db.register_sensor(
+            sensor_id=sensor_id,
+            hostname=hostname,
+            location=location
+        )
+
+        if not success:
+            print("❌ Failed to create sensor!")
+            sys.exit(1)
+
+        print(f"✓ Sensor '{sensor_id}' created successfully")
+        print()
+    else:
+        print(f"✓ Sensor '{sensor_id}' exists")
+        print()
+
     token_name = input("Token name (optional, e.g., 'Main Token'): ").strip() or None
 
     expires = input("Expires in days (leave empty for no expiration): ").strip()
