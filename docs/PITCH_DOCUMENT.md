@@ -4,6 +4,24 @@
 
 ---
 
+## 🚀 NetMonitor – De Eerste AI‑Co‑Piloted Netwerksensor voor SPAN‑poorten
+
+In een wereld waar netwerkdreigingen sneller evolueren dan ooit, introduceert NetMonitor een nieuwe generatie beveiliging: AI‑gestuurde netwerkbewaking die meedenkt, leert en optimaliseert.
+
+Geen log‑overload, geen eindeloze tuning—maar een slimme, autonome sensor die organisaties direct inzicht geeft in wat er écht toe doet.
+
+NetMonitor combineert real‑time netwerkdetectie met een krachtige AI‑analyse‑laag die via het open Model Context Protocol (MCP) meer dan zestig beheer‑ en analyse‑tools kan aansturen. Het resultaat?
+
+Een systeem dat niet alleen verkeer monitort, maar alerts filtert, patronen herkent, zichzelf bijstuurt en je vertelt wat prioriteit verdient.
+
+Met veilige on‑prem AI‑integratie, waaronder ondersteuning voor lokale modellen zoals Ollama, past NetMonitor naadloos in zowel kleine netwerken als enterprise‑securityomgevingen. Via NetMonitor‑Chat krijgt elke organisatie de kracht van moderne AI, zónder ook maar één bit het netwerk te laten verlaten.
+
+**NetMonitor is niet zomaar een IDS.**
+
+Het is een autonome netwerkbewaker, een AI‑co‑piloot en een next‑gen securitysensor in één—klaar om jouw netwerk slimmer, veiliger en toekomstbestendig te maken.
+
+---
+
 ## Het Probleem
 
 Elke dag worden bedrijven slachtoffer van cyberaanvallen. Ransomware, datadiefstal en gehackte systemen kosten bedrijven gemiddeld **€250.000 per incident** - exclusief reputatieschade en omzetverlies.

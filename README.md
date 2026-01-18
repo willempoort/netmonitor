@@ -207,6 +207,99 @@ THREAT_FEED_UPDATE_INTERVAL=3600  # 1 uur (default)
 
 📖 Zie [Production Deployment Guide](docs/deployment/PRODUCTION.md) voor complete tuning guide.
 
+---
+
+## 📘 AI‑Integratie in NetMonitor
+
+NetMonitor is ontworpen als een moderne netwerkbewakingssensor waarin AI‑ondersteuning vanaf de basis is meegenomen. De tool combineert real‑time pakketinspectie met een uitbreidbare AI‑laag die via het Model Context Protocol (MCP) kan communiceren met externe AI‑modellen. Hierdoor wordt NetMonitor niet alleen een detector, maar een AI‑gestuurde analyse‑ en besluitvormingsmodule binnen iedere netwerkbeveiligingsarchitectuur.
+
+### 🤖 1. MCP‑gebaseerde AI‑architectuur
+
+Het Model Context Protocol (MCP) is een open standaard die het mogelijk maakt voor AI‑modellen om op een veilige en gestandaardiseerde manier externe tools en gegevensbronnen aan te roepen. MCP is ontwikkeld om AI‑agents slimmer, contextbewuster en betrouwbaarder te maken door middel van uniforme integraties.
+
+De MCP‑specificatie beschrijft o.a. gestandaardiseerde berichten zoals ListToolsRequest, CallToolRequest en ListResourcesRequest, waarmee AI‑modellen tooling kunnen ontdekken en aansturen. Deze berichten maken het mogelijk dat een AI‑model automatisch functionaliteit van externe applicaties gebruikt.
+
+NetMonitor fungeert hierbij als een MCP‑server die meer dan 60 tools aanbiedt aan een AI‑model.
+
+**Enkele voorbeelden van deze tools:**
+- uitlezen van NetMonitor‑status
+- ophalen van detectieresultaten
+- aanpassen van thresholds
+- beheren van whitelist/blacklist
+- inspecteren van netwerkprofielen
+- koppelen van templates aan nieuw gedetecteerde devices
+- uitvoeren van diagnostiek, health‑checks en config‑analyses
+
+Zo krijgt een AI‑model dezelfde bevoegdheden als een beheerder — maar dan sneller, nauwkeuriger en continu.
+
+### 🧠 2. AI‑gestuurde analyse en alert‑prioritering
+
+Waar traditionele IDS‑systemen vaak grote hoeveelheden ruwe alerts genereren, biedt de AI‑laag in NetMonitor een intelligente interpretatielaag die:
+
+- alerts clustert tot begrijpelijke incidenten
+- false positives automatisch kan herkennen en onderdrukken
+- gedrag over langere tijd kan analyseren
+- afwijkingen kan herkennen die buiten de menselijke intuïtie vallen
+- netwerkprofielen kan opbouwen per device
+- automatisch correlaties kan leggen (bijv. tussen DNS‑tunneling, port scanning en afwijkende packet sizes)
+
+Dankzij MCP kan het AI‑model context ophalen direct uit de bronapplicatie (NetMonitor), net zoals beschreven in officiële documentatie over hoe MCP AI‑agents toegang geeft tot real‑world data en tooling.
+
+Dit verandert NetMonitor in een autonoom systeem dat helpt bij echte besluitvorming.
+
+### ⚙️ 3. Automatische finetuning van instellingen
+
+NetMonitor bevat meer dan 300 parameters die het detectiegedrag bepalen (thresholds, timers, limieten, whitelists, profielen, packet‑regels etc.). Veel van deze instellingen vereisen fijnmazige tuning, wat in de praktijk zeer tijdrovend is.
+
+Via MCP kan de AI:
+- configuraties dynamisch analyseren
+- optimale parameters voorstellen
+- thresholds automatisch aanpassen op basis van verkeer
+- nieuwe devices herkennen en automatisch templates koppelen
+
+De MCP‑documentatie bevestigt dat AI‑modellen tools kunnen aanroepen, configuraties kunnen aanpassen en beveiligde "human‑in‑the‑loop"-confirmations kunnen uitvoeren.
+
+Hierdoor wordt configuratiebeheer grotendeels geautomatiseerd.
+
+### 🔐 4. Veilige on‑prem AI‑integratie via NetMonitor‑Chat
+
+Omdat veel organisaties geen cloud‑AI mogen gebruiken, voorziet NetMonitor in NetMonitor‑Chat, een client‑side bridge tussen:
+- een on‑prem AI‑server (zoals een lokaal Ollama‑model)
+- de NetMonitor MCP‑omgeving
+
+Hierdoor kan de AI de MCP‑tools gebruiken zonder dat data het interne netwerk verlaat.
+
+Hoewel er online diverse MCP‑clients bestaan (zoals AgentAI, 5ire en desktop‑AI‑chatapplicaties), wordt NetMonitor‑Chat niet genoemd in externe lijsten zoals de officiële MCP‑clientcatalogus. Deze catalogus somt wél AI‑apps op die MCP ondersteunen, zoals 5ire en AgenticFlow, en beschrijft hoe zij tools via MCP kunnen aanroepen.
+
+Dat maakt NetMonitor‑Chat een unieke oplossing op de markt.
+
+### 🧩 5. Integraties met third‑party security platforms
+
+NetMonitor kan samenwerken met bestaande security‑oplossingen zoals Wazuh, SIEM‑platformen of EDR‑systemen.
+
+MCP‑gestuurde AI kan dan:
+- alerts verrijken met context
+- SIEM‑meldingen automatisch prioriteren
+- correlaties leggen tussen NetMonitor‑events en Wazuh‑events
+
+Dit sluit aan op de bredere trend dat AI‑agents via MCP externe security‑services kunnen aansturen, zoals ook mogelijk is via connectors en remote MCP‑servers in de officiële OpenAI‑gidsen.
+
+### 🚀 Samenvatting AI‑Integratie
+
+NetMonitor onderscheidt zich door AI‑integratie als eerste‑klas functie:
+
+- MCP‑interface met >60 tools
+- AI‑gestuurde alertverrijking & clustering
+- automatische tuning van honderden parameters
+- veilige koppeling met on‑prem AI (NetMonitor‑Chat)
+- integratie met bestaande securityplatformen
+- moderne, toekomstbestendige architectuur gebaseerd op open standaarden
+
+In tegenstelling tot traditionele IDS‑systemen draait NetMonitor niet alleen detectie uit —
+het werkt samen met AI om accurater, slimmer en autonomer beveiligingsinzichten te leveren.
+
+---
+
 ## 🛡️ Complete Detection Capabilities
 
 ### 🎯 Threat Intelligence & Reputation
