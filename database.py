@@ -1802,6 +1802,7 @@ class DatabaseManager:
                     s.ip_address::text as ip_address,
                     s.version,
                     s.status,
+                    s.config,
                     s.registered_at,
                     s.last_seen,
                     CASE
