@@ -930,11 +930,24 @@ class SensorClient:
                     # Change to installation directory
                     install_dir = '/opt/netmonitor'
 
-                    # Build git pull command
+                    # Build git command with remount for read-only filesystems
+                    # Remount as read-write, do git operations, then remount as read-only
                     if branch:
-                        git_cmd = f'cd {install_dir} && git fetch origin && git checkout {branch} && git pull origin {branch}'
+                        git_cmd = (
+                            f'mount -o remount,rw / 2>/dev/null; '
+                            f'cd {install_dir} && git fetch origin && git checkout {branch} && git pull origin {branch}; '
+                            f'git_status=$?; '
+                            f'mount -o remount,ro / 2>/dev/null; '
+                            f'exit $git_status'
+                        )
                     else:
-                        git_cmd = f'cd {install_dir} && git pull'
+                        git_cmd = (
+                            f'mount -o remount,rw / 2>/dev/null; '
+                            f'cd {install_dir} && git pull; '
+                            f'git_status=$?; '
+                            f'mount -o remount,ro / 2>/dev/null; '
+                            f'exit $git_status'
+                        )
 
                     # Execute git pull
                     git_result = subprocess.run(
