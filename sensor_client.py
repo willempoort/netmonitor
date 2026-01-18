@@ -941,14 +941,42 @@ class SensorClient:
                 self.logger.info(f"UPDATE command received - updating from git{f' (branch: {branch})' if branch else ''}")
 
                 try:
-                    # Change to installation directory
                     install_dir = '/opt/netmonitor'
 
+                    # Find SSH key for git operations (try common locations)
+                    ssh_key = None
+                    for key_path in ['/root/.ssh/netmonitor_id_ed25519', '/root/.ssh/id_ed25519', '/root/.ssh/id_rsa']:
+                        if os.path.exists(key_path):
+                            ssh_key = key_path
+                            break
+
+                    # Check if remote is SSH and convert to HTTPS if no SSH key available
+                    # This allows updates on customer systems without SSH keys configured
+                    url_override = ''
+                    if not ssh_key:
+                        try:
+                            remote_result = subprocess.run(
+                                ['git', '-C', install_dir, 'remote', 'get-url', 'origin'],
+                                capture_output=True, text=True, timeout=5
+                            )
+                            remote_url = remote_result.stdout.strip()
+                            # Convert git@github.com:user/repo.git to https://github.com/user/repo.git
+                            if remote_url.startswith('git@github.com:'):
+                                https_url = remote_url.replace('git@github.com:', 'https://github.com/')
+                                url_override = f'git remote set-url origin {https_url}; '
+                                self.logger.info(f"No SSH key found, using HTTPS for git pull")
+                        except Exception:
+                            pass
+
+                    # Set GIT_SSH_COMMAND to use specific key (needed when running as systemd service)
+                    ssh_cmd = f'export GIT_SSH_COMMAND="ssh -i {ssh_key} -o StrictHostKeyChecking=accept-new"; ' if ssh_key else ''
+
                     # Build git command with remount for read-only filesystems
-                    # Remount as read-write, do git operations, then remount as read-only
                     if branch:
                         git_cmd = (
                             f'mount -o remount,rw / 2>/dev/null; '
+                            f'{url_override}'
+                            f'{ssh_cmd}'
                             f'cd {install_dir} && git fetch origin && git checkout {branch} && git pull origin {branch}; '
                             f'git_status=$?; '
                             f'mount -o remount,ro / 2>/dev/null; '
@@ -957,6 +985,8 @@ class SensorClient:
                     else:
                         git_cmd = (
                             f'mount -o remount,rw / 2>/dev/null; '
+                            f'{url_override}'
+                            f'{ssh_cmd}'
                             f'cd {install_dir} && git pull; '
                             f'git_status=$?; '
                             f'mount -o remount,ro / 2>/dev/null; '
