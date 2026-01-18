@@ -726,6 +726,19 @@ class SensorClient:
             except Exception as e:
                 self.logger.warning(f"Could not detect available interfaces: {e}")
 
+            # Detect current git branch
+            git_branch = None
+            try:
+                import subprocess
+                git_result = subprocess.run(
+                    ['git', '-C', '/opt/netmonitor', 'branch', '--show-current'],
+                    capture_output=True, text=True, timeout=5
+                )
+                if git_result.returncode == 0:
+                    git_branch = git_result.stdout.strip()
+            except Exception:
+                pass
+
             response = requests.post(
                 f"{self.server_url}/api/sensors/register",
                 headers=self._get_headers(),
@@ -738,7 +751,8 @@ class SensorClient:
                     'config': {
                         'interface': self.config.get('interface', 'unknown'),
                         'batch_interval': self.batch_interval,
-                        'available_interfaces': available_interfaces
+                        'available_interfaces': available_interfaces,
+                        'git_branch': git_branch
                     }
                 },
                 timeout=10,

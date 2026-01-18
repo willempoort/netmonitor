@@ -458,10 +458,21 @@ class NetworkMonitor:
                 try:
                     install_dir = '/opt/netmonitor'
 
+                    # Find SSH key for git operations (try common locations)
+                    ssh_key = None
+                    for key_path in ['/root/.ssh/netmonitor_id_ed25519', '/root/.ssh/id_ed25519', '/root/.ssh/id_rsa']:
+                        if os.path.exists(key_path):
+                            ssh_key = key_path
+                            break
+
+                    # Set GIT_SSH_COMMAND to use specific key (needed when running as systemd service)
+                    ssh_cmd = f'export GIT_SSH_COMMAND="ssh -i {ssh_key} -o StrictHostKeyChecking=accept-new"; ' if ssh_key else ''
+
                     # Build git command with remount for read-only filesystems
                     if branch:
                         git_cmd = (
                             f'mount -o remount,rw / 2>/dev/null; '
+                            f'{ssh_cmd}'
                             f'cd {install_dir} && git fetch origin && git checkout {branch} && git pull origin {branch}; '
                             f'git_status=$?; '
                             f'mount -o remount,ro / 2>/dev/null; '
@@ -470,6 +481,7 @@ class NetworkMonitor:
                     else:
                         git_cmd = (
                             f'mount -o remount,rw / 2>/dev/null; '
+                            f'{ssh_cmd}'
                             f'cd {install_dir} && git pull; '
                             f'git_status=$?; '
                             f'mount -o remount,ro / 2>/dev/null; '
@@ -976,10 +988,24 @@ class NetworkMonitor:
                 except Exception as e:
                     self.logger.debug(f"Could not detect available interfaces: {e}")
 
-                # Build config with available_interfaces and current interface
+                # Detect current git branch
+                git_branch = None
+                try:
+                    import subprocess
+                    git_result = subprocess.run(
+                        ['git', '-C', '/opt/netmonitor', 'branch', '--show-current'],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    if git_result.returncode == 0:
+                        git_branch = git_result.stdout.strip()
+                except Exception:
+                    pass
+
+                # Build config with available_interfaces, current interface, and git branch
                 sensor_config = {
                     'interface': self.self_monitor_config.get('interface', self.config.get('interface', 'lo')),
-                    'available_interfaces': available_interfaces
+                    'available_interfaces': available_interfaces,
+                    'git_branch': git_branch
                 }
 
                 self.db.register_sensor(
