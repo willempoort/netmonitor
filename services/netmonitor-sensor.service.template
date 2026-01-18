@@ -28,8 +28,9 @@ Restart=on-failure
 RestartSec=10
 
 # Security hardening
+# Note: NoNewPrivileges is NOT set because the update command needs to
+# remount the filesystem as read-write on embedded systems with read-only root
 PrivateTmp=yes
-NoNewPrivileges=true
 ReadWritePaths=/var/log/netmonitor /var/cache/netmonitor __INSTALL_DIR__
 
 # Logging
