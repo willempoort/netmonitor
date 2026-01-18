@@ -396,16 +396,174 @@ class NetworkMonitor:
             self.logger.error(f"Error syncing config from database: {e}")
 
     def _config_sync_loop(self, interval):
-        """Background thread that periodically syncs config from database"""
-        self.logger.info(f"Config sync enabled (checking every {interval}s)")
+        """Background thread that periodically syncs config from database and polls commands"""
+        self.logger.info(f"Config/command sync enabled (checking every {interval}s)")
 
         while self.running:
             try:
                 time.sleep(interval)
                 if self.running:  # Check again after sleep
                     self._sync_config_from_database()
+                    # Also poll and execute commands for SOC server
+                    self._poll_and_execute_commands()
             except Exception as e:
                 self.logger.error(f"Error in config sync loop: {e}")
+
+    def _poll_and_execute_commands(self):
+        """Poll database for pending commands and execute them (for SOC server self-monitoring)"""
+        if not self.db or not self.sensor_id:
+            return
+
+        try:
+            commands = self.db.get_pending_commands(self.sensor_id)
+            for command in commands:
+                self._execute_local_command(command)
+        except Exception as e:
+            self.logger.error(f"Error polling commands: {e}")
+
+    def _execute_local_command(self, command):
+        """Execute a command for the SOC server (local execution, direct database updates)"""
+        import subprocess
+
+        command_id = command['id']
+        command_type = command['command_type']
+        parameters = command.get('parameters', {}) or {}
+
+        self.logger.info(f"Executing command: {command_type} (ID: {command_id})")
+
+        try:
+            # Update status to executing
+            self.db.update_command_status(command_id, 'executing')
+
+            result = {'success': False, 'message': 'Unknown command'}
+
+            if command_type == 'restart':
+                result = {
+                    'success': True,
+                    'message': 'SOC server will restart in 5 seconds'
+                }
+                self.logger.warning("RESTART command received - SOC server will restart")
+                # Update status before restarting
+                self.db.update_command_status(command_id, 'completed', result)
+                # Schedule restart (use netmonitor service, not netmonitor-sensor)
+                subprocess.Popen(['bash', '-c', 'sleep 5 && systemctl restart netmonitor'])
+                return
+
+            elif command_type == 'update':
+                # Update SOC server software from git
+                branch = parameters.get('branch', '')
+
+                self.logger.info(f"UPDATE command received - updating from git{f' (branch: {branch})' if branch else ''}")
+
+                try:
+                    install_dir = '/opt/netmonitor'
+
+                    # Build git command with remount for read-only filesystems
+                    if branch:
+                        git_cmd = (
+                            f'mount -o remount,rw / 2>/dev/null; '
+                            f'cd {install_dir} && git fetch origin && git checkout {branch} && git pull origin {branch}; '
+                            f'git_status=$?; '
+                            f'mount -o remount,ro / 2>/dev/null; '
+                            f'exit $git_status'
+                        )
+                    else:
+                        git_cmd = (
+                            f'mount -o remount,rw / 2>/dev/null; '
+                            f'cd {install_dir} && git pull; '
+                            f'git_status=$?; '
+                            f'mount -o remount,ro / 2>/dev/null; '
+                            f'exit $git_status'
+                        )
+
+                    git_result = subprocess.run(
+                        git_cmd,
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+
+                    if git_result.returncode == 0:
+                        result = {
+                            'success': True,
+                            'message': 'Git pull successful. SOC server will restart in 5 seconds.',
+                            'git_output': git_result.stdout
+                        }
+                        self.logger.info(f"Git pull successful: {git_result.stdout}")
+
+                        # Update status before restarting
+                        self.db.update_command_status(command_id, 'completed', result)
+
+                        # Schedule service restart (netmonitor, not netmonitor-sensor)
+                        subprocess.Popen(['bash', '-c', 'sleep 5 && systemctl restart netmonitor'])
+                        return
+                    else:
+                        result = {
+                            'success': False,
+                            'message': f'Git pull failed: {git_result.stderr}',
+                            'git_output': git_result.stderr
+                        }
+                        self.logger.error(f"Git pull failed: {git_result.stderr}")
+
+                except subprocess.TimeoutExpired:
+                    result = {
+                        'success': False,
+                        'message': 'Git pull timed out after 30 seconds'
+                    }
+                except Exception as e:
+                    result = {
+                        'success': False,
+                        'message': f'Update failed: {str(e)}'
+                    }
+
+            elif command_type == 'reboot':
+                result = {
+                    'success': True,
+                    'message': 'System will reboot in 5 seconds'
+                }
+                self.logger.warning("REBOOT command received - system will reboot in 5 seconds")
+                self.db.update_command_status(command_id, 'completed', result)
+                subprocess.Popen(['bash', '-c', 'sleep 5 && shutdown -r now'])
+                return
+
+            elif command_type == 'update_config':
+                # Force config reload from database
+                try:
+                    self._load_config_from_database()
+                    result = {
+                        'success': True,
+                        'message': 'Configuration reloaded from database'
+                    }
+                    self.logger.info("Config manually reloaded via command")
+                except Exception as e:
+                    result = {
+                        'success': False,
+                        'message': f'Config reload failed: {e}'
+                    }
+
+            elif command_type == 'get_status':
+                uptime = int(time.time() - getattr(self, 'start_time', time.time()))
+                result = {
+                    'success': True,
+                    'data': {
+                        'uptime_seconds': uptime,
+                        'self_monitor_enabled': self.self_monitor_enabled,
+                        'sensor_id': self.sensor_id,
+                        'interface': getattr(self, 'interface_display', 'unknown')
+                    }
+                }
+
+            # Report result
+            self.db.update_command_status(command_id, 'completed', result)
+            self.logger.info(f"Command {command_type} completed: {result.get('message', 'OK')}")
+
+        except Exception as e:
+            self.logger.error(f"Error executing command {command_type}: {e}")
+            try:
+                self.db.update_command_status(command_id, 'failed', {'error': str(e)})
+            except:
+                pass
 
     def _init_threat_intel_sources(self, config):
         """Initialize and register threat intelligence sources"""
@@ -861,14 +1019,15 @@ class NetworkMonitor:
         self.logger.info(f"Starting network monitor op interface: {self.interface_display}")
         self.logger.info("Druk op Ctrl+C om te stoppen")
 
-        # Start config sync thread (if self-monitoring and database enabled)
+        # Start config/command sync thread (if self-monitoring and database enabled)
+        # Polls for config changes AND pending commands (update, restart, etc.)
         if self.db and self.sensor_id:
-            config_sync_interval = 300  # 5 minutes (same as remote sensors)
+            config_sync_interval = 30  # 30 seconds for near-realtime config and command updates
             self.config_sync_thread = threading.Thread(
                 target=self._config_sync_loop,
                 args=(config_sync_interval,),
                 daemon=True,
-                name="ConfigSync"
+                name="ConfigCommandSync"
             )
             self.config_sync_thread.start()
 
