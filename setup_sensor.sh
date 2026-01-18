@@ -128,7 +128,7 @@ source "$VENV_DIR/bin/activate"
 
 echo "Installing dependencies..."
 pip install --upgrade pip > /dev/null 2>&1
-pip install -r requirements.txt
+pip install -r requirements-sensor.txt
 
 echo -e "${GREEN}✅ Virtual environment created and dependencies installed${NC}"
 echo ""
@@ -305,7 +305,7 @@ SyslogIdentifier=netmonitor-sensor
 NoNewPrivileges=false
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=/var/log/netmonitor /var/log/netmonitor/pcap
+ReadWritePaths=/var/log/netmonitor /var/log/netmonitor/pcap $INSTALL_DIR
 CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
 
 [Install]
