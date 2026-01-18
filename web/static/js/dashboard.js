@@ -1538,7 +1538,8 @@ function updateSensorsTable(sensors) {
                     <button class="btn btn-outline-primary update-sensor-btn"
                             data-sensor-id="${sensor.sensor_id}"
                             data-sensor-name="${sensor.hostname}"
-                            title="Update sensor software">
+                            data-git-branch="${sensor.config?.git_branch || ''}"
+                            title="Update sensor software${sensor.config?.git_branch ? ' (branch: ' + sensor.config.git_branch + ')' : ''}">
                         <i class="bi bi-arrow-clockwise"></i>
                     </button>
                     <button class="btn btn-outline-warning reboot-sensor-btn"
@@ -1573,7 +1574,8 @@ function updateSensorsTable(sensors) {
             e.preventDefault();
             const sensorId = this.getAttribute('data-sensor-id');
             const sensorName = this.getAttribute('data-sensor-name');
-            updateSensor(sensorId, sensorName);
+            const gitBranch = this.getAttribute('data-git-branch');
+            updateSensor(sensorId, sensorName, gitBranch);
         });
     });
 
@@ -1606,10 +1608,11 @@ function updateSensorsTable(sensors) {
     });
 }
 
-function updateSensor(sensorId, sensorName) {
-    // Ask for optional branch parameter
+function updateSensor(sensorId, sensorName, currentBranch) {
+    // Ask for optional branch parameter, show current branch if known
+    const branchInfo = currentBranch ? `\nCurrent branch: ${currentBranch}` : '';
     const branch = prompt(
-        `Update sensor "${sensorName}" (${sensorId})\n\n` +
+        `Update sensor "${sensorName}" (${sensorId})${branchInfo}\n\n` +
         `Enter git branch name (leave empty for current branch):`,
         ''
     );
