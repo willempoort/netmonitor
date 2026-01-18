@@ -28,9 +28,11 @@ Restart=on-failure
 RestartSec=10
 
 # Security hardening
-PrivateTmp=yes
-NoNewPrivileges=true
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectSystem=strict
 ReadWritePaths=/var/log/netmonitor /var/cache/netmonitor __INSTALL_DIR__
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
 
 # Logging
 StandardOutput=journal
