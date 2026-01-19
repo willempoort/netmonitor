@@ -927,12 +927,13 @@ async def websocket_chat(websocket: WebSocket):
                             })
 
                             # Prepare complete tool call for conversation history
+                            # For OpenAI/LM Studio: arguments must be JSON STRING, not dict
                             complete_tool_call = {
                                 "id": tool_call_id,
                                 "type": "function",
                                 "function": {
                                     "name": tool_name,
-                                    "arguments": tool_args
+                                    "arguments": tool_args_str  # Keep as string for OpenAI format
                                 }
                             }
 
