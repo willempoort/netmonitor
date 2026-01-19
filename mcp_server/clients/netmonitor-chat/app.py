@@ -795,6 +795,7 @@ async def websocket_chat(websocket: WebSocket):
             # Stream response from LLM with filtered tools
             full_response = ""
             has_tool_call = False
+            accumulated_tool_calls = {}  # Dict to accumulate tool calls by index
 
             # Determine if we should use tools
             if llm_provider == "ollama":
@@ -838,21 +839,66 @@ async def websocket_chat(websocket: WebSocket):
                                 "content": content
                             })
 
-                    # Check for native tool calls (preferred)
+                    # Check for native tool calls (LM Studio streams them incrementally)
                     tool_calls = msg.get("tool_calls")
 
-                    # Process tool calls (native format)
+                    # Accumulate tool calls across chunks (LM Studio sends them piece by piece)
                     if tool_calls:
                         has_tool_call = True
-                        print(f"[WebSocket] Processing {len(tool_calls)} tool call(s)")
-                        for tool_call in tool_calls:
-                            print(f"[WebSocket] Tool call object: {tool_call}")
-                            func = tool_call.get("function", {})
-                            tool_name = func.get("name")
-                            tool_args = func.get("arguments", {})
-                            tool_call_id = tool_call.get("id", "call_1")  # Get ID or use default
+                        for tc_chunk in tool_calls:
+                            # Get index (default to 0 if not specified)
+                            idx = tc_chunk.get("index", 0)
 
-                            print(f"[WebSocket] Extracted - name: '{tool_name}', args: {tool_args}, id: '{tool_call_id}'")
+                            # Initialize if first time seeing this index
+                            if idx not in accumulated_tool_calls:
+                                accumulated_tool_calls[idx] = {
+                                    "id": tc_chunk.get("id", f"call_{idx}"),
+                                    "type": tc_chunk.get("type", "function"),
+                                    "function": {"name": "", "arguments": ""}
+                                }
+
+                            # Update ID and type if present
+                            if "id" in tc_chunk:
+                                accumulated_tool_calls[idx]["id"] = tc_chunk["id"]
+                            if "type" in tc_chunk:
+                                accumulated_tool_calls[idx]["type"] = tc_chunk["type"]
+
+                            # Accumulate function data
+                            if "function" in tc_chunk:
+                                func_chunk = tc_chunk["function"]
+                                if "name" in func_chunk:
+                                    accumulated_tool_calls[idx]["function"]["name"] = func_chunk["name"]
+                                if "arguments" in func_chunk:
+                                    # Arguments are streamed incrementally, append
+                                    accumulated_tool_calls[idx]["function"]["arguments"] += func_chunk["arguments"]
+
+                # Check if done - process accumulated tool calls
+                if chunk.get("done"):
+                    # Process accumulated tool calls (for LM Studio streaming)
+                    if accumulated_tool_calls:
+                        print(f"[WebSocket] Stream finished, processing {len(accumulated_tool_calls)} accumulated tool call(s)")
+                        for idx in sorted(accumulated_tool_calls.keys()):
+                            tool_call = accumulated_tool_calls[idx]
+                            print(f"[WebSocket] Accumulated tool call: {tool_call}")
+
+                            func = tool_call.get("function", {})
+                            tool_name = func.get("name", "")
+                            tool_args_str = func.get("arguments", "{}")
+                            tool_call_id = tool_call.get("id", "call_1")
+
+                            # Parse arguments if string
+                            try:
+                                tool_args = json.loads(tool_args_str) if isinstance(tool_args_str, str) else tool_args_str
+                            except json.JSONDecodeError:
+                                print(f"[WebSocket] Failed to parse arguments: {tool_args_str}")
+                                tool_args = {}
+
+                            # Skip if name is empty (incomplete tool call)
+                            if not tool_name:
+                                print(f"[WebSocket] Skipping tool call with empty name: {tool_call}")
+                                continue
+
+                            print(f"[WebSocket] Executing - name: '{tool_name}', args: {tool_args}, id: '{tool_call_id}'")
 
                             # Notify client of tool call
                             await websocket.send_json({
@@ -871,8 +917,18 @@ async def websocket_chat(websocket: WebSocket):
                                 "result": result
                             })
 
+                            # Prepare complete tool call for conversation history
+                            complete_tool_call = {
+                                "id": tool_call_id,
+                                "type": "function",
+                                "function": {
+                                    "name": tool_name,
+                                    "arguments": tool_args
+                                }
+                            }
+
                             # Add tool result to conversation for LM Studio/OpenAI format
-                            messages.append({"role": "assistant", "content": "", "tool_calls": [tool_call]})
+                            messages.append({"role": "assistant", "content": "", "tool_calls": [complete_tool_call]})
 
                             # OpenAI/LM Studio requires tool_call_id and name in tool message
                             tool_message = {
@@ -888,6 +944,7 @@ async def websocket_chat(websocket: WebSocket):
                             messages.append(tool_message)
 
                             # Get final response with tool result
+                            print(f"[WebSocket] Requesting follow-up response with tool result")
                             async for chunk2 in llm_client.chat(
                                 model,
                                 messages,
@@ -903,10 +960,8 @@ async def websocket_chat(websocket: WebSocket):
                                             "content": content2
                                         })
 
-                # Check if done
-                if chunk.get("done"):
                     # For models without native tool calling: parse JSON from response
-                    if not has_tool_call and full_response.strip():
+                    elif not has_tool_call and full_response.strip():
                         response_stripped = full_response.strip()
                         is_tool_call = False
 
