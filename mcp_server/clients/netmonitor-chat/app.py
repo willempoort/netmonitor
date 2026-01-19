@@ -332,59 +332,78 @@ class LMStudioClient:
 
                 print("[LM Studio] Starting to read stream...")
                 line_count = 0
+                buffer = ""  # Buffer for incomplete JSON
                 async for line in response.aiter_lines():
                     line_count += 1
                     if line_count <= 3:  # Log first 3 lines for debugging
                         print(f"[LM Studio] Line {line_count}: {line[:100] if line else 'empty'}")
-                    if line.strip():
-                        # Remove "data: " prefix if present
-                        if line.startswith("data: "):
-                            line = line[6:]
 
-                        if line.strip() == "[DONE]":
-                            yield {"done": True}
-                            continue
+                    # Skip empty lines
+                    if not line.strip():
+                        continue
 
-                        try:
-                            chunk = json.loads(line)
-                            # Convert OpenAI format to Ollama format
-                            choices = chunk.get("choices", [])
-                            if choices:
-                                delta = choices[0].get("delta", {})
-                                content = delta.get("content", "")
-                                tool_calls = delta.get("tool_calls", [])
+                    # Remove "data: " prefix if present
+                    if line.startswith("data: "):
+                        line = line[6:]
 
-                                # Build Ollama-compatible response
-                                ollama_chunk = {
-                                    "message": {
-                                        "role": delta.get("role", "assistant"),
-                                        "content": content
-                                    },
-                                    "done": choices[0].get("finish_reason") is not None
-                                }
+                    # Check for [DONE]
+                    if line.strip() == "[DONE]":
+                        print("[LM Studio] Stream finished with [DONE]")
+                        yield {"done": True}
+                        continue
 
-                                # Add tool calls if present
-                                if tool_calls:
-                                    ollama_chunk["message"]["tool_calls"] = [
-                                        {
-                                            "function": {
-                                                "name": tc.get("function", {}).get("name", ""),
-                                                "arguments": (
-                                                    json.loads(tc.get("function", {}).get("arguments", "{}"))
-                                                    if isinstance(tc.get("function", {}).get("arguments"), str)
-                                                    else tc.get("function", {}).get("arguments", {})
-                                                )
-                                            }
+                    # Add to buffer
+                    buffer += line.strip()
+
+                    # Try to parse only if line ends with } (complete JSON)
+                    if not buffer.endswith("}"):
+                        if line_count <= 5:
+                            print(f"[LM Studio] Buffering incomplete JSON: {buffer[:80]}...")
+                        continue
+
+                    try:
+                        chunk = json.loads(buffer)
+                        buffer = ""  # Clear buffer on successful parse
+
+                        # Convert OpenAI format to Ollama format
+                        choices = chunk.get("choices", [])
+                        if choices:
+                            delta = choices[0].get("delta", {})
+                            content = delta.get("content", "")
+                            tool_calls = delta.get("tool_calls", [])
+
+                            # Build Ollama-compatible response
+                            ollama_chunk = {
+                                "message": {
+                                    "role": delta.get("role", "assistant"),
+                                    "content": content
+                                },
+                                "done": choices[0].get("finish_reason") is not None
+                            }
+
+                            # Add tool calls if present
+                            if tool_calls:
+                                ollama_chunk["message"]["tool_calls"] = [
+                                    {
+                                        "function": {
+                                            "name": tc.get("function", {}).get("name", ""),
+                                            "arguments": (
+                                                json.loads(tc.get("function", {}).get("arguments", "{}"))
+                                                if isinstance(tc.get("function", {}).get("arguments"), str)
+                                                else tc.get("function", {}).get("arguments", {})
+                                            )
                                         }
-                                        for tc in tool_calls
-                                    ]
+                                    }
+                                    for tc in tool_calls
+                                ]
 
-                                if line_count <= 5:
-                                    print(f"[LM Studio] Yielding chunk: {content[:50] if content else 'no content'}")
-                                yield ollama_chunk
-                        except json.JSONDecodeError as e:
-                            print(f"[LM Studio] JSON decode error: {e}, line: {line[:100]}")
-                            continue
+                            if line_count <= 5:
+                                print(f"[LM Studio] Yielding chunk: {content[:50] if content else 'no content'}")
+                            yield ollama_chunk
+                    except json.JSONDecodeError as e:
+                        print(f"[LM Studio] JSON decode error: {e}, buffer: {buffer[:100]}")
+                        # Don't clear buffer, wait for more data
+                        continue
 
                 print(f"[LM Studio] Stream finished, total lines: {line_count}")
 
@@ -756,6 +775,7 @@ async def websocket_chat(websocket: WebSocket):
                             func = tool_call.get("function", {})
                             tool_name = func.get("name")
                             tool_args = func.get("arguments", {})
+                            tool_call_id = tool_call.get("id", "call_1")  # Get ID or use default
 
                             # Notify client of tool call
                             await websocket.send_json({
@@ -774,12 +794,21 @@ async def websocket_chat(websocket: WebSocket):
                                 "result": result
                             })
 
-                            # Add tool result to conversation and continue
+                            # Add tool result to conversation for LM Studio/OpenAI format
                             messages.append({"role": "assistant", "content": "", "tool_calls": [tool_call]})
-                            messages.append({
+
+                            # OpenAI/LM Studio requires tool_call_id and name in tool message
+                            tool_message = {
                                 "role": "tool",
-                                "content": json.dumps(result)
-                            })
+                                "content": json.dumps(result) if result else "{}"
+                            }
+
+                            # Add tool_call_id for OpenAI-compatible APIs (LM Studio)
+                            if llm_provider == "lmstudio":
+                                tool_message["tool_call_id"] = tool_call_id
+                                tool_message["name"] = tool_name
+
+                            messages.append(tool_message)
 
                             # Get final response with tool result
                             async for chunk2 in llm_client.chat(
