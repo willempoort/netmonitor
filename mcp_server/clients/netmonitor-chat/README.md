@@ -8,10 +8,13 @@ Simple, reliable web interface for Ollama + NetMonitor MCP Tools. Built after di
 - 🤖 **Multiple LLM Providers** - Ollama en LM Studio ondersteuning
 - ⚙️ **Configureerbare UI** - MCP en LLM servers via web interface
 - 🔧 **Automatic Tool Calling** - Via mcp_bridge.py (proven working)
-- 📡 **Real-time Streaming** - WebSocket-based responses
+- ⚡ **Smart Tool Filtering** - Automatische selectie van relevante tools (60 → 10) voor snellere responses
+- 📡 **Real-time Streaming** - WebSocket-based responses met incrementele tool calls
 - 🛡️ **60 Security Tools** - Volledige NetMonitor MCP tool access
 - 🏠 **100% On-Premise** - Geen cloud, volledige privacy
-- 🎯 **Debug Mode** - Optioneel tool calls en resultaten tonen
+- 🎯 **Debug Mode** - Optioneel tool calls en resultaten tonen (standaard uit)
+- 💾 **Persistente Configuratie** - Settings blijven bewaard in browser localStorage
+- 🌐 **Meertalig** - Nederlands en Engels keyword matching voor tool filtering
 
 ## 🏗️ Architectuur
 
@@ -134,16 +137,25 @@ ollama pull qwen2.5-coder:14b    # Best: excellente tool support
 ollama pull mistral:7b-instruct  # Snelst: basic tool calling
 ```
 
-**Optie B: LM Studio**
+**Optie B: LM Studio (sneller op Mac M1/M2/M3)**
 
 1. Download en installeer [LM Studio](https://lmstudio.ai/)
-2. Download een model (bijv. Llama 3.1 8B, Qwen 2.5 Coder)
-3. Start de Local Server in LM Studio (poort 1234)
+2. Download een model (aanbevolen: Qwen 2.5 Coder 14B Instruct)
+3. Start de Local Server in LM Studio:
+   - Klik "Local Server" tab
+   - Selecteer een model
+   - Klik "Start Server" (default poort: 1234)
 4. In de NetMonitor Chat web UI:
    - Klik op "⚙️ Server Configuratie"
    - Selecteer "LM Studio" als provider
-   - Controleer of de URL correct is (http://localhost:1234)
+   - Controleer URL: `http://localhost:1234`
+   - **Vink "Force Tools" aan** (nodig voor function calling in LM Studio)
+   - (Optioneel) Voeg System Prompt toe voor context
    - Klik "Configuratie Toepassen"
+
+**💡 Tip**: LM Studio is vaak 2-3x sneller dan Ollama op Apple Silicon dankzij Metal optimalisatie!
+
+**⚠️ Belangrijk**: Zonder "Force Tools" zal LM Studio geen tools aanroepen. Deze optie forceert function calling support.
 
 ### Stap 4: Start de Interface
 
@@ -222,9 +234,10 @@ In de web interface:
 ## 🎨 UI Features
 
 ### Status Indicators (Header)
-- **Ollama**: Groen = verbonden, Rood = disconnected
+- **LLM Provider**: Toont "Ollama" of "LM Studio" (dynamisch)
+- **Status**: Groen = verbonden, Rood = disconnected
 - **MCP**: Groen = verbonden, Rood = disconnected
-- **Tools count**: Aantal beschikbare MCP tools
+- **Tools count**: Aantal beschikbare MCP tools (60 totaal, 10-15 per request)
 
 ### Sidebar Controls
 - **Model selectie**: Dropdown met alle beschikbare models (Ollama of LM Studio)
@@ -233,14 +246,16 @@ In de web interface:
   - **LLM Provider**: Keuze tussen Ollama of LM Studio
   - **Ollama URL**: Configureerbaar endpoint (default: http://localhost:11434)
   - **LM Studio URL**: Configureerbaar endpoint (default: http://localhost:1234)
+  - **Force Tools**: ✅ Verplicht voor LM Studio function calling (vink aan!)
+  - **System Prompt**: (Optioneel) Custom system instructies voor het model
   - **MCP Server URL**: Configureerbaar MCP endpoint
   - **MCP Auth Token**: API token voor MCP server
   - **Configuratie Toepassen**: Herlaadt models en tools met nieuwe settings
-- **Beschikbare Tools** (uitklapbaar): Volledige lijst met alle MCP tools + beschrijvingen
-- **Debug Mode**: Toggle om tool calls en resultaten te tonen/verbergen
+- **Beschikbare Tools** (klik om uit te klappen): Volledige lijst met alle MCP tools + beschrijvingen
+- **Debug Mode**: Toggle om tool calls en resultaten te tonen/verbergen (standaard uit)
 - **Wis chat**: Reset conversatie
 
-> **💡 Tip**: Alle configuratie wordt opgeslagen in browser localStorage, dus je hoeft het maar één keer in te stellen!
+> **💡 Tip**: Alle configuratie wordt automatisch opgeslagen in browser localStorage, dus settings blijven bewaard bij pagina refresh!
 
 ### Chat Messages
 - **User messages**: Blauw, rechts uitgelijnd
@@ -307,9 +322,30 @@ Als dit werkt maar UI niet → check environment variables in .env
 **Symptom:** Assistant beschrijft tools maar roept ze niet aan
 
 **Fixes:**
-1. **Verlaag temperature** naar 0.0 (meest deterministisch)
-2. **Wissel model**: probeer `qwen2.5-coder:14b` (beste tool calling)
-3. **Check tool output**: Kijk of tool calls verschijnen in de chat (gele blokken)
+1. **LM Studio**: Vink "Force Tools" aan in Server Configuratie (essentieel!)
+2. **Verlaag temperature** naar 0.0 (meest deterministisch)
+3. **Wissel model**: probeer `qwen2.5-coder:14b` (beste tool calling)
+4. **Check tool output**: Kijk of tool calls verschijnen in de chat (gele blokken)
+5. **Check logs**: Terminal toont `[WebSocket] LM Studio with FORCED tools enabled (10 tools)`
+
+### LM Studio geeft 400 errors
+
+**Symptom:** Console/logs tonen "Invalid 'messages' in payload" of "tokens greater than max"
+
+**Fixes:**
+1. **Context size**: Model heeft 32K limit, smart filtering reduceert dit automatisch
+2. **Check model**: Zorg dat model function calling ondersteunt (Qwen 2.5, Llama 3.1+)
+3. **Terminal logs**: Check `[Tool Filter]` output om te zien welke tools geselecteerd zijn
+4. **Force Tools**: Moet aangevinkt zijn voor function calling
+
+### Settings verdwijnen bij refresh
+
+**Symptom:** Na pagina refresh moet je alles opnieuw configureren
+
+**Fix:** Dit is opgelost! Settings worden nu automatisch opgeslagen in localStorage. Als het tóch gebeurt:
+1. Check browser console voor localStorage errors
+2. Check of browser localStorage niet geblokkeerd is (private mode)
+3. Clear cache en probeer opnieuw
 
 ### WebSocket errors in console
 
@@ -384,10 +420,32 @@ server {
 
 ## 🎯 Performance Tips
 
+### Smart Tool Filtering
+
+NetMonitor Chat gebruikt intelligente tool filtering om context size te reduceren en responses te versnellen:
+
+- **Automatisch**: Selecteert alleen relevante tools per vraag (60 → 10 tools)
+- **Keyword Matching**: Nederlands + Engels support
+  - "Toon actieve sensors" → matcht `get_sensor_status`, `get_devices`, etc.
+  - "Show recent threats" → matcht `get_threat_detections`, `get_recent_alerts`, etc.
+- **Performance**: 6x minder context = 2-3x snellere responses
+- **Ollama**: Max 15 tools per request
+- **LM Studio**: Max 10 tools per request (32K context limit)
+
+**Debug Tip**: Bekijk de terminal logs om te zien welke tools geselecteerd worden:
+```
+[Tool Filter] Top 10 scores:
+  1. get_sensor_status: 31 points
+  2. get_device_learning_status: 26 points
+  ...
+```
+
 ### Model Selectie
 - **qwen2.5-coder:14b**: Beste tool calling, trager (~5-10s)
 - **llama3.1:8b**: Goede balans (~3-5s)
 - **mistral:7b-instruct**: Snelst (~2-3s), zwakkere tools
+
+**LM Studio op Mac**: Vaak 2-3x sneller door Metal GPU optimalisatie!
 
 ### Temperature Settings
 - **0.0**: Deterministisch, geen hallucinaties (aanbevolen)
@@ -398,6 +456,7 @@ server {
 - Chat history wordt begrensd tot laatste 10 messages
 - WebSocket streaming voorkomt memory leaks
 - Alpine.js is zeer lichtgewicht (~15KB)
+- localStorage voor configuratie persistentie
 
 ## 📊 API Endpoints
 
@@ -444,9 +503,27 @@ server {
   "model": "llama3.1:8b",
   "message": "Laat recente bedreigingen zien",
   "history": [...],
-  "temperature": 0.3
+  "temperature": 0.3,
+  "llm_provider": "ollama",
+  "llm_url": "http://localhost:11434",
+  "mcp_url": "https://soc.poort.net/mcp",
+  "mcp_token": "your_token_here",
+  "force_tools_lmstudio": false,
+  "system_prompt": ""
 }
 ```
+
+**Parameters:**
+- `model`: Model naam (bijv. "llama3.1:8b", "qwen2.5-coder-14b-instruct-mlx:2")
+- `message`: User vraag
+- `history`: Array van eerdere messages
+- `temperature`: 0.0-1.0 (default: 0.3)
+- `llm_provider`: "ollama" of "lmstudio" (default: "ollama")
+- `llm_url`: LLM endpoint URL
+- `mcp_url`: MCP server URL
+- `mcp_token`: MCP authenticatie token
+- `force_tools_lmstudio`: boolean - Forceer function calling voor LM Studio (default: false)
+- `system_prompt`: (Optioneel) Custom system instructies
 
 **Receive:**
 ```json
@@ -458,34 +535,57 @@ server {
 {"type": "done"}
 ```
 
+**Message Types:**
+- `token`: Streaming text content
+- `tool_call`: Tool wordt aangeroepen met args
+- `tool_result`: Resultaat van tool execution
+- `done`: Stream is compleet
+- `error`: Fout opgetreden
+
 ## 🆚 Vergelijking met Andere Oplossingen
 
 | Feature | NetMonitor-Chat | Open-WebUI 0.7.2 | Ollama-MCP-Bridge |
 |---------|----------------|------------------|-------------------|
 | StreamableHTTP MCP | ✅ Yes | ❌ No (STDIO only) | ✅ Yes |
-| Tool calling | ✅ Reliable | ✅ Good | ⚠️ Problematic |
+| Tool calling | ✅ Excellent | ✅ Good | ⚠️ Problematic |
+| LM Studio support | ✅ Full (w/ tools) | ✅ Basic | ❌ No |
+| Smart tool filtering | ✅ Yes (auto) | ❌ No | ❌ No |
 | Setup complexity | Easy (venv) | Medium (Docker) | Hard + Debugging |
 | Customizable | ✅ 100% | Limited | Limited |
 | Production ready | ✅ Yes (after Docker) | ✅ Yes | ❌ No |
 | UI/UX | Simple & Clean | Feature-rich | Basic |
+| Settings persistence | ✅ localStorage | ✅ Database | ❌ None |
+| Multi-language | ✅ NL + EN | ✅ Multi | ❌ EN only |
 
 ## 🔮 Roadmap
 
+**Voltooid** ✅
 - [x] FastAPI backend met Ollama integration
 - [x] Alpine.js frontend met real-time streaming
 - [x] Tool calling via mcp_bridge.py
 - [x] WebSocket streaming responses
-- [x] LM Studio ondersteuning
+- [x] LM Studio ondersteuning met OpenAI-compatible API
 - [x] Configureerbare LLM en MCP servers via UI
-- [x] Debug mode toggle voor tool visibility
+- [x] Debug mode toggle voor tool visibility (standaard uit)
 - [x] Uitklapbare tools lijst
+- [x] localStorage persistentie voor settings
+- [x] Force Tools optie voor LM Studio function calling
+- [x] System Prompt configuratie
+- [x] Smart tool filtering (60 → 10 tools) voor performance
+- [x] Nederlands + Engels keyword matching
+- [x] Incremental streaming tool calls voor LM Studio
+- [x] Dynamic status indicator (Ollama/LM Studio)
+
+**Todo** 📋
 - [ ] Dockerfile voor productie deployment
 - [ ] docker-compose.yml voor easy setup
 - [ ] User authentication (optioneel)
-- [ ] Chat history persistence
+- [ ] Chat history persistence (database)
 - [ ] Multi-user support
-- [ ] Model comparison mode
-- [ ] Export chat transcripts
+- [ ] Model comparison mode (side-by-side)
+- [ ] Export chat transcripts (JSON/Markdown)
+- [ ] RAG integration voor document search
+- [ ] Token usage tracking en statistics
 
 ## 🐛 Known Issues
 
