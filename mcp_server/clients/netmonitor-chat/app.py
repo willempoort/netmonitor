@@ -452,14 +452,13 @@ class LMStudioClient:
                                 ollama_chunk["message"]["tool_calls"] = [
                                     {
                                         "id": tc.get("id", f"call_{tc.get('index', 0)}"),  # Preserve tool_call_id
+                                        "index": tc.get("index", 0),  # Add index for accumulation
                                         "type": tc.get("type", "function"),
                                         "function": {
                                             "name": tc.get("function", {}).get("name", ""),
-                                            "arguments": (
-                                                json.loads(tc.get("function", {}).get("arguments", "{}"))
-                                                if isinstance(tc.get("function", {}).get("arguments"), str)
-                                                else tc.get("function", {}).get("arguments", {})
-                                            )
+                                            # Keep arguments as STRING for streaming accumulation
+                                            # Will be parsed to JSON later when complete
+                                            "arguments": tc.get("function", {}).get("arguments", "")
                                         }
                                     }
                                     for tc in tool_calls
