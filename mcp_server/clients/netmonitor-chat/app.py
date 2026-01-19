@@ -856,19 +856,29 @@ async def websocket_chat(websocket: WebSocket):
                                     "function": {"name": "", "arguments": ""}
                                 }
 
-                            # Update ID and type if present
-                            if "id" in tc_chunk:
-                                accumulated_tool_calls[idx]["id"] = tc_chunk["id"]
-                            if "type" in tc_chunk:
+                            # Update ID if present and non-empty (prefer string IDs like "call_0" over numeric)
+                            if "id" in tc_chunk and tc_chunk["id"]:
+                                new_id = tc_chunk["id"]
+                                # Only update if new ID is non-empty
+                                if new_id and str(new_id).startswith("call_"):
+                                    # Prefer "call_X" format over numeric IDs
+                                    accumulated_tool_calls[idx]["id"] = new_id
+                                elif not str(accumulated_tool_calls[idx]["id"]).startswith("call_"):
+                                    # Keep first non-empty ID if current doesn't have call_ prefix
+                                    accumulated_tool_calls[idx]["id"] = new_id
+
+                            # Update type if present and non-empty
+                            if "type" in tc_chunk and tc_chunk["type"]:
                                 accumulated_tool_calls[idx]["type"] = tc_chunk["type"]
 
                             # Accumulate function data
                             if "function" in tc_chunk:
                                 func_chunk = tc_chunk["function"]
-                                if "name" in func_chunk:
+                                # Only update name if new one is non-empty (don't overwrite with "")
+                                if "name" in func_chunk and func_chunk["name"]:
                                     accumulated_tool_calls[idx]["function"]["name"] = func_chunk["name"]
-                                if "arguments" in func_chunk:
-                                    # Arguments are streamed incrementally, append
+                                # Arguments are streamed incrementally, always append
+                                if "arguments" in func_chunk and func_chunk["arguments"]:
                                     accumulated_tool_calls[idx]["function"]["arguments"] += func_chunk["arguments"]
 
                 # Check if done - process accumulated tool calls
