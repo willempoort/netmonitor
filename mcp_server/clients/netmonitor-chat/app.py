@@ -175,7 +175,8 @@ class LMStudioClient:
 
     def __init__(self, base_url: str = "http://localhost:1234"):
         self.base_url = base_url.rstrip('/')
-        self.client = httpx.AsyncClient(timeout=120.0)
+        # Longer timeout for LM Studio (models can be slow to start generating)
+        self.client = httpx.AsyncClient(timeout=300.0)
 
     async def list_models(self) -> List[Dict]:
         """List available LM Studio models"""
@@ -237,6 +238,8 @@ class LMStudioClient:
                 f"{self.base_url}/v1/chat/completions",
                 json=payload
             ) as response:
+                print(f"[LM Studio] Response status: {response.status_code}")
+
                 # Better error logging
                 if response.status_code != 200:
                     error_text = await response.aread()
@@ -245,7 +248,13 @@ class LMStudioClient:
                     return
 
                 response.raise_for_status()
+
+                print("[LM Studio] Starting to read stream...")
+                line_count = 0
                 async for line in response.aiter_lines():
+                    line_count += 1
+                    if line_count <= 3:  # Log first 3 lines for debugging
+                        print(f"[LM Studio] Line {line_count}: {line[:100] if line else 'empty'}")
                     if line.strip():
                         # Remove "data: " prefix if present
                         if line.startswith("data: "):
@@ -289,11 +298,20 @@ class LMStudioClient:
                                         for tc in tool_calls
                                     ]
 
+                                if line_count <= 5:
+                                    print(f"[LM Studio] Yielding chunk: {content[:50] if content else 'no content'}")
                                 yield ollama_chunk
-                        except json.JSONDecodeError:
+                        except json.JSONDecodeError as e:
+                            print(f"[LM Studio] JSON decode error: {e}, line: {line[:100]}")
                             continue
+
+                print(f"[LM Studio] Stream finished, total lines: {line_count}")
+
+        except httpx.TimeoutException as e:
+            print(f"[LM Studio] Timeout error: {e}")
+            yield {"error": f"LM Studio timeout - model might be loading or too slow"}
         except Exception as e:
-            print(f"Error in LM Studio chat: {e}")
+            print(f"[LM Studio] Error in chat: {type(e).__name__}: {e}")
             yield {"error": str(e)}
 
     async def close(self):
