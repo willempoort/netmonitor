@@ -20,6 +20,7 @@ import sys
 import json
 import asyncio
 import subprocess
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, AsyncGenerator
 from datetime import datetime
@@ -51,6 +52,86 @@ if _mcp_bridge_env:
 else:
     # Default: relative to this file (Linux server layout)
     MCP_BRIDGE_PATH = Path(__file__).parent.parent / "ollama-mcp-bridge" / "mcp_bridge.py"
+
+
+# Helper Functions
+
+def filter_relevant_tools(user_message: str, all_tools: List[Dict], max_tools: int = 10) -> List[Dict]:
+    """
+    Filter tools based on relevance to user message.
+    Uses keyword matching on tool names and descriptions.
+
+    Args:
+        user_message: The user's question/request
+        all_tools: List of all available tools
+        max_tools: Maximum number of tools to return
+
+    Returns:
+        List of most relevant tools
+    """
+    if not all_tools:
+        return []
+
+    message_lower = user_message.lower()
+
+    # Define keyword to tool name patterns
+    keyword_groups = {
+        'threat': ['threat', 'detection', 'alert', 'malware', 'attack', 'bedreig'],
+        'ip': ['ip', 'address', 'analyze', 'adres'],
+        'sensor': ['sensor', 'zeek', 'suricata'],
+        'log': ['log', 'syslog', 'event'],
+        'network': ['network', 'traffic', 'flow', 'connection', 'netwerk'],
+        'dns': ['dns', 'domain', 'query'],
+        'file': ['file', 'hash', 'executable', 'bestand'],
+        'user': ['user', 'account', 'authentication', 'gebruiker'],
+        'port': ['port', 'service', 'scan', 'poort'],
+        'stat': ['stat', 'count', 'summary', 'overview', 'overzicht'],
+        'show': ['show', 'list', 'get', 'toon', 'laat', 'zie']
+    }
+
+    # Score each tool based on keyword matches
+    scored_tools = []
+    for tool in all_tools:
+        score = 0
+        tool_name_lower = tool.get('name', '').lower()
+        tool_desc_lower = tool.get('description', '').lower()
+
+        # Check for direct matches in user message
+        for category, keywords in keyword_groups.items():
+            for keyword in keywords:
+                if keyword in message_lower:
+                    # Check if this keyword relates to this tool
+                    if keyword in tool_name_lower or keyword in tool_desc_lower:
+                        score += 10
+
+        # Bonus for exact matches in tool name
+        words_in_message = set(re.findall(r'\w+', message_lower))
+        words_in_tool = set(re.findall(r'\w+', tool_name_lower))
+        overlap = words_in_message & words_in_tool
+        score += len(overlap) * 5
+
+        # Always include certain essential tools with base score
+        if any(essential in tool_name_lower for essential in ['list', 'get', 'show']):
+            score += 2
+
+        scored_tools.append((score, tool))
+
+    # Sort by score (descending) and take top N
+    scored_tools.sort(reverse=True, key=lambda x: x[0])
+
+    # Filter out tools with score 0 (completely irrelevant)
+    relevant_tools = [tool for score, tool in scored_tools if score > 0][:max_tools]
+
+    # If we got less than 5 tools, add some general ones
+    if len(relevant_tools) < 5:
+        general_tools = [tool for score, tool in scored_tools[:10]]
+        relevant_tools = general_tools[:max_tools]
+
+    print(f"[Tool Filter] Filtered {len(all_tools)} tools down to {len(relevant_tools)}")
+    if relevant_tools:
+        print(f"[Tool Filter] Top tools: {[t.get('name') for t in relevant_tools[:5]]}")
+
+    return relevant_tools
 
 
 # Pydantic models for request bodies
@@ -599,12 +680,17 @@ async def websocket_chat(websocket: WebSocket):
 
             messages.extend(history + [{"role": "user", "content": message}])
 
-            # Get available tools and convert to function calling format
-            mcp_tools = await mcp_client.list_tools()
-            ollama_tools = []
+            # Get available tools and filter to most relevant ones
+            all_mcp_tools = await mcp_client.list_tools()
 
-            for tool in mcp_tools:
-                # Convert MCP tool schema to function calling format
+            # Smart filtering: reduce tools from 60 to ~10 most relevant
+            # This dramatically reduces context size and speeds up responses
+            max_tools_for_provider = 10 if llm_provider == "lmstudio" else 15
+            filtered_mcp_tools = filter_relevant_tools(message, all_mcp_tools, max_tools=max_tools_for_provider)
+
+            # Convert filtered tools to function calling format
+            ollama_tools = []
+            for tool in filtered_mcp_tools:
                 ollama_tools.append({
                     "type": "function",
                     "function": {
@@ -614,8 +700,7 @@ async def websocket_chat(websocket: WebSocket):
                     }
                 })
 
-            # Stream response from LLM with tools
-            # Note: LM Studio doesn't support function calling well, so we skip tools by default
+            # Stream response from LLM with filtered tools
             full_response = ""
             has_tool_call = False
 
@@ -624,7 +709,7 @@ async def websocket_chat(websocket: WebSocket):
                 use_tools = ollama_tools if ollama_tools else None
             elif llm_provider == "lmstudio" and force_tools_lmstudio:
                 use_tools = ollama_tools if ollama_tools else None
-                print("[WebSocket] LM Studio with FORCED tools enabled")
+                print(f"[WebSocket] LM Studio with FORCED tools enabled ({len(ollama_tools)} tools)")
             else:
                 use_tools = None
                 print("[WebSocket] LM Studio detected - function calling disabled (use Force Tools to enable)")
