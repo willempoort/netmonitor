@@ -74,19 +74,59 @@ def filter_relevant_tools(user_message: str, all_tools: List[Dict], max_tools: i
 
     message_lower = user_message.lower()
 
-    # Define keyword to tool name patterns
-    keyword_groups = {
-        'threat': ['threat', 'detection', 'alert', 'malware', 'attack', 'bedreig'],
-        'ip': ['ip', 'address', 'analyze', 'adres'],
-        'sensor': ['sensor', 'zeek', 'suricata'],
-        'log': ['log', 'syslog', 'event'],
-        'network': ['network', 'traffic', 'flow', 'connection', 'netwerk'],
-        'dns': ['dns', 'domain', 'query'],
-        'file': ['file', 'hash', 'executable', 'bestand'],
-        'user': ['user', 'account', 'authentication', 'gebruiker'],
-        'port': ['port', 'service', 'scan', 'poort'],
-        'stat': ['stat', 'count', 'summary', 'overview', 'overzicht'],
-        'show': ['show', 'list', 'get', 'toon', 'laat', 'zie']
+    print(f"[Tool Filter] Input message: '{user_message}'")
+    print(f"[Tool Filter] Total tools available: {len(all_tools)}")
+    if all_tools:
+        print(f"[Tool Filter] Sample tool names: {[t.get('name', 'unknown') for t in all_tools[:5]]}")
+
+    # Map user keywords (including Dutch) to tool keywords (English in tool names)
+    # This allows "toon sensors" to match tools with "get" + "sensor"
+    keyword_mappings = {
+        # Category: (user_keywords, tool_keywords)
+        'threat': (
+            ['threat', 'detection', 'alert', 'malware', 'attack', 'bedreig', 'dreig'],
+            ['threat', 'detection', 'alert', 'malware', 'attack']
+        ),
+        'ip': (
+            ['ip', 'address', 'adres'],
+            ['ip', 'address', 'addr']
+        ),
+        'sensor': (
+            ['sensor', 'sensors'],
+            ['sensor', 'zeek', 'suricata']
+        ),
+        'log': (
+            ['log', 'logs'],
+            ['log', 'syslog', 'event']
+        ),
+        'network': (
+            ['network', 'netwerk', 'traffic'],
+            ['network', 'traffic', 'flow', 'connection']
+        ),
+        'dns': (
+            ['dns', 'domain'],
+            ['dns', 'domain', 'query']
+        ),
+        'file': (
+            ['file', 'bestand'],
+            ['file', 'hash', 'executable']
+        ),
+        'user': (
+            ['user', 'gebruiker', 'account'],
+            ['user', 'account', 'authentication', 'auth']
+        ),
+        'port': (
+            ['port', 'poort', 'service'],
+            ['port', 'service', 'scan']
+        ),
+        'status': (
+            ['status', 'actieve', 'active', 'running'],
+            ['status', 'state', 'active', 'running']
+        ),
+        'show': (
+            ['toon', 'laat', 'zie', 'show', 'list', 'geef'],
+            ['get', 'list', 'show', 'fetch']
+        )
     }
 
     # Score each tool based on keyword matches
@@ -96,40 +136,57 @@ def filter_relevant_tools(user_message: str, all_tools: List[Dict], max_tools: i
         tool_name_lower = tool.get('name', '').lower()
         tool_desc_lower = tool.get('description', '').lower()
 
-        # Check for direct matches in user message
-        for category, keywords in keyword_groups.items():
-            for keyword in keywords:
-                if keyword in message_lower:
-                    # Check if this keyword relates to this tool
-                    if keyword in tool_name_lower or keyword in tool_desc_lower:
-                        score += 10
+        # Check for category matches
+        for category, (user_keywords, tool_keywords) in keyword_mappings.items():
+            # Check if user mentioned this category
+            user_mentioned = any(kw in message_lower for kw in user_keywords)
 
-        # Bonus for exact matches in tool name
+            if user_mentioned:
+                # Check if tool has keywords from this category
+                tool_has_category = any(
+                    kw in tool_name_lower or kw in tool_desc_lower
+                    for kw in tool_keywords
+                )
+
+                if tool_has_category:
+                    score += 10
+                    # Extra bonus if multiple words from category match
+                    matches = sum(1 for kw in tool_keywords if kw in tool_name_lower or kw in tool_desc_lower)
+                    if matches > 1:
+                        score += 5
+
+        # Bonus for exact word matches in tool name (case-insensitive)
         words_in_message = set(re.findall(r'\w+', message_lower))
         words_in_tool = set(re.findall(r'\w+', tool_name_lower))
         overlap = words_in_message & words_in_tool
-        score += len(overlap) * 5
+        if overlap:
+            score += len(overlap) * 5
 
-        # Always include certain essential tools with base score
-        if any(essential in tool_name_lower for essential in ['list', 'get', 'show']):
-            score += 2
+        # Small base score for common query tools
+        if any(essential in tool_name_lower for essential in ['get', 'list', 'show', 'fetch']):
+            score += 1
 
         scored_tools.append((score, tool))
 
-    # Sort by score (descending) and take top N
+    # Sort by score (descending)
     scored_tools.sort(reverse=True, key=lambda x: x[0])
+
+    # Debug: show top scores
+    print(f"[Tool Filter] Top 10 scores:")
+    for i, (score, tool) in enumerate(scored_tools[:10]):
+        print(f"  {i+1}. {tool.get('name', 'unknown')}: {score} points")
 
     # Filter out tools with score 0 (completely irrelevant)
     relevant_tools = [tool for score, tool in scored_tools if score > 0][:max_tools]
 
-    # If we got less than 5 tools, add some general ones
-    if len(relevant_tools) < 5:
-        general_tools = [tool for score, tool in scored_tools[:10]]
-        relevant_tools = general_tools[:max_tools]
+    # If we got no tools with score > 0, take top scoring ones anyway
+    if len(relevant_tools) == 0:
+        print(f"[Tool Filter] WARNING: No tools scored > 0, taking top {max_tools} by default")
+        relevant_tools = [tool for score, tool in scored_tools[:max_tools]]
 
     print(f"[Tool Filter] Filtered {len(all_tools)} tools down to {len(relevant_tools)}")
     if relevant_tools:
-        print(f"[Tool Filter] Top tools: {[t.get('name') for t in relevant_tools[:5]]}")
+        print(f"[Tool Filter] Selected tools: {[t.get('name') for t in relevant_tools]}")
 
     return relevant_tools
 
