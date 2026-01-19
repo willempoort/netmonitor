@@ -25,9 +25,10 @@ from typing import Dict, List, Optional, AsyncGenerator
 from datetime import datetime
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
+from pydantic import BaseModel
 from dotenv import load_dotenv
 import httpx
 import uvicorn
@@ -52,13 +53,29 @@ else:
     MCP_BRIDGE_PATH = Path(__file__).parent.parent / "ollama-mcp-bridge" / "mcp_bridge.py"
 
 
+# Pydantic models for request bodies
+class LLMConfig(BaseModel):
+    provider: str = "ollama"
+    url: str = "http://localhost:11434"
+
+class MCPConfig(BaseModel):
+    url: str = "https://soc.poort.net/mcp"
+    token: str = ""
+
+class HealthConfig(BaseModel):
+    llm_provider: str = "ollama"
+    llm_url: str = "http://localhost:11434"
+    mcp_url: str = "https://soc.poort.net/mcp"
+    mcp_token: str = ""
+
+
 # Lifespan event handler (replaces on_event)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     yield
-    # Shutdown
-    await ollama.close()
+    # Shutdown - nothing to clean up as clients are created per-request now
+    pass
 
 
 # Initialize FastAPI
@@ -140,6 +157,121 @@ class OllamaClient:
                             continue
         except Exception as e:
             print(f"Error in chat: {e}")
+            yield {"error": str(e)}
+
+    async def close(self):
+        """Close HTTP client"""
+        await self.client.aclose()
+
+
+class LMStudioClient:
+    """Client for LM Studio (OpenAI-compatible API)"""
+
+    def __init__(self, base_url: str = "http://localhost:1234"):
+        self.base_url = base_url.rstrip('/')
+        self.client = httpx.AsyncClient(timeout=120.0)
+
+    async def list_models(self) -> List[Dict]:
+        """List available LM Studio models"""
+        try:
+            response = await self.client.get(f"{self.base_url}/v1/models")
+            response.raise_for_status()
+            data = response.json()
+            models = data.get("data", [])
+            # Convert OpenAI format to Ollama format for consistency
+            return [{"name": m.get("id", "unknown")} for m in models]
+        except Exception as e:
+            print(f"Error listing LM Studio models: {e}")
+            return []
+
+    async def chat(
+        self,
+        model: str,
+        messages: List[Dict],
+        stream: bool = True,
+        temperature: float = 0.7,
+        tools: Optional[List[Dict]] = None
+    ) -> AsyncGenerator:
+        """
+        Chat with LM Studio model using OpenAI-compatible API
+
+        Args:
+            model: Model name
+            messages: Chat messages
+            stream: Stream responses
+            temperature: Sampling temperature
+            tools: Available tools (for function calling)
+
+        Yields:
+            Response chunks in Ollama format for compatibility
+        """
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": stream,
+            "temperature": temperature
+        }
+
+        if tools:
+            # Convert to OpenAI function calling format if not already
+            payload["tools"] = tools
+
+        try:
+            async with self.client.stream(
+                "POST",
+                f"{self.base_url}/v1/chat/completions",
+                json=payload
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if line.strip():
+                        # Remove "data: " prefix if present
+                        if line.startswith("data: "):
+                            line = line[6:]
+
+                        if line.strip() == "[DONE]":
+                            yield {"done": True}
+                            continue
+
+                        try:
+                            chunk = json.loads(line)
+                            # Convert OpenAI format to Ollama format
+                            choices = chunk.get("choices", [])
+                            if choices:
+                                delta = choices[0].get("delta", {})
+                                content = delta.get("content", "")
+                                tool_calls = delta.get("tool_calls", [])
+
+                                # Build Ollama-compatible response
+                                ollama_chunk = {
+                                    "message": {
+                                        "role": delta.get("role", "assistant"),
+                                        "content": content
+                                    },
+                                    "done": choices[0].get("finish_reason") is not None
+                                }
+
+                                # Add tool calls if present
+                                if tool_calls:
+                                    ollama_chunk["message"]["tool_calls"] = [
+                                        {
+                                            "function": {
+                                                "name": tc.get("function", {}).get("name", ""),
+                                                "arguments": (
+                                                    json.loads(tc.get("function", {}).get("arguments", "{}"))
+                                                    if isinstance(tc.get("function", {}).get("arguments"), str)
+                                                    else tc.get("function", {}).get("arguments", {})
+                                                )
+                                            }
+                                        }
+                                        for tc in tool_calls
+                                    ]
+
+                                yield ollama_chunk
+                        except json.JSONDecodeError:
+                            continue
+        except Exception as e:
+            print(f"Error in LM Studio chat: {e}")
             yield {"error": str(e)}
 
     async def close(self):
@@ -272,15 +404,6 @@ class MCPBridgeClient:
             return []
 
 
-# Initialize clients
-ollama = OllamaClient()
-mcp_bridge = MCPBridgeClient(
-    bridge_path=MCP_BRIDGE_PATH,
-    server_url=MCP_SERVER_URL,
-    auth_token=MCP_AUTH_TOKEN
-)
-
-
 # REST Endpoints
 
 @app.get("/")
@@ -289,32 +412,93 @@ async def root():
     return FileResponse(Path(__file__).parent / "static" / "index.html")
 
 
+@app.post("/api/models")
+async def post_models(config: LLMConfig):
+    """Get available models from configured LLM provider"""
+    try:
+        if config.provider == "lmstudio":
+            client = LMStudioClient(config.url)
+        else:
+            client = OllamaClient(config.url)
+
+        models = await client.list_models()
+        await client.close()
+        return {"models": models}
+    except Exception as e:
+        print(f"Error getting models: {e}")
+        return {"models": []}
+
+
+@app.post("/api/tools")
+async def post_tools(config: MCPConfig):
+    """Get available MCP tools from configured server"""
+    try:
+        bridge = MCPBridgeClient(
+            bridge_path=MCP_BRIDGE_PATH,
+            server_url=config.url,
+            auth_token=config.token
+        )
+        tools = await bridge.list_tools()
+        return {"tools": tools, "count": len(tools)}
+    except Exception as e:
+        print(f"Error getting tools: {e}")
+        return {"tools": [], "count": 0}
+
+
+@app.post("/api/health")
+async def post_health(config: HealthConfig):
+    """Health check with configured servers"""
+    try:
+        # Check LLM provider
+        if config.llm_provider == "lmstudio":
+            llm_client = LMStudioClient(config.llm_url)
+        else:
+            llm_client = OllamaClient(config.llm_url)
+
+        llm_ok = len(await llm_client.list_models()) > 0
+        await llm_client.close()
+
+        # Check MCP server
+        mcp_client = MCPBridgeClient(
+            bridge_path=MCP_BRIDGE_PATH,
+            server_url=config.mcp_url,
+            auth_token=config.mcp_token
+        )
+        mcp_ok = len(await mcp_client.list_tools()) > 0
+
+        return {
+            "status": "healthy" if (llm_ok and mcp_ok) else "degraded",
+            "ollama": "connected" if llm_ok else "disconnected",
+            "mcp": "connected" if mcp_ok else "disconnected",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        print(f"Error in health check: {e}")
+        return {
+            "status": "error",
+            "ollama": "disconnected",
+            "mcp": "disconnected",
+            "timestamp": datetime.now().isoformat()
+        }
+
+
+# Backwards compatibility - GET endpoints with default config
 @app.get("/api/models")
 async def get_models():
-    """Get available Ollama models"""
-    models = await ollama.list_models()
-    return {"models": models}
+    """Get available models (default config)"""
+    return await post_models(LLMConfig())
 
 
 @app.get("/api/tools")
 async def get_tools():
-    """Get available MCP tools"""
-    tools = await mcp_bridge.list_tools()
-    return {"tools": tools, "count": len(tools)}
+    """Get available tools (default config)"""
+    return await post_tools(MCPConfig())
 
 
 @app.get("/api/health")
-async def health():
-    """Health check"""
-    ollama_ok = len(await ollama.list_models()) > 0
-    tools_ok = len(await mcp_bridge.list_tools()) > 0
-
-    return {
-        "status": "healthy" if (ollama_ok and tools_ok) else "degraded",
-        "ollama": "connected" if ollama_ok else "disconnected",
-        "mcp": "connected" if tools_ok else "disconnected",
-        "timestamp": datetime.now().isoformat()
-    }
+async def get_health():
+    """Health check (default config)"""
+    return await post_health(HealthConfig())
 
 
 # WebSocket Endpoint
@@ -325,7 +509,7 @@ async def websocket_chat(websocket: WebSocket):
     WebSocket endpoint for streaming chat
 
     Protocol:
-    - Client sends: {"model": "llama3.1:8b", "message": "Hello", "history": [...]}
+    - Client sends: {"model": "...", "message": "...", "history": [...], "llm_provider": "...", "llm_url": "...", "mcp_url": "...", "mcp_token": "..."}
     - Server sends: {"type": "token", "content": "..."}
     - Server sends: {"type": "tool_call", "tool": "...", "args": {...}}
     - Server sends: {"type": "tool_result", "result": {...}}
@@ -343,15 +527,34 @@ async def websocket_chat(websocket: WebSocket):
             history = data.get("history", [])
             temperature = data.get("temperature", 0.3)
 
+            # Get configuration from client
+            llm_provider = data.get("llm_provider", "ollama")
+            llm_url = data.get("llm_url", OLLAMA_BASE_URL)
+            mcp_url = data.get("mcp_url", MCP_SERVER_URL)
+            mcp_token = data.get("mcp_token", MCP_AUTH_TOKEN)
+
+            # Create LLM client based on provider
+            if llm_provider == "lmstudio":
+                llm_client = LMStudioClient(llm_url)
+            else:
+                llm_client = OllamaClient(llm_url)
+
+            # Create MCP bridge client with configured server
+            mcp_client = MCPBridgeClient(
+                bridge_path=MCP_BRIDGE_PATH,
+                server_url=mcp_url,
+                auth_token=mcp_token
+            )
+
             # Build messages
             messages = history + [{"role": "user", "content": message}]
 
-            # Get available tools and convert to Ollama format
-            mcp_tools = await mcp_bridge.list_tools()
+            # Get available tools and convert to function calling format
+            mcp_tools = await mcp_client.list_tools()
             ollama_tools = []
 
             for tool in mcp_tools:
-                # Convert MCP tool schema to Ollama function calling format
+                # Convert MCP tool schema to function calling format
                 ollama_tools.append({
                     "type": "function",
                     "function": {
@@ -361,11 +564,11 @@ async def websocket_chat(websocket: WebSocket):
                     }
                 })
 
-            # Stream response from Ollama with tools
+            # Stream response from LLM with tools
             full_response = ""
             has_tool_call = False
 
-            async for chunk in ollama.chat(
+            async for chunk in llm_client.chat(
                 model,
                 messages,
                 stream=True,
@@ -415,8 +618,8 @@ async def websocket_chat(websocket: WebSocket):
                                 "args": tool_args
                             })
 
-                            # Execute tool via MCP bridge
-                            result = await mcp_bridge.call_tool(tool_name, tool_args)
+                            # Execute tool via MCP client
+                            result = await mcp_client.call_tool(tool_name, tool_args)
 
                             # Send result to client
                             await websocket.send_json({
@@ -433,7 +636,7 @@ async def websocket_chat(websocket: WebSocket):
                             })
 
                             # Get final response with tool result
-                            async for chunk2 in ollama.chat(
+                            async for chunk2 in llm_client.chat(
                                 model,
                                 messages,
                                 stream=True,
@@ -473,7 +676,7 @@ async def websocket_chat(websocket: WebSocket):
                                     })
 
                                     # Execute tool
-                                    result = await mcp_bridge.call_tool(tool_name, tool_args)
+                                    result = await mcp_client.call_tool(tool_name, tool_args)
 
                                     # Send result to client
                                     await websocket.send_json({
@@ -490,7 +693,7 @@ async def websocket_chat(websocket: WebSocket):
                                     })
 
                                     # Get final natural language response
-                                    async for chunk2 in ollama.chat(
+                                    async for chunk2 in llm_client.chat(
                                         model,
                                         messages,
                                         stream=True,
@@ -518,6 +721,13 @@ async def websocket_chat(websocket: WebSocket):
                             })
 
                     await websocket.send_json({"type": "done"})
+
+                    # Clean up LLM client
+                    try:
+                        await llm_client.close()
+                    except:
+                        pass
+
                     break
 
     except WebSocketDisconnect:

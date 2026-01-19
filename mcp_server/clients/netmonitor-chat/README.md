@@ -5,11 +5,13 @@ Simple, reliable web interface for Ollama + NetMonitor MCP Tools. Built after di
 ## ✨ Features
 
 - 🎨 **Clean Chat Interface** - ChatGPT-style UI met Alpine.js
-- 🤖 **Any Ollama Model** - llama3.1, qwen2.5-coder, mistral, etc.
+- 🤖 **Multiple LLM Providers** - Ollama en LM Studio ondersteuning
+- ⚙️ **Configureerbare UI** - MCP en LLM servers via web interface
 - 🔧 **Automatic Tool Calling** - Via mcp_bridge.py (proven working)
 - 📡 **Real-time Streaming** - WebSocket-based responses
 - 🛡️ **60 Security Tools** - Volledige NetMonitor MCP tool access
 - 🏠 **100% On-Premise** - Geen cloud, volledige privacy
+- 🎯 **Debug Mode** - Optioneel tool calls en resultaten tonen
 
 ## 🏗️ Architectuur
 
@@ -115,7 +117,9 @@ python3 mcp_server/manage_tokens.py create \
   --rate-minute 120
 ```
 
-### Stap 3: Start Ollama
+### Stap 3: Start Ollama of LM Studio
+
+**Optie A: Ollama (aanbevolen)**
 
 ```bash
 # Check of Ollama draait
@@ -129,6 +133,17 @@ ollama pull llama3.1:8b          # Aanbevolen: goede tool calling
 ollama pull qwen2.5-coder:14b    # Best: excellente tool support
 ollama pull mistral:7b-instruct  # Snelst: basic tool calling
 ```
+
+**Optie B: LM Studio**
+
+1. Download en installeer [LM Studio](https://lmstudio.ai/)
+2. Download een model (bijv. Llama 3.1 8B, Qwen 2.5 Coder)
+3. Start de Local Server in LM Studio (poort 1234)
+4. In de NetMonitor Chat web UI:
+   - Klik op "⚙️ Server Configuratie"
+   - Selecteer "LM Studio" als provider
+   - Controleer of de URL correct is (http://localhost:1234)
+   - Klik "Configuratie Toepassen"
 
 ### Stap 4: Start de Interface
 
@@ -212,10 +227,20 @@ In de web interface:
 - **Tools count**: Aantal beschikbare MCP tools
 
 ### Sidebar Controls
-- **Model selectie**: Dropdown met alle beschikbare Ollama models
+- **Model selectie**: Dropdown met alle beschikbare models (Ollama of LM Studio)
 - **Temperature slider**: 0.0 (precies) tot 1.0 (creatief)
-- **Available tools**: Preview van eerste 10 tools
+- **⚙️ Server Configuratie** (uitklapbaar):
+  - **LLM Provider**: Keuze tussen Ollama of LM Studio
+  - **Ollama URL**: Configureerbaar endpoint (default: http://localhost:11434)
+  - **LM Studio URL**: Configureerbaar endpoint (default: http://localhost:1234)
+  - **MCP Server URL**: Configureerbaar MCP endpoint
+  - **MCP Auth Token**: API token voor MCP server
+  - **Configuratie Toepassen**: Herlaadt models en tools met nieuwe settings
+- **Beschikbare Tools** (uitklapbaar): Volledige lijst met alle MCP tools + beschrijvingen
+- **Debug Mode**: Toggle om tool calls en resultaten te tonen/verbergen
 - **Wis chat**: Reset conversatie
+
+> **💡 Tip**: Alle configuratie wordt opgeslagen in browser localStorage, dus je hoeft het maar één keer in te stellen!
 
 ### Chat Messages
 - **User messages**: Blauw, rechts uitgelijnd
@@ -450,6 +475,10 @@ server {
 - [x] Alpine.js frontend met real-time streaming
 - [x] Tool calling via mcp_bridge.py
 - [x] WebSocket streaming responses
+- [x] LM Studio ondersteuning
+- [x] Configureerbare LLM en MCP servers via UI
+- [x] Debug mode toggle voor tool visibility
+- [x] Uitklapbare tools lijst
 - [ ] Dockerfile voor productie deployment
 - [ ] docker-compose.yml voor easy setup
 - [ ] User authentication (optioneel)
