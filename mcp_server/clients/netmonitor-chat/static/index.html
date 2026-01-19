@@ -451,6 +451,24 @@
 
                 // Initialize
                 async init() {
+                    // Load configuration FIRST before loading models/tools
+                    const savedLlmProvider = localStorage.getItem('netmonitor-chat-llm-provider');
+                    const savedOllamaUrl = localStorage.getItem('netmonitor-chat-ollama-url');
+                    const savedLmstudioUrl = localStorage.getItem('netmonitor-chat-lmstudio-url');
+                    const savedMcpUrl = localStorage.getItem('netmonitor-chat-mcp-url');
+                    const savedMcpToken = localStorage.getItem('netmonitor-chat-mcp-token');
+                    const savedSystemPrompt = localStorage.getItem('netmonitor-chat-system-prompt');
+                    const savedForceTools = localStorage.getItem('netmonitor-chat-force-tools-lmstudio');
+
+                    if (savedLlmProvider) this.llmProvider = savedLlmProvider;
+                    if (savedOllamaUrl) this.ollamaUrl = savedOllamaUrl;
+                    if (savedLmstudioUrl) this.lmstudioUrl = savedLmstudioUrl;
+                    if (savedMcpUrl) this.mcpServerUrl = savedMcpUrl;
+                    if (savedMcpToken) this.mcpAuthToken = savedMcpToken;
+                    if (savedSystemPrompt) this.systemPrompt = savedSystemPrompt;
+                    if (savedForceTools !== null) this.forceToolsLMStudio = savedForceTools === 'true';
+
+                    // NOW load models/tools with the configured provider
                     await this.loadModels();
                     await this.loadTools();
                     await this.checkHealth();
@@ -493,23 +511,6 @@
                     if (savedDebugMode !== null) {
                         this.debugMode = savedDebugMode === 'true';
                     }
-
-                    // Load configuration from localStorage
-                    const savedLlmProvider = localStorage.getItem('netmonitor-chat-llm-provider');
-                    const savedOllamaUrl = localStorage.getItem('netmonitor-chat-ollama-url');
-                    const savedLmstudioUrl = localStorage.getItem('netmonitor-chat-lmstudio-url');
-                    const savedMcpUrl = localStorage.getItem('netmonitor-chat-mcp-url');
-                    const savedMcpToken = localStorage.getItem('netmonitor-chat-mcp-token');
-                    const savedSystemPrompt = localStorage.getItem('netmonitor-chat-system-prompt');
-                    const savedForceTools = localStorage.getItem('netmonitor-chat-force-tools-lmstudio');
-
-                    if (savedLlmProvider) this.llmProvider = savedLlmProvider;
-                    if (savedOllamaUrl) this.ollamaUrl = savedOllamaUrl;
-                    if (savedLmstudioUrl) this.lmstudioUrl = savedLmstudioUrl;
-                    if (savedMcpUrl) this.mcpServerUrl = savedMcpUrl;
-                    if (savedMcpToken) this.mcpAuthToken = savedMcpToken;
-                    if (savedSystemPrompt) this.systemPrompt = savedSystemPrompt;
-                    if (savedForceTools !== null) this.forceToolsLMStudio = savedForceTools === 'true';
 
                     // Watch configuration changes and save to localStorage
                     this.$watch('llmProvider', (value) => localStorage.setItem('netmonitor-chat-llm-provider', value));

@@ -342,9 +342,18 @@ class LMStudioClient:
                     if not line.strip():
                         continue
 
+                    # Skip SSE event lines (LM Studio sends "event: error" etc.)
+                    if line.startswith("event:"):
+                        if line_count <= 5:
+                            print(f"[LM Studio] Skipping event line: {line}")
+                        continue
+
                     # Remove "data: " prefix if present
                     if line.startswith("data: "):
                         line = line[6:]
+                    elif not line.strip():
+                        # After removing prefix, if line is empty, skip
+                        continue
 
                     # Check for [DONE]
                     if line.strip() == "[DONE]":
@@ -381,10 +390,12 @@ class LMStudioClient:
                                 "done": choices[0].get("finish_reason") is not None
                             }
 
-                            # Add tool calls if present
+                            # Add tool calls if present (preserve ID for LM Studio)
                             if tool_calls:
                                 ollama_chunk["message"]["tool_calls"] = [
                                     {
+                                        "id": tc.get("id", f"call_{tc.get('index', 0)}"),  # Preserve tool_call_id
+                                        "type": tc.get("type", "function"),
                                         "function": {
                                             "name": tc.get("function", {}).get("name", ""),
                                             "arguments": (
@@ -396,6 +407,11 @@ class LMStudioClient:
                                     }
                                     for tc in tool_calls
                                 ]
+
+                                # Debug: print first tool call
+                                if tool_calls and line_count <= 10:
+                                    first_tc = ollama_chunk["message"]["tool_calls"][0]
+                                    print(f"[LM Studio] Tool call: {first_tc.get('function', {}).get('name')} (id: {first_tc.get('id')})")
 
                             if line_count <= 5:
                                 print(f"[LM Studio] Yielding chunk: {content[:50] if content else 'no content'}")
@@ -771,11 +787,15 @@ async def websocket_chat(websocket: WebSocket):
                     # Process tool calls (native format)
                     if tool_calls:
                         has_tool_call = True
+                        print(f"[WebSocket] Processing {len(tool_calls)} tool call(s)")
                         for tool_call in tool_calls:
+                            print(f"[WebSocket] Tool call object: {tool_call}")
                             func = tool_call.get("function", {})
                             tool_name = func.get("name")
                             tool_args = func.get("arguments", {})
                             tool_call_id = tool_call.get("id", "call_1")  # Get ID or use default
+
+                            print(f"[WebSocket] Extracted - name: '{tool_name}', args: {tool_args}, id: '{tool_call_id}'")
 
                             # Notify client of tool call
                             await websocket.send_json({
