@@ -100,12 +100,18 @@ class OllamaClient:
     async def list_models(self) -> List[Dict]:
         """List available Ollama models"""
         try:
+            print(f"[Ollama] Fetching models from {self.base_url}/api/tags")
             response = await self.client.get(f"{self.base_url}/api/tags")
             response.raise_for_status()
             data = response.json()
-            return data.get("models", [])
+            models = data.get("models", [])
+            print(f"[Ollama] Found {len(models)} models")
+            return models
+        except httpx.ConnectError as e:
+            print(f"[Ollama] Connection failed - is Ollama running on {self.base_url}? Error: {e}")
+            return []
         except Exception as e:
-            print(f"Error listing models: {e}")
+            print(f"[Ollama] Error listing models: {type(e).__name__}: {e}")
             return []
 
     async def chat(
@@ -174,14 +180,19 @@ class LMStudioClient:
     async def list_models(self) -> List[Dict]:
         """List available LM Studio models"""
         try:
+            print(f"[LM Studio] Fetching models from {self.base_url}/v1/models")
             response = await self.client.get(f"{self.base_url}/v1/models")
             response.raise_for_status()
             data = response.json()
             models = data.get("data", [])
+            print(f"[LM Studio] Found {len(models)} models")
             # Convert OpenAI format to Ollama format for consistency
             return [{"name": m.get("id", "unknown")} for m in models]
+        except httpx.ConnectError as e:
+            print(f"[LM Studio] Connection failed - is LM Studio running on {self.base_url}? Error: {e}")
+            return []
         except Exception as e:
-            print(f"Error listing LM Studio models: {e}")
+            print(f"[LM Studio] Error listing models: {type(e).__name__}: {e}")
             return []
 
     async def chat(
@@ -212,16 +223,27 @@ class LMStudioClient:
             "temperature": temperature
         }
 
-        if tools:
-            # Convert to OpenAI function calling format if not already
-            payload["tools"] = tools
+        # Note: Most LM Studio models don't support function calling
+        # Only add tools if explicitly provided, and handle errors gracefully
+        # if tools:
+        #     payload["tools"] = tools
 
         try:
+            print(f"[LM Studio] Sending request to {self.base_url}/v1/chat/completions")
+            print(f"[LM Studio] Model: {model}, Messages: {len(messages)}, Temperature: {temperature}")
+
             async with self.client.stream(
                 "POST",
                 f"{self.base_url}/v1/chat/completions",
                 json=payload
             ) as response:
+                # Better error logging
+                if response.status_code != 200:
+                    error_text = await response.aread()
+                    print(f"[LM Studio] Error {response.status_code}: {error_text.decode()}")
+                    yield {"error": f"LM Studio error {response.status_code}: {error_text.decode()}"}
+                    return
+
                 response.raise_for_status()
                 async for line in response.aiter_lines():
                     if line.strip():
@@ -526,12 +548,15 @@ async def websocket_chat(websocket: WebSocket):
             message = data.get("message", "")
             history = data.get("history", [])
             temperature = data.get("temperature", 0.3)
+            system_prompt = data.get("system_prompt", "")
 
             # Get configuration from client
             llm_provider = data.get("llm_provider", "ollama")
             llm_url = data.get("llm_url", OLLAMA_BASE_URL)
             mcp_url = data.get("mcp_url", MCP_SERVER_URL)
             mcp_token = data.get("mcp_token", MCP_AUTH_TOKEN)
+
+            print(f"[WebSocket] Provider: {llm_provider}, Model: {model}, URL: {llm_url}")
 
             # Create LLM client based on provider
             if llm_provider == "lmstudio":
@@ -546,8 +571,12 @@ async def websocket_chat(websocket: WebSocket):
                 auth_token=mcp_token
             )
 
-            # Build messages
-            messages = history + [{"role": "user", "content": message}]
+            # Build messages with optional system prompt
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+
+            messages.extend(history + [{"role": "user", "content": message}])
 
             # Get available tools and convert to function calling format
             mcp_tools = await mcp_client.list_tools()
@@ -565,15 +594,20 @@ async def websocket_chat(websocket: WebSocket):
                 })
 
             # Stream response from LLM with tools
+            # Note: LM Studio doesn't support function calling well, so we skip tools for it
             full_response = ""
             has_tool_call = False
+            use_tools = ollama_tools if (ollama_tools and llm_provider == "ollama") else None
+
+            if llm_provider == "lmstudio":
+                print("[WebSocket] LM Studio detected - function calling disabled")
 
             async for chunk in llm_client.chat(
                 model,
                 messages,
                 stream=True,
                 temperature=temperature,
-                tools=ollama_tools if ollama_tools else None
+                tools=use_tools
             ):
                 if "error" in chunk:
                     await websocket.send_json({
