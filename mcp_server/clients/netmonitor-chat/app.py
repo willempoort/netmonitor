@@ -224,10 +224,10 @@ class LMStudioClient:
             "temperature": temperature
         }
 
-        # Note: Most LM Studio models don't support function calling
-        # Only add tools if explicitly provided, and handle errors gracefully
-        # if tools:
-        #     payload["tools"] = tools
+        # Add tools if explicitly provided (when force_tools is enabled)
+        if tools:
+            payload["tools"] = tools
+            print(f"[LM Studio] Adding {len(tools)} tools to request (experimental)")
 
         try:
             print(f"[LM Studio] Sending request to {self.base_url}/v1/chat/completions")
@@ -573,8 +573,11 @@ async def websocket_chat(websocket: WebSocket):
             llm_url = data.get("llm_url", OLLAMA_BASE_URL)
             mcp_url = data.get("mcp_url", MCP_SERVER_URL)
             mcp_token = data.get("mcp_token", MCP_AUTH_TOKEN)
+            force_tools_lmstudio = data.get("force_tools_lmstudio", False)
 
             print(f"[WebSocket] Provider: {llm_provider}, Model: {model}, URL: {llm_url}")
+            if llm_provider == "lmstudio" and force_tools_lmstudio:
+                print("[WebSocket] Force tools enabled for LM Studio")
 
             # Create LLM client based on provider
             if llm_provider == "lmstudio":
@@ -612,13 +615,19 @@ async def websocket_chat(websocket: WebSocket):
                 })
 
             # Stream response from LLM with tools
-            # Note: LM Studio doesn't support function calling well, so we skip tools for it
+            # Note: LM Studio doesn't support function calling well, so we skip tools by default
             full_response = ""
             has_tool_call = False
-            use_tools = ollama_tools if (ollama_tools and llm_provider == "ollama") else None
 
-            if llm_provider == "lmstudio":
-                print("[WebSocket] LM Studio detected - function calling disabled")
+            # Determine if we should use tools
+            if llm_provider == "ollama":
+                use_tools = ollama_tools if ollama_tools else None
+            elif llm_provider == "lmstudio" and force_tools_lmstudio:
+                use_tools = ollama_tools if ollama_tools else None
+                print("[WebSocket] LM Studio with FORCED tools enabled")
+            else:
+                use_tools = None
+                print("[WebSocket] LM Studio detected - function calling disabled (use Force Tools to enable)")
 
             async for chunk in llm_client.chat(
                 model,

@@ -195,6 +195,19 @@
                                    class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
                         </div>
 
+                        <!-- Force Tools for LM Studio -->
+                        <div x-show="llmProvider === 'lmstudio'" class="bg-yellow-50 border border-yellow-200 rounded p-2">
+                            <label class="flex items-center cursor-pointer">
+                                <input type="checkbox"
+                                       x-model="forceToolsLMStudio"
+                                       class="mr-2 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                                <div>
+                                    <span class="text-xs font-medium text-gray-700">🔧 Force Tool Calling (Experimenteel)</span>
+                                    <p class="text-xs text-gray-600 mt-0.5">Alleen voor modellen die function calling ondersteunen. Kan 400 errors geven als model dit niet ondersteunt.</p>
+                                </div>
+                            </label>
+                        </div>
+
                         <!-- MCP Server URL -->
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">MCP Server URL</label>
@@ -430,6 +443,7 @@
                 mcpServerUrl: 'https://soc.poort.net/mcp',
                 mcpAuthToken: '',
                 systemPrompt: 'Je bent een security expert die helpt met NetMonitor. Gebruik de beschikbare tools om actuele informatie op te halen. Geef altijd duidelijke, Nederlandse antwoorden.',
+                forceToolsLMStudio: false,  // Force function calling for LM Studio (experimental)
 
                 // WebSocket
                 ws: null,
@@ -487,6 +501,7 @@
                     const savedMcpUrl = localStorage.getItem('netmonitor-chat-mcp-url');
                     const savedMcpToken = localStorage.getItem('netmonitor-chat-mcp-token');
                     const savedSystemPrompt = localStorage.getItem('netmonitor-chat-system-prompt');
+                    const savedForceTools = localStorage.getItem('netmonitor-chat-force-tools-lmstudio');
 
                     if (savedLlmProvider) this.llmProvider = savedLlmProvider;
                     if (savedOllamaUrl) this.ollamaUrl = savedOllamaUrl;
@@ -494,6 +509,7 @@
                     if (savedMcpUrl) this.mcpServerUrl = savedMcpUrl;
                     if (savedMcpToken) this.mcpAuthToken = savedMcpToken;
                     if (savedSystemPrompt) this.systemPrompt = savedSystemPrompt;
+                    if (savedForceTools !== null) this.forceToolsLMStudio = savedForceTools === 'true';
 
                     // Watch configuration changes and save to localStorage
                     this.$watch('llmProvider', (value) => localStorage.setItem('netmonitor-chat-llm-provider', value));
@@ -502,6 +518,7 @@
                     this.$watch('mcpServerUrl', (value) => localStorage.setItem('netmonitor-chat-mcp-url', value));
                     this.$watch('mcpAuthToken', (value) => localStorage.setItem('netmonitor-chat-mcp-token', value));
                     this.$watch('systemPrompt', (value) => localStorage.setItem('netmonitor-chat-system-prompt', value));
+                    this.$watch('forceToolsLMStudio', (value) => localStorage.setItem('netmonitor-chat-force-tools-lmstudio', value));
                 },
 
                 // Apply configuration
@@ -625,7 +642,8 @@
                             llm_url: llmUrl,
                             mcp_url: this.mcpServerUrl,
                             mcp_token: this.mcpAuthToken,
-                            system_prompt: this.systemPrompt
+                            system_prompt: this.systemPrompt,
+                            force_tools_lmstudio: this.forceToolsLMStudio
                         }));
                     };
 
