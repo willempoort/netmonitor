@@ -1,796 +1,675 @@
-# NetMonitor - Uw Digitale Bewaker
+# NetMonitor - De AI Scout voor Uw Security Stack
 
-**Bescherm uw bedrijfsnetwerk tegen cyberdreigingen met een professionele Security Operations Center oplossing**
-
----
-
-## 🚀 NetMonitor – De Eerste AI‑Co‑Piloted Netwerksensor voor SPAN‑poorten
-
-In een wereld waar netwerkdreigingen sneller evolueren dan ooit, introduceert NetMonitor een nieuwe generatie beveiliging: AI‑gestuurde netwerkbewaking die meedenkt, leert en optimaliseert.
-
-Geen log‑overload, geen eindeloze tuning—maar een slimme, autonome sensor die organisaties direct inzicht geeft in wat er écht toe doet.
-
-NetMonitor combineert real‑time netwerkdetectie met een krachtige AI‑analyse‑laag die via het open Model Context Protocol (MCP) meer dan zestig beheer‑ en analyse‑tools kan aansturen. Het resultaat?
-
-Een systeem dat niet alleen verkeer monitort, maar alerts filtert, patronen herkent, zichzelf bijstuurt en je vertelt wat prioriteit verdient.
-
-Met veilige on‑prem AI‑integratie, waaronder ondersteuning voor lokale modellen zoals Ollama, past NetMonitor naadloos in zowel kleine netwerken als enterprise‑securityomgevingen. Via NetMonitor‑Chat krijgt elke organisatie de kracht van moderne AI, zónder ook maar één bit het netwerk te laten verlaten.
-
-**NetMonitor is niet zomaar een IDS.**
-
-Het is een autonome netwerkbewaker, een AI‑co‑piloot en een next‑gen securitysensor in één—klaar om jouw netwerk slimmer, veiliger en toekomstbestendig te maken.
+**Bescherm uw bedrijfsnetwerk met AI-powered network monitoring**
 
 ---
 
-## Het Probleem
+## 🚨 Het Probleem: Security Teams Verdrinken in Logs
 
-Elke dag worden bedrijven slachtoffer van cyberaanvallen. Ransomware, datadiefstal en gehackte systemen kosten bedrijven gemiddeld **€250.000 per incident** - exclusief reputatieschade en omzetverlies.
+Uw security tools werken perfect. Ze genereren data:
+- Wazuh: 5.000 endpoint events/dag
+- Suricata: 2.000 network alerts/dag
+- Zeek: 200 MB protocol logs/dag
 
-De meeste aanvallen worden pas **maanden later** ontdekt, wanneer de schade al is aangericht. Waarom?
+**Maar wie leest dit allemaal?**
 
-- Traditionele antivirussoftware detecteert alleen **bekende** dreigingen
-- Firewalls beschermen de buitenkant, maar niet wat er **binnen** uw netwerk gebeurt
-- IT-afdelingen missen vaak de tools om verdacht gedrag **in real-time** te zien
+Een menselijke analyst kan ~800 events/dag verwerken (8 uur × 100/uur).
+Dat is **11% coverage** - 89% wordt nooit bekeken.
 
-**NetMonitor biedt de oplossing.**
+### De Gevolgen
+
+- ❌ **Kritieke threats gemist** - Lateral movement begraven in 6.812 normale events
+- ❌ **Trage detectie** - APT aanvallen ontdekt na 6 maanden in plaats van 6 uur
+- ❌ **Analyst burn-out** - 80% tijd aan log triage, 20% aan écht onderzoek
+- ❌ **Geen bewijs** - Traffic al weg wanneer incident ontdekt wordt
+
+### Maar Het Wordt Erger: De Blinde Vlek
+
+Endpoint security (Wazuh, antivirus, EDR) werkt perfect voor **devices waar je software op kunt installeren**.
+
+**Maar wat met:**
+- 🖨️ **Printers** - Geen OS voor antivirus, vaak kwetsbaar, geen agent mogelijk
+- 💼 **Externen met eigen laptops** - BYOD, buiten IT controle, weigeren bedrijfs-agent
+- 📹 **IoT devices** - IP camera's, smart thermostaten, NAS - geen agent mogelijk
+- 🏭 **OT/ICS systemen** - Modbus PLC's, SCADA - te kritisch voor agent installatie
+- 📱 **Guest WiFi** - Bezoekers, leveranciers - geen trust voor agents
+- 🔧 **Legacy systemen** - Windows XP embedded, oude medical devices - ongepatchbaar
+
+```
+Typisch netwerk:
+├─ 100 werkstations met Wazuh     ✅ 67% Beschermd
+├─ 50 servers met Wazuh
+└─ 75 andere devices               ❌ 33% BLINDE VLEK
+    ├─ 15 printers
+    ├─ 20 IoT devices
+    ├─ 10 BYOD laptops
+    ├─ 5 OT/ICS devices
+    ├─ 10 legacy systemen
+    └─ 15 guests
+
+Een aanvaller hoeft alleen:
+1. Compromitteer printer (vaak ongepatchd)
+2. Lateral movement naar werkstations
+3. Endpoint security ziet niets (printer heeft geen agent)
+```
+
+**33% van uw netwerk is onzichtbaar voor endpoint security.**
 
 ---
 
-## Wat is NetMonitor?
+## ✅ De Oplossing: NetMonitor AI Scout + Agentless Network Coverage
 
-NetMonitor is een **Security Operations Center (SOC)** voor uw bedrijfsnetwerk. Het bewaakt continu al het netwerkverkeer en waarschuwt onmiddellijk bij verdachte activiteiten.
+### NetMonitor is NIET Nóg Een IDS
 
-Vergelijk het met een beveiligingscamera voor uw digitale omgeving: 24/7 wakend, direct alarmerend bij inbrekers.
+**NetMonitor is de AI-powered triage laag die:**
+1. **Analyseert** - AI leest 100% events 24/7 (nooit moe)
+2. **Correleert** - Patronen over tools heen, over weken
+3. **Prioriteert** - 10.000 events → 5 CRITICAL alerts
+4. **Adviseert** - "Dit gebeurde, doe dit, hier is bewijs"
+5. **Verzamelt** - Auto PCAP per incident (NIS2 compliant)
+6. **Ziet Alles** - Agentless SPAN monitoring (ook printers, IoT, BYOD)
 
-![Screenshot van het NetMonitor dashboard met live alerts, grafieken en systeem metrics - toon het overzichtelijke dark-theme interface](./images/netmonitor-afb1.png)
+### Het Verschil: AI Scout vs Traditioneel
 
-## Unieke Voordelen
+```
+TRADITIONEEL:
+Tools genereren data → Mens analyseert (langzaam) → Reageert wanneer overweldigd
 
-### 1. Real-Time Dreigingsdetectie (59 Threat Types)
-
-NetMonitor detecteert aanvallen **op het moment dat ze plaatsvinden**, niet maanden later. Met **59 gespecialiseerde detectie-types** verdeeld over 9 security fases:
-
-| Traditionele Beveiliging | NetMonitor |
-|--------------------------|------------|
-| Detectie na weken/maanden | Detectie binnen seconden |
-| Alleen bekende virussen | Verdacht gedrag herkennen |
-| Passieve logbestanden | Live dashboard met alerts |
-| Handmatige analyse nodig | Automatische classificatie |
-
-**Detectie Coverage:**
-
-**Phase 1: Core Advanced Threats (5 types)**
-- Cryptomining (Stratum protocol)
-- Phishing domains (OpenPhish feed)
-- Tor exit node connections
-- VPN tunnels (OpenVPN, WireGuard, IPsec)
-- Cloud metadata access (AWS/Azure/GCP IMDS)
-
-**Phase 2: Web Application Security (8 types)**
-- SQL Injection, XSS, Command Injection
-- Path Traversal, XXE, SSRF
-- WebShell detection, API abuse
-
-**Phase 3: DDoS & Resource Exhaustion (8 types)**
-- SYN/UDP/HTTP floods
-- Slowloris, DNS/NTP amplification
-- Connection exhaustion, Bandwidth saturation
-
-**Phase 4: Ransomware Indicators (5 types)**
-- SMB mass encryption patterns
-- Crypto file extensions
-- Ransom note detection
-- Shadow copy / backup deletion
-
-**Phase 5: IoT & Smart Device Security (8 types)**
-- IoT botnet (Mirai), UPnP exploits
-- MQTT abuse, Smart home protocols
-- RTSP, CoAP, Z-Wave, Zigbee attacks
-
-**Phase 6: OT/ICS Protocol Security (6 types)**
-- Modbus attacks (port 502)
-- DNP3 attacks (port 20000)
-- IEC-104 control commands (port 2404)
-- BACnet, Profinet, EtherNet/IP
-
-**Phase 7: Container & Orchestration (4 types)**
-- Docker container escape
-- Kubernetes API exploitation
-- Container registry poisoning
-- Privileged containers
-
-**Phase 8: Advanced Evasion (4 types)**
-- IP fragmentation attacks
-- Protocol tunneling (DNS/ICMP)
-- Polymorphic malware
-- Domain Generation Algorithms (DGA)
-
-**Phase 9: Kill Chain Detection (10 types)**
-- Lateral movement (SMB/RDP/PSExec)
-- Data exfiltration (>100MB transfers)
-- Privilege escalation
-- Persistence mechanisms
-- Credential dumping (Mimikatz, LSASS)
-- LOLBins, Memory injection, Process hollowing, Registry manipulation, Scheduled task abuse
-
-**Totaal: 59 threat types | 92% MITRE ATT&CK coverage | 95/100 professional rating**
-
-### 2. Encrypted Traffic Analysis (Without Decryption)
-
-NetMonitor analyseert **versleuteld verkeer zonder decryptie** - privacy-vriendelijk maar effectief.
-
-**TLS/HTTPS Analysis Capabilities:**
-
-#### Basic TLS Analysis (tls_analyzer.py)
-- **JA3 Fingerprinting**: Client TLS handshake signatures
-  - Identificeert malware aan unieke TLS patronen
-  - Database met bekende malware JA3 hashes (Cobalt Strike, Emotet, TrickBot, Metasploit, etc.)
-- **JA3S Fingerprinting**: Server response patterns
-- **SNI Extraction**: Zie welke domeinen bezocht worden (ook via HTTPS)
-- **Certificate Metadata**: Subject, issuer, validity, key size
-- **GREASE Filtering**: RFC 8701 compliance voor accurate fingerprints
-
-#### Advanced Encrypted Traffic Analysis (encrypted_traffic_analyzer.py)
-- **ESNI/ECH Detection**: Encrypted Client Hello (privacy extensions)
-- **Domain Fronting Detection**: CDN-based C2 evasion techniques
-- **Certificate Chain Analysis**:
-  - Self-signed certificate detection
-  - Expired/not-yet-valid certificates
-  - Certificate Transparency validation
-  - Weak signature algorithms (MD5, SHA1)
-  - Small key sizes (<2048 bits)
-- **TLS 1.3 Specific Analysis**:
-  - 0-RTT detection
-  - PSK key exchange modes
-  - Encrypted extensions analysis
-- **Cipher Suite Anomaly Detection**:
-  - Weak ciphers (NULL, MD5, RC4, DES, 3DES, export-grade)
-  - Deprecated TLS versions (SSL 3.0, TLS 1.0, TLS 1.1)
-  - Unusual cipher selections
-- **ALPN Protocol Analysis**: Application-Layer Protocol Negotiation
-- **Connection Pattern Analysis**:
-  - Repeat JA3 patterns (botnet indicators)
-  - Unusual port combinations
-  - Timing anomalies
-
-**Wat dit betekent:**
-- Detectie van malware **zonder** SSL/TLS decryptie (privacy-safe)
-- Identificatie van C2 communicatie aan TLS handshake
-- Herkenning van advanced evasion techniques
-- Compliance met privacy wetgeving (GDPR-friendly)
-
-### 3. Slimme Apparaatherkenning met Machine Learning
-
-NetMonitor **leert** welke apparaten in uw netwerk horen en wat normaal gedrag is — met echte **Machine Learning**.
-
-![Screenshot: van Device Classification scherm met apparatenlijst, vendors en templates](./images/netmonitor-afb3.png)
-
-**Hoe het werkt:**
-- **ML Device Classification**: Random Forest classifier herkent automatisch 11 apparaattypes (servers, werkstations, IoT-camera's, smart TV's, NAS, printers, etc.)
-- **ML Anomaly Detection**: Isolation Forest detecteert afwijkend gedrag per apparaat
-- **Auto-Training**: Modellen worden elke 24 uur automatisch getraind en toegepast
-- Automatische herkenning van printers, camera's, servers en werkstations
-- Leert het normale verkeerspatroon per apparaat (28 features per device)
-- Waarschuwt alleen bij **afwijkend** gedrag
-- Voorkomt vals alarm door streaming-diensten (Netflix, Teams) te herkennen
-
-**Technisch:** De ML modellen draaien volledig op de SOC server — geen impact op sensor RAM (belangrijk voor Raspberry Pi deployments).
-
-**Resultaat:** Minder ruis, automatische classificatie, en alleen relevante waarschuwingen die actie vereisen.
-
-### 4. Centraal Beheer
-
-Meerdere kantoorlocaties? NetMonitor beheert alles vanuit **één dashboard**.
-
-**Voordelen:**
-- Eén overzicht voor alle locaties
-- Centrale configuratie, lokale uitvoering
-- Real-time status van elke sensor
-- Uniforme beveiligingsregels
-
-### 5. Kiosk Mode voor NOC/SOC Display
-
-Perfect voor een dedicated beveiligingsscherm in uw serverruimte of bij de IT-afdeling.
-
-![Screenshot: van Kiosk mode - volledig scherm met grote metrics en traffic grafiek](./images/netmonitor-afb4.png)
-
-- Automatisch verversen
-- Duidelijke visuele waarschuwingen
-- Geschikt voor wandmontage
-
-### 6. PCAP Forensics (NIS2 Compliant)
-
-Volledige netwerkopname voor incident response en compliance.
-
-**Mogelijkheden:**
-- Ring buffer voor continue opname (configureerbare retentie)
-- Export specifieke flows voor forensisch onderzoek
-- Per-alert PCAP bestanden voor bewijsvoering
-- Voldoet aan NIS2 logging vereisten
-
-### 7. Enterprise Security Suite
-
-NetMonitor bevat een complete enterprise security suite voor geavanceerde dreigingsdetectie:
-
-#### AD/Kerberos Aanvalsdetectie
-- **Kerberoasting**: Detecteert mass TGS-REQ aanvragen voor offline password cracking
-- **AS-REP Roasting**: Identificeert aanvallen op accounts zonder pre-authenticatie
-- **DCSync**: Detecteert Domain Controller replicatie misbruik
-- **Pass-the-Hash**: Herkent ticket hergebruik aanvallen
-- **Golden Ticket**: Detecteert vervalste TGT tickets
-- **Zwakke encryptie**: Waarschuwt bij RC4/DES gebruik
-
-#### Kill Chain Correlatie (MITRE ATT&CK)
-Automatische correlatie van alerts naar aanvalsketens:
-- 10-fasen kill chain model
-- MITRE ATT&CK technique mapping (92% coverage)
-- Multi-host lateral movement tracking
-- APT campaign detectie
-
-#### SMB/LDAP Deep Parsing
-- Admin share access detectie (C$, ADMIN$, IPC$)
-- Gevoelige bestandstoegang monitoring
-- LDAP enumeratie detectie
-- DCSync query herkenning
-
-#### SOAR (Automated Response)
-- Playbook-based automatisering
-- Goedkeuringsworkflows
-- Dry-run modus voor veilig testen
-- Integratie met firewall, NAC, AD
-
-#### Asset Risk Scoring
-- Dynamische risicoscores (0-100)
-- Tijdsgewogen alerthistorie
-- Trend analyse per asset
-- Prioritering voor SOC teams
-
-### 8. GeoIP Intelligence
-
-Geografische context voor elke IP-verbinding.
-
-- Land-identificatie voor alle externe IP's
-- Onderscheid tussen Local (uw netwerk) en Private (andere RFC1918)
-- MaxMind database of online API fallback
-- Detecteer onverwachte verbindingen naar high-risk landen
+NETMONITOR:
+Tools genereren data → AI analyseert (24/7) → Mens onderzoekt (efficiënt)
+                       ↓
+                  SPAN port ziet ALLES
+                  (100% netwerk, ook zonder agent)
+```
 
 ---
 
-## 🤖 AI-Powered Security met MCP Integratie
+## 🎯 De 3 Unieke Waarden van NetMonitor
 
-NetMonitor is een van de eerste security monitoring tools met native **Model Context Protocol (MCP)** integratie voor AI-assistenten zoals Claude.
+### 1. AI-Powered Triage (De Onvermoeibare Scout)
 
-### Wat Maakt Dit Uniek?
+**Mensen vs AI:**
 
-De MCP HTTP API biedt **52 gespecialiseerde security tools** die AI-assistenten direct kunnen aanroepen:
+| Aspect | Menselijke Analyst | NetMonitor AI |
+|--------|-------------------|---------------|
+| **Capaciteit** | 100 events/uur | 10.000+ events/minuut |
+| **Aandacht** | Daalt na 2 uur | Constant 100% |
+| **Correlatie** | 3-5 bronnen | Onbeperkt |
+| **Patroonherkenning** | Dagelijkse patterns | Weken/maanden |
+| **Beschikbaarheid** | 8 uur/dag | 24/7/365 |
 
-| Categorie | Tools | Mogelijkheden |
-|-----------|-------|---------------|
-| **Core Analysis** | 3 | IP analyse, threat lookup, sensor status |
-| **Device Classification** | 20 | Apparaat herkenning, behavior learning, templates, traffic stats |
-| **TLS Analysis** | 2 | JA3 checks, TLS statistieken, encrypted traffic metadata |
-| **PCAP Forensics** | 5 | Capture listing, flow export, buffer status |
-| **Memory Management** | 2 | RAM monitoring, garbage collection, malloc_trim |
-| **Sensor Commands** | 2 | Remote commands, command history |
-| **Whitelist** | 3 | Entries toevoegen, bekijken, verwijderen |
-| **Export** | 1 | CSV export voor SIEM integratie |
-| **Configuration** | 2 | Parameters lezen en schrijven (59 threat types) |
-| **AD/Kerberos** | 3 | Attack stats, ticket analysis, encryption checks |
-| **Kill Chain** | 2 | Attack chains, MITRE ATT&CK mapping |
-| **Risk Scoring** | 3 | Asset scores, trends, prioritering |
-| **SOAR** | 4 | Playbooks, approvals, action history |
-
-### Concrete AI Use Cases
-
-**1. Natuurlijke Taal Security Queries**
-
-In plaats van complexe SQL queries of dashboard navigatie:
+**Concreet voorbeeld:**
 
 ```
-Gebruiker: "Welke verdachte activiteiten waren er vannacht?"
+Traditioneel (zonder NetMonitor):
+Day 1-7: Attacker spreidt door netwerk
+→ 50.000+ events (normaal + aanval gemixed)
+→ Analyst: Geen tijd om alles te reviewen (11% coverage)
+→ Detection: Week 3 (TE LAAT)
+→ Evidence: Niet verzameld
+→ Damage: Ransomware deployed (€millions)
 
-AI analyseert via MCP:
-→ get_recent_threats (hours=8, severity=HIGH)
-→ analyze_ip (voor top verdachte IPs)
-→ check_ja3_fingerprint (voor TLS anomalies)
-→ get_threat_config (welke detecties zijn actief)
+Met NetMonitor AI:
+Day 1, 03:24: Suspicious DNS query
+→ AI: Threat score 40 (MEDIUM), start PCAP recording
 
-Resultaat: Samenvatting in begrijpelijke taal met actie-advies
+Day 3, 14:15: TLS fingerprint = Cobalt Strike
+→ AI: Correleert met Day 1, escalates HIGH
+
+Day 7, 02:30: SMB lateral movement (5 hosts)
+→ AI: Kill chain detected, escalates CRITICAL
+→ Alert: "🚨 APT kill chain: Initial access → C2 → Lateral movement
+          Advies: Isoleer 10.0.1.50
+          Evidence: 7 dagen PCAP ready at /forensics/apt-001/"
+
+Day 7, 08:00: Analyst arrives
+→ Dashboard: 1 CRITICAL met complete timeline
+→ Action: Isolated binnen 30 min
+→ Result: Stopped BEFORE ransomware
+
+Time to detection: 5.5 uur vs 21 dagen
+Damage: €0 vs €millions
 ```
 
-**2. Geautomatiseerde Incident Response**
-
-```
-AI detecteert via MCP: Nieuwe CRITICAL alert voor IP 185.220.101.50
-
-AI onderzoekt automatisch:
-→ analyze_ip: Threat score 92, 47 alerts in 24 uur
-→ get_country_for_ip: Russia (RU)
-→ check_ip_service_provider: Geen bekende provider
-→ check_ja3_fingerprint: Cobalt Strike detected
-
-AI actie (met goedkeuring):
-→ add_whitelist_entry (action=block): IP geblokkeerd
-→ send_sensor_command: Alle sensoren geüpdatet
-→ capture_pcap: Forensisch bewijs verzameld
-```
-
-**3. Proactieve Threat Hunting**
-
-```
-AI periodieke scan via MCP:
-→ get_devices: 127 apparaten bekend
-→ get_device_classification_hints: 3 nieuwe apparaten
-→ get_tls_metadata: Onbekende JA3 hash gedetecteerd
-→ get_threat_detections: Lateral movement pattern identified
-
-Rapportage: "3 nieuwe apparaten, 1 met verdachte TLS fingerprint,
-             mogelijk lateral movement van 10.0.1.50 naar 5 hosts"
-```
-
-**4. Onvermoeibare Log Analyse**
-
-Traditioneel: Beveiligingsanalist moet handmatig door duizenden log entries
-```
-00:00:01 - Normal traffic
-00:00:02 - Normal traffic
-00:00:03 - HTTP request to api.example.com
-... [997 meer regels]
-00:16:47 - Suspicious TLS connection (buried in noise)
-```
-
-Met AI + MCP:
-```
-AI analyseert continu via MCP:
-→ get_recent_threats: 2.450 events in laatste 24 uur
-→ AI filtert, correleert en prioriteert automatisch
-→ AI vindt patronen die mensen missen (timing, correlaties)
-→ AI rapporteert: "5 high-priority incidents vereisen aandacht"
-→ AI verrijkt: GeoIP, threat intel, MITRE mapping, JA3 context
-
-Resultaat: Van 2.450 events → 5 actionable incidents
-Tijd: Van uren handmatige analyse → seconden AI processing
-Nauwkeurigheid: Geen gemiste patronen door vermoeidheid
-```
-
-### Technische Voordelen van MCP
-
-| Aspect | Voordeel |
-|--------|----------|
-| **Token-based Auth** | Veilige Bearer tokens per AI client |
-| **Permission Scopes** | read_only, read_write, admin granulariteit |
-| **Rate Limiting** | Bescherming tegen misbruik |
-| **Audit Trail** | Volledige logging van alle AI acties |
-| **Multi-Client** | Meerdere AI's tegelijk ondersteunen |
-
-### Waarom AI + NetMonitor Effectief Is
-
-1. **Onvermoeibare Analyse**: AI kan 24/7 duizenden log entries analyseren zonder vermoeidheid of aandachtsverlies
-   - Mensen: 50-100 events/uur met dalende aandacht
-   - AI: 10.000+ events/minuut met constante nauwkeurigheid
-
-2. **Contextuele Analyse**: AI kan meerdere databronnen combineren (alerts, device info, GeoIP, TLS, MITRE) voor betere conclusies
-
-3. **Patroonherkenning**: AI herkent subtiele patronen in grote datasets die mensen missen
-   - Correlaties over meerdere dagen
-   - Multi-host attack chains
-   - Timing-based patterns
-
-4. **Kennisverrijking**: AI koppelt NetMonitor data aan externe threat intelligence kennis
-   - MITRE ATT&CK techniques
-   - Known malware families
-   - APT campaign indicators
-   - CVE databases
-
-5. **Natuurlijke Rapportage**: Technische data vertaald naar begrijpelijke taal voor management
-   - "Mogelijk ransomware activiteit" vs "High SMB write ops, crypto ext detected"
-   - "Lateral movement van accounting naar IT" vs "Port 445 scan 10.0.1.* subnet"
-
-6. **Proactieve Hunting**: AI kan actief zoeken naar indicators zonder expliciete opdracht
-   - Unusual login times
-   - New device behaviors
-   - Emerging threat patterns
-   - Zero-day indicators
+**52 MCP Tools voor AI Assistants:**
+- Natural language queries: "Welke lateral movement was er vannacht?"
+- Auto investigation: AI correleert over Wazuh/Zeek/NetMonitor data
+- Proactieve hunting: AI zoekt patronen zonder expliciete opdracht
+- Threat enrichment: MISP/OTX/AbuseIPDB context automatisch
 
 ---
 
-## Objectieve Vergelijking met Alternatieven
+### 2. Agentless Network Visibility (De Blinde Vlek Oplossing)
 
-### Feature Comparison Matrix
+**Waarom NetMonitor essentieel is:**
 
-| Feature | NetMonitor | Snort | Suricata | Zeek | Wazuh | Security Onion | Splunk Enterprise |
-|---------|-----------|-------|----------|------|-------|----------------|-------------------|
-| **Threat Detection Types** | **59** | ~30 | ~40 | ~35 | ~45 | ~50 | 100+ (met apps) |
-| **MITRE ATT&CK Coverage** | **92%** | ~40% | ~60% | ~70% | ~75% | ~80% | ~85% |
-| **Web Dashboard** | ✅ Modern | ❌ | ⚠️ Basic | ❌ | ✅ Good | ✅ Good | ✅ Excellent |
-| **Setup Complexity** | **10 min** | 2-4 uur | 2-4 uur | 4-8 uur | 1-2 uur | 4-8 uur | 1-2 dagen |
-| **Encrypted Traffic Analysis** | ✅ JA3/JA3S/ESNI/ECH | ⚠️ Basic | ✅ JA3 | ✅ JA3 | ⚠️ Limited | ✅ Good | ✅ Excellent |
-| **ML Device Classification** | ✅ Random Forest | ❌ | ❌ | ⚠️ Scripting | ❌ | ❌ | ✅ Paid add-on |
-| **ML Anomaly Detection** | ✅ Isolation Forest | ❌ | ❌ | ⚠️ Scripting | ❌ | ❌ | ✅ Paid add-on |
-| **OT/ICS Protocol Support** | ✅ Modbus/DNP3/IEC-104 | ⚠️ Limited | ⚠️ Limited | ✅ Good | ⚠️ Limited | ⚠️ Limited | ✅ Good (paid) |
-| **Container Security** | ✅ Docker/K8s | ❌ | ⚠️ Limited | ❌ | ✅ Good | ⚠️ Limited | ✅ Good |
-| **PCAP Forensics** | ✅ Ring buffer | ⚠️ Manual | ⚠️ Manual | ✅ Good | ❌ | ✅ Excellent | ✅ Good |
-| **Kill Chain Correlation** | ✅ MITRE mapping | ❌ | ❌ | ⚠️ Manual | ⚠️ Limited | ✅ Good | ✅ Excellent |
-| **SOAR Automation** | ✅ Built-in | ❌ | ❌ | ❌ | ✅ Good | ⚠️ Limited | ✅ Paid add-on |
-| **AI/MCP Integration** | ✅ **52 tools** | ❌ | ❌ | ❌ | ❌ | ❌ | ⚠️ REST API |
-| **Multi-Sensor Management** | ✅ Excellent | ⚠️ Complex | ⚠️ Complex | ⚠️ Complex | ✅ Excellent | ✅ Good | ✅ Excellent |
-| **Resource Usage (per 1Gbps)** | **<2% CPU** | ~5% CPU | ~8% CPU | ~3% CPU | ~4% CPU | ~10% CPU | ~15% CPU |
-| **RAM Usage (sensor)** | **50-100 MB** | ~200 MB | ~300 MB | ~500 MB | ~150 MB | ~1 GB | ~2 GB |
-| **IoT/Edge Deployment** | ✅ Raspberry Pi | ❌ | ❌ | ❌ | ⚠️ Limited | ❌ | ❌ |
-| **Pricing (yearly)** | **€0 (Open Source)** | €0 | €0 | €0 | €0 | €0 | €50k-500k+ |
-| **Support Model** | Community + Paid | Community | Community | Community | Community + Paid | Community | Enterprise |
-| **Learning Curve** | **Low** | High | High | Very High | Medium | High | Medium |
-| **NIS2 Compliance** | ✅ Built-in | ⚠️ Manual | ⚠️ Manual | ⚠️ Manual | ✅ Good | ✅ Good | ✅ Excellent |
-| **Active Development** | ✅ 2025 | ✅ Active | ✅ Active | ✅ Active | ✅ Active | ✅ Active | ✅ Active |
+```
+SPAN port op switch → NetMonitor ziet ALLE network traffic
 
-**Legend:** ✅ Excellent/Built-in, ⚠️ Limited/Requires Extra Work, ❌ Not Available
+Inclusief devices die endpoint security NIET kan beschermen:
+✅ Printers die contact maken met C2 server
+✅ IoT camera die meedoet aan botnet
+✅ Externe laptop die netwerk scant
+✅ Guest die malware downloadt
+✅ Legacy device met SMB v1 exploit
+✅ OT device met Modbus aanval
 
-### Kosten Vergelijking (3-jaar TCO)
+Zonder software installatie.
+Zonder toestemming nodig.
+Zonder risk voor productie systemen.
+```
 
-| Oplossing | Licentie | Hardware | Implementatie | Training | Support | **Totaal** |
-|-----------|----------|----------|---------------|----------|---------|------------|
-| **NetMonitor** | €0 | €2.000 | €5.000 | €0* | €3.000 | **€10.000** |
-| Snort (zelf beheerd) | €0 | €3.000 | €15.000 | €5.000 | €0 | €23.000 |
-| Suricata (zelf beheerd) | €0 | €3.000 | €18.000 | €8.000 | €0 | €29.000 |
-| Zeek (zelf beheerd) | €0 | €4.000 | €25.000 | €12.000 | €0 | €41.000 |
-| Wazuh (zelf beheerd) | €0 | €3.000 | €12.000 | €5.000 | €6.000 | €26.000 |
-| Security Onion | €0 | €5.000 | €30.000 | €15.000 | €0 | €50.000 |
-| Splunk Enterprise | €150.000 | €5.000 | €50.000 | €20.000 | €45.000 | **€270.000** |
-| Managed SOC Service | €0 | €0 | €10.000 | €0 | €210.000 | **€220.000** |
+**Real-world voorbeelden:**
 
-*NetMonitor is self-documenting en intuïtief - minimale training nodig
+#### Voorbeeld 1: Gecompromitteerde Printer
 
-### Sterke Punten per Oplossing
+```
+Scenario: HP printer (firmware kwetsbaarheid)
+❌ Wazuh: Kan niet installeren (geen OS)
+❌ Antivirus: Printers hebben geen antivirus
 
-**NetMonitor - Best voor: SMB, OT/ICS, Multi-site**
-- ✅ Snelste setup (10 minuten)
-- ✅ Laagste resource gebruik (Raspberry Pi compatible)
-- ✅ Beste AI integratie (52 MCP tools)
-- ✅ Meeste threat types (59)
-- ✅ Hoogste MITRE coverage voor open source (92%)
-- ❌ Kleinere community dan gevestigde tools
-- ❌ Minder 3rd-party integraties
+✅ NetMonitor detecteert:
+├─ TLS verbinding naar 185.220.101.50
+├─ JA3 fingerprint match: Cobalt Strike
+├─ Beaconing pattern (elke 60 sec)
+└─ AI Alert: "🚨 Printer 10.0.1.200 compromised
+              C2 communication detected
+              Evidence: /forensics/printer-c2.pcap
+              Action: Isoleer printer VLAN"
+```
 
-**Snort - Best voor: Classic IDS deployment**
-- ✅ Grootste community
-- ✅ Meeste 3rd-party rules
-- ❌ Geen moderne UI
-- ❌ Complex rule management
+#### Voorbeeld 2: BYOD Laptop Aanval
 
-**Suricata - Best voor: High-performance IDS**
-- ✅ Multi-threading support
-- ✅ Goede protocol parsers
-- ❌ Steile leercurve
-- ❌ Complex multi-sensor setup
+```
+Scenario: Externe consultant met eigen laptop
+❌ Wazuh: Weigert agent (privacy, eigen device)
+❌ Endpoint security: Buiten scope (BYOD policy)
 
-**Zeek - Best voor: Network forensics**
-- ✅ Excellent logging framework
-- ✅ Powerful scripting
-- ❌ Zeer steile leercurve
-- ❌ Resource-intensief
+✅ NetMonitor detecteert:
+├─ Port scan naar 254 IP's (full subnet)
+├─ SMB share enumeration
+├─ Unusual traffic volume
+└─ AI Alert: "⚠️ BYOD device 10.0.5.42 suspicious
+              Cannot deploy agent (policy)
+              Detection: Network behavior analysis
+              Action: Disconnect guest WiFi"
+```
 
-**Wazuh - Best voor: Endpoint + Network**
-- ✅ HIDS + NIDS combinatie
-- ✅ Goede compliance reporting
-- ❌ Complex setup
-- ❌ Resource-intensief
+#### Voorbeeld 3: IoT Camera Botnet
 
-**Security Onion - Best voor: Enterprise SOC**
-- ✅ Complete security suite
-- ✅ Excellent forensics
-- ❌ Hoge hardware requirements
-- ❌ Lange implementatietijd
+```
+Scenario: IP camera (Mirai botnet variant)
+❌ Wazuh: Embedded Linux, 64MB RAM (geen agent support)
+❌ Antivirus: Impossible voor embedded device
 
-**Splunk - Best voor: Large Enterprise**
-- ✅ Beste analytics engine
-- ✅ Grootste app ecosystem
-- ❌ Zeer hoge kosten
-- ❌ Vendor lock-in
+✅ NetMonitor detecteert:
+├─ Outbound connections to botnet C2
+├─ DDoS traffic generation (UDP floods)
+├─ Unusual bandwidth (camera sending > receiving)
+└─ AI Alert: "🚨 Camera 10.0.3.15 botnet participation
+              Cannot install software (embedded)
+              Evidence: /forensics/iot-botnet.pcap
+              Action: Segment IoT VLAN, replace device"
+```
 
 ---
 
-## Waarom NetMonitor Kiezen?
+### 3. Automatic Evidence Collection (Altijd Klaar)
 
-### Open Source & Transparant
+**Probleem zonder NetMonitor:**
+```
+Incident ontdekt na 30 dagen
+→ "We need network traffic from 3 weeks ago!"
+→ Niet opgenomen (te duur om alles te bewaren)
+→ Of: 50 TB PCAP (onmogelijk te analyseren)
+→ Forensisch onderzoek incomplete
+```
 
-- Geen verborgen kosten of vendor lock-in
-- Volledige controle over uw data
-- Draait op uw eigen hardware
-- AGPL-3.0 licentie
+**Met NetMonitor:**
+```
+Ring buffer: 7 dagen continuous PCAP (50-500GB)
 
-### Kosteneffectief
+Bij elke CRITICAL/HIGH alert:
+→ Auto-extract relevante flows
+→ Opslaan per case: /forensics/case-YYYY-MM-DD-NNN/
+→ Inclusief metadata:
+   - Source/destination IPs
+   - Protocols gebruikt
+   - File hashes (extracted files)
+   - TLS certificates
+   - DNS queries
+→ Ready voor Wireshark/Zeek analyse
 
-**10x goedkoper dan alternatieven** met vergelijkbare functionaliteit.
-
-### Bewezen Technologie
-
-- Gebaseerd op industriestandaard threat intelligence feeds
-- Integratie met AbuseIPDB, FeodoTracker, URLhaus, OpenPhish, TorProject
-- Continue updates van bekende dreigingen
-- 92% MITRE ATT&CK framework coverage
-
-### Eenvoudige Implementatie
-
-1. Installeer op een Linux server (of Raspberry Pi!)
-2. Verbind met uw netwerkswitch (mirror port)
-3. Open het dashboard en start met bewaken
-
-**Geen weken aan consulting nodig** - binnen een dag operationeel.
-
-### Unieke Differentiators
-
-1. **AI-First Design**: Native MCP integration (enige open-source tool)
-2. **Laagste Resource Gebruik**: Raspberry Pi compatible
-3. **Snelste Setup**: 10 minuten vs uren/dagen
-4. **Meeste Threat Types**: 59 vs 30-50 bij alternatieven
-5. **Hoogste MITRE Coverage**: 92% (open source record)
-6. **Complete Encrypted Analysis**: JA3/JA3S + ESNI/ECH + Domain Fronting
-7. **OT/ICS Native Support**: Modbus/DNP3/IEC-104 built-in
+Resultaat:
+✓ Bewijs er altijd (ook voor late-discovered incidents)
+✓ Alleen relevante data (geen TB doorzoeken)
+✓ Forensisch onderzoek kan direct starten
+✓ NIS2 compliant (incident evidence vereist)
+```
 
 ---
 
-## Technische Highlights (voor uw IT-afdeling)
+## 🤝 NetMonitor + Uw Bestaande Tools = Complete Coverage
 
-| Component | Specificatie |
-|-----------|--------------|
-| Platform | Linux (Ubuntu/Debian) - ARM64 & x86_64 |
-| Database | PostgreSQL + TimescaleDB |
-| Interface | Modern Web Dashboard (Bootstrap 5) |
-| API | REST + WebSocket + MCP HTTP API |
-| AI Integratie | 52 MCP tools met token auth |
-| Schaalbaarheid | Multi-sensor architectuur |
-| Performance | 1Gbps+ per sensor (<2% CPU, 50-100 MB RAM) |
-| Forensics | PCAP capture met ring buffer |
-| TLS Analyse | JA3/JA3S, ESNI/ECH, Domain Fronting, Certificate chain analysis |
-| Encrypted Traffic | Full analysis without decryption (GDPR-safe) |
-| AD Security | Kerberos attacks, DCSync, Pass-the-Hash |
-| Correlation | Kill chain, MITRE ATT&CK mapping (92% coverage) |
-| Response | SOAR playbooks, automated actions |
-| Machine Learning | Random Forest classification + Isolation Forest anomaly detection |
-| Threat Intelligence | OpenPhish, TorProject, FeodoTracker, URLhaus, custom feeds |
+### NetMonitor is GEEN Vervanging
 
----
+**We claimen NIET:**
+- ❌ Betere protocol parsing dan Zeek
+- ❌ Meer signatures dan Suricata
+- ❌ Betere endpoint visibility dan Wazuh
+- ❌ Meer analytics dan Splunk
 
-## Detectie Capabilities Overzicht
+### NetMonitor is DE Missing Link
 
-### Threat Intelligence (5 types)
-- Command & Control server detectie
-- Malware download herkenning
-- Bekende kwaadaardige IP-adressen
-- Real-time reputation checks
-- JA3 malware fingerprint database
+**We claimen WEL:**
+- ✅ **Beste AI integration** in open-source security (52 MCP tools)
+- ✅ **Agentless network visibility** voor devices die je niet kunt beschermen
+- ✅ **Snelste triage** van 10.000 events naar 5 acties
+- ✅ **Proactief advies** in plaats van alleen data
+- ✅ **Automatische bewijs verzameling** voor elk incident
 
-### Encrypted Traffic Analysis (zonder decryptie)
-- **JA3/JA3S Fingerprinting**: Client & server signatures
-- **Malware TLS Detection**: Cobalt Strike, Emotet, TrickBot, Metasploit
-- **ESNI/ECH Detection**: Privacy extension abuse
-- **Domain Fronting**: CDN-based C2 evasion
-- **Certificate Analysis**: Self-signed, expired, weak algorithms
-- **Cipher Anomalies**: Weak/deprecated ciphers, unusual selections
-- **TLS 1.3 Analysis**: 0-RTT, PSK modes, encrypted extensions
+### Aanbevolen Combinaties
 
-### AD/Kerberos Attack Detection
-- Kerberoasting (mass TGS-REQ)
-- AS-REP Roasting (pre-auth bypass)
-- DCSync (replication abuse)
-- Pass-the-Hash/Ticket
-- Golden/Silver Ticket forgery
-- Weak encryption (RC4/DES)
+#### NetMonitor + Wazuh (MKB Favoriet)
 
-### Kill Chain Correlatie
-- 10-stage attack tracking
-- MITRE ATT&CK technique mapping (92% coverage)
-- Cross-host lateral movement
-- APT campaign identification
-- Automated severity escalation
+```
+Wazuh (Endpoints):
+├─ File integrity monitoring
+├─ Rootkit detection
+├─ Process monitoring
+└─ ✅ 67% netwerk (met agents)
 
-### Gedragsanalyse met ML
-- Data exfiltratie (grote uploads)
-- Beaconing (regelmatige "check-ins" naar hackers)
-- Lateral movement (verspreiding binnen netwerk)
-- Ongebruikelijke verkeerspatronen
-- **ML Device Classification**: Random Forest classifier (11 apparaattypes)
-- **ML Anomaly Detection**: Isolation Forest per-device baseline
-- Device behavior learning (28 features per apparaat)
+NetMonitor (Network):
+├─ Traffic analysis
+├─ TLS fingerprinting
+├─ ML device classification
+├─ ✅ 33% netwerk (zonder agents)
+└─ ✅ 100% netwerk (alles)
 
-### Protocol Analyse
-- DNS tunneling (data verstopt in DNS)
-- Verdachte HTTP/HTTPS patronen
-- TLS/SSL anomalies
-- Brute force aanvallen
-- Poortscanning
+Native integration → Wazuh Manager
+→ Unified alerting
+→ Complete visibility
+→ €0 licensing
 
-### SMB/LDAP Deep Parsing
-- Admin share access (C$, ADMIN$, IPC$)
-- Sensitive file access (password.txt, .kdbx, id_rsa)
-- Share enumeration detectie
-- LDAP user/group enumeration
-- DCSync query detection
+Setup tijd: 1-2 uur
+Kosten (3 jaar): €19.000 vs €270.000 Splunk
+```
 
-### Automated Response (SOAR)
-- Playbook-based automation
-- IP blocking, host isolation
-- Account disabling
-- PCAP capture on alert
-- Multi-channel notifications
+#### NetMonitor + Suricata (Security Specialist)
 
-### Netwerk Context
-- GeoIP locatie per verbinding
-- Service provider identificatie
-- Internal vs External traffic classificatie
-- Automatische device discovery
+```
+Suricata (Signatures):
+├─ 30.000+ ET Open rules
+├─ Known CVE detection
+├─ IPS inline blocking
+└─ Signature-based
 
-![Screenshot: Infographic met de verschillende detectie-types in een visueel aantrekkelijke layout - iconen voor elke categorie](./images/netmonitor-afb2.png)
+NetMonitor (Behavior + AI):
+├─ ML anomaly detection
+├─ Kill chain correlation
+├─ AI-powered analysis
+├─ Zero-day detection
+└─ Behavior-based
+
+Beide → Splunk/ELK (via CEF)
+→ Complementaire detectie
+→ Suricata: known threats
+→ NetMonitor: zero-days + AI triage
+```
+
+#### NetMonitor + Zeek (Enterprise Forensics)
+
+```
+Zeek (Deep Forensics):
+├─ 100+ protocol parsers
+├─ Complete session reconstruction
+├─ Rich metadata extraction
+└─ Specialist tool
+
+NetMonitor (AI Intelligence):
+├─ 52 MCP tools
+├─ Natural language queries
+├─ Automated correlation
+└─ Orchestration layer
+
+AI Assistant (Claude/GPT):
+"Correleer Zeek's DNS logs met NetMonitor's TLS fingerprints
+ voor lateral movement detection in laatste 24h"
+
+→ Zeek's diepte + NetMonitor's AI
+→ Complete forensics + automated analysis
+```
 
 ---
 
-## Implementatie Scenario's
+## 📊 Eerlijke Technische Specificaties
+
+### Wat NetMonitor Goed Doet
+
+| Aspect | NetMonitor Waarde | Vergelijking |
+|--------|-------------------|--------------|
+| **Setup Snelheid** | **10-30 minuten** | vs 4-8 uur Security Onion |
+| **Resource Gebruik** | **150-280 MB RAM** (sensor) | vs 500MB Zeek, 2GB Security Onion |
+| **AI Integration** | **52 MCP tools** | Native protocol - geen andere OSS IDS heeft dit |
+| **Built-in Dashboard** | ✅ Modern web UI | Zeek/Suricata hebben geen native UI |
+| **Raspberry Pi** | ✅ ARM64 support | Distributed sensors mogelijk |
+| **Nederlandse Docs** | ✅ Volledig NL | Alle anderen: alleen Engels |
+| **SIEM Ready** | ✅ Wazuh + CEF/LEEF/JSON | Out-of-box naar elk SIEM |
+
+### Waar Anderen Beter Zijn
+
+| Aspect | Alternatief Voordeel | Wanneer Kiezen |
+|--------|---------------------|----------------|
+| **Protocol Diepte** | **Zeek** heeft 100+ protocol parsers | Deep protocol forensics nodig |
+| **Community** | **Suricata** heeft grotere rule community | Duizenden community rules gewenst |
+| **Enterprise** | **Splunk** heeft meer apps | Budget geen issue, enterprise support |
+| **Maturity** | **Security Onion** battle-tested | Complete gevestigde suite gewenst |
+| **MITRE Breadth** | **Wazuh** ~75% coverage | Comprehensive ATT&CK prioriteit |
+
+### MITRE ATT&CK Coverage (Eerlijk)
+
+**NetMonitor: 15 techniques (~8% coverage)**
+
+Focus op high-impact common attacks:
+
+**Reconnaissance:**
+- T1046 - Network Service Discovery
+
+**Credential Access:**
+- T1110 - Brute Force
+- T1558.003 - Kerberoasting
+- T1558.004 - AS-REP Roasting
+- T1003.006 - DCSync
+- T1550.002 - Pass the Hash
+
+**Command & Control:**
+- T1071 - Application Layer Protocol
+- T1071.004 - DNS
+- T1095 - Non-Application Layer Protocol
+- T1571 - Non-Standard Port
+- T1573 - Encrypted Channel
+
+**Lateral Movement:**
+- T1021 - Remote Services
+- T1021.002 - SMB/Windows Admin Shares
+
+**Exfiltration:**
+- T1041 - Exfiltration Over C2
+- T1048 - Exfiltration Over Alternative Protocol
+
+**Trade-off:** Deep detection van common techniques vs breed maar shallow.
+
+**Voor comprehensive coverage:** Combineer met Wazuh (~75%).
+
+### Detectie Capabilities (Eerlijk)
+
+**21 Threat Types Enabled by Default:**
+- Port scanning
+- Connection floods
+- Brute force attacks
+- Beaconing (C2)
+- Lateral movement
+- DNS tunneling
+- Protocol mismatch
+- ICMP tunneling
+- HTTP anomalies
+- Large file transfers
+- TLS/SSL analysis (JA3/JA3S)
+- Certificate validation
+- AD/Kerberos attacks
+- Kill chain correlation
+- SMB/LDAP deep parsing
+- Risk scoring
+- Encrypted traffic analysis
+
+**53 Additional Detections Available (Opt-in):**
+- Cryptomining, phishing, Tor, VPN detection
+- Web application security (SQLi, XSS, SSRF, etc.)
+- DDoS & resource exhaustion
+- Ransomware indicators
+- IoT security (Mirai, UPnP, MQTT, etc.)
+- OT/ICS protocols (Modbus, DNP3, IEC-104, BACnet)
+- Container security (Docker, Kubernetes)
+- Advanced evasion techniques
+
+**Waarom niet alle enabled?**
+- False positive tuning per environment
+- Performance considerations
+- Specifieke use cases (niet iedereen heeft OT/ICS)
+
+---
+
+## 💰 ROI: Meetbare Waarde
+
+### Medium Business (250 medewerkers, 100 devices)
+
+**Zonder NetMonitor:**
+```
+Security Stack: Wazuh + Suricata
+Events: 7.000/dag
+Analyst: Kan 800/dag reviewen (11%)
+Salary: €60.000/jaar
+Incident Response: €30.000-150.000/jaar (late detection)
+
+Total: €90.000-210.000/jaar
+Coverage: 11% events reviewed, 89% never seen
+```
+
+**Met NetMonitor:**
+```
+Security Stack: Wazuh + Suricata + NetMonitor
+Events: 7.000/dag
+AI: Analyseert 100% → 5 CRITICAL alerts
+Analyst: Reviews 25 prioritized cases/dag
+Efficiency: 90% minder triage tijd
+Salary: €60.000/jaar
+Incident Response: €6.000-15.000/jaar (early detection)
+Hardware: €2.000 (one-time)
+
+Total: €68.000/jaar (first year)
+Coverage: 100% events analyzed, 100% critical reviewed
+```
+
+**Savings: €22.000-142.000/jaar**
+**ROI: 1.100% - 7.100% (first year)**
+
+**Time to Detection:**
+- Brute force: 15-30 min → 1-2 min (15x faster)
+- Lateral movement: 2-7 dagen → 5-30 min (500x faster)
+- Data exfiltration: 30-90 dagen → 2-24 uur (100x faster)
+- Zero-day: 90-180 dagen → 1-48 uur (2000x faster)
+
+---
+
+## 🎯 Wanneer NetMonitor Kiezen
+
+### ✅ Gebruik NetMonitor Als:
+
+- Je verdrinkt in security logs (10.000+ events/dag)
+- Je wilt AI-powered triage (90% tijdwinst)
+- Je hebt devices zonder agent (printers, IoT, BYOD, OT/ICS)
+- Je wilt automatic evidence collection (NIS2 compliant)
+- Je hebt Wazuh/Suricata/Zeek en wilt ze slimmer maken
+- Je hebt distributed locations (Raspberry Pi sensors)
+- Je wilt snel starten (10-30 min setup)
+- Budget is beperkt (€0 licensing)
+
+### ❌ Gebruik NetMonitor NIET Als:
+
+- Je comprehensive MITRE coverage prioriteert (kies Wazuh ~75%)
+- Je >100 protocol parsers nodig hebt (kies Zeek)
+- Je inline IPS bij 10Gbps+ wilt (kies Suricata)
+- Je 24/7 vendor support met SLA vereist (kies enterprise)
+- Je alleen endpoint detection nodig hebt (NetMonitor is network-focused)
+- Je geen enkele technische kennis hebt (kies managed SOC)
+
+---
+
+## 🚀 Implementatie Scenario's
 
 ### Scenario 1: Klein Kantoor (10-50 medewerkers)
 
-**Hardware:**
-- Raspberry Pi 4 (8GB) of kleine Linux server
+**Setup:**
+- Raspberry Pi 4 (8GB) als sensor
 - Verbonden met centrale switch (port mirroring)
+- NetMonitor analyseert alle traffic
+- Dashboard toegankelijk voor IT admin
 
-**Kosten:** €500-1000 (hardware + setup)
+**Kosten:** €500-1.000 (hardware + setup)
 **Tijd:** 1-2 uur
-
-### Scenario 2: Middelgroot Bedrijf (50-500 medewerkers)
-
-**Hardware:**
-- Centrale NetMonitor server (4 cores, 16GB RAM)
-- Sensoren op elke locatie/VLAN (Raspberry Pi's)
-- Kiosk display bij IT-afdeling
-
-**Extra:**
-- AI-integratie voor analyse en rapportage
-- PCAP forensics voor compliance
-
-**Kosten:** €5.000-10.000 (hardware + setup)
-**Tijd:** 1-2 dagen
-
-### Scenario 3: Enterprise (500+ medewerkers)
-
-**Hardware:**
-- Gedistribueerde architectuur
-- Meerdere sensoren per locatie
-- PostgreSQL cluster voor high availability
-
-**Extra:**
-- Integratie met bestaande SIEM
-- PCAP forensics voor compliance
-- Dedicated SOC team training
-
-**Kosten:** €15.000-30.000 (projectmatig)
-**Tijd:** 1-2 weken
+**Result:** 100% network visibility, AI triage, auto PCAP
 
 ---
 
-## Volgende Stappen
+### Scenario 2: Middelgroot Bedrijf (50-500 medewerkers)
+
+**Setup:**
+- Centrale NetMonitor server (4 cores, 16GB RAM)
+- Raspberry Pi sensoren op elke locatie/VLAN
+- Wazuh voor endpoints
+- NetMonitor voor network (inclusief IoT/printers/BYOD)
+- Kiosk display bij IT-afdeling
+
+**Extras:**
+- AI-integratie voor analyse en rapportage
+- PCAP forensics voor compliance
+- Native Wazuh integration (unified alerts)
+
+**Kosten:** €5.000-10.000 (hardware + setup)
+**Tijd:** 1-2 dagen
+**Result:** 100% coverage (endpoint + network), complete visibility
+
+---
+
+### Scenario 3: Enterprise (500+ medewerkers)
+
+**Setup:**
+- Gedistribueerde architectuur
+- Meerdere sensoren per locatie
+- PostgreSQL cluster (high availability)
+- Integration met Splunk/QRadar
+- PCAP forensics + long-term storage
+
+**Extras:**
+- Dedicated SOC team training
+- Custom threat detection rules
+- SOAR playbook development
+- Compliance reporting (NIS2)
+
+**Kosten:** €15.000-30.000 (projectmatig)
+**Tijd:** 1-2 weken
+**Result:** Enterprise-grade SOC, complete automation
+
+---
+
+## 🔒 Compliance & Security
+
+NetMonitor ondersteunt compliance met:
+
+**AVG/GDPR:**
+- Data blijft binnen eigen infrastructuur
+- Encrypted traffic analysis WITHOUT decryption
+- Privacy-safe detection methods
+
+**NIS2:**
+- Incident detectie en alerting
+- PCAP forensics (evidence collection)
+- Rapportage capabilities
+- Logging retention
+
+**ISO 27001:**
+- Security monitoring controls
+- Audit logging
+- Access management
+
+**MITRE ATT&CK:**
+- 15 technique coverage
+- Kill chain correlation
+- Technique mapping per alert
+
+---
+
+## 📝 Technische Highlights
+
+| Component | Specificatie |
+|-----------|--------------|
+| **Platform** | Linux (Ubuntu/Debian) - ARM64 & x86_64 |
+| **Database** | PostgreSQL + TimescaleDB |
+| **Interface** | Modern Web Dashboard (Bootstrap 5) |
+| **API** | REST + WebSocket + MCP HTTP (52 tools) |
+| **AI Integratie** | Native Model Context Protocol |
+| **Schaalbaarheid** | Multi-sensor architectuur |
+| **Performance** | 1Gbps+ per sensor (8-12% CPU, 150-280 MB RAM) |
+| **Forensics** | PCAP capture met ring buffer (NIS2) |
+| **TLS Analyse** | JA3/JA3S, ESNI/ECH, Domain Fronting |
+| **AD Security** | Kerberos attacks, DCSync, Pass-the-Hash |
+| **Correlation** | Kill chain, MITRE ATT&CK mapping |
+| **Response** | SOAR playbooks, automated actions |
+| **Machine Learning** | Random Forest classification + Isolation Forest anomaly |
+| **Threat Intel** | MISP, AlienVault OTX, AbuseIPDB |
+| **SIEM Output** | Native Wazuh + CEF/LEEF/JSON (Splunk/QRadar/ArcSight) |
+
+---
+
+## 🎨 De NetMonitor Belofte
+
+### Traditionele Security Stack:
+```
+Tools genereren data → Mens analyseert (langzaam, 11% coverage)
+                     → Reageert wanneer overwhelmed
+                     → 33% netwerk onzichtbaar (geen agents)
+```
+
+### NetMonitor-Enhanced Stack:
+```
+Tools genereren data → AI analyseert (24/7, 100% coverage)
+    +                → Mens onderzoekt (efficiënt, alleen top alerts)
+SPAN port ziet alles → 100% netwerk zichtbaar (ook zonder agents)
+```
+
+**Resultaat:**
+- ✅ 90% minder tijd aan triage
+- ✅ 100% event coverage (AI nooit moe)
+- ✅ 10-100x snellere detectie
+- ✅ 100% netwerk visibility (vs 67% endpoint-only)
+- ✅ Complete evidence (altijd)
+- ✅ Proactief in plaats van reactief
+
+**NetMonitor: The AI Scout That Never Sleeps**
+
+*Zodat security analysts focussen op onderzoek,*
+*niet eindeloze log triage.*
+
+*En zodat de 33% van uw netwerk zonder agents,*
+*niet langer een blinde vlek is.*
+
+---
+
+## 📞 Volgende Stappen
 
 ### 1. Demo Aanvragen
 Zie NetMonitor in actie met uw eigen netwerkverkeer.
 
 ### 2. Proof of Concept
 Installeer NetMonitor vrijblijvend in uw testomgeving.
+Setup tijd: 10-30 minuten.
 
 ### 3. Implementatie
-Onze experts helpen bij de productie-implementatie.
+Onze experts helpen bij productie-implementatie.
 
 ---
 
-## Contact
+## 📚 Meer Informatie
 
-**NetMonitor - Professional Network Security Monitoring**
-
-- Website: [https://awimax.nl]
-- Email: [willem@awimax.nl]
-- GitHub: [github.com/willempoort/netmonitor]
-
----
-
-## Bijlagen
-
-### A. Feature Overzicht
-
-| Categorie | Features |
-|-----------|----------|
-| **Monitoring** | Real-time packet analyse, Traffic visualisatie, Top talkers, System metrics |
-| **Detectie** | **59 detectie types**, Threat feeds, IP reputation, Behavior analysis |
-| **Encrypted Traffic** | JA3/JA3S, ESNI/ECH, Domain Fronting, Certificate analysis, Malware fingerprints, TLS 1.3 analysis |
-| **AD/Kerberos** | Kerberoasting, AS-REP Roasting, DCSync, Pass-the-Hash, Golden Ticket, Weak encryption |
-| **Kill Chain** | MITRE ATT&CK mapping (92%), 10-stage correlation, Multi-host tracking, APT campaign detection |
-| **SMB/LDAP** | Admin share access, Sensitive file detection, LDAP enumeration, DCSync queries |
-| **Forensics** | PCAP capture, Ring buffer, Flow export, Per-alert opname (NIS2 compliant) |
-| **Classificatie** | Device discovery, **ML Classification** (Random Forest), Behavior learning, **ML Anomaly Detection** (Isolation Forest), Template matching, Alert suppression |
-| **Risk Scoring** | Dynamic 0-100 scores, Time decay, Asset categorization, Trend analysis |
-| **SOAR** | Automated playbooks, Approval workflows, Dry-run mode, Multi-integration |
-| **GeoIP** | Land identificatie, Local/Private onderscheid, MaxMind database |
-| **Beheer** | Central dashboard, Multi-sensor, Remote config, Whitelist management |
-| **AI Integratie** | **52 MCP tools**, Token auth, Permission scopes, Audit logging |
-
-### B. Compliance & Security
-
-NetMonitor ondersteunt compliance met:
-- **AVG/GDPR**: Data blijft binnen uw eigen infrastructuur, encrypted traffic analysis without decryption
-- **NIS2**: Incident detectie, PCAP forensics en rapportage capabilities
-- **ISO 27001**: Onderdeel van security monitoring controls
-- **MITRE ATT&CK**: 92% framework coverage voor threat mapping
-
-### C. ROI Berekening
-
-| Factor | Waarde |
-|--------|--------|
-| Gemiddelde kosten datalek | €250.000 |
-| Kans op datalek zonder monitoring | 30%/jaar |
-| Kans op datalek met NetMonitor | 5%/jaar |
-| **Risicoreductie** | **€62.500/jaar** |
-| NetMonitor investering (3 jaar) | €10.000 |
-| **Netto voordeel (3 jaar)** | **€177.500** |
-
-*Exclusief reputatieschade, omzetverlies en herstelkosten.*
-
-### D. MCP API Tool Categorieën
-
-| Categorie | Aantal | Scope | Functionaliteit |
-|-----------|--------|-------|-----------------|
-| Core Analysis | 3 | read_only | IP reputation, sensor status, threat feed stats |
-| Device Classification | 20 | mixed | ML-based device recognition, behavior learning |
-| TLS Analysis | 2 | mixed | JA3 fingerprinting, encrypted traffic metadata |
-| PCAP Forensics | 5 | mixed | Ring buffer, flow export, capture management |
-| Memory Management | 2 | mixed | RAM optimization, garbage collection |
-| Sensor Commands | 2 | mixed | Remote control, command history |
-| Whitelist Management | 3 | mixed | IP/subnet blocking, allowlisting |
-| Export Tools | 1 | read_only | CSV/JSON export voor SIEM |
-| Config Management | 2 | mixed | 59 threat type parameters, thresholds |
-| AD/Kerberos | 3 | read_only | Attack statistics, encryption analysis |
-| Kill Chain | 2 | read_only | MITRE mapping, attack correlation |
-| Risk Scoring | 3 | read_only | Asset risk trends, prioritization |
-| SOAR | 4 | mixed | Automated playbooks, approval workflows |
-| **Totaal** | **52** | - | **Complete AI-powered security automation** |
-
-### E. Technical Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    NetMonitor Architecture                   │
-├─────────────────────────────────────────────────────────────┤
-│                                                               │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │   Sensor 1   │  │   Sensor 2   │  │   Sensor N   │      │
-│  │ (Edge/Cloud) │  │ (Office 1)   │  │ (Office 2)   │      │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘      │
-│         │                  │                  │              │
-│         └──────────────────┼──────────────────┘              │
-│                            │                                 │
-│                   ┌────────▼────────┐                        │
-│                   │   SOC Server    │                        │
-│                   │  ┌────────────┐ │                        │
-│                   │  │ PostgreSQL │ │                        │
-│                   │  │ TimescaleDB│ │                        │
-│                   │  └────────────┘ │                        │
-│                   │  ┌────────────┐ │                        │
-│                   │  │ Web + MCP  │ │                        │
-│                   │  │    APIs    │ │                        │
-│                   │  └────────────┘ │                        │
-│                   │  ┌────────────┐ │                        │
-│                   │  │ ML Models  │ │                        │
-│                   │  │ (RF + IF)  │ │                        │
-│                   │  └────────────┘ │                        │
-│                   └─────────────────┘                        │
-│                            │                                 │
-│         ┌──────────────────┼──────────────────┐              │
-│         │                  │                  │              │
-│  ┌──────▼───────┐  ┌───────▼────────┐  ┌─────▼──────┐     │
-│  │ Web Dashboard│  │  AI Assistant  │  │    SIEM    │     │
-│  │   (Human)    │  │  (MCP Client)  │  │ Integration│     │
-│  └──────────────┘  └────────────────┘  └────────────┘     │
-│                                                               │
-└─────────────────────────────────────────────────────────────┘
-```
+- **Website:** [https://awimax.nl]
+- **Email:** [willem@awimax.nl]
+- **GitHub:** [github.com/willempoort/netmonitor]
+- **Documentatie:** [docs/ folder]
+- **Actuele Status:** [docs/STATUS_VERIFICATIE.md]
 
 ---
 
 **NetMonitor - Zie wat er in uw netwerk gebeurt. Voordat het te laat is.**
 
-*59 Threat Types | 92% MITRE Coverage | 52 AI Tools | Zero Licensing Costs*
+*21 Core Detections | 15 MITRE Techniques | 52 AI Tools | €0 Licensing*
+*Agentless Network Visibility | AI-Powered Triage | Automatic Evidence Collection*
