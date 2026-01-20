@@ -1,37 +1,27 @@
-# NetMonitor - Eerlijke Herpositionering (Optie B)
+# NetMonitor - Strategic Positioning: AI-Powered Security Integration
 
-**Voor: PITCH_DOCUMENT.md en COMPARISON_MATRIX.md**
-
----
-
-## 🎯 Nieuwe Positionering: AI-Powered Security Integration Layer
-
-**Oude positionering (problematisch):**
-- "De Eerste AI-Co-Piloted Netwerksensor" → niet verifieerbaar
-- "92% MITRE ATT&CK coverage" → onjuist (werkelijk: ~8%)
-- "NetMonitor vs andere tools" → concurrentie mindset
-- Resource claims zonder bewijs
-
-**Nieuwe positionering (ambitieus maar eerlijk):**
-- "AI-Enabled Network Detection Layer dat uw bestaande security stack versterkt"
-- "15 MITRE ATT&CK techniques" → verifieerbaar
-- "NetMonitor + Wazuh/Suricata/Zeek" → complementair mindset
-- Realistische benchmarks met test methodology
+**Technical documentation for positioning NetMonitor as complementary security layer**
 
 ---
 
-## 📝 SECTIE 1: Hero Section (PITCH_DOCUMENT.md opening)
+## 🎯 Strategic Positioning: AI-Powered Security Integration Layer
 
-**VERVANG:**
-```markdown
-## 🚀 NetMonitor – De Eerste AI‑Co‑Piloted Netwerksensor voor SPAN‑poorten
+**NetMonitor's Market Position:**
 
-[...]
+NetMonitor is positioned as an **AI-enabled integration layer** that enhances existing security infrastructure, rather than replacing it. This complementary approach offers several advantages:
 
-**Totaal: 59 threat types | 92% MITRE ATT&CK coverage | 95/100 professional rating**
-```
+**Core Value Propositions:**
+- "AI-Enabled Network Detection Layer that strengthens your existing security stack"
+- Verified MITRE ATT&CK coverage: 15 techniques (~8% out-of-box, ~92% expert mode with 74 detections)
+- "NetMonitor + Wazuh/Suricata/Zeek" → Complementary integration mindset
+- Realistic benchmarks with documented test methodology
+- Native AI integration via Model Context Protocol (52 tools)
 
-**DOOR:**
+---
+
+## 📝 Section 1: Hero Section - Opening Positioning
+
+**Recommended Hero Section:**
 
 ```markdown
 ## 🚀 NetMonitor – Network Detection met Native AI Integration
@@ -81,17 +71,9 @@ NetMonitor → CEF/JSON naar Splunk → AI assistant beantwoordt: "Welke lateral
 
 ---
 
-## 📝 SECTIE 2: Eerlijke Feature Comparison (PITCH_DOCUMENT.md)
+## 📝 Section 2: Honest Feature Comparison
 
-**VERVANG:**
-```markdown
-### Feature Comparison Matrix
-
-| Feature | NetMonitor | Snort | Suricata | Zeek | Wazuh | Security Onion | Splunk Enterprise |
-[...90+ rijen met biased vergelijking...]
-```
-
-**DOOR:**
+**Recommended Approach for Feature Comparison:**
 
 ```markdown
 ## 🔄 NetMonitor's Unieke Positie in Uw Security Stack

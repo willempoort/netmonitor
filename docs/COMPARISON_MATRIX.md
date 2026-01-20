@@ -32,7 +32,7 @@ Dit is een eerlijke analyse van:
 
 ### Gebruik NetMonitor NIET Als Je:
 
-❌ **Comprehensive MITRE coverage prioriteert** (kies Wazuh ~75% vs NetMonitor ~8%)
+❌ **Comprehensive MITRE coverage prioriteert zonder tuning** (kies Wazuh ~75% out-of-box vs NetMonitor ~8% default, ~92% expert mode)
 ❌ **>100 protocol parsers nodig hebt** (kies Zeek - specialist tool)
 ❌ **Inline IPS bij 10Gbps+ wilt** (kies Suricata - superieure multi-threading)
 ❌ **24/7 vendor support met SLA vereist** (kies enterprise: Splunk, CrowdStrike)
@@ -43,25 +43,26 @@ Dit is een eerlijke analyse van:
 
 ## 🎯 Feature Comparison Matrix (Eerlijk)
 
-| Feature | NetMonitor | Wazuh | Suricata | Zeek | Security Onion | Splunk |
-|---------|-----------|-------|----------|------|----------------|--------|
-| **Easy Setup** | ✅✅✅ | ✅✅ | ⚠️ | ⚠️⚠️ | ⚠️⚠️ | ⚠️ |
-| **Built-in Dashboard** | ✅✅✅ | ✅✅ | ❌ | ❌ | ✅✅✅ | ✅✅✅ |
-| **AI Integration (MCP)** | ✅✅✅ | ❌ | ❌ | ❌ | ❌ | ⚠️ |
-| **Agentless Network** | ✅✅✅ | ❌ | ✅✅✅ | ✅✅✅ | ✅✅✅ | ⚠️ |
-| **Endpoint Visibility** | ❌ | ✅✅✅ | ❌ | ❌ | ✅✅ | ✅✅✅ |
-| **Protocol Depth** | ⚠️ | ⚠️ | ✅✅ | ✅✅✅ | ✅✅✅ | ✅✅ |
-| **Signature Rules** | ❌ | ⚠️ | ✅✅✅ | ❌ | ✅✅✅ | ⚠️ |
-| **ML Anomaly Detection** | ✅✅ | ❌ | ❌ | ⚠️ | ❌ | ✅✅✅ |
-| **PCAP Forensics** | ✅✅✅ | ❌ | ⚠️ | ✅✅ | ✅✅✅ | ⚠️ |
-| **Resource (Low)** | ✅✅✅ | ✅✅ | ✅✅ | ⚠️ | ❌ | ❌ |
-| **Raspberry Pi** | ✅✅✅ | ⚠️ | ⚠️ | ❌ | ❌ | ❌ |
-| **Multi-Sensor** | ✅✅✅ | ✅✅✅ | ⚠️ | ⚠️ | ✅✅ | ✅✅✅ |
-| **SIEM Export** | ✅✅✅ | ✅✅✅ | ⚠️ | ⚠️ | ✅✅✅ | N/A |
-| **SOAR/Automation** | ✅✅ | ✅✅✅ | ❌ | ❌ | ⚠️ | ✅✅✅ |
-| **MITRE Coverage** | ⚠️ 8% | ✅✅✅ 75% | ⚠️ 40% | ✅✅ 70% | ✅✅✅ 80% | ✅✅✅ 85% |
-| **Community Size** | ⚠️ Small | ✅✅ Large | ✅✅✅ Huge | ✅✅ Large | ✅✅ Large | ✅✅✅ Huge |
-| **Cost (3yr, 500emp)** | **€11k** | **€26k** | **€23k** | **€41k** | **€51k** | **€270k** |
+| Feature | NetMonitor<br/>(Out-of-Box) | NetMonitor<br/>(Expert Mode) | Wazuh | Suricata | Zeek | Security Onion | Splunk |
+|---------|-----------|-----------|-------|----------|------|----------------|--------|
+| **Easy Setup** | ✅✅✅ | ✅✅ | ✅✅ | ⚠️ | ⚠️⚠️ | ⚠️⚠️ | ⚠️ |
+| **Built-in Dashboard** | ✅✅✅ | ✅✅✅ | ✅✅ | ❌ | ❌ | ✅✅✅ | ✅✅✅ |
+| **AI Integration (MCP)** | ✅✅✅ | ✅✅✅ | ❌ | ❌ | ❌ | ❌ | ⚠️ |
+| **Agentless Network** | ✅✅✅ | ✅✅✅ | ❌ | ✅✅✅ | ✅✅✅ | ✅✅✅ | ⚠️ |
+| **Endpoint Visibility** | ❌ | ❌ | ✅✅✅ | ❌ | ❌ | ✅✅ | ✅✅✅ |
+| **Protocol Depth** | ⚠️ | ✅✅ | ⚠️ | ✅✅ | ✅✅✅ | ✅✅✅ | ✅✅ |
+| **Signature Rules** | ❌ | ❌ | ⚠️ | ✅✅✅ | ❌ | ✅✅✅ | ⚠️ |
+| **ML Anomaly Detection** | ✅✅ | ✅✅✅ | ❌ | ❌ | ⚠️ | ❌ | ✅✅✅ |
+| **PCAP Forensics** | ✅✅✅ | ✅✅✅ | ❌ | ⚠️ | ✅✅ | ✅✅✅ | ⚠️ |
+| **Resource (Low)** | ✅✅✅ | ✅✅ | ✅✅ | ✅✅ | ⚠️ | ❌ | ❌ |
+| **Raspberry Pi** | ✅✅✅ | ✅ | ⚠️ | ⚠️ | ❌ | ❌ | ❌ |
+| **Multi-Sensor** | ✅✅✅ | ✅✅✅ | ✅✅✅ | ⚠️ | ⚠️ | ✅✅ | ✅✅✅ |
+| **SIEM Export** | ✅✅✅ | ✅✅✅ | ✅✅✅ | ⚠️ | ⚠️ | ✅✅✅ | N/A |
+| **SOAR/Automation** | ✅✅ | ✅✅✅ | ✅✅✅ | ❌ | ❌ | ⚠️ | ✅✅✅ |
+| **MITRE Coverage** | ⚠️ **8%** | ✅✅✅ **~92%** | ✅✅✅ 75% | ⚠️ 40% | ✅✅ 70% | ✅✅✅ 80% | ✅✅✅ 85% |
+| **Threat Detection Types** | **21** | **74** | ~100 | ~40 | ~80 | ~120 | ~150 |
+| **Community Size** | ⚠️ Small | ⚠️ Small | ✅✅ Large | ✅✅✅ Huge | ✅✅ Large | ✅✅ Large | ✅✅✅ Huge |
+| **Cost (3yr, 500emp)** | **€11k** | **€15k** | **€26k** | **€23k** | **€41k** | **€51k** | **€270k** |
 
 **Legend:**
 - ✅✅✅ = Excellent
@@ -69,6 +70,15 @@ Dit is een eerlijke analyse van:
 - ✅ = Basic
 - ⚠️ = Limited
 - ❌ = Not Available
+
+**NetMonitor Modes Explained:**
+
+| Mode | Description | MITRE Coverage | Detections | Use Case |
+|------|-------------|----------------|------------|----------|
+| **Out-of-Box** | Conservative defaults, minimal false positives | ~8% (21 enabled) | High-confidence essentials | Immediate deployment, broad environments |
+| **Expert Mode** | All capabilities enabled, environment-tuned | ~92% (74 enabled) | All 9 phases active | Professional tuning, specific use cases |
+
+*Zie PITCH_DOCUMENT.md § "The Porsche Principle" voor details over unlock methodes.*
 
 ---
 
@@ -78,12 +88,15 @@ Dit is een eerlijke analyse van:
 
 | Oplossing | Hardware | Setup | Training | Support (opt) | **Total** |
 |-----------|----------|-------|----------|---------------|-----------|
-| **NetMonitor** | €2k | €5k | €1k | €3k | **€11k** |
+| **NetMonitor (out-of-box)** | €2k | €5k | €1k | €3k | **€11k** |
+| **NetMonitor (expert mode)** | €2.5k | €7k | €2k | €3.5k | **€15k** |
 | **NetMonitor + Wazuh** | €3k | €8k | €3k | €5k | **€19k** |
 | **NetMonitor + Suricata** | €3.5k | €10k | €4k | €4k | **€21.5k** |
 | **Suricata + Zeek** | €5k | €20k | €10k | €0 | **€35k** |
 | **Wazuh (zelf)** | €3k | €12k | €5k | €6k | **€26k** |
 | **Security Onion** | €6k | €30k | €15k | €0 | **€51k** |
+
+**Note:** Expert mode TCO includes extra tuning effort (+€2k setup, +€1k training) en mogelijk krachtigere hardware (+€0.5k).
 
 ### Enterprise/Managed Options
 
@@ -179,23 +192,25 @@ AI: "Correleer Zeek's DNS met NetMonitor's TLS voor lateral movement"
 ## 🎯 Decision Matrix
 
 ```
-Je prioriteit:              Beste keuze:
-─────────────────────────   ───────────────────────────
-AI-powered analysis    →    NetMonitor ✅
-Agentless coverage     →    NetMonitor ✅
-Quick deployment       →    NetMonitor ✅
-Cost-effective         →    NetMonitor ✅
+Je prioriteit:                    Beste keuze:
+───────────────────────────────   ─────────────────────────────────
+AI-powered analysis          →    NetMonitor ✅
+Agentless coverage           →    NetMonitor ✅
+Quick deployment (1h)        →    NetMonitor (out-of-box) ✅
+Cost-effective (<€15k)       →    NetMonitor ✅
+Flexible growth path         →    NetMonitor (8% → 92%) ✅
 
-Endpoint visibility    →    Wazuh ✅
-MITRE breadth          →    Wazuh ✅
-Community size         →    Suricata/Snort ✅
-Protocol forensics     →    Zeek ✅
-High-speed IPS         →    Suricata ✅
-Enterprise support     →    Splunk ✅
-Complete suite         →    Security Onion ✅
+Comprehensive MITRE (75%+)   →    Wazuh / NetMonitor Expert Mode ✅
+Endpoint visibility          →    Wazuh ✅
+Community size               →    Suricata/Snort ✅
+Protocol forensics (100+)    →    Zeek ✅
+High-speed IPS (10Gbps+)     →    Suricata ✅
+Enterprise support           →    Splunk ✅
+Complete suite               →    Security Onion ✅
 
-Complete coverage      →    NetMonitor + Wazuh ✅✅
-Best of both worlds    →    NetMonitor + Suricata/Zeek ✅✅
+Complete coverage            →    NetMonitor + Wazuh ✅✅
+Best of both worlds          →    NetMonitor Expert + Suricata/Zeek ✅✅
+Grow at your pace            →    NetMonitor (21→74 detections) ✅✅
 ```
 
 ---
