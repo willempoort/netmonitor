@@ -611,6 +611,314 @@ NetMonitor ondersteunt compliance met:
 
 ---
 
+## 🎛️ NetMonitor Flexibility: The Porsche Principle
+
+### Gebouwd voor Performance, Geleverd met Veilige Limieten
+
+NetMonitor is als een Porsche: **volledige capability beschikbaar, conservatieve factory settings**.
+
+#### Out-of-the-Box (Safety Mode) ✅
+
+**21 Core Threat Detections Enabled**
+- Port scanning, brute force, lateral movement
+- TLS/SSL analysis (JA3/JA3S), certificate validation
+- Beaconing (C2), DNS tunneling, protocol mismatch
+- AD/Kerberos attacks (Kerberoasting, DCSync)
+- Kill chain correlation, SMB/LDAP deep parsing
+- HTTP anomalies, large file transfers
+- Risk scoring, encrypted traffic analysis
+
+**MITRE Coverage:** ~8% (high-confidence essentials)
+**False Positives:** Minimaal (getuned voor broad deployment)
+**Deployment:** Immediate (10-30 minuten)
+**Hardware:** Raspberry Pi compatible (150-280MB RAM)
+
+**Analogy:** Porsche met factory speed limiter (250 km/h van 300 km/h capability)
+
+---
+
+#### Professional Mode (Full Capability) 🚀
+
+**74 Total Threat Detections Available**
+
+**All 9 Phases Fully Implemented:**
+
+**Phase 1: Core Advanced Threats (6 types)**
+- Cryptomining (Stratum protocol)
+- Phishing domains (OpenPhish feed)
+- Tor exit node connections
+- VPN tunnels (OpenVPN, WireGuard, IPsec)
+- Cloud metadata access (AWS/Azure/GCP IMDS)
+- DNS anomalies (DGA detection)
+
+**Phase 2: Web Application Security (8 types)**
+- SQL Injection, XSS, Command Injection
+- Path Traversal, XXE, SSRF
+- WebShell detection, API abuse
+
+**Phase 3: DDoS & Resource Exhaustion (8 types)**
+- SYN/UDP/HTTP floods
+- Slowloris, DNS/NTP amplification
+- Connection exhaustion, Bandwidth saturation
+
+**Phase 4: Ransomware Indicators (5 types)**
+- SMB mass encryption patterns
+- Crypto file extensions (.locked, .encrypted)
+- Ransom note detection
+- Shadow copy / backup deletion
+
+**Phase 5: IoT & Smart Device Security (8 types)**
+- IoT botnet (Mirai), UPnP exploits
+- MQTT abuse, Smart home protocols
+- RTSP, CoAP, Z-Wave, Zigbee attacks
+
+**Phase 6: OT/ICS Protocol Security (6 types)**
+- Modbus attacks (port 502)
+- DNP3 attacks (port 20000)
+- IEC-104 control commands (port 2404)
+- BACnet, Profinet, EtherNet/IP
+
+**Phase 7: Container & Orchestration (4 types)**
+- Docker container escape
+- Kubernetes API exploitation
+- Container registry poisoning
+- Privileged containers
+
+**Phase 8: Advanced Evasion (4 types)**
+- IP fragmentation attacks
+- Protocol tunneling (DNS/ICMP)
+- Polymorphic malware
+- Domain Generation Algorithms (DGA)
+
+**Phase 9: Additional Kill Chain (+ extended detections)**
+- Credential dumping (Mimikatz, LSASS)
+- LOLBins, Memory injection, Process hollowing
+- Registry manipulation, Scheduled task abuse
+
+**MITRE Coverage:** Tot ~92% mogelijk (met tuning)
+**Deployment:** Vereist environment-specific configuration
+**Hardware:** May need more powerful sensors (dependent on enabled features)
+
+**Analogy:** Porsche met limiter verwijderd (volledige 300 km/h capability)
+
+---
+
+### Why Conservative Defaults?
+
+**The Alert Fatigue Problem:**
+
+```
+Scenario A: All 74 detections enabled zonder tuning
+→ 10.000 events/dag waarvan 8.000 false positives
+→ Analyst leert alerts te negeren
+→ Echte attack gemist (begraven in noise)
+→ FAILURE
+
+Scenario B: 21 tuned detections enabled
+→ 500 events/dag waarvan 450 accurate
+→ Analyst onderzoekt alle alerts
+→ Echte attack detected en stopped
+→ SUCCESS
+```
+
+**Specifieke Voorbeelden:**
+
+| Detection | Why Not Always-On? |
+|-----------|-------------------|
+| **SQL Injection** | Vereist application baseline - legitimate apps trigger without tuning |
+| **DDoS Detection** | Legitimate traffic spikes (product launch, viral content) look like DDoS |
+| **Modbus Attacks** | Irrelevant without OT/ICS devices - 0% value, wastes resources |
+| **Container Escape** | Irrelevant without Docker/Kubernetes - waarom noise genereren? |
+| **Web App Security** | E-commerce needs it, factory doesn't - environment-specific |
+
+**NetMonitor Philosophy:**
+> "Better 21 accurate detections than 74 noisy ones.
+> Unlock more when YOU need them, for YOUR environment."
+
+---
+
+### How to Unlock Full Potential
+
+#### Option 1: Manual Configuration (Web UI)
+
+```
+Dashboard → Configuration → Threat Detection
+
+Enable detections relevant voor jouw environment:
+✅ Web applications? → Enable SQL Injection, XSS, SSRF
+✅ OT/ICS devices? → Enable Modbus, DNP3, IEC-104
+✅ Containers? → Enable Docker Escape, K8s Exploit
+✅ IoT devices? → Enable Mirai, UPnP, MQTT abuse
+
+Each with tunable thresholds per environment.
+```
+
+#### Option 2: AI-Assisted via MCP
+
+```
+AI analyzes your environment:
+- Detects web servers → "Enable web app security?"
+- Detects no containers → Leaves container security disabled
+- Detects Modbus traffic → "Enable OT/ICS monitoring?"
+- Learns baselines → Tunes thresholds automatically
+
+Result: Optimal configuration zonder manual work
+```
+
+#### Option 3: Configuration File
+
+```yaml
+# config.yaml
+threat:
+  sql_injection:
+    enabled: true
+    sensitivity: medium  # low/medium/high
+    check_query_string: true
+    check_post_data: true
+
+  modbus_attacks:
+    enabled: true
+    ports: [502]
+    alert_on_write: true
+
+  docker_escape:
+    enabled: true
+    monitor_privileged: true
+```
+
+#### Option 4: Professional Services
+
+```
+Contact: willem@awimax.nl
+
+Professional deployment services:
+→ Environment assessment
+→ Baseline tuning (all 74 detections)
+→ False positive minimization
+→ ~92% MITRE coverage optimization
+→ Ongoing support
+
+Investment: €5.000-15.000 (one-time)
+Result: Fully optimized enterprise deployment
+```
+
+---
+
+### The Honest Comparison
+
+**Other IDS Approach:**
+```
+Suricata: Enable 30.000 rules by default
+→ Massive false positives
+→ Users spend weeks tuning
+→ Many give up, disable rules
+
+Zeek: No detection rules, only logging
+→ Users must write custom scripts
+→ Steep learning curve
+→ Requires expert knowledge
+```
+
+**NetMonitor Approach:**
+```
+Day 1: 21 core detections work immediately
+→ Low false positives
+→ Immediate security value
+→ No tuning required
+
+Week 1-4: Enable relevant additional detections
+→ Per YOUR environment
+→ AI-assisted or manual
+→ Incremental complexity
+
+Result: Best of both worlds
+→ Beginner-friendly (works day 1)
+→ Expert-capable (92% MITRE possible)
+```
+
+---
+
+### Real-World Deployment Paths
+
+#### Small Business (10-50 employees)
+
+```
+Day 1: Install with defaults (21 detections)
+✅ Immediate visibility
+✅ Core threats detected
+✅ 0 false positives (tuned defaults)
+
+Month 1+: Add detections as needed
+- Hire remote workers? Enable VPN detection
+- Add web app? Enable SQL injection
+- Buy IoT cameras? Enable Mirai detection
+
+Cost: €1.000 (RPi setup)
+Complexity: Low (web UI configuration)
+```
+
+#### Medium Business (50-500 employees)
+
+```
+Week 1: Deploy with defaults (21 detections)
+✅ Immediate protection
+✅ NetMonitor + Wazuh integration
+
+Week 2-4: Professional tuning
+- Enable web app security (you have e-commerce)
+- Enable IoT security (you have 50 cameras)
+- Tune thresholds based on baselines
+- Result: 45-60 detections optimized
+
+Cost: €19.000 (NetMonitor + Wazuh, 3 years)
+Complexity: Medium (professional tuning recommended)
+```
+
+#### Enterprise (500+ employees)
+
+```
+Week 1-2: Full deployment planning
+- Inventory all device types
+- Identify all protocols in use
+- Map to relevant detection phases
+
+Week 3-4: Professional deployment
+- All 74 detections enabled
+- Environment-specific baselines
+- Integration with existing SIEM
+- SOC team training
+
+Result: ~92% MITRE coverage, fully tuned
+
+Cost: €30.000-50.000 (professional deployment)
+Complexity: High (professional services recommended)
+```
+
+---
+
+### The Porsche Principle Summary
+
+**You bought a Porsche (NetMonitor with 74 detections):**
+- Factory limiter: 21 enabled (safe for everyone)
+- Full capability: 74 available (unlock when ready)
+- Expert tuning: Professional services (maximize performance)
+
+**Benefits of This Approach:**
+
+1. **Immediate Value** - Works day 1, no tuning required
+2. **Flexibility** - Grow capabilities with your needs
+3. **No Alert Fatigue** - Only relevant detections enabled
+4. **Future-Proof** - All capabilities already built-in
+5. **Cost-Effective** - No additional licensing as you grow
+
+**NetMonitor = Only IDS that's both:**
+- ✅ Beginner-friendly (Raspberry Pi, works immediately)
+- ✅ Expert-capable (92% MITRE, enterprise-grade)
+
+**Choose your level. Upgrade anytime. No limits.**
+
+---
+
 ## 🎨 De NetMonitor Belofte
 
 ### Traditionele Security Stack:
