@@ -89,11 +89,11 @@
 
                     <!-- Status Indicators -->
                     <div class="flex items-center space-x-4">
-                        <!-- Ollama Status -->
+                        <!-- LLM Provider Status -->
                         <div class="flex items-center space-x-2">
                             <div :class="health.ollama === 'connected' ? 'bg-green-400' : 'bg-red-400'"
                                  class="w-3 h-3 rounded-full"></div>
-                            <span class="text-sm">Ollama</span>
+                            <span class="text-sm" x-text="llmProvider === 'lmstudio' ? 'LM Studio' : 'Ollama'"></span>
                         </div>
 
                         <!-- MCP Status -->
@@ -155,22 +155,121 @@
                     </p>
                 </div>
 
+                <!-- Server Configuration -->
+                <div class="mb-6 border-t pt-4">
+                    <button @click="showConfig = !showConfig"
+                            class="w-full flex items-center justify-between text-sm font-medium text-gray-700 mb-2 hover:text-gray-900">
+                        <span>⚙️ Server Configuratie</span>
+                        <svg :class="showConfig ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
+                    </button>
+                    <div x-show="showConfig"
+                         x-transition
+                         class="space-y-4">
+                        <!-- LLM Provider -->
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">LLM Provider</label>
+                            <select x-model="llmProvider"
+                                    class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
+                                <option value="ollama">Ollama</option>
+                                <option value="lmstudio">LM Studio</option>
+                            </select>
+                        </div>
+
+                        <!-- Ollama URL -->
+                        <div x-show="llmProvider === 'ollama'">
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Ollama URL</label>
+                            <input type="text"
+                                   x-model="ollamaUrl"
+                                   placeholder="http://localhost:11434"
+                                   class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
+                        </div>
+
+                        <!-- LM Studio URL -->
+                        <div x-show="llmProvider === 'lmstudio'">
+                            <label class="block text-xs font-medium text-gray-700 mb-1">LM Studio URL</label>
+                            <input type="text"
+                                   x-model="lmstudioUrl"
+                                   placeholder="http://localhost:1234"
+                                   class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
+                        </div>
+
+                        <!-- Force Tools for LM Studio -->
+                        <div x-show="llmProvider === 'lmstudio'" class="bg-yellow-50 border border-yellow-200 rounded p-2">
+                            <label class="flex items-center cursor-pointer">
+                                <input type="checkbox"
+                                       x-model="forceToolsLMStudio"
+                                       class="mr-2 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                                <div>
+                                    <span class="text-xs font-medium text-gray-700">🔧 Force Tool Calling (Experimenteel)</span>
+                                    <p class="text-xs text-gray-600 mt-0.5">Alleen voor modellen die function calling ondersteunen. Kan 400 errors geven als model dit niet ondersteunt.</p>
+                                </div>
+                            </label>
+                        </div>
+
+                        <!-- MCP Server URL -->
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">MCP Server URL</label>
+                            <input type="text"
+                                   x-model="mcpServerUrl"
+                                   placeholder="https://soc.poort.net/mcp"
+                                   class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
+                        </div>
+
+                        <!-- MCP Auth Token -->
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">MCP Auth Token</label>
+                            <input type="password"
+                                   x-model="mcpAuthToken"
+                                   placeholder="Token (optioneel)"
+                                   class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
+                        </div>
+
+                        <!-- System Prompt -->
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">System Prompt</label>
+                            <textarea
+                                   x-model="systemPrompt"
+                                   rows="3"
+                                   placeholder="Je bent een security expert..."
+                                   class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"></textarea>
+                            <p class="text-xs text-gray-500 mt-1">Instructies voor de AI over hoe te antwoorden</p>
+                        </div>
+
+                        <!-- Apply Button -->
+                        <button @click="applyConfig()"
+                                class="w-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium py-2 px-3 rounded transition-colors">
+                            ✓ Configuratie Toepassen
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Available Tools -->
                 <div class="mb-6">
-                    <h3 class="text-sm font-medium text-gray-700 mb-2">Beschikbare Tools</h3>
-                    <div class="bg-gray-50 rounded-lg p-3 max-h-64 overflow-y-auto">
+                    <button @click="showTools = !showTools"
+                            class="w-full flex items-center justify-between text-sm font-medium text-gray-700 mb-2 hover:text-gray-900">
+                        <span>Beschikbare Tools (<span x-text="toolsCount"></span>)</span>
+                        <svg :class="showTools ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
+                    </button>
+                    <div x-show="showTools"
+                         x-transition:enter="transition ease-out duration-200"
+                         x-transition:enter-start="opacity-0 transform scale-95"
+                         x-transition:enter-end="opacity-100 transform scale-100"
+                         x-transition:leave="transition ease-in duration-150"
+                         x-transition:leave-start="opacity-100 transform scale-100"
+                         x-transition:leave-end="opacity-0 transform scale-95"
+                         class="bg-gray-50 rounded-lg p-3 max-h-64 overflow-y-auto">
                         <template x-if="tools.length === 0">
                             <p class="text-sm text-gray-500">Laden...</p>
                         </template>
-                        <template x-for="tool in tools.slice(0, 10)" :key="tool.name">
+                        <template x-for="tool in tools" :key="tool.name">
                             <div class="text-xs text-gray-700 py-1 border-b border-gray-200 last:border-0">
-                                <span class="font-mono" x-text="tool.name"></span>
+                                <div class="font-mono font-semibold" x-text="tool.name"></div>
+                                <div class="text-gray-600 mt-0.5" x-text="tool.description"></div>
                             </div>
-                        </template>
-                        <template x-if="tools.length > 10">
-                            <p class="text-xs text-gray-500 mt-2 italic">
-                                + <span x-text="tools.length - 10"></span> meer...
-                            </p>
                         </template>
                     </div>
                 </div>
@@ -322,7 +421,9 @@
                 inputMessage: '',
                 isTyping: false,
                 error: null,
-                debugMode: true,  // Show tool calls/results by default
+                debugMode: false,  // Show tool calls/results only when enabled
+                showTools: false,  // Tools section collapsed by default
+                showConfig: false,  // Configuration section collapsed by default
 
                 // Settings
                 selectedModel: '',
@@ -335,12 +436,39 @@
                     mcp: 'disconnected'
                 },
 
+                // Configuration
+                llmProvider: 'ollama',  // 'ollama' or 'lmstudio'
+                ollamaUrl: 'http://localhost:11434',
+                lmstudioUrl: 'http://localhost:1234',
+                mcpServerUrl: 'https://soc.poort.net/mcp',
+                mcpAuthToken: '',
+                systemPrompt: 'Je bent een security expert die helpt met NetMonitor. Gebruik de beschikbare tools om actuele informatie op te halen. Geef altijd duidelijke, Nederlandse antwoorden.',
+                forceToolsLMStudio: false,  // Force function calling for LM Studio (experimental)
+
                 // WebSocket
                 ws: null,
                 currentAssistantMessage: '',
 
                 // Initialize
                 async init() {
+                    // Load configuration FIRST before loading models/tools
+                    const savedLlmProvider = localStorage.getItem('netmonitor-chat-llm-provider');
+                    const savedOllamaUrl = localStorage.getItem('netmonitor-chat-ollama-url');
+                    const savedLmstudioUrl = localStorage.getItem('netmonitor-chat-lmstudio-url');
+                    const savedMcpUrl = localStorage.getItem('netmonitor-chat-mcp-url');
+                    const savedMcpToken = localStorage.getItem('netmonitor-chat-mcp-token');
+                    const savedSystemPrompt = localStorage.getItem('netmonitor-chat-system-prompt');
+                    const savedForceTools = localStorage.getItem('netmonitor-chat-force-tools-lmstudio');
+
+                    if (savedLlmProvider) this.llmProvider = savedLlmProvider;
+                    if (savedOllamaUrl) this.ollamaUrl = savedOllamaUrl;
+                    if (savedLmstudioUrl) this.lmstudioUrl = savedLmstudioUrl;
+                    if (savedMcpUrl) this.mcpServerUrl = savedMcpUrl;
+                    if (savedMcpToken) this.mcpAuthToken = savedMcpToken;
+                    if (savedSystemPrompt) this.systemPrompt = savedSystemPrompt;
+                    if (savedForceTools !== null) this.forceToolsLMStudio = savedForceTools === 'true';
+
+                    // NOW load models/tools with the configured provider
                     await this.loadModels();
                     await this.loadTools();
                     await this.checkHealth();
@@ -383,12 +511,39 @@
                     if (savedDebugMode !== null) {
                         this.debugMode = savedDebugMode === 'true';
                     }
+
+                    // Watch configuration changes and save to localStorage
+                    this.$watch('llmProvider', (value) => localStorage.setItem('netmonitor-chat-llm-provider', value));
+                    this.$watch('ollamaUrl', (value) => localStorage.setItem('netmonitor-chat-ollama-url', value));
+                    this.$watch('lmstudioUrl', (value) => localStorage.setItem('netmonitor-chat-lmstudio-url', value));
+                    this.$watch('mcpServerUrl', (value) => localStorage.setItem('netmonitor-chat-mcp-url', value));
+                    this.$watch('mcpAuthToken', (value) => localStorage.setItem('netmonitor-chat-mcp-token', value));
+                    this.$watch('systemPrompt', (value) => localStorage.setItem('netmonitor-chat-system-prompt', value));
+                    this.$watch('forceToolsLMStudio', (value) => localStorage.setItem('netmonitor-chat-force-tools-lmstudio', value));
+                },
+
+                // Apply configuration
+                async applyConfig() {
+                    this.error = null;
+                    // Reload models and tools with new configuration
+                    await this.loadModels();
+                    await this.loadTools();
+                    await this.checkHealth();
+                    alert('Configuratie toegepast! Modellen en tools zijn opnieuw geladen.');
                 },
 
                 // Load available models
                 async loadModels() {
                     try {
-                        const response = await fetch('/api/models');
+                        const llmUrl = this.llmProvider === 'lmstudio' ? this.lmstudioUrl : this.ollamaUrl;
+                        const response = await fetch('/api/models', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                provider: this.llmProvider,
+                                url: llmUrl
+                            })
+                        });
                         const data = await response.json();
                         this.models = data.models;
                     } catch (err) {
@@ -400,7 +555,14 @@
                 // Load available tools
                 async loadTools() {
                     try {
-                        const response = await fetch('/api/tools');
+                        const response = await fetch('/api/tools', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                url: this.mcpServerUrl,
+                                token: this.mcpAuthToken
+                            })
+                        });
                         const data = await response.json();
                         this.tools = data.tools;
                         this.toolsCount = data.count;
@@ -413,7 +575,17 @@
                 // Check health status
                 async checkHealth() {
                     try {
-                        const response = await fetch('/api/health');
+                        const llmUrl = this.llmProvider === 'lmstudio' ? this.lmstudioUrl : this.ollamaUrl;
+                        const response = await fetch('/api/health', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                llm_provider: this.llmProvider,
+                                llm_url: llmUrl,
+                                mcp_url: this.mcpServerUrl,
+                                mcp_token: this.mcpAuthToken
+                            })
+                        });
                         const data = await response.json();
                         this.health.ollama = data.ollama;
                         this.health.mcp = data.mcp;
@@ -461,11 +633,18 @@
 
                     this.ws.onopen = () => {
                         // Send message with configuration
+                        const llmUrl = this.llmProvider === 'lmstudio' ? this.lmstudioUrl : this.ollamaUrl;
                         this.ws.send(JSON.stringify({
                             model: this.selectedModel,
                             message: userMessage,
                             history: history,
-                            temperature: this.temperature
+                            temperature: this.temperature,
+                            llm_provider: this.llmProvider,
+                            llm_url: llmUrl,
+                            mcp_url: this.mcpServerUrl,
+                            mcp_token: this.mcpAuthToken,
+                            system_prompt: this.systemPrompt,
+                            force_tools_lmstudio: this.forceToolsLMStudio
                         }));
                     };
 

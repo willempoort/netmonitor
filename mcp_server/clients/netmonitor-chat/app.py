@@ -20,14 +20,16 @@ import sys
 import json
 import asyncio
 import subprocess
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, AsyncGenerator
 from datetime import datetime
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
+from pydantic import BaseModel
 from dotenv import load_dotenv
 import httpx
 import uvicorn
@@ -52,13 +54,166 @@ else:
     MCP_BRIDGE_PATH = Path(__file__).parent.parent / "ollama-mcp-bridge" / "mcp_bridge.py"
 
 
+# Helper Functions
+
+def filter_relevant_tools(user_message: str, all_tools: List[Dict], max_tools: int = 10) -> List[Dict]:
+    """
+    Filter tools based on relevance to user message.
+    Uses keyword matching on tool names and descriptions.
+
+    Args:
+        user_message: The user's question/request
+        all_tools: List of all available tools
+        max_tools: Maximum number of tools to return
+
+    Returns:
+        List of most relevant tools
+    """
+    if not all_tools:
+        return []
+
+    message_lower = user_message.lower()
+
+    print(f"[Tool Filter] Input message: '{user_message}'")
+    print(f"[Tool Filter] Total tools available: {len(all_tools)}")
+    if all_tools:
+        print(f"[Tool Filter] Sample tool names: {[t.get('name', 'unknown') for t in all_tools[:5]]}")
+
+    # Map user keywords (including Dutch) to tool keywords (English in tool names)
+    # This allows "toon sensors" to match tools with "get" + "sensor"
+    keyword_mappings = {
+        # Category: (user_keywords, tool_keywords)
+        'threat': (
+            ['threat', 'detection', 'alert', 'malware', 'attack', 'bedreig', 'dreig'],
+            ['threat', 'detection', 'alert', 'malware', 'attack']
+        ),
+        'ip': (
+            ['ip', 'address', 'adres'],
+            ['ip', 'address', 'addr']
+        ),
+        'sensor': (
+            ['sensor', 'sensors'],
+            ['sensor', 'zeek', 'suricata']
+        ),
+        'log': (
+            ['log', 'logs'],
+            ['log', 'syslog', 'event']
+        ),
+        'network': (
+            ['network', 'netwerk', 'traffic'],
+            ['network', 'traffic', 'flow', 'connection']
+        ),
+        'dns': (
+            ['dns', 'domain'],
+            ['dns', 'domain', 'query']
+        ),
+        'file': (
+            ['file', 'bestand'],
+            ['file', 'hash', 'executable']
+        ),
+        'user': (
+            ['user', 'gebruiker', 'account'],
+            ['user', 'account', 'authentication', 'auth']
+        ),
+        'port': (
+            ['port', 'poort', 'service'],
+            ['port', 'service', 'scan']
+        ),
+        'status': (
+            ['status', 'actieve', 'active', 'running'],
+            ['status', 'state', 'active', 'running']
+        ),
+        'show': (
+            ['toon', 'laat', 'zie', 'show', 'list', 'geef'],
+            ['get', 'list', 'show', 'fetch']
+        )
+    }
+
+    # Score each tool based on keyword matches
+    scored_tools = []
+    for tool in all_tools:
+        score = 0
+        tool_name_lower = tool.get('name', '').lower()
+        tool_desc_lower = tool.get('description', '').lower()
+
+        # Check for category matches
+        for category, (user_keywords, tool_keywords) in keyword_mappings.items():
+            # Check if user mentioned this category
+            user_mentioned = any(kw in message_lower for kw in user_keywords)
+
+            if user_mentioned:
+                # Check if tool has keywords from this category
+                tool_has_category = any(
+                    kw in tool_name_lower or kw in tool_desc_lower
+                    for kw in tool_keywords
+                )
+
+                if tool_has_category:
+                    score += 10
+                    # Extra bonus if multiple words from category match
+                    matches = sum(1 for kw in tool_keywords if kw in tool_name_lower or kw in tool_desc_lower)
+                    if matches > 1:
+                        score += 5
+
+        # Bonus for exact word matches in tool name (case-insensitive)
+        words_in_message = set(re.findall(r'\w+', message_lower))
+        words_in_tool = set(re.findall(r'\w+', tool_name_lower))
+        overlap = words_in_message & words_in_tool
+        if overlap:
+            score += len(overlap) * 5
+
+        # Small base score for common query tools
+        if any(essential in tool_name_lower for essential in ['get', 'list', 'show', 'fetch']):
+            score += 1
+
+        scored_tools.append((score, tool))
+
+    # Sort by score (descending)
+    scored_tools.sort(reverse=True, key=lambda x: x[0])
+
+    # Debug: show top scores
+    print(f"[Tool Filter] Top 10 scores:")
+    for i, (score, tool) in enumerate(scored_tools[:10]):
+        print(f"  {i+1}. {tool.get('name', 'unknown')}: {score} points")
+
+    # Filter out tools with score 0 (completely irrelevant)
+    relevant_tools = [tool for score, tool in scored_tools if score > 0][:max_tools]
+
+    # If we got no tools with score > 0, take top scoring ones anyway
+    if len(relevant_tools) == 0:
+        print(f"[Tool Filter] WARNING: No tools scored > 0, taking top {max_tools} by default")
+        relevant_tools = [tool for score, tool in scored_tools[:max_tools]]
+
+    print(f"[Tool Filter] Filtered {len(all_tools)} tools down to {len(relevant_tools)}")
+    if relevant_tools:
+        print(f"[Tool Filter] Selected tools: {[t.get('name') for t in relevant_tools]}")
+
+    return relevant_tools
+
+
+# Pydantic models for request bodies
+class LLMConfig(BaseModel):
+    provider: str = "ollama"
+    url: str = "http://localhost:11434"
+
+class MCPConfig(BaseModel):
+    url: str = "https://soc.poort.net/mcp"
+    token: str = ""
+
+class HealthConfig(BaseModel):
+    llm_provider: str = "ollama"
+    llm_url: str = "http://localhost:11434"
+    mcp_url: str = "https://soc.poort.net/mcp"
+    mcp_token: str = ""
+
+
 # Lifespan event handler (replaces on_event)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     yield
-    # Shutdown
-    await ollama.close()
+    # Shutdown - nothing to clean up as clients are created per-request now
+    pass
 
 
 # Initialize FastAPI
@@ -83,12 +238,18 @@ class OllamaClient:
     async def list_models(self) -> List[Dict]:
         """List available Ollama models"""
         try:
+            print(f"[Ollama] Fetching models from {self.base_url}/api/tags")
             response = await self.client.get(f"{self.base_url}/api/tags")
             response.raise_for_status()
             data = response.json()
-            return data.get("models", [])
+            models = data.get("models", [])
+            print(f"[Ollama] Found {len(models)} models")
+            return models
+        except httpx.ConnectError as e:
+            print(f"[Ollama] Connection failed - is Ollama running on {self.base_url}? Error: {e}")
+            return []
         except Exception as e:
-            print(f"Error listing models: {e}")
+            print(f"[Ollama] Error listing models: {type(e).__name__}: {e}")
             return []
 
     async def chat(
@@ -140,6 +301,189 @@ class OllamaClient:
                             continue
         except Exception as e:
             print(f"Error in chat: {e}")
+            yield {"error": str(e)}
+
+    async def close(self):
+        """Close HTTP client"""
+        await self.client.aclose()
+
+
+class LMStudioClient:
+    """Client for LM Studio (OpenAI-compatible API)"""
+
+    def __init__(self, base_url: str = "http://localhost:1234"):
+        self.base_url = base_url.rstrip('/')
+        # Longer timeout for LM Studio (models can be slow to start generating)
+        self.client = httpx.AsyncClient(timeout=300.0)
+
+    async def list_models(self) -> List[Dict]:
+        """List available LM Studio models"""
+        try:
+            print(f"[LM Studio] Fetching models from {self.base_url}/v1/models")
+            response = await self.client.get(f"{self.base_url}/v1/models")
+            response.raise_for_status()
+            data = response.json()
+            models = data.get("data", [])
+            print(f"[LM Studio] Found {len(models)} models")
+            # Convert OpenAI format to Ollama format for consistency
+            return [{"name": m.get("id", "unknown")} for m in models]
+        except httpx.ConnectError as e:
+            print(f"[LM Studio] Connection failed - is LM Studio running on {self.base_url}? Error: {e}")
+            return []
+        except Exception as e:
+            print(f"[LM Studio] Error listing models: {type(e).__name__}: {e}")
+            return []
+
+    async def chat(
+        self,
+        model: str,
+        messages: List[Dict],
+        stream: bool = True,
+        temperature: float = 0.7,
+        tools: Optional[List[Dict]] = None
+    ) -> AsyncGenerator:
+        """
+        Chat with LM Studio model using OpenAI-compatible API
+
+        Args:
+            model: Model name
+            messages: Chat messages
+            stream: Stream responses
+            temperature: Sampling temperature
+            tools: Available tools (for function calling)
+
+        Yields:
+            Response chunks in Ollama format for compatibility
+        """
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": stream,
+            "temperature": temperature
+        }
+
+        # Add tools if explicitly provided (when force_tools is enabled)
+        if tools:
+            payload["tools"] = tools
+            print(f"[LM Studio] Adding {len(tools)} tools to request (experimental)")
+
+        try:
+            print(f"[LM Studio] Sending request to {self.base_url}/v1/chat/completions")
+            print(f"[LM Studio] Model: {model}, Messages: {len(messages)}, Temperature: {temperature}")
+
+            async with self.client.stream(
+                "POST",
+                f"{self.base_url}/v1/chat/completions",
+                json=payload
+            ) as response:
+                print(f"[LM Studio] Response status: {response.status_code}")
+
+                # Better error logging
+                if response.status_code != 200:
+                    error_text = await response.aread()
+                    print(f"[LM Studio] Error {response.status_code}: {error_text.decode()}")
+                    yield {"error": f"LM Studio error {response.status_code}: {error_text.decode()}"}
+                    return
+
+                response.raise_for_status()
+
+                print("[LM Studio] Starting to read stream...")
+                line_count = 0
+                buffer = ""  # Buffer for incomplete JSON
+                async for line in response.aiter_lines():
+                    line_count += 1
+                    if line_count <= 3:  # Log first 3 lines for debugging
+                        print(f"[LM Studio] Line {line_count}: {line[:100] if line else 'empty'}")
+
+                    # Skip empty lines
+                    if not line.strip():
+                        continue
+
+                    # Skip SSE event lines (LM Studio sends "event: error" etc.)
+                    if line.startswith("event:"):
+                        if line_count <= 5:
+                            print(f"[LM Studio] Skipping event line: {line}")
+                        continue
+
+                    # Remove "data: " prefix if present
+                    if line.startswith("data: "):
+                        line = line[6:]
+                    elif not line.strip():
+                        # After removing prefix, if line is empty, skip
+                        continue
+
+                    # Check for [DONE]
+                    if line.strip() == "[DONE]":
+                        print("[LM Studio] Stream finished with [DONE]")
+                        yield {"done": True}
+                        continue
+
+                    # Add to buffer
+                    buffer += line.strip()
+
+                    # Try to parse only if line ends with } (complete JSON)
+                    if not buffer.endswith("}"):
+                        if line_count <= 5:
+                            print(f"[LM Studio] Buffering incomplete JSON: {buffer[:80]}...")
+                        continue
+
+                    try:
+                        chunk = json.loads(buffer)
+                        buffer = ""  # Clear buffer on successful parse
+
+                        # Convert OpenAI format to Ollama format
+                        choices = chunk.get("choices", [])
+                        if choices:
+                            delta = choices[0].get("delta", {})
+                            content = delta.get("content", "")
+                            tool_calls = delta.get("tool_calls", [])
+
+                            # Build Ollama-compatible response
+                            ollama_chunk = {
+                                "message": {
+                                    "role": delta.get("role", "assistant"),
+                                    "content": content
+                                },
+                                "done": choices[0].get("finish_reason") is not None
+                            }
+
+                            # Add tool calls if present (preserve ID for LM Studio)
+                            if tool_calls:
+                                ollama_chunk["message"]["tool_calls"] = [
+                                    {
+                                        "id": tc.get("id", f"call_{tc.get('index', 0)}"),  # Preserve tool_call_id
+                                        "index": tc.get("index", 0),  # Add index for accumulation
+                                        "type": tc.get("type", "function"),
+                                        "function": {
+                                            "name": tc.get("function", {}).get("name", ""),
+                                            # Keep arguments as STRING for streaming accumulation
+                                            # Will be parsed to JSON later when complete
+                                            "arguments": tc.get("function", {}).get("arguments", "")
+                                        }
+                                    }
+                                    for tc in tool_calls
+                                ]
+
+                                # Debug: print first tool call
+                                if tool_calls and line_count <= 10:
+                                    first_tc = ollama_chunk["message"]["tool_calls"][0]
+                                    print(f"[LM Studio] Tool call: {first_tc.get('function', {}).get('name')} (id: {first_tc.get('id')})")
+
+                            if line_count <= 5:
+                                print(f"[LM Studio] Yielding chunk: {content[:50] if content else 'no content'}")
+                            yield ollama_chunk
+                    except json.JSONDecodeError as e:
+                        print(f"[LM Studio] JSON decode error: {e}, buffer: {buffer[:100]}")
+                        # Don't clear buffer, wait for more data
+                        continue
+
+                print(f"[LM Studio] Stream finished, total lines: {line_count}")
+
+        except httpx.TimeoutException as e:
+            print(f"[LM Studio] Timeout error: {e}")
+            yield {"error": f"LM Studio timeout - model might be loading or too slow"}
+        except Exception as e:
+            print(f"[LM Studio] Error in chat: {type(e).__name__}: {e}")
             yield {"error": str(e)}
 
     async def close(self):
@@ -272,15 +616,6 @@ class MCPBridgeClient:
             return []
 
 
-# Initialize clients
-ollama = OllamaClient()
-mcp_bridge = MCPBridgeClient(
-    bridge_path=MCP_BRIDGE_PATH,
-    server_url=MCP_SERVER_URL,
-    auth_token=MCP_AUTH_TOKEN
-)
-
-
 # REST Endpoints
 
 @app.get("/")
@@ -289,32 +624,93 @@ async def root():
     return FileResponse(Path(__file__).parent / "static" / "index.html")
 
 
+@app.post("/api/models")
+async def post_models(config: LLMConfig):
+    """Get available models from configured LLM provider"""
+    try:
+        if config.provider == "lmstudio":
+            client = LMStudioClient(config.url)
+        else:
+            client = OllamaClient(config.url)
+
+        models = await client.list_models()
+        await client.close()
+        return {"models": models}
+    except Exception as e:
+        print(f"Error getting models: {e}")
+        return {"models": []}
+
+
+@app.post("/api/tools")
+async def post_tools(config: MCPConfig):
+    """Get available MCP tools from configured server"""
+    try:
+        bridge = MCPBridgeClient(
+            bridge_path=MCP_BRIDGE_PATH,
+            server_url=config.url,
+            auth_token=config.token
+        )
+        tools = await bridge.list_tools()
+        return {"tools": tools, "count": len(tools)}
+    except Exception as e:
+        print(f"Error getting tools: {e}")
+        return {"tools": [], "count": 0}
+
+
+@app.post("/api/health")
+async def post_health(config: HealthConfig):
+    """Health check with configured servers"""
+    try:
+        # Check LLM provider
+        if config.llm_provider == "lmstudio":
+            llm_client = LMStudioClient(config.llm_url)
+        else:
+            llm_client = OllamaClient(config.llm_url)
+
+        llm_ok = len(await llm_client.list_models()) > 0
+        await llm_client.close()
+
+        # Check MCP server
+        mcp_client = MCPBridgeClient(
+            bridge_path=MCP_BRIDGE_PATH,
+            server_url=config.mcp_url,
+            auth_token=config.mcp_token
+        )
+        mcp_ok = len(await mcp_client.list_tools()) > 0
+
+        return {
+            "status": "healthy" if (llm_ok and mcp_ok) else "degraded",
+            "ollama": "connected" if llm_ok else "disconnected",
+            "mcp": "connected" if mcp_ok else "disconnected",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        print(f"Error in health check: {e}")
+        return {
+            "status": "error",
+            "ollama": "disconnected",
+            "mcp": "disconnected",
+            "timestamp": datetime.now().isoformat()
+        }
+
+
+# Backwards compatibility - GET endpoints with default config
 @app.get("/api/models")
 async def get_models():
-    """Get available Ollama models"""
-    models = await ollama.list_models()
-    return {"models": models}
+    """Get available models (default config)"""
+    return await post_models(LLMConfig())
 
 
 @app.get("/api/tools")
 async def get_tools():
-    """Get available MCP tools"""
-    tools = await mcp_bridge.list_tools()
-    return {"tools": tools, "count": len(tools)}
+    """Get available tools (default config)"""
+    return await post_tools(MCPConfig())
 
 
 @app.get("/api/health")
-async def health():
-    """Health check"""
-    ollama_ok = len(await ollama.list_models()) > 0
-    tools_ok = len(await mcp_bridge.list_tools()) > 0
-
-    return {
-        "status": "healthy" if (ollama_ok and tools_ok) else "degraded",
-        "ollama": "connected" if ollama_ok else "disconnected",
-        "mcp": "connected" if tools_ok else "disconnected",
-        "timestamp": datetime.now().isoformat()
-    }
+async def get_health():
+    """Health check (default config)"""
+    return await post_health(HealthConfig())
 
 
 # WebSocket Endpoint
@@ -325,7 +721,7 @@ async def websocket_chat(websocket: WebSocket):
     WebSocket endpoint for streaming chat
 
     Protocol:
-    - Client sends: {"model": "llama3.1:8b", "message": "Hello", "history": [...]}
+    - Client sends: {"model": "...", "message": "...", "history": [...], "llm_provider": "...", "llm_url": "...", "mcp_url": "...", "mcp_token": "..."}
     - Server sends: {"type": "token", "content": "..."}
     - Server sends: {"type": "tool_call", "tool": "...", "args": {...}}
     - Server sends: {"type": "tool_result", "result": {...}}
@@ -342,16 +738,50 @@ async def websocket_chat(websocket: WebSocket):
             message = data.get("message", "")
             history = data.get("history", [])
             temperature = data.get("temperature", 0.3)
+            system_prompt = data.get("system_prompt", "")
 
-            # Build messages
-            messages = history + [{"role": "user", "content": message}]
+            # Get configuration from client
+            llm_provider = data.get("llm_provider", "ollama")
+            llm_url = data.get("llm_url", OLLAMA_BASE_URL)
+            mcp_url = data.get("mcp_url", MCP_SERVER_URL)
+            mcp_token = data.get("mcp_token", MCP_AUTH_TOKEN)
+            force_tools_lmstudio = data.get("force_tools_lmstudio", False)
 
-            # Get available tools and convert to Ollama format
-            mcp_tools = await mcp_bridge.list_tools()
+            print(f"[WebSocket] Provider: {llm_provider}, Model: {model}, URL: {llm_url}")
+            if llm_provider == "lmstudio" and force_tools_lmstudio:
+                print("[WebSocket] Force tools enabled for LM Studio")
+
+            # Create LLM client based on provider
+            if llm_provider == "lmstudio":
+                llm_client = LMStudioClient(llm_url)
+            else:
+                llm_client = OllamaClient(llm_url)
+
+            # Create MCP bridge client with configured server
+            mcp_client = MCPBridgeClient(
+                bridge_path=MCP_BRIDGE_PATH,
+                server_url=mcp_url,
+                auth_token=mcp_token
+            )
+
+            # Build messages with optional system prompt
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+
+            messages.extend(history + [{"role": "user", "content": message}])
+
+            # Get available tools and filter to most relevant ones
+            all_mcp_tools = await mcp_client.list_tools()
+
+            # Smart filtering: reduce tools from 60 to ~10 most relevant
+            # This dramatically reduces context size and speeds up responses
+            max_tools_for_provider = 10 if llm_provider == "lmstudio" else 15
+            filtered_mcp_tools = filter_relevant_tools(message, all_mcp_tools, max_tools=max_tools_for_provider)
+
+            # Convert filtered tools to function calling format
             ollama_tools = []
-
-            for tool in mcp_tools:
-                # Convert MCP tool schema to Ollama function calling format
+            for tool in filtered_mcp_tools:
                 ollama_tools.append({
                     "type": "function",
                     "function": {
@@ -361,16 +791,27 @@ async def websocket_chat(websocket: WebSocket):
                     }
                 })
 
-            # Stream response from Ollama with tools
+            # Stream response from LLM with filtered tools
             full_response = ""
             has_tool_call = False
+            accumulated_tool_calls = {}  # Dict to accumulate tool calls by index
 
-            async for chunk in ollama.chat(
+            # Determine if we should use tools
+            if llm_provider == "ollama":
+                use_tools = ollama_tools if ollama_tools else None
+            elif llm_provider == "lmstudio" and force_tools_lmstudio:
+                use_tools = ollama_tools if ollama_tools else None
+                print(f"[WebSocket] LM Studio with FORCED tools enabled ({len(ollama_tools)} tools)")
+            else:
+                use_tools = None
+                print("[WebSocket] LM Studio detected - function calling disabled (use Force Tools to enable)")
+
+            async for chunk in llm_client.chat(
                 model,
                 messages,
                 stream=True,
                 temperature=temperature,
-                tools=ollama_tools if ollama_tools else None
+                tools=use_tools
             ):
                 if "error" in chunk:
                     await websocket.send_json({
@@ -397,16 +838,76 @@ async def websocket_chat(websocket: WebSocket):
                                 "content": content
                             })
 
-                    # Check for native tool calls (preferred)
+                    # Check for native tool calls (LM Studio streams them incrementally)
                     tool_calls = msg.get("tool_calls")
 
-                    # Process tool calls (native format)
+                    # Accumulate tool calls across chunks (LM Studio sends them piece by piece)
                     if tool_calls:
                         has_tool_call = True
-                        for tool_call in tool_calls:
+                        for tc_chunk in tool_calls:
+                            # Get index (default to 0 if not specified)
+                            idx = tc_chunk.get("index", 0)
+
+                            # Initialize if first time seeing this index
+                            if idx not in accumulated_tool_calls:
+                                accumulated_tool_calls[idx] = {
+                                    "id": tc_chunk.get("id", f"call_{idx}"),
+                                    "type": tc_chunk.get("type", "function"),
+                                    "function": {"name": "", "arguments": ""}
+                                }
+
+                            # Update ID if present and non-empty (prefer string IDs like "call_0" over numeric)
+                            if "id" in tc_chunk and tc_chunk["id"]:
+                                new_id = tc_chunk["id"]
+                                # Only update if new ID is non-empty
+                                if new_id and str(new_id).startswith("call_"):
+                                    # Prefer "call_X" format over numeric IDs
+                                    accumulated_tool_calls[idx]["id"] = new_id
+                                elif not str(accumulated_tool_calls[idx]["id"]).startswith("call_"):
+                                    # Keep first non-empty ID if current doesn't have call_ prefix
+                                    accumulated_tool_calls[idx]["id"] = new_id
+
+                            # Update type if present and non-empty
+                            if "type" in tc_chunk and tc_chunk["type"]:
+                                accumulated_tool_calls[idx]["type"] = tc_chunk["type"]
+
+                            # Accumulate function data
+                            if "function" in tc_chunk:
+                                func_chunk = tc_chunk["function"]
+                                # Only update name if new one is non-empty (don't overwrite with "")
+                                if "name" in func_chunk and func_chunk["name"]:
+                                    accumulated_tool_calls[idx]["function"]["name"] = func_chunk["name"]
+                                # Arguments are streamed incrementally, always append
+                                if "arguments" in func_chunk and func_chunk["arguments"]:
+                                    accumulated_tool_calls[idx]["function"]["arguments"] += func_chunk["arguments"]
+
+                # Check if done - process accumulated tool calls
+                if chunk.get("done"):
+                    # Process accumulated tool calls (for LM Studio streaming)
+                    if accumulated_tool_calls:
+                        print(f"[WebSocket] Stream finished, processing {len(accumulated_tool_calls)} accumulated tool call(s)")
+                        for idx in sorted(accumulated_tool_calls.keys()):
+                            tool_call = accumulated_tool_calls[idx]
+                            print(f"[WebSocket] Accumulated tool call: {tool_call}")
+
                             func = tool_call.get("function", {})
-                            tool_name = func.get("name")
-                            tool_args = func.get("arguments", {})
+                            tool_name = func.get("name", "")
+                            tool_args_str = func.get("arguments", "{}")
+                            tool_call_id = tool_call.get("id", "call_1")
+
+                            # Parse arguments if string
+                            try:
+                                tool_args = json.loads(tool_args_str) if isinstance(tool_args_str, str) else tool_args_str
+                            except json.JSONDecodeError:
+                                print(f"[WebSocket] Failed to parse arguments: {tool_args_str}")
+                                tool_args = {}
+
+                            # Skip if name is empty (incomplete tool call)
+                            if not tool_name:
+                                print(f"[WebSocket] Skipping tool call with empty name: {tool_call}")
+                                continue
+
+                            print(f"[WebSocket] Executing - name: '{tool_name}', args: {tool_args}, id: '{tool_call_id}'")
 
                             # Notify client of tool call
                             await websocket.send_json({
@@ -415,8 +916,8 @@ async def websocket_chat(websocket: WebSocket):
                                 "args": tool_args
                             })
 
-                            # Execute tool via MCP bridge
-                            result = await mcp_bridge.call_tool(tool_name, tool_args)
+                            # Execute tool via MCP client
+                            result = await mcp_client.call_tool(tool_name, tool_args)
 
                             # Send result to client
                             await websocket.send_json({
@@ -425,15 +926,36 @@ async def websocket_chat(websocket: WebSocket):
                                 "result": result
                             })
 
-                            # Add tool result to conversation and continue
-                            messages.append({"role": "assistant", "content": "", "tool_calls": [tool_call]})
-                            messages.append({
+                            # Prepare complete tool call for conversation history
+                            # For OpenAI/LM Studio: arguments must be JSON STRING, not dict
+                            complete_tool_call = {
+                                "id": tool_call_id,
+                                "type": "function",
+                                "function": {
+                                    "name": tool_name,
+                                    "arguments": tool_args_str  # Keep as string for OpenAI format
+                                }
+                            }
+
+                            # Add tool result to conversation for LM Studio/OpenAI format
+                            messages.append({"role": "assistant", "content": "", "tool_calls": [complete_tool_call]})
+
+                            # OpenAI/LM Studio requires tool_call_id and name in tool message
+                            tool_message = {
                                 "role": "tool",
-                                "content": json.dumps(result)
-                            })
+                                "content": json.dumps(result) if result else "{}"
+                            }
+
+                            # Add tool_call_id for OpenAI-compatible APIs (LM Studio)
+                            if llm_provider == "lmstudio":
+                                tool_message["tool_call_id"] = tool_call_id
+                                tool_message["name"] = tool_name
+
+                            messages.append(tool_message)
 
                             # Get final response with tool result
-                            async for chunk2 in ollama.chat(
+                            print(f"[WebSocket] Requesting follow-up response with tool result")
+                            async for chunk2 in llm_client.chat(
                                 model,
                                 messages,
                                 stream=True,
@@ -448,10 +970,8 @@ async def websocket_chat(websocket: WebSocket):
                                             "content": content2
                                         })
 
-                # Check if done
-                if chunk.get("done"):
                     # For models without native tool calling: parse JSON from response
-                    if not has_tool_call and full_response.strip():
+                    elif not has_tool_call and full_response.strip():
                         response_stripped = full_response.strip()
                         is_tool_call = False
 
@@ -473,7 +993,7 @@ async def websocket_chat(websocket: WebSocket):
                                     })
 
                                     # Execute tool
-                                    result = await mcp_bridge.call_tool(tool_name, tool_args)
+                                    result = await mcp_client.call_tool(tool_name, tool_args)
 
                                     # Send result to client
                                     await websocket.send_json({
@@ -490,7 +1010,7 @@ async def websocket_chat(websocket: WebSocket):
                                     })
 
                                     # Get final natural language response
-                                    async for chunk2 in ollama.chat(
+                                    async for chunk2 in llm_client.chat(
                                         model,
                                         messages,
                                         stream=True,
@@ -518,6 +1038,13 @@ async def websocket_chat(websocket: WebSocket):
                             })
 
                     await websocket.send_json({"type": "done"})
+
+                    # Clean up LLM client
+                    try:
+                        await llm_client.close()
+                    except:
+                        pass
+
                     break
 
     except WebSocketDisconnect:
