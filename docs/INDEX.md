@@ -21,9 +21,8 @@ Complete documentatie overzicht voor NetMonitor SOC platform.
 
 Voor partners, klanten en externe communicatie:
 
-- **[Pitch Document](PITCH_DOCUMENT.md)** - Complete product pitch met AI Scout positionering
-- **[Comparison Matrix](COMPARISON_MATRIX.md)** - Eerlijke vergelijking met Wazuh, Suricata, Zeek, Security Onion, Splunk
-- **[AI Scout Positioning](AI_SCOUT_POSITIONING.md)** - Uitgebreide positionering als AI-powered triage layer
+- **[Pitch Document](PITCH_DOCUMENT.md)** - Complete product pitch met AI Scout positionering, concrete voorbeelden, en Porsche Principle
+- **[Comparison Matrix](COMPARISON_MATRIX.md)** - Eerlijke vergelijking met Wazuh, Suricata, Zeek, Security Onion, Splunk (incl. Expert Mode)
 
 ### 🔧 Installation
 
