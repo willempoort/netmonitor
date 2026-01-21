@@ -1377,18 +1377,26 @@
                     <div class="card bg-secondary border-0 mt-3" id="create-template-from-device-card" style="display: none;">
                         <div class="card-body">
                             <h6><i class="bi bi-magic"></i> Create Template from Learned Behavior</h6>
-                            <div class="row">
+                            <div class="row mb-2">
                                 <div class="col-md-6">
                                     <input type="text" class="form-control bg-dark text-light border-secondary"
                                            id="new-template-from-device-name" placeholder="Template name">
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-6">
                                     <select class="form-select bg-dark text-light border-secondary" id="new-template-from-device-category">
                                         <option value="iot">IoT</option>
                                         <option value="server">Server</option>
                                         <option value="endpoint">Endpoint</option>
                                         <option value="other" selected>Other</option>
                                     </select>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-10">
+                                    <select class="form-select bg-dark text-light border-secondary" id="new-template-merge-with">
+                                        <option value="">Create new template (no merge)</option>
+                                    </select>
+                                    <small class="text-muted">Optional: Select an existing template to merge behaviors with</small>
                                 </div>
                                 <div class="col-md-2">
                                     <button class="btn btn-success w-100" onclick="createTemplateFromDevice()">

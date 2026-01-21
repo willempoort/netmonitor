@@ -2535,6 +2535,7 @@ def api_create_template_from_device():
         template_name = data.get('template_name')
         category = data.get('category', 'other')
         description = data.get('description')
+        merge_with_template_id = data.get('merge_with_template_id')  # Optional: merge with existing template
 
         if not ip_address or not template_name:
             return jsonify({
@@ -2589,6 +2590,26 @@ def api_create_template_from_device():
             return jsonify({'success': False, 'error': 'Failed to create template (database error)'}), 500
 
         behaviors_added = 0
+
+        # If merging with existing template, copy its behaviors first
+        if merge_with_template_id:
+            existing_template = db.get_device_template(merge_with_template_id)
+            if existing_template:
+                existing_behaviors = existing_template.get('behaviors', [])
+                logger.info(f"Merging with template {merge_with_template_id}: copying {len(existing_behaviors)} existing behaviors")
+
+                # Copy all behaviors from existing template
+                for behavior in existing_behaviors:
+                    db.add_template_behavior(
+                        template_id=template_id,
+                        behavior_type=behavior['behavior_type'],
+                        parameters=behavior.get('parameters', {}),
+                        action=behavior.get('action', 'allow'),
+                        description=f"From template '{existing_template['name']}': {behavior.get('description', '')}"
+                    )
+                    behaviors_added += 1
+
+                logger.info(f"Copied {behaviors_added} behaviors from existing template")
 
         # Get ports data from the correct structure
         ports_data = learned_behavior.get('ports', {})

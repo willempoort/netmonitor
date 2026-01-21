@@ -147,9 +147,21 @@ function renderDevicesTable(devices) {
 
     tbody.innerHTML = devices.map(device => {
         const learningStatus = getLearningStatusBadge(device);
-        const templateBadge = device.template_name
-            ? `<span class="badge bg-success">${device.template_name}</span>`
-            : `<span class="badge bg-secondary">Unclassified</span>`;
+
+        // Determine template badge color based on classification method
+        let templateBadge;
+        if (device.template_name) {
+            // Check if template was auto-assigned by ML or vendor hint
+            const isAutoAssigned = device.classification_method === 'ml_classifier' ||
+                                  device.classification_method === 'vendor_hint';
+            const badgeColor = isAutoAssigned ? 'warning' : 'success';
+            const confidenceText = device.classification_confidence && isAutoAssigned
+                ? ` (${Math.round(device.classification_confidence * 100)}%)`
+                : '';
+            templateBadge = `<span class="badge bg-${badgeColor}" title="${isAutoAssigned ? 'Auto-assigned by ML' : 'Manually assigned'}">${device.template_name}${confidenceText}</span>`;
+        } else {
+            templateBadge = `<span class="badge bg-secondary">Unclassified</span>`;
+        }
 
         const lastSeen = device.last_seen
             ? formatRelativeTime(new Date(device.last_seen))
@@ -378,6 +390,8 @@ async function showDeviceDetails(ipAddress) {
         const createTemplateCard = document.getElementById('create-template-from-device-card');
         if (packetCount >= 50) {
             createTemplateCard.style.display = 'block';
+            // Populate merge template dropdown
+            await populateMergeTemplateSelect();
         } else {
             createTemplateCard.style.display = 'none';
         }
@@ -497,33 +511,66 @@ async function deleteDevice() {
     }
 }
 
+async function populateMergeTemplateSelect() {
+    const select = document.getElementById('new-template-merge-with');
+    if (!select) return;
+
+    // Clear existing options except first
+    while (select.options.length > 1) {
+        select.remove(1);
+    }
+
+    // Ensure templates are loaded
+    if (allTemplates.length === 0) {
+        await loadTemplates();
+    }
+
+    // Add templates
+    allTemplates.forEach(template => {
+        const option = document.createElement('option');
+        option.value = template.id;
+        option.textContent = `${template.name} (${template.category})`;
+        select.appendChild(option);
+    });
+}
+
 async function createTemplateFromDevice() {
     const ipAddress = document.getElementById('device-detail-ip').value;
     const templateName = document.getElementById('new-template-from-device-name').value.trim();
     const category = document.getElementById('new-template-from-device-category').value;
+    const mergeWithTemplateId = document.getElementById('new-template-merge-with').value;
 
     if (!templateName) {
         showError('Please enter a template name');
         return;
     }
 
+    const requestData = {
+        ip_address: ipAddress,
+        template_name: templateName,
+        category: category,
+        assign_to_device: true
+    };
+
+    // Add merge_with_template_id if selected
+    if (mergeWithTemplateId) {
+        requestData.merge_with_template_id = parseInt(mergeWithTemplateId);
+    }
+
     try {
         const response = await fetch('/api/device-templates/from-device', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                ip_address: ipAddress,
-                template_name: templateName,
-                category: category,
-                assign_to_device: true
-            })
+            body: JSON.stringify(requestData)
         });
 
         const result = await response.json();
 
         if (result.success) {
-            showSuccess(`Template "${templateName}" created with ${result.behaviors_added} behavior rules`);
+            const mergeMsg = mergeWithTemplateId ? ' (merged with existing template)' : '';
+            showSuccess(`Template "${templateName}" created with ${result.behaviors_added} behavior rules${mergeMsg}`);
             document.getElementById('new-template-from-device-name').value = '';
+            document.getElementById('new-template-merge-with').value = '';
             loadTemplates();
             loadDevices();
             bootstrap.Modal.getInstance(document.getElementById('deviceDetailsModal')).hide();
