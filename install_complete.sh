@@ -1077,15 +1077,16 @@ main() {
     echo
     print_info "Running post-installation configuration..."
 
-    if [ -f "./post_install.sh" ]; then
+    if [ -f "$INSTALL_DIR/post_install.sh" ]; then
+        cd $INSTALL_DIR
         if bash ./post_install.sh; then
             print_success "Post-installatie setup compleet"
         else
             print_warning "Post-installatie setup had warnings - check output above"
         fi
     else
-        print_warning "post_install.sh niet gevonden - skip post-installatie"
-        echo "  Run handmatig: ./post_install.sh"
+        print_warning "post_install.sh niet gevonden in $INSTALL_DIR"
+        echo "  Run handmatig: cd $INSTALL_DIR && ./post_install.sh"
     fi
 }
 

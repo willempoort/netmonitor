@@ -49,6 +49,36 @@ echo -e "${YELLOW}Step 5: Checking sensor configurations...${NC}"
 python3 tools/diagnose_sensor_db.py
 echo ""
 
+echo -e "${YELLOW}Step 6: Checking GeoIP database...${NC}"
+GEOIP_PATHS=(
+    "/var/lib/GeoIP/GeoLite2-Country.mmdb"
+    "/usr/share/GeoIP/GeoLite2-Country.mmdb"
+    "$(pwd)/GeoLite2-Country.mmdb"
+)
+
+GEOIP_FOUND=false
+for path in "${GEOIP_PATHS[@]}"; do
+    if [ -f "$path" ]; then
+        echo -e "${GREEN}  ✅ GeoIP database found: $path${NC}"
+        GEOIP_FOUND=true
+        break
+    fi
+done
+
+if [ "$GEOIP_FOUND" = false ]; then
+    echo -e "${YELLOW}  ⚠️  GeoIP database not found${NC}"
+    echo "  IP geolocation features will not work without this database."
+    echo ""
+    read -p "  Download free GeoIP database now? (y/N) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        bash download_geoip_db.sh
+    else
+        echo "  Skip GeoIP download - you can run './download_geoip_db.sh' later"
+    fi
+fi
+echo ""
+
 echo "======================================================================"
 echo -e "${GREEN}Post-Installation Setup Complete!${NC}"
 echo "======================================================================"
