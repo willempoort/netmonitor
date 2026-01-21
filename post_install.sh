@@ -19,6 +19,18 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Activate Python virtual environment
+if [ -f "venv/bin/activate" ]; then
+    echo -e "${YELLOW}Activating Python virtual environment...${NC}"
+    source venv/bin/activate
+    echo -e "${GREEN}  ✅ Virtual environment activated${NC}"
+    echo ""
+else
+    echo -e "${RED}  ❌ Virtual environment not found at $SCRIPT_DIR/venv${NC}"
+    echo "  Run install_complete.sh first to create the virtual environment"
+    exit 1
+fi
+
 echo -e "${YELLOW}Step 1: Checking if SOC server self-monitoring is enabled...${NC}"
 SELF_MONITOR_ENABLED=$(grep -A 5 "^self_monitor:" config.yaml | grep "enabled:" | awk '{print $2}')
 echo "  self_monitor.enabled: $SELF_MONITOR_ENABLED"
