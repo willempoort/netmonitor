@@ -17,6 +17,14 @@ Complete documentatie overzicht voor NetMonitor SOC platform.
 
 ## 📚 Documentation Sections
 
+### 📢 Marketing & Positioning
+
+Voor partners, klanten en externe communicatie:
+
+- **[Pitch Document](PITCH_DOCUMENT.md)** - Complete product pitch met AI Scout positionering
+- **[Comparison Matrix](COMPARISON_MATRIX.md)** - Eerlijke vergelijking met Wazuh, Suricata, Zeek, Security Onion, Splunk
+- **[AI Scout Positioning](AI_SCOUT_POSITIONING.md)** - Uitgebreide positionering als AI-powered triage layer
+
 ### 🔧 Installation
 
 Alles over installatie en setup:
@@ -48,6 +56,7 @@ Production deployment guides:
 - **[Sensor Deployment](deployment/SENSOR_DEPLOYMENT.md)** - Remote sensor setup
 - **[Kiosk Mode Deployment](deployment/KIOSK-DEPLOYMENT.md)** - Kiosk display configuratie
 - **[Migration Guide](deployment/MIGRATION_GUIDE.md)** - Upgrade en migratie instructies
+- **[Config Migration](deployment/CONFIG_MIGRATION.md)** - Configuratie migratie tussen versies
 
 ### ⚡ Features
 
@@ -92,6 +101,7 @@ Architectuur en best practices:
 | Install from scratch | [Complete Installation](installation/COMPLETE_INSTALLATION.md) |
 | Setup remote sensor | [Sensor Deployment](deployment/SENSOR_DEPLOYMENT.md) |
 | Configure detection rules | [Config Guide](usage/CONFIG_GUIDE.md) |
+| Migrate configuration | [Config Migration](deployment/CONFIG_MIGRATION.md) |
 | Device classification setup | [Device Classification](features/DEVICE_CLASSIFICATION.md) |
 | Switch to Gunicorn | [Dashboard Server Comparison](deployment/DASHBOARD_SERVER_COMPARISON.md) |
 | Setup threat feeds | [Threat Feeds](features/THREAT_FEEDS.md) |
@@ -99,6 +109,7 @@ Architectuur en best practices:
 | Setup SIEM integration | [Integrations Overview](features/INTEGRATIONS.md) |
 | Setup Wazuh | [Wazuh Setup](features/WAZUH_SETUP.md) |
 | Setup MISP | [MISP Setup](features/MISP_SETUP.md) |
+| Configure switch mirroring | [Switch Mirror Configuration](architecture/SWITCH_MIRROR_CONFIGURATION.md) |
 | Production deployment | [Production](deployment/PRODUCTION.md) |
 | Troubleshooting | [Admin Manual](usage/ADMIN_MANUAL.md) |
 
@@ -201,4 +212,4 @@ When adding new documentation:
 
 ---
 
-**Last Updated:** December 2024
+**Last Updated:** Januari 2026
