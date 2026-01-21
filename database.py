@@ -2954,7 +2954,13 @@ class DatabaseManager:
                     hostname = COALESCE(EXCLUDED.hostname, devices.hostname),
                     vendor = COALESCE(EXCLUDED.vendor, devices.vendor),
                     last_seen = NOW(),
-                    is_active = TRUE
+                    -- Keep inactive if recently deactivated (within 24h), otherwise reactivate
+                    -- This prevents duplicate MAC cleanup from being undone by late packets
+                    is_active = CASE
+                        WHEN devices.is_active = FALSE AND devices.last_seen > NOW() - INTERVAL '24 hours'
+                        THEN FALSE
+                        ELSE TRUE
+                    END
                 RETURNING id
             ''', (ip_address, sensor_id, mac_address, hostname, vendor, template_id, created_by))
             device_id = cursor.fetchone()[0]
