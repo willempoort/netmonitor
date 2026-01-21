@@ -3,7 +3,7 @@
 # Copyright (c) 2025 Willem M. Poort
 #
 # NetMonitor SOC - Complete Installation Script
-# Version: 2.2.0
+# Version: 2.3.0
 # Installs: PostgreSQL, TimescaleDB, NetMonitor, Web Auth, MCP API, Nginx
 #
 # Features:
@@ -23,7 +23,8 @@
 # - Other distributions require manual adaptation
 #
 
-set -e  # Exit on error
+# Don't use set -e globally - we handle errors manually for better user feedback
+# set -e would exit immediately on any error, hiding the actual problem from users
 
 # Colors for output
 RED='\033[0;31m'
@@ -54,22 +55,30 @@ print_header() {
     echo "$1"
     echo "============================================================"
     echo -e "${NC}"
+    echo "" >> $LOG_FILE 2>&1
+    echo "============================================================" >> $LOG_FILE 2>&1
+    echo "$1" >> $LOG_FILE 2>&1
+    echo "============================================================" >> $LOG_FILE 2>&1
 }
 
 print_success() {
     echo -e "${GREEN}✓ $1${NC}"
+    echo "[SUCCESS] $1" >> $LOG_FILE 2>&1
 }
 
 print_error() {
     echo -e "${RED}✗ $1${NC}"
+    echo "[ERROR] $1" >> $LOG_FILE 2>&1
 }
 
 print_warning() {
     echo -e "${YELLOW}⚠ $1${NC}"
+    echo "[WARNING] $1" >> $LOG_FILE 2>&1
 }
 
 print_info() {
     echo -e "${BLUE}ℹ $1${NC}"
+    echo "[INFO] $1" >> $LOG_FILE 2>&1
 }
 
 check_root() {
@@ -471,6 +480,17 @@ configure_netmonitor() {
         print_info "Bestaande .env backed up"
     fi
 
+    # Create config.yaml from config.yaml.example if it doesn't exist
+    if [ ! -f config.yaml ]; then
+        if [ -f config.yaml.example ]; then
+            cp config.yaml.example config.yaml
+            print_info "config.yaml aangemaakt van config.yaml.example"
+        else
+            print_error "config.yaml.example niet gevonden!"
+            return 1
+        fi
+    fi
+
     # Generate Flask secret key if not exists or empty
     if [ -z "$FLASK_SECRET_KEY" ] || [ "$FLASK_SECRET_KEY" = "change-this-to-a-random-secret-key-in-production" ]; then
         FLASK_SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
@@ -545,18 +565,22 @@ configure_netmonitor() {
 
     # Update config.yaml with basic settings
     if [ -f config.yaml ]; then
+        # Update monitor interface
         sed -i "s/^interface:.*/interface: $INTERFACE/" config.yaml
+
+        # Update database password in config.yaml
         sed -i "s|password: netmonitor|password: $DB_PASS|" config.yaml
+        sed -i "s|password: .*  # PostgreSQL password|password: $DB_PASS  # PostgreSQL password|" config.yaml
 
-        # Update internal networks in config.yaml
-        print_info "Internal network ingesteld op: $INTERNAL_NET"
+        # Update database host, port, name, user
+        sed -i "/postgresql:/,/user:/ s|host: .*|host: $DB_HOST|" config.yaml
+        sed -i "/postgresql:/,/port:/ s|port: .*|port: $DB_PORT|" config.yaml
+        sed -i "/postgresql:/,/database:/ s|database: .*|database: $DB_NAME|" config.yaml
+        sed -i "/postgresql:/,/user:/ s|user: .*|user: $DB_USER|" config.yaml
 
-        # Add secret key to config.yaml if not exists
-        if ! grep -q "secret_key:" config.yaml; then
-            sed -i "/^dashboard:/a\  secret_key: \"$FLASK_SECRET_KEY\"" config.yaml
-        fi
+        print_info "config.yaml bijgewerkt met database en interface instellingen"
     else
-        print_warning "config.yaml niet gevonden, wordt niet bijgewerkt"
+        print_warning "config.yaml niet gevonden na kopiëren - check handmatig"
     fi
 
     print_success "Configuratie bestanden bijgewerkt"
@@ -572,25 +596,69 @@ init_database_schema() {
     cd $INSTALL_DIR
     source venv/bin/activate
 
-    # Run Python to initialize database
-    python3 << EOF >> $LOG_FILE 2>&1
+    # Verify config.yaml exists
+    if [ ! -f config.yaml ]; then
+        print_error "config.yaml niet gevonden!"
+        print_error "Run 'configure_netmonitor' eerst"
+        return 1
+    fi
+
+    # Create a temporary Python script with better error handling
+    cat > /tmp/init_db.py << 'PYTHON_EOF'
 import sys
-sys.path.insert(0, '$INSTALL_DIR')
-from database import DatabaseManager
-from config_loader import load_config
+import os
 
-config = load_config('config.yaml')
-db_config = config['database']['postgresql']
+# Add install dir to path
+sys.path.insert(0, os.environ.get('INSTALL_DIR', '/opt/netmonitor'))
 
-db = DatabaseManager(
-    host=db_config['host'],
-    port=db_config['port'],
-    database=db_config['database'],
-    user=db_config['user'],
-    password=db_config['password']
-)
-print("Database schema created")
-EOF
+try:
+    from database import DatabaseManager
+    from config_loader import load_config
+
+    print("Loading config.yaml...")
+    config = load_config('config.yaml')
+
+    if 'database' not in config or 'postgresql' not in config['database']:
+        print("ERROR: Database configuration not found in config.yaml", file=sys.stderr)
+        sys.exit(1)
+
+    db_config = config['database']['postgresql']
+
+    print(f"Connecting to database {db_config['database']} at {db_config['host']}:{db_config['port']}...")
+
+    db = DatabaseManager(
+        host=db_config['host'],
+        port=db_config['port'],
+        database=db_config['database'],
+        user=db_config['user'],
+        password=db_config['password']
+    )
+
+    print("Database schema created successfully")
+    sys.exit(0)
+
+except Exception as e:
+    print(f"ERROR: Database initialization failed: {e}", file=sys.stderr)
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
+PYTHON_EOF
+
+    # Run the Python script with visible output
+    print_info "Database schema wordt aangemaakt..."
+
+    INSTALL_DIR=$INSTALL_DIR python3 /tmp/init_db.py
+    DB_INIT_STATUS=$?
+
+    # Clean up temp script
+    rm -f /tmp/init_db.py
+
+    if [ $DB_INIT_STATUS -ne 0 ]; then
+        print_error "Database schema initialisatie mislukt!"
+        print_error "Check de error messages hierboven"
+        print_error "Log file: $LOG_FILE"
+        return 1
+    fi
 
     print_success "Database schema geïnitialiseerd"
 }
@@ -934,10 +1002,15 @@ print_summary() {
 
 # Main execution
 main() {
+    # Initialize log file immediately
+    echo "=== NetMonitor Installation Log ===" > $LOG_FILE
+    echo "Started: $(date)" >> $LOG_FILE
+    echo >> $LOG_FILE
+
     clear
 
     print_header "NetMonitor SOC - Complete Installation"
-    echo "Versie: 2.1.0"
+    echo "Versie: 2.3.0"
     echo "Dit script installeert ALLES automatisch inclusief web authenticatie"
     echo "Ondersteunde OS: Ubuntu 24.04 & Debian 12"
     echo
@@ -961,26 +1034,34 @@ main() {
         exit 0
     fi
 
-    # Start logging
-    echo "=== NetMonitor Installation Log ===" > $LOG_FILE
-    echo "Started: $(date)" >> $LOG_FILE
-    echo >> $LOG_FILE
+    # Run installation steps with error handling
+    prompt_config || { print_error "Configuratie mislukt"; exit 1; }
 
-    # Run installation steps
-    prompt_config
-    install_system_packages
-    install_timescaledb
-    setup_database
-    install_netmonitor
-    configure_netmonitor
-    download_bootstrap_assets
-    init_database_schema
-    init_database_defaults
-    download_threat_feeds
-    setup_admin_user
-    setup_systemd_services
-    setup_mcp_api
-    setup_nginx
+    install_system_packages || { print_error "System packages installatie mislukt"; exit 1; }
+
+    install_timescaledb || { print_error "TimescaleDB installatie mislukt"; exit 1; }
+
+    setup_database || { print_error "Database setup mislukt"; exit 1; }
+
+    install_netmonitor || { print_error "NetMonitor installatie mislukt"; exit 1; }
+
+    configure_netmonitor || { print_error "NetMonitor configuratie mislukt"; exit 1; }
+
+    download_bootstrap_assets || { print_error "Bootstrap assets download mislukt"; exit 1; }
+
+    init_database_schema || { print_error "Database schema initialisatie mislukt"; exit 1; }
+
+    init_database_defaults || { print_error "Database defaults laden mislukt"; exit 1; }
+
+    download_threat_feeds || { print_error "Threat feeds download mislukt"; exit 1; }
+
+    setup_admin_user || { print_error "Admin user setup mislukt"; exit 1; }
+
+    setup_systemd_services || { print_error "Systemd services setup mislukt"; exit 1; }
+
+    setup_mcp_api || { print_error "MCP API setup mislukt"; exit 1; }
+
+    setup_nginx || { print_error "Nginx setup mislukt"; exit 1; }
 
     # Finish
     echo >> $LOG_FILE
