@@ -2308,6 +2308,98 @@ def api_cleanup_duplicate_devices():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/devices/duplicates', methods=['GET'])
+@login_required
+def api_get_duplicate_devices():
+    """
+    Get detailed information about duplicate device entries (same MAC, different IPs).
+    Returns groups of devices with the same MAC address.
+    """
+    try:
+        # Get all active devices
+        devices = db.get_devices(include_inactive=False)
+
+        # Group by MAC address
+        mac_groups = {}
+        for device in devices:
+            mac = device.get('mac_address')
+            if mac:  # Only consider devices with MAC addresses
+                if mac not in mac_groups:
+                    mac_groups[mac] = []
+                mac_groups[mac].append(device)
+
+        # Find duplicates (MAC with multiple IPs)
+        duplicates = []
+        for mac, devices_list in mac_groups.items():
+            if len(devices_list) > 1:
+                # Sort by last_seen descending (most recent first)
+                devices_list.sort(key=lambda d: d.get('last_seen', ''), reverse=True)
+
+                # Determine if this looks like a DHCP issue
+                ips = [d.get('ip_address', '').split('/')[0] for d in devices_list]
+                is_dhcp_range = any('10.100.0.' in ip and 26 <= int(ip.split('.')[-1]) <= 59
+                                   for ip in ips if ip and '.' in ip and ip.split('.')[-1].isdigit())
+
+                duplicates.append({
+                    'mac_address': mac,
+                    'vendor': devices_list[0].get('vendor', 'Unknown'),
+                    'hostname': devices_list[0].get('hostname', '-'),
+                    'device_count': len(devices_list),
+                    'devices': [{
+                        'ip_address': d.get('ip_address'),
+                        'hostname': d.get('hostname'),
+                        'last_seen': d.get('last_seen'),
+                        'template_name': d.get('template_name'),
+                        'is_most_recent': i == 0
+                    } for i, d in enumerate(devices_list)],
+                    'is_dhcp_issue': is_dhcp_range,
+                    'recommendation': _get_duplicate_recommendation(devices_list, is_dhcp_range)
+                })
+
+        return jsonify({
+            'success': True,
+            'duplicate_count': len(duplicates),
+            'total_duplicate_devices': sum(d['device_count'] for d in duplicates),
+            'duplicates': duplicates
+        })
+    except Exception as e:
+        logger.error(f"Error getting duplicate devices: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _get_duplicate_recommendation(devices_list, is_dhcp_issue):
+    """Generate actionable recommendations for duplicate MAC addresses."""
+    most_recent_ip = devices_list[0].get('ip_address', '').split('/')[0]
+
+    if is_dhcp_issue:
+        return {
+            'severity': 'high',
+            'type': 'dhcp_conflict',
+            'title': 'DHCP Configuration Issue Detected',
+            'description': f'Device is receiving IPs from dynamic range despite likely having a fixed reservation.',
+            'actions': [
+                'Check DHCP server: verify MAC-based reservation is active',
+                'Check for rogue DHCP servers on the network',
+                'Configure static IP directly on the device (bypass DHCP)',
+                f'Use "Cleanup Duplicates" button to keep only {most_recent_ip}',
+                'Monitor device - if it keeps getting new IPs, DHCP server has an issue'
+            ]
+        }
+    else:
+        return {
+            'severity': 'medium',
+            'type': 'ip_change',
+            'title': 'Device IP Address Changed',
+            'description': f'Device has changed IP addresses, old entries still visible.',
+            'actions': [
+                f'Most recent IP: {most_recent_ip} - this is likely correct',
+                'Use "Cleanup Duplicates" to remove old entries automatically',
+                'Or manually delete individual old IPs if you know which is correct',
+                'If device frequently changes IPs: assign fixed DHCP reservation'
+            ]
+        }
+
+
 @app.route('/api/devices/<path:ip_address>/traffic-stats')
 @login_required
 def api_get_device_traffic_stats(ip_address):

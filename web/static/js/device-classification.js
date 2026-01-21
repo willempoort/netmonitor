@@ -121,6 +121,8 @@ async function loadDevices() {
             filterDevicesTable();
             updateDeviceCounts();
             populateTemplateFilter();
+            // Check for duplicates after loading devices
+            checkForDuplicates();
         } else {
             showError('Failed to load devices: ' + (result.error || 'Unknown error'));
         }
@@ -145,8 +147,20 @@ function renderDevicesTable(devices) {
         return;
     }
 
+    // Build MAC address lookup for duplicate detection
+    const macCounts = {};
+    devices.forEach(d => {
+        if (d.mac_address) {
+            macCounts[d.mac_address] = (macCounts[d.mac_address] || 0) + 1;
+        }
+    });
+
     tbody.innerHTML = devices.map(device => {
         const learningStatus = getLearningStatusBadge(device);
+
+        // Check if this device is a duplicate (same MAC, multiple IPs)
+        const isDuplicate = device.mac_address && macCounts[device.mac_address] > 1;
+        const rowClass = isDuplicate ? 'table-warning' : '';
 
         // Determine template badge color based on classification method
         let templateBadge;
@@ -173,11 +187,16 @@ function renderDevicesTable(devices) {
             ? formatRelativeTime(new Date(device.last_seen))
             : '-';
 
+        // Add duplicate indicator
+        const duplicateIndicator = isDuplicate
+            ? `<i class="bi bi-exclamation-triangle-fill text-warning ms-1" title="Duplicate MAC address detected"></i>`
+            : '';
+
         return `
-            <tr style="cursor: pointer;" onclick="showDeviceDetails('${device.ip_address}')">
+            <tr class="${rowClass}" style="cursor: pointer;" onclick="showDeviceDetails('${device.ip_address}')">
                 <td><code>${device.ip_address}</code></td>
                 <td>${device.hostname || '-'}</td>
-                <td><code>${device.mac_address || '-'}</code></td>
+                <td><code>${device.mac_address || '-'}</code>${duplicateIndicator}</td>
                 <td>${device.vendor || '-'}</td>
                 <td>${templateBadge}</td>
                 <td>${learningStatus}</td>
@@ -1622,5 +1641,138 @@ if (typeof showNotification === 'undefined') {
         container.style.zIndex = '9999';
         document.body.appendChild(container);
         return container;
+    }
+}
+
+// ==================== Duplicate MAC Detection ====================
+
+let duplicateData = null;
+
+async function checkForDuplicates() {
+    try {
+        const response = await fetch('/api/devices/duplicates');
+        const result = await response.json();
+
+        if (result.success) {
+            duplicateData = result;
+
+            const warningBanner = document.getElementById('duplicate-mac-warning');
+            const warningText = document.getElementById('duplicate-warning-text');
+
+            if (result.duplicate_count > 0) {
+                // Show warning banner
+                warningBanner.style.display = 'block';
+
+                // Update text
+                const dhcpIssues = result.duplicates.filter(d => d.is_dhcp_issue).length;
+                if (dhcpIssues > 0) {
+                    warningText.innerHTML = `<strong>${result.duplicate_count} MAC address(es)</strong> with multiple IPs detected. <strong>${dhcpIssues} appear to be DHCP configuration issues</strong> (devices getting IPs from dynamic range despite reservations).`;
+                } else {
+                    warningText.innerHTML = `<strong>${result.duplicate_count} MAC address(es)</strong> with multiple IPs detected (${result.total_duplicate_devices} total entries). This usually indicates devices changing IP addresses.`;
+                }
+            } else {
+                // Hide warning banner
+                warningBanner.style.display = 'none';
+            }
+        }
+    } catch (error) {
+        console.error('Error checking for duplicates:', error);
+    }
+}
+
+function showDuplicateDetails() {
+    const detailsDiv = document.getElementById('duplicate-details');
+    const container = document.getElementById('duplicate-groups-container');
+
+    if (!duplicateData || !duplicateData.duplicates) {
+        return;
+    }
+
+    // Toggle visibility
+    if (detailsDiv.style.display === 'none') {
+        detailsDiv.style.display = 'block';
+
+        // Render duplicate groups
+        container.innerHTML = duplicateData.duplicates.map((dup, idx) => {
+            const severityColor = dup.recommendation.severity === 'high' ? 'danger' : 'warning';
+            const rec = dup.recommendation;
+
+            return `
+                <div class="card bg-dark border-${severityColor} mb-3">
+                    <div class="card-header bg-${severityColor} bg-opacity-10">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>${dup.hostname || dup.vendor}</strong>
+                                <code class="ms-2">${dup.mac_address}</code>
+                                <span class="badge bg-${severityColor} ms-2">${dup.device_count} IPs</span>
+                            </div>
+                            <button class="btn btn-sm btn-outline-${severityColor}" onclick="cleanupSpecificMAC('${dup.mac_address}')">
+                                <i class="bi bi-trash"></i> Cleanup This One
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <h6 class="text-${severityColor}"><i class="bi bi-exclamation-triangle"></i> ${rec.title}</h6>
+                        <p class="mb-2">${rec.description}</p>
+
+                        <div class="mb-3">
+                            <strong>Detected IPs:</strong>
+                            <ul class="mt-2 mb-2">
+                                ${dup.devices.map(d => `
+                                    <li>
+                                        <code>${d.ip_address}</code> - ${d.hostname || '-'}
+                                        ${d.is_most_recent ? '<span class="badge bg-success ms-2">Most Recent</span>' : '<span class="badge bg-secondary ms-2">Older</span>'}
+                                        <small class="text-muted ms-2">${formatRelativeTime(new Date(d.last_seen))}</small>
+                                        ${!d.is_most_recent ? `<button class="btn btn-xs btn-outline-danger ms-2" onclick="deleteSpecificDevice('${d.ip_address}')"><i class="bi bi-x"></i></button>` : ''}
+                                    </li>
+                                `).join('')}
+                            </ul>
+                        </div>
+
+                        <div class="alert alert-info mb-0">
+                            <strong>Recommended Actions:</strong>
+                            <ol class="mb-0 mt-2">
+                                ${rec.actions.map(action => `<li>${action}</li>`).join('')}
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } else {
+        detailsDiv.style.display = 'none';
+    }
+}
+
+async function cleanupSpecificMAC(macAddress) {
+    if (!confirm(`Clean up all duplicate entries for MAC ${macAddress}?\n\nOnly the most recently seen IP will remain active.`)) {
+        return;
+    }
+
+    // For now, use the global cleanup (TODO: add MAC-specific cleanup endpoint if needed)
+    await cleanupDuplicateDevices();
+}
+
+async function deleteSpecificDevice(ipAddress) {
+    if (!confirm(`Delete device ${ipAddress}?\n\nThis will mark it as inactive.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/devices/${ipAddress}`, {
+            method: 'DELETE'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showSuccess(`Device ${ipAddress} deleted`);
+            loadDevices(); // Refresh
+        } else {
+            showError('Failed to delete: ' + (result.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error deleting device:', error);
+        showError('Network error while deleting device');
     }
 }
