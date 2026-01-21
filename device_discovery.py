@@ -273,6 +273,7 @@ class DeviceDiscovery:
     def _background_worker(self):
         """Background worker for periodic tasks"""
         learning_counter = 0  # Counter for less frequent learning updates
+        cleanup_counter = 0   # Counter for duplicate MAC cleanup
         while self._running:
             try:
                 # Flush stale DNS cache entries
@@ -286,6 +287,12 @@ class DeviceDiscovery:
                 if learning_counter >= 5:
                     self._save_all_learned_behavior()
                     learning_counter = 0
+
+                # Clean up duplicate MAC addresses every 30 minutes (every 30th iteration)
+                cleanup_counter += 1
+                if cleanup_counter >= 30:
+                    self._cleanup_duplicate_macs()
+                    cleanup_counter = 0
 
             except Exception as e:
                 self.logger.error(f"Error in background worker: {e}")
@@ -370,6 +377,21 @@ class DeviceDiscovery:
 
             except Exception as e:
                 self.logger.error(f"Error saving learned behavior for {ip_address}: {e}")
+
+    def _cleanup_duplicate_macs(self):
+        """
+        Clean up duplicate device entries with the same MAC address.
+        Keeps the most recently seen device active, marks older duplicates as inactive.
+        """
+        if not self.db:
+            return
+
+        try:
+            deactivated = self.db.cleanup_duplicate_mac_devices(sensor_id=self.sensor_id)
+            if deactivated > 0:
+                self.logger.info(f"Cleaned up {deactivated} duplicate MAC address entries")
+        except Exception as e:
+            self.logger.error(f"Error cleaning up duplicate MACs: {e}")
 
         if saved_count > 0:
             self.logger.info(f"Saved learned behavior for {saved_count} devices")

@@ -3294,6 +3294,77 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
+    def cleanup_duplicate_mac_devices(self, sensor_id: str = None) -> int:
+        """
+        Clean up duplicate device entries with the same MAC address.
+        Keeps the most recently seen device active, marks older duplicates as inactive.
+
+        Returns:
+            Number of duplicate devices marked as inactive
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            # Find duplicate MAC addresses (same MAC, different IPs, all active)
+            query = '''
+                WITH duplicate_macs AS (
+                    SELECT mac_address, sensor_id
+                    FROM devices
+                    WHERE mac_address IS NOT NULL
+                      AND is_active = TRUE
+            '''
+            params = []
+
+            if sensor_id:
+                query += ' AND sensor_id = %s'
+                params.append(sensor_id)
+
+            query += '''
+                    GROUP BY mac_address, sensor_id
+                    HAVING COUNT(*) > 1
+                ),
+                ranked_devices AS (
+                    SELECT d.id,
+                           d.mac_address,
+                           d.ip_address,
+                           d.last_seen,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY d.mac_address, d.sensor_id
+                               ORDER BY d.last_seen DESC, d.id DESC
+                           ) as rank
+                    FROM devices d
+                    INNER JOIN duplicate_macs dm
+                        ON d.mac_address = dm.mac_address
+                        AND d.sensor_id = dm.sensor_id
+                    WHERE d.is_active = TRUE
+                )
+                UPDATE devices
+                SET is_active = FALSE
+                WHERE id IN (
+                    SELECT id FROM ranked_devices WHERE rank > 1
+                )
+                RETURNING id, mac_address, ip_address
+            '''
+
+            cursor.execute(query, params)
+            deactivated = cursor.fetchall()
+            conn.commit()
+
+            if deactivated:
+                self.logger.info(f"Deactivated {len(deactivated)} duplicate device entries:")
+                for dev_id, mac, ip in deactivated:
+                    self.logger.info(f"  - Device ID {dev_id}: {ip} (MAC: {mac})")
+
+            return len(deactivated)
+
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error cleaning up duplicate MAC devices: {e}")
+            return 0
+        finally:
+            self._return_connection(conn)
+
     # ==================== Service Provider Management ====================
 
     def create_service_provider(self, name: str, category: str,

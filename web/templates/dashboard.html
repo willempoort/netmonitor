@@ -717,8 +717,11 @@
                                                     <th class="device-sort-header" data-sort="hostname" style="cursor: pointer;" onclick="sortDevices('hostname')">
                                                         Hostname<span class="sort-indicator"></span>
                                                     </th>
-                                                    <th class="device-sort-header" data-sort="mac_vendor" style="cursor: pointer;" onclick="sortDevices('mac_vendor')">
-                                                        MAC / Vendor<span class="sort-indicator"></span>
+                                                    <th class="device-sort-header" data-sort="mac_address" style="cursor: pointer;" onclick="sortDevices('mac_address')">
+                                                        MAC Address<span class="sort-indicator"></span>
+                                                    </th>
+                                                    <th class="device-sort-header" data-sort="vendor" style="cursor: pointer;" onclick="sortDevices('vendor')">
+                                                        Vendor<span class="sort-indicator"></span>
                                                     </th>
                                                     <th class="device-sort-header" data-sort="template_name" style="cursor: pointer;" onclick="sortDevices('template_name')">
                                                         Template<span class="sort-indicator"></span>
@@ -732,7 +735,7 @@
                                             </thead>
                                             <tbody id="devices-table">
                                                 <tr>
-                                                    <td colspan="7" class="text-center text-muted">Loading devices...</td>
+                                                    <td colspan="8" class="text-center text-muted">Loading devices...</td>
                                                 </tr>
                                             </tbody>
                                         </table>

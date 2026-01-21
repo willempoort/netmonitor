@@ -137,7 +137,7 @@ function renderDevicesTable(devices) {
     if (!devices || devices.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="7" class="text-center text-muted">
+                <td colspan="8" class="text-center text-muted">
                     No devices discovered yet. Devices will appear here once network monitoring is active.
                 </td>
             </tr>
@@ -173,18 +173,12 @@ function renderDevicesTable(devices) {
             ? formatRelativeTime(new Date(device.last_seen))
             : '-';
 
-        const vendorInfo = device.vendor
-            ? `<small class="text-muted d-block">${device.vendor}</small>`
-            : '';
-
         return `
             <tr style="cursor: pointer;" onclick="showDeviceDetails('${device.ip_address}')">
                 <td><code>${device.ip_address}</code></td>
                 <td>${device.hostname || '-'}</td>
-                <td>
-                    <code>${device.mac_address || '-'}</code>
-                    ${vendorInfo}
-                </td>
+                <td><code>${device.mac_address || '-'}</code></td>
+                <td>${device.vendor || '-'}</td>
                 <td>${templateBadge}</td>
                 <td>${learningStatus}</td>
                 <td>${lastSeen}</td>
@@ -264,10 +258,15 @@ function compareDevices(a, b, column) {
             valA = (a.hostname || '').toLowerCase();
             valB = (b.hostname || '').toLowerCase();
             break;
-        case 'mac_vendor':
-            // Sort by vendor first, then MAC
-            valA = ((a.vendor || '') + (a.mac_address || '')).toLowerCase();
-            valB = ((b.vendor || '') + (b.mac_address || '')).toLowerCase();
+        case 'mac_address':
+            // Sort by MAC address
+            valA = (a.mac_address || '').toLowerCase();
+            valB = (b.mac_address || '').toLowerCase();
+            break;
+        case 'vendor':
+            // Sort by vendor name
+            valA = (a.vendor || '').toLowerCase();
+            valB = (b.vendor || '').toLowerCase();
             break;
         case 'last_seen':
             // Sort by date (newest first when descending)
