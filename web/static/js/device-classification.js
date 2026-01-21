@@ -121,6 +121,8 @@ async function loadDevices() {
             filterDevicesTable();
             updateDeviceCounts();
             populateTemplateFilter();
+            // Check for duplicates after loading devices
+            checkForDuplicates();
         } else {
             showError('Failed to load devices: ' + (result.error || 'Unknown error'));
         }
@@ -137,7 +139,7 @@ function renderDevicesTable(devices) {
     if (!devices || devices.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="7" class="text-center text-muted">
+                <td colspan="8" class="text-center text-muted">
                     No devices discovered yet. Devices will appear here once network monitoring is active.
                 </td>
             </tr>
@@ -145,28 +147,57 @@ function renderDevicesTable(devices) {
         return;
     }
 
+    // Build MAC address lookup for duplicate detection
+    const macCounts = {};
+    devices.forEach(d => {
+        if (d.mac_address) {
+            macCounts[d.mac_address] = (macCounts[d.mac_address] || 0) + 1;
+        }
+    });
+
     tbody.innerHTML = devices.map(device => {
         const learningStatus = getLearningStatusBadge(device);
-        const templateBadge = device.template_name
-            ? `<span class="badge bg-success">${device.template_name}</span>`
-            : `<span class="badge bg-secondary">Unclassified</span>`;
+
+        // Check if this device is a duplicate (same MAC, multiple IPs)
+        const isDuplicate = device.mac_address && macCounts[device.mac_address] > 1;
+        const rowClass = isDuplicate ? 'table-warning' : '';
+
+        // Determine template badge color based on classification method
+        let templateBadge;
+        if (device.template_name) {
+            // Check if template was auto-assigned by ML or vendor hint
+            const isAutoAssigned = device.classification_method === 'ml_classifier' ||
+                                  device.classification_method === 'vendor_hint';
+            const badgeColor = isAutoAssigned ? 'warning' : 'success';
+            const confidenceText = device.classification_confidence && isAutoAssigned
+                ? ` (${Math.round(device.classification_confidence * 100)}%)`
+                : '';
+
+            // Add confirm button for auto-assigned templates
+            const confirmBtn = isAutoAssigned
+                ? `<button class="btn btn-sm btn-outline-success ms-1" onclick="event.stopPropagation(); confirmDeviceTemplate('${device.ip_address}', ${device.template_id}, '${device.template_name}')" title="Confirm this template (make it permanent)"><i class="bi bi-check-circle"></i></button>`
+                : '';
+
+            templateBadge = `<span class="badge bg-${badgeColor}" title="${isAutoAssigned ? 'Auto-assigned by ML - click ✓ to confirm' : 'Manually assigned'}">${device.template_name}${confidenceText}</span>${confirmBtn}`;
+        } else {
+            templateBadge = `<span class="badge bg-secondary">Unclassified</span>`;
+        }
 
         const lastSeen = device.last_seen
             ? formatRelativeTime(new Date(device.last_seen))
             : '-';
 
-        const vendorInfo = device.vendor
-            ? `<small class="text-muted d-block">${device.vendor}</small>`
+        // Add duplicate indicator
+        const duplicateIndicator = isDuplicate
+            ? `<i class="bi bi-exclamation-triangle-fill text-warning ms-1" title="Duplicate MAC address detected"></i>`
             : '';
 
         return `
-            <tr style="cursor: pointer;" onclick="showDeviceDetails('${device.ip_address}')">
+            <tr class="${rowClass}" style="cursor: pointer;" onclick="showDeviceDetails('${device.ip_address}')">
                 <td><code>${device.ip_address}</code></td>
                 <td>${device.hostname || '-'}</td>
-                <td>
-                    <code>${device.mac_address || '-'}</code>
-                    ${vendorInfo}
-                </td>
+                <td><code>${device.mac_address || '-'}</code>${duplicateIndicator}</td>
+                <td>${device.vendor || '-'}</td>
                 <td>${templateBadge}</td>
                 <td>${learningStatus}</td>
                 <td>${lastSeen}</td>
@@ -246,10 +277,15 @@ function compareDevices(a, b, column) {
             valA = (a.hostname || '').toLowerCase();
             valB = (b.hostname || '').toLowerCase();
             break;
-        case 'mac_vendor':
-            // Sort by vendor first, then MAC
-            valA = ((a.vendor || '') + (a.mac_address || '')).toLowerCase();
-            valB = ((b.vendor || '') + (b.mac_address || '')).toLowerCase();
+        case 'mac_address':
+            // Sort by MAC address
+            valA = (a.mac_address || '').toLowerCase();
+            valB = (b.mac_address || '').toLowerCase();
+            break;
+        case 'vendor':
+            // Sort by vendor name
+            valA = (a.vendor || '').toLowerCase();
+            valB = (b.vendor || '').toLowerCase();
             break;
         case 'last_seen':
             // Sort by date (newest first when descending)
@@ -378,6 +414,8 @@ async function showDeviceDetails(ipAddress) {
         const createTemplateCard = document.getElementById('create-template-from-device-card');
         if (packetCount >= 50) {
             createTemplateCard.style.display = 'block';
+            // Populate merge template dropdown
+            await populateMergeTemplateSelect();
         } else {
             createTemplateCard.style.display = 'none';
         }
@@ -470,6 +508,36 @@ async function assignDeviceTemplate() {
     }
 }
 
+async function confirmDeviceTemplate(ipAddress, templateId, templateName) {
+    if (!confirm(`Confirm "${templateName}" as the permanent template for ${ipAddress}?\n\nThis will mark the template as manually verified and prevent automatic changes.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/devices/${ipAddress}/template`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                template_id: templateId,
+                method: 'manual',
+                confidence: 1.0
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showSuccess(`Template "${templateName}" confirmed and marked as permanent`);
+            loadDevices();
+        } else {
+            showError('Failed to confirm template: ' + (result.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error confirming template:', error);
+        showError('Network error while confirming template');
+    }
+}
+
 async function deleteDevice() {
     const ipAddress = document.getElementById('device-detail-ip').value;
 
@@ -497,33 +565,91 @@ async function deleteDevice() {
     }
 }
 
+async function cleanupDuplicateDevices() {
+    if (!confirm('Clean up duplicate device entries?\n\nThis will deactivate older entries for devices with the same MAC address but different IPs. Only the most recently seen device will remain active.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/devices/cleanup-duplicates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showSuccess(result.message);
+            loadDevices(); // Refresh the device list
+        } else {
+            showError('Cleanup failed: ' + (result.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error cleaning up duplicates:', error);
+        showError('Network error while cleaning up duplicates');
+    }
+}
+
+async function populateMergeTemplateSelect() {
+    const select = document.getElementById('new-template-merge-with');
+    if (!select) return;
+
+    // Clear existing options except first
+    while (select.options.length > 1) {
+        select.remove(1);
+    }
+
+    // Ensure templates are loaded
+    if (allTemplates.length === 0) {
+        await loadTemplates();
+    }
+
+    // Add templates
+    allTemplates.forEach(template => {
+        const option = document.createElement('option');
+        option.value = template.id;
+        option.textContent = `${template.name} (${template.category})`;
+        select.appendChild(option);
+    });
+}
+
 async function createTemplateFromDevice() {
     const ipAddress = document.getElementById('device-detail-ip').value;
     const templateName = document.getElementById('new-template-from-device-name').value.trim();
     const category = document.getElementById('new-template-from-device-category').value;
+    const mergeWithTemplateId = document.getElementById('new-template-merge-with').value;
 
     if (!templateName) {
         showError('Please enter a template name');
         return;
     }
 
+    const requestData = {
+        ip_address: ipAddress,
+        template_name: templateName,
+        category: category,
+        assign_to_device: true
+    };
+
+    // Add merge_with_template_id if selected
+    if (mergeWithTemplateId) {
+        requestData.merge_with_template_id = parseInt(mergeWithTemplateId);
+    }
+
     try {
         const response = await fetch('/api/device-templates/from-device', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                ip_address: ipAddress,
-                template_name: templateName,
-                category: category,
-                assign_to_device: true
-            })
+            body: JSON.stringify(requestData)
         });
 
         const result = await response.json();
 
         if (result.success) {
-            showSuccess(`Template "${templateName}" created with ${result.behaviors_added} behavior rules`);
+            const mergeMsg = mergeWithTemplateId ? ' (merged with existing template)' : '';
+            showSuccess(`Template "${templateName}" created with ${result.behaviors_added} behavior rules${mergeMsg}`);
             document.getElementById('new-template-from-device-name').value = '';
+            document.getElementById('new-template-merge-with').value = '';
             loadTemplates();
             loadDevices();
             bootstrap.Modal.getInstance(document.getElementById('deviceDetailsModal')).hide();
@@ -1515,5 +1641,138 @@ if (typeof showNotification === 'undefined') {
         container.style.zIndex = '9999';
         document.body.appendChild(container);
         return container;
+    }
+}
+
+// ==================== Duplicate MAC Detection ====================
+
+let duplicateData = null;
+
+async function checkForDuplicates() {
+    try {
+        const response = await fetch('/api/devices/duplicates');
+        const result = await response.json();
+
+        if (result.success) {
+            duplicateData = result;
+
+            const warningBanner = document.getElementById('duplicate-mac-warning');
+            const warningText = document.getElementById('duplicate-warning-text');
+
+            if (result.duplicate_count > 0) {
+                // Show warning banner
+                warningBanner.style.display = 'block';
+
+                // Update text
+                const dhcpIssues = result.duplicates.filter(d => d.is_dhcp_issue).length;
+                if (dhcpIssues > 0) {
+                    warningText.innerHTML = `<strong>${result.duplicate_count} MAC address(es)</strong> with multiple IPs detected. <strong>${dhcpIssues} appear to be DHCP configuration issues</strong> (devices getting IPs from dynamic range despite reservations).`;
+                } else {
+                    warningText.innerHTML = `<strong>${result.duplicate_count} MAC address(es)</strong> with multiple IPs detected (${result.total_duplicate_devices} total entries). This usually indicates devices changing IP addresses.`;
+                }
+            } else {
+                // Hide warning banner
+                warningBanner.style.display = 'none';
+            }
+        }
+    } catch (error) {
+        console.error('Error checking for duplicates:', error);
+    }
+}
+
+function showDuplicateDetails() {
+    const detailsDiv = document.getElementById('duplicate-details');
+    const container = document.getElementById('duplicate-groups-container');
+
+    if (!duplicateData || !duplicateData.duplicates) {
+        return;
+    }
+
+    // Toggle visibility
+    if (detailsDiv.style.display === 'none') {
+        detailsDiv.style.display = 'block';
+
+        // Render duplicate groups
+        container.innerHTML = duplicateData.duplicates.map((dup, idx) => {
+            const severityColor = dup.recommendation.severity === 'high' ? 'danger' : 'warning';
+            const rec = dup.recommendation;
+
+            return `
+                <div class="card bg-dark border-${severityColor} mb-3">
+                    <div class="card-header bg-${severityColor} bg-opacity-10">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>${dup.hostname || dup.vendor}</strong>
+                                <code class="ms-2">${dup.mac_address}</code>
+                                <span class="badge bg-${severityColor} ms-2">${dup.device_count} IPs</span>
+                            </div>
+                            <button class="btn btn-sm btn-outline-${severityColor}" onclick="cleanupSpecificMAC('${dup.mac_address}')">
+                                <i class="bi bi-trash"></i> Cleanup This One
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <h6 class="text-${severityColor}"><i class="bi bi-exclamation-triangle"></i> ${rec.title}</h6>
+                        <p class="mb-2">${rec.description}</p>
+
+                        <div class="mb-3">
+                            <strong>Detected IPs:</strong>
+                            <ul class="mt-2 mb-2">
+                                ${dup.devices.map(d => `
+                                    <li>
+                                        <code>${d.ip_address}</code> - ${d.hostname || '-'}
+                                        ${d.is_most_recent ? '<span class="badge bg-success ms-2">Most Recent</span>' : '<span class="badge bg-secondary ms-2">Older</span>'}
+                                        <small class="text-muted ms-2">${formatRelativeTime(new Date(d.last_seen))}</small>
+                                        ${!d.is_most_recent ? `<button class="btn btn-xs btn-outline-danger ms-2" onclick="deleteSpecificDevice('${d.ip_address}')"><i class="bi bi-x"></i></button>` : ''}
+                                    </li>
+                                `).join('')}
+                            </ul>
+                        </div>
+
+                        <div class="alert alert-info mb-0">
+                            <strong>Recommended Actions:</strong>
+                            <ol class="mb-0 mt-2">
+                                ${rec.actions.map(action => `<li>${action}</li>`).join('')}
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } else {
+        detailsDiv.style.display = 'none';
+    }
+}
+
+async function cleanupSpecificMAC(macAddress) {
+    if (!confirm(`Clean up all duplicate entries for MAC ${macAddress}?\n\nOnly the most recently seen IP will remain active.`)) {
+        return;
+    }
+
+    // For now, use the global cleanup (TODO: add MAC-specific cleanup endpoint if needed)
+    await cleanupDuplicateDevices();
+}
+
+async function deleteSpecificDevice(ipAddress) {
+    if (!confirm(`Delete device ${ipAddress}?\n\nThis will mark it as inactive.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/devices/${ipAddress}`, {
+            method: 'DELETE'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showSuccess(`Device ${ipAddress} deleted`);
+            loadDevices(); // Refresh
+        } else {
+            showError('Failed to delete: ' + (result.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error deleting device:', error);
+        showError('Network error while deleting device');
     }
 }

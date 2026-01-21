@@ -2954,7 +2954,13 @@ class DatabaseManager:
                     hostname = COALESCE(EXCLUDED.hostname, devices.hostname),
                     vendor = COALESCE(EXCLUDED.vendor, devices.vendor),
                     last_seen = NOW(),
-                    is_active = TRUE
+                    -- Keep inactive if recently deactivated (within 24h), otherwise reactivate
+                    -- This prevents duplicate MAC cleanup from being undone by late packets
+                    is_active = CASE
+                        WHEN devices.is_active = FALSE AND devices.last_seen > NOW() - INTERVAL '24 hours'
+                        THEN FALSE
+                        ELSE TRUE
+                    END
                 RETURNING id
             ''', (ip_address, sensor_id, mac_address, hostname, vendor, template_id, created_by))
             device_id = cursor.fetchone()[0]
@@ -3291,6 +3297,77 @@ class DatabaseManager:
             conn.rollback()
             self.logger.error(f"Error deleting device by IP {ip_address}: {e}")
             return False
+        finally:
+            self._return_connection(conn)
+
+    def cleanup_duplicate_mac_devices(self, sensor_id: str = None) -> int:
+        """
+        Clean up duplicate device entries with the same MAC address.
+        Keeps the most recently seen device active, marks older duplicates as inactive.
+
+        Returns:
+            Number of duplicate devices marked as inactive
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            # Find duplicate MAC addresses (same MAC, different IPs, all active)
+            query = '''
+                WITH duplicate_macs AS (
+                    SELECT mac_address, sensor_id
+                    FROM devices
+                    WHERE mac_address IS NOT NULL
+                      AND is_active = TRUE
+            '''
+            params = []
+
+            if sensor_id:
+                query += ' AND sensor_id = %s'
+                params.append(sensor_id)
+
+            query += '''
+                    GROUP BY mac_address, sensor_id
+                    HAVING COUNT(*) > 1
+                ),
+                ranked_devices AS (
+                    SELECT d.id,
+                           d.mac_address,
+                           d.ip_address,
+                           d.last_seen,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY d.mac_address, d.sensor_id
+                               ORDER BY d.last_seen DESC, d.id DESC
+                           ) as rank
+                    FROM devices d
+                    INNER JOIN duplicate_macs dm
+                        ON d.mac_address = dm.mac_address
+                        AND d.sensor_id = dm.sensor_id
+                    WHERE d.is_active = TRUE
+                )
+                UPDATE devices
+                SET is_active = FALSE
+                WHERE id IN (
+                    SELECT id FROM ranked_devices WHERE rank > 1
+                )
+                RETURNING id, mac_address, ip_address
+            '''
+
+            cursor.execute(query, params)
+            deactivated = cursor.fetchall()
+            conn.commit()
+
+            if deactivated:
+                self.logger.info(f"Deactivated {len(deactivated)} duplicate device entries:")
+                for dev_id, mac, ip in deactivated:
+                    self.logger.info(f"  - Device ID {dev_id}: {ip} (MAC: {mac})")
+
+            return len(deactivated)
+
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error cleaning up duplicate MAC devices: {e}")
+            return 0
         finally:
             self._return_connection(conn)
 
