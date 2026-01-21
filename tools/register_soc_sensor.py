@@ -118,7 +118,7 @@ def register_soc_sensor(config_file='config.yaml'):
         print(f"  {status_icon} {iface['name']}{promisc_icon}")
 
     # Connect to database
-    db_config = config.get('database', {})
+    db_config = config.get('database', {}).get('postgresql', {})
     db = DatabaseManager(
         host=db_config.get('host', 'localhost'),
         port=db_config.get('port', 5432),
@@ -133,7 +133,7 @@ def register_soc_sensor(config_file='config.yaml'):
         # Get sensor's IP address
         ip_address = None
         try:
-            import socket
+            # socket is already imported at top of file
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(("8.8.8.8", 80))
             ip_address = s.getsockname()[0]
