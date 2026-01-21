@@ -54,7 +54,14 @@ echo ""
 
 echo -e "${YELLOW}Step 4: Verifying database schema...${NC}"
 echo "  Checking if all tables exist..."
-psql -U netmonitor -d netmonitor -c "\dt" > /dev/null 2>&1 && echo -e "${GREEN}  ✅ Database schema OK${NC}" || echo -e "${RED}  ❌ Database schema issues${NC}"
+# Extract database password from config.yaml
+DB_PASS=$(grep -A 10 "postgresql:" config.yaml | grep "password:" | head -1 | sed 's/.*password: *//; s/ *#.*//')
+if [ -z "$DB_PASS" ]; then
+    echo -e "${YELLOW}  ⚠️  Could not extract database password from config.yaml${NC}"
+    echo "  Skipping database schema check"
+else
+    PGPASSWORD="$DB_PASS" psql -h localhost -U netmonitor -d netmonitor -c "\dt" > /dev/null 2>&1 && echo -e "${GREEN}  ✅ Database schema OK${NC}" || echo -e "${RED}  ❌ Database schema issues (check password in config.yaml)${NC}"
+fi
 echo ""
 
 echo -e "${YELLOW}Step 5: Checking sensor configurations...${NC}"
