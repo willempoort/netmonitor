@@ -6,21 +6,40 @@
 
 ## 🚨 Het Probleem: Security Teams Verdrinken in Logs
 
-Uw security tools werken perfect. Ze genereren data:
-- Wazuh: 5.000 endpoint events/dag
-- Suricata: 2.000 network alerts/dag
-- Zeek: 200 MB protocol logs/dag
+**Een typische dag voor een SOC analyst:**
 
-**Maar wie leest dit allemaal?**
+```
+08:00 - Login Wazuh dashboard
+        → 8.472 nieuwe events sinds gisteren
+        → Waar te beginnen?
 
-Een menselijke analyst kan ~800 events/dag verwerken (8 uur × 100/uur).
-Dat is **11% coverage** - 89% wordt nooit bekeken.
+09:00 - Suricata alerts checken
+        → 1.203 alerts
+        → 90% false positives?
+        → Welke zijn echt gevaarlijk?
 
-### De Gevolgen
+10:30 - Zeek logs doorzoeken
+        → 450 MB aan conn.log, dns.log, http.log
+        → Zoeken naar patronen met grep/scripts
+        → Duurt uren
 
-- ❌ **Kritieke threats gemist** - Lateral movement begraven in 6.812 normale events
-- ❌ **Trage detectie** - APT aanvallen ontdekt na 6 maanden in plaats van 6 uur
-- ❌ **Analyst burn-out** - 80% tijd aan log triage, 20% aan écht onderzoek
+12:00 - Lunch (vermoeid van log analyse)
+
+13:00 - Terug naar logs
+        → Aandacht daalt na 100e log entry
+        → Kritieke lateral movement gemist (begraven in ruis)
+
+17:00 - Dag voorbij
+        → 80% tijd besteed aan log triage
+        → 20% aan daadwerkelijk onderzoek
+        → Belangrijke attack chain pas volgende week ontdekt
+```
+
+**Het echte probleem:**
+- ❌ **Mensen kunnen niet 10.000 events/dag lezen** zonder vermoeidheid
+- ❌ **Patronen over tools heen worden gemist** (Wazuh + Suricata + Zeek correlatie)
+- ❌ **Reactief werk** - Alleen kijken als alarm afgaat
+- ❌ **11% coverage** - Een menselijke analyst verwerkt ~800 events/dag, dat is 11% van 7.200 events
 - ❌ **Geen bewijs** - Traffic al weg wanneer incident ontdekt wordt
 
 ### Maar Het Wordt Erger: De Blinde Vlek
@@ -98,37 +117,122 @@ Tools genereren data → AI analyseert (24/7) → Mens onderzoekt (efficiënt)
 | **Patroonherkenning** | Dagelijkse patterns | Weken/maanden |
 | **Beschikbaarheid** | 8 uur/dag | 24/7/365 |
 
-**Concreet voorbeeld:**
+**Concreet voorbeeld - APT Kill Chain Detectie:**
 
 ```
-Traditioneel (zonder NetMonitor):
-Day 1-7: Attacker spreidt door netwerk
-→ 50.000+ events (normaal + aanval gemixed)
-→ Analyst: Geen tijd om alles te reviewen (11% coverage)
-→ Detection: Week 3 (TE LAAT)
-→ Evidence: Niet verzameld
-→ Damage: Ransomware deployed (€millions)
+ZONDER NetMonitor (Traditionele Aanpak):
+Week 1, Maandag 03:00: DNS query naar ongebruikelijk domain
+→ Analyst: niet gezien (buiten werktijd, begraven in 8.000+ logs)
 
-Met NetMonitor AI:
-Day 1, 03:24: Suspicious DNS query
-→ AI: Threat score 40 (MEDIUM), start PCAP recording
+Week 1, Woensdag 14:00: TLS handshake naar zelfde domain
+→ Analyst: lijkt normaal HTTPS traffic
 
-Day 3, 14:15: TLS fingerprint = Cobalt Strike
-→ AI: Correleert met Day 1, escalates HIGH
+Week 2, Vrijdag 02:00: Lateral movement via SMB naar 3 hosts
+→ Analyst: niet gezien (nacht, veel SMB traffic normaal)
 
-Day 7, 02:30: SMB lateral movement (5 hosts)
-→ AI: Kill chain detected, escalates CRITICAL
-→ Alert: "🚨 APT kill chain: Initial access → C2 → Lateral movement
-          Advies: Isoleer 10.0.1.50
-          Evidence: 7 dagen PCAP ready at /forensics/apt-001/"
+Week 4: Ransomware deployed, netwerk down
+→ Detection: TE LAAT
+→ Damage: €millions
+```
 
-Day 7, 08:00: Analyst arrives
-→ Dashboard: 1 CRITICAL met complete timeline
-→ Action: Isolated binnen 30 min
-→ Result: Stopped BEFORE ransomware
+```
+MET NetMonitor AI:
+Week 1, Maandag 03:00:
+→ DNS query gedetecteerd
+→ AI: gecorreleerd met threat intel, PCAP opgeslagen
 
-Time to detection: 5.5 uur vs 21 dagen
+Week 1, Woensdag 14:00:
+→ TLS handshake gedetecteerd (encrypted)
+→ AI: JA3 fingerprint match met Cobalt Strike → alert severity HIGH
+
+Week 2, Vrijdag 02:00:
+→ Lateral movement via SMB gedetecteerd
+→ AI: correleert met eerdere events, CRITICAL alert:
+
+🚨 CRITICAL: APT Kill Chain Gedetecteerd
+
+Timeline:
+├─ Week 1 Maandag 03:00 - Initial access (suspicious DNS)
+├─ Week 1 Woensdag 14:00 - C2 established (Cobalt Strike JA3)
+└─ Week 2 Vrijdag 02:00 - Lateral movement (5 hosts)
+
+🎯 AI ADVIES:
+1. IMMEDIATE: Isoleer 10.0.1.50 van netwerk
+2. INVESTIGATION: Onderzoek met Zeek SMB logs
+3. EVIDENCE: PCAP beschikbaar /forensics/apt-campaign-001/*.pcap
+
+Week 2, Vrijdag 08:30:
+→ Analyst ziet 1 CRITICAL alert met complete tijdlijn
+→ Alle bewijs al verzameld, ready voor forensics
+→ Incident response binnen 1 uur
+→ Ransomware STOPPED voordat deployed
+
+Time to detection: 5.5 uur vs 4 weken
 Damage: €0 vs €millions
+```
+
+**NetMonitor AI Analysis - Volledig Voorbeeld:**
+
+Traditionele tools geven alleen data:
+```
+Wazuh:    "Alert: Multiple failed login attempts"
+Suricata: "ET SCAN Potential SSH Scan"
+Zeek:     "Notice: SSH::Password_Guessing 10.0.1.50"
+```
+
+NetMonitor AI geeft complete context + advies:
+```
+🚨 CRITICAL: Active Brute Force Attack + Lateral Movement
+
+Timeline:
+├─ 14:23 - SSH brute force detected (source: 185.220.101.50)
+│         200+ login attempts in 5 minutes
+│         Target: 10.0.1.15 (production server)
+│
+├─ 14:27 - SUCCESSFUL login (username: admin)
+│         ⚠️ Alert escalation: MEDIUM → CRITICAL
+│
+├─ 14:30 - Lateral movement initiated
+│         10.0.1.15 → SMB connections to 5 internal hosts
+│         Pass-the-Hash suspected (Kerberos RC4)
+│
+└─ 14:35 - Data exfiltration detected
+          Large outbound transfer: 450 MB to 185.220.101.50:443
+          TLS fingerprint: Unknown (possible custom malware)
+
+🎯 AI ADVIES:
+
+1. IMMEDIATE ACTIONS:
+   ✓ Block 185.220.101.50 (already added to firewall - SOAR executed)
+   ✓ Isolate 10.0.1.15 from network (approval pending)
+   ✓ Disable user 'admin' in Active Directory (approval pending)
+
+2. INVESTIGATION:
+   → Use Zeek for deep SMB analysis:
+     zeek-cut -d < /opt/zeek/logs/current/smb_mapping.log | grep 10.0.1.15
+
+   → Analyze TLS with Wireshark:
+     wireshark /forensics/case-2025-01-20-001.pcap -Y "ip.addr==185.220.101.50"
+
+3. EVIDENCE COLLECTED:
+   ✓ Full PCAP: /forensics/case-2025-01-20-001.pcap (1.2 GB)
+   ✓ Extracted files: 3 executables, 12 documents
+   ✓ Kerberos tickets: saved for offline analysis
+   ✓ Timeline export: CSV ready for incident report
+
+4. THREAT INTEL:
+   → IP 185.220.101.50:
+     - AbuseIPDB: 94% confidence malicious
+     - MISP: Tagged as APT28 infrastructure
+     - OTX: Seen in ransomware campaign (Ryuk) last week
+
+   → MITRE ATT&CK Mapping:
+     - T1110: Brute Force (Credential Access)
+     - T1021.002: SMB/Windows Admin Shares (Lateral Movement)
+     - T1041: Exfiltration Over C2 Channel
+
+⏱️ Total response time: 12 minutes (from detection to containment)
+📊 Manual analysis time saved: ~4-6 hours
 ```
 
 **52 MCP Tools voor AI Assistants:**
