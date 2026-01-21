@@ -158,7 +158,13 @@ function renderDevicesTable(devices) {
             const confidenceText = device.classification_confidence && isAutoAssigned
                 ? ` (${Math.round(device.classification_confidence * 100)}%)`
                 : '';
-            templateBadge = `<span class="badge bg-${badgeColor}" title="${isAutoAssigned ? 'Auto-assigned by ML' : 'Manually assigned'}">${device.template_name}${confidenceText}</span>`;
+
+            // Add confirm button for auto-assigned templates
+            const confirmBtn = isAutoAssigned
+                ? `<button class="btn btn-sm btn-outline-success ms-1" onclick="event.stopPropagation(); confirmDeviceTemplate('${device.ip_address}', ${device.template_id}, '${device.template_name}')" title="Confirm this template (make it permanent)"><i class="bi bi-check-circle"></i></button>`
+                : '';
+
+            templateBadge = `<span class="badge bg-${badgeColor}" title="${isAutoAssigned ? 'Auto-assigned by ML - click ✓ to confirm' : 'Manually assigned'}">${device.template_name}${confidenceText}</span>${confirmBtn}`;
         } else {
             templateBadge = `<span class="badge bg-secondary">Unclassified</span>`;
         }
@@ -481,6 +487,36 @@ async function assignDeviceTemplate() {
     } catch (error) {
         console.error('Error assigning template:', error);
         showError('Network error while assigning template');
+    }
+}
+
+async function confirmDeviceTemplate(ipAddress, templateId, templateName) {
+    if (!confirm(`Confirm "${templateName}" as the permanent template for ${ipAddress}?\n\nThis will mark the template as manually verified and prevent automatic changes.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/devices/${ipAddress}/template`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                template_id: templateId,
+                method: 'manual',
+                confidence: 1.0
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showSuccess(`Template "${templateName}" confirmed and marked as permanent`);
+            loadDevices();
+        } else {
+            showError('Failed to confirm template: ' + (result.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error confirming template:', error);
+        showError('Network error while confirming template');
     }
 }
 

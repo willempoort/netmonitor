@@ -670,16 +670,21 @@ class DeviceClassifier:
                 results['by_type'][classification['device_type']] += 1
 
                 # Update database if requested and confidence is high enough
+                # SKIP devices with manual classification to preserve user choices
                 if update_db and classification['confidence'] >= 0.7:
-                    try:
-                        self.db.update_device_classification(
-                            device_id=device['id'],
-                            classification_method='ml_classifier',
-                            classification_confidence=classification['confidence']
-                        )
-                        results['updated'] += 1
-                    except Exception as e:
-                        self.logger.debug(f"Failed to update device classification: {e}")
+                    existing_method = device.get('classification_method')
+                    if existing_method != 'manual':
+                        try:
+                            self.db.update_device_classification(
+                                device_id=device['id'],
+                                classification_method='ml_classifier',
+                                classification_confidence=classification['confidence']
+                            )
+                            results['updated'] += 1
+                        except Exception as e:
+                            self.logger.debug(f"Failed to update device classification: {e}")
+                    else:
+                        self.logger.debug(f"Skipping device {device.get('ip_address')} - manual classification preserved")
             else:
                 results['unknown'] += 1
 
