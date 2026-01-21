@@ -546,6 +546,31 @@ async function deleteDevice() {
     }
 }
 
+async function cleanupDuplicateDevices() {
+    if (!confirm('Clean up duplicate device entries?\n\nThis will deactivate older entries for devices with the same MAC address but different IPs. Only the most recently seen device will remain active.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/devices/cleanup-duplicates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showSuccess(result.message);
+            loadDevices(); // Refresh the device list
+        } else {
+            showError('Cleanup failed: ' + (result.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error cleaning up duplicates:', error);
+        showError('Network error while cleaning up duplicates');
+    }
+}
+
 async function populateMergeTemplateSelect() {
     const select = document.getElementById('new-template-merge-with');
     if (!select) return;

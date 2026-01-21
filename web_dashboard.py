@@ -2286,6 +2286,28 @@ def api_touch_devices_bulk():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/devices/cleanup-duplicates', methods=['POST'])
+@login_required
+def api_cleanup_duplicate_devices():
+    """
+    Manually trigger cleanup of duplicate device entries with same MAC address.
+    Keeps most recently seen device active, marks older duplicates as inactive.
+
+    This runs automatically every 30 minutes, but can be triggered manually here.
+    """
+    try:
+        deactivated = db.cleanup_duplicate_mac_devices()
+
+        return jsonify({
+            'success': True,
+            'message': f'Cleanup complete: {deactivated} duplicate device(s) deactivated',
+            'deactivated_count': deactivated
+        })
+    except Exception as e:
+        logger.error(f"Error cleaning up duplicate devices: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/devices/<path:ip_address>/traffic-stats')
 @login_required
 def api_get_device_traffic_stats(ip_address):
