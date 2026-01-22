@@ -68,7 +68,12 @@ echo -e "${YELLOW}Step 5: Checking sensor configurations...${NC}"
 python3 tools/diagnose_sensor_db.py
 echo ""
 
-echo -e "${YELLOW}Step 6: Checking GeoIP database...${NC}"
+echo -e "${YELLOW}Step 6: Loading builtin templates and service providers...${NC}"
+echo "  This ensures default data is available in the Web UI"
+python3 tools/load_builtin_data.py
+echo ""
+
+echo -e "${YELLOW}Step 7: Checking GeoIP database...${NC}"
 GEOIP_PATHS=(
     "/var/lib/GeoIP/GeoLite2-Country.mmdb"
     "/usr/share/GeoIP/GeoLite2-Country.mmdb"

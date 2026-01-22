@@ -565,8 +565,11 @@ configure_netmonitor() {
 
     # Update config.yaml with basic settings
     if [ -f config.yaml ]; then
-        # Update monitor interface
+        # Update monitor interface (main setting)
         sed -i "s/^interface:.*/interface: $INTERFACE/" config.yaml
+
+        # Update self_monitor.interface as well
+        sed -i "/^self_monitor:/,/^[a-z]/ s/interface: .*/interface: $INTERFACE/" config.yaml
 
         # Update database password in config.yaml
         sed -i "s|password: netmonitor|password: $DB_PASS|" config.yaml
