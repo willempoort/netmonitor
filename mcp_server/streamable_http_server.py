@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (c) 2025 Willem M. Poort
 """
-NetMonitor MCP Streamable HTTP Server
+NetMonitor MCP Streamable HTTP Server (FastAPI Edition)
 
-Modern MCP server implementing the Streamable HTTP protocol (spec 2025-03-26).
+Modern MCP server implementing the Streamable HTTP protocol with FastAPI.
 Supports both Claude Desktop and Open-WebUI with token authentication.
 
 Features:
@@ -14,6 +14,7 @@ Features:
 - All 60 NetMonitor tools available
 - SSE streaming support (GET /mcp)
 - JSON-RPC over HTTP (POST /mcp)
+- OpenAPI/Swagger docs (/docs and /redoc) - PUBLIC ACCESS
 """
 
 import os
@@ -29,11 +30,11 @@ from typing import Any, Sequence, Dict
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from starlette.applications import Starlette
-from starlette.routing import Route
-from starlette.responses import JSONResponse
-from starlette.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Request, Depends
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.types import Receive, Scope, Send
+from starlette.routing import Mount
 import uvicorn
 
 # MCP SDK imports
@@ -63,18 +64,19 @@ logger = logging.getLogger('NetMonitor.MCP.StreamableHTTP')
 
 class NetMonitorStreamableHTTPServer:
     """
-    Production-ready MCP Streamable HTTP server for NetMonitor
+    Production-ready MCP Streamable HTTP server for NetMonitor (FastAPI Edition)
 
     Implements the MCP Streamable HTTP protocol with:
     - Token authentication and rate limiting
     - All 60 NetMonitor security tools
     - Support for Claude Desktop and Open-WebUI
     - Stateless operation (no session persistence)
+    - OpenAPI/Swagger documentation (public access)
     """
 
     def __init__(self):
         """Initialize MCP Streamable HTTP server"""
-        logger.info("Initializing NetMonitor MCP Streamable HTTP Server...")
+        logger.info("Initializing NetMonitor MCP Streamable HTTP Server (FastAPI)...")
 
         # Load configuration
         self.config = load_config()
@@ -112,7 +114,6 @@ class NetMonitorStreamableHTTPServer:
             raise
 
         # Initialize shared tools
-        # Dashboard URL for memory management tools
         dashboard_host = os.getenv('DASHBOARD_HOST', '127.0.0.1')
         dashboard_port = os.getenv('DASHBOARD_PORT', '8080')
         dashboard_url = f"http://{dashboard_host}:{dashboard_port}"
@@ -189,11 +190,11 @@ class NetMonitorStreamableHTTPServer:
 
         logger.info(f"Registered {len(TOOL_DEFINITIONS)} tools with MCP server")
 
-    def create_app(self) -> Starlette:
-        """Create Starlette ASGI application with MCP Streamable HTTP support"""
+    def create_app(self) -> FastAPI:
+        """Create FastAPI application with MCP Streamable HTTP support + OpenAPI docs"""
 
         @asynccontextmanager
-        async def lifespan(app: Starlette):
+        async def lifespan(app: FastAPI):
             """Manage StreamableHTTP session manager lifecycle"""
             logger.info("Starting StreamableHTTP session manager...")
             async with self.session_manager.run():
@@ -201,58 +202,95 @@ class NetMonitorStreamableHTTPServer:
                 yield
             logger.info("StreamableHTTP session manager stopped")
 
+        # Get root_path from environment for reverse proxy support
+        root_path = os.environ.get('MCP_ROOT_PATH', '')
+
+        # Create FastAPI app
+        app = FastAPI(
+            title="NetMonitor MCP API",
+            description="MCP Streamable HTTP API for NetMonitor Security Operations Center\n\n"
+                       "Provides 60+ AI tools for security monitoring, threat detection, and SOC management.\n\n"
+                       "**Authentication:** Bearer token required for all endpoints except /health and docs.\n\n"
+                       "**MCP Protocol:** GET /mcp (SSE streaming) or POST /mcp (JSON-RPC).",
+            version="2.0.0",
+            docs_url="/docs",
+            redoc_url="/redoc",
+            root_path=root_path,
+            lifespan=lifespan,
+            debug=self.config['debug']
+        )
+
         # Create ASGI app for MCP endpoint
         async def mcp_asgi_app(scope: Scope, receive: Receive, send: Send):
             """Raw ASGI app for MCP Streamable HTTP requests"""
             await self.session_manager.handle_request(scope, receive, send)
 
-        async def health_check(request):
-            """Health check endpoint"""
-            return JSONResponse({
+        # Mount MCP endpoint as raw ASGI app
+        # This MUST be done before adding middleware (FastAPI requirement)
+        app.mount("/mcp", app=mcp_asgi_app)
+
+        # ==================== FastAPI Routes (for docs) ====================
+
+        @app.get("/", tags=["Info"])
+        async def root():
+            """
+            API root endpoint - Get API information
+
+            Returns server info, authentication requirements, and available endpoints.
+            """
+            return {
+                "name": "NetMonitor MCP API",
+                "version": "2.0.0",
+                "description": "MCP Streamable HTTP API for NetMonitor SOC",
+                "protocol": "MCP Streamable HTTP (spec 2025-03-26)",
+                "mcp_endpoint": "/mcp",
+                "docs": "/docs",
+                "redoc": "/redoc",
+                "health": "/health",
+                "authentication": "Bearer token required (except /health, /docs, /redoc)",
+                "tools_available": len(TOOL_DEFINITIONS)
+            }
+
+        @app.get("/health", tags=["Health"])
+        async def health_check():
+            """
+            Health check endpoint - No authentication required
+
+            Returns server health status, database connectivity, and component availability.
+            """
+            return {
                 "status": "healthy",
-                "server": "NetMonitor MCP Streamable HTTP",
-                "version": "1.0.0",
+                "server": "NetMonitor MCP Streamable HTTP (FastAPI)",
+                "version": "2.0.0",
                 "database": "connected" if self.db else "disconnected",
                 "ollama": "available" if self.ollama and self.ollama.available else "unavailable",
                 "tools": len(TOOL_DEFINITIONS),
                 "timestamp": datetime.now().isoformat()
-            })
+            }
 
-        async def metrics(request):
-            """Metrics endpoint (requires auth)"""
+        @app.get("/metrics", tags=["Monitoring"])
+        async def metrics(request: Request):
+            """
+            Metrics endpoint - Requires authentication
+
+            Returns metrics and statistics about the MCP server.
+            Requires valid Bearer token.
+            """
             # Get token details from middleware
             if not hasattr(request.state, 'token_details'):
                 return JSONResponse({"error": "Not authenticated"}, status_code=401)
 
             token_details = request.state.token_details
 
-            return JSONResponse({
+            return {
                 "token_name": token_details['name'],
                 "token_scope": token_details['scope'],
                 "server_uptime": "N/A",  # TODO: track server start time
                 "total_tools": len(TOOL_DEFINITIONS),
                 "timestamp": datetime.now().isoformat()
-            })
+            }
 
-        # Routes
-        # Order matters: specific routes first, then mount points
-        from starlette.routing import Mount
-        routes = [
-            # Specific routes (must come before Mount points)
-            Route("/health", endpoint=health_check, methods=["GET"]),
-            Route("/metrics", endpoint=metrics, methods=["GET"]),
-            # MCP endpoint
-            Mount("/mcp", app=mcp_asgi_app),
-            # Also mount on root for Open-WebUI compatibility
-            Mount("/", app=mcp_asgi_app),
-        ]
-
-        # Create app with middleware
-        app = Starlette(
-            debug=self.config['debug'],
-            routes=routes,
-            lifespan=lifespan
-        )
+        # ==================== Middleware Configuration ====================
 
         # Add CORS middleware (must be added BEFORE TokenAuthMiddleware)
         if self.config['cors']['enabled']:
@@ -274,7 +312,7 @@ class NetMonitorStreamableHTTPServer:
             )
             logger.info("Token authentication enabled (docs accessible without auth)")
 
-        logger.info("Starlette ASGI application created")
+        logger.info("FastAPI application created with OpenAPI docs")
         return app
 
     def run(self):
@@ -282,10 +320,12 @@ class NetMonitorStreamableHTTPServer:
         app = self.create_app()
 
         logger.info("=" * 70)
-        logger.info("NetMonitor MCP Streamable HTTP Server")
+        logger.info("NetMonitor MCP Streamable HTTP Server (FastAPI Edition)")
         logger.info("=" * 70)
         logger.info(f"Server: http://{self.config['host']}:{self.config['port']}")
         logger.info(f"MCP Endpoint: http://{self.config['host']}:{self.config['port']}/mcp")
+        logger.info(f"OpenAPI Docs: http://{self.config['host']}:{self.config['port']}/docs")
+        logger.info(f"ReDoc: http://{self.config['host']}:{self.config['port']}/redoc")
         logger.info(f"Health Check: http://{self.config['host']}:{self.config['port']}/health")
         logger.info(f"Tools Available: {len(TOOL_DEFINITIONS)}")
         logger.info(f"Authentication: {'Enabled' if self.config['auth']['required'] else 'Disabled'}")
@@ -312,9 +352,9 @@ def main():
         server = NetMonitorStreamableHTTPServer()
         server.run()
     except KeyboardInterrupt:
-        logger.info("Server interrupted by user")
+        logger.info("Server stopped by user")
     except Exception as e:
-        logger.error(f"Server error: {e}", exc_info=True)
+        logger.error(f"Fatal error: {e}", exc_info=True)
         sys.exit(1)
 
 
