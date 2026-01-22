@@ -32,22 +32,51 @@ def load_builtin_data(config_file='config.yaml'):
         password=db_config.get('password', 'netmonitor')
     )
 
-    print("Loading builtin data...")
+    print("Checking builtin data...")
     print()
 
     try:
-        # Load templates
-        print("Loading device templates...")
-        templates_count = db.init_builtin_templates()
-        print(f"  ✓ Loaded {templates_count} device templates")
+        # Check existing templates
+        print("Checking device templates...")
+        existing_templates = db.get_device_templates()
+        print(f"  Found {len(existing_templates)} existing templates")
 
-        # Load service providers
-        print("Loading service providers...")
+        # Load templates (will skip if they exist)
+        templates_count = db.init_builtin_templates()
+        if templates_count > 0:
+            print(f"  ✓ Loaded {templates_count} new device templates")
+        else:
+            print(f"  ✓ All builtin templates already exist (no new templates loaded)")
+
+        # Check existing providers
+        print()
+        print("Checking service providers...")
+        # Count existing providers
+        conn = db._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM service_providers")
+        existing_providers_count = cursor.fetchone()[0]
+        conn.commit()
+        db._return_connection(conn)
+        print(f"  Found {existing_providers_count} existing service providers")
+
+        # Load service providers (will skip if they exist)
         providers_count = db.init_builtin_service_providers()
-        print(f"  ✓ Loaded {providers_count} service providers")
+        if providers_count > 0:
+            print(f"  ✓ Loaded {providers_count} new service providers")
+        else:
+            print(f"  ✓ All builtin service providers already exist (no new providers loaded)")
 
         print()
-        print(f"✓ Total builtin data loaded: {templates_count} templates, {providers_count} service providers")
+        total_existing = len(existing_templates) + existing_providers_count
+        total_new = templates_count + providers_count
+
+        if total_new > 0:
+            print(f"✓ Loaded {total_new} new builtin items ({templates_count} templates, {providers_count} providers)")
+        else:
+            print(f"✓ All builtin data already exists in database ({len(existing_templates)} templates, {existing_providers_count} providers)")
+            print("  No action needed - templates and providers are already available in Web UI")
+
         return True
 
     except Exception as e:
