@@ -366,117 +366,132 @@ class NetMonitorStreamableHTTPServer:
             if app.openapi_schema:
                 return app.openapi_schema
 
-            # Get default OpenAPI schema from FastAPI using get_openapi utility
-            openapi_schema = get_openapi(
-                title=app.title,
-                version=app.version,
-                description=app.description,
-                routes=app.routes,
-            )
+            try:
+                # Get default OpenAPI schema from FastAPI using get_openapi utility
+                openapi_schema = get_openapi(
+                    title=app.title,
+                    version=app.version,
+                    description=app.description,
+                    routes=app.routes,
+                )
 
-            # Add MCP tools documentation
-            openapi_schema["paths"]["/mcp"] = {
-                "post": {
-                    "tags": ["MCP Tools"],
-                    "summary": "MCP JSON-RPC Endpoint",
-                    "description": (
-                        f"Execute MCP tools via JSON-RPC protocol.\n\n"
-                        f"**Available Tools:** {len(TOOL_DEFINITIONS)} tools for security monitoring\n\n"
-                        f"**Authentication:** Bearer token required in Authorization header\n\n"
-                        f"**Protocol:** MCP Streamable HTTP (spec 2025-03-26)\n\n"
-                        f"**Request Format:**\n```json\n{{\n"
-                        f'  "jsonrpc": "2.0",\n'
-                        f'  "method": "tools/call",\n'
-                        f'  "params": {{\n'
-                        f'    "name": "tool_name",\n'
-                        f'    "arguments": {{}}\n'
-                        f'  }},\n'
-                        f'  "id": 1\n'
-                        f"}}\n```"
-                    ),
-                    "security": [{"bearerAuth": []}],
-                    "requestBody": {
-                        "required": True,
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "jsonrpc": {"type": "string", "example": "2.0"},
-                                        "method": {"type": "string", "example": "tools/call"},
-                                        "params": {"type": "object"},
-                                        "id": {"type": "integer"}
+                # Ensure components exists
+                if "components" not in openapi_schema:
+                    openapi_schema["components"] = {}
+                if "securitySchemes" not in openapi_schema["components"]:
+                    openapi_schema["components"]["securitySchemes"] = {}
+                if "schemas" not in openapi_schema["components"]:
+                    openapi_schema["components"]["schemas"] = {}
+
+                # Add security scheme for Bearer token
+                openapi_schema["components"]["securitySchemes"]["bearerAuth"] = {
+                    "type": "http",
+                    "scheme": "bearer",
+                    "bearerFormat": "Token",
+                    "description": "MCP API token from token management system"
+                }
+
+                # Add MCP tools documentation
+                openapi_schema["paths"]["/mcp"] = {
+                    "post": {
+                        "tags": ["MCP Tools"],
+                        "summary": "MCP JSON-RPC Endpoint",
+                        "description": (
+                            f"Execute MCP tools via JSON-RPC protocol.\n\n"
+                            f"**Available Tools:** {len(TOOL_DEFINITIONS)} tools for security monitoring\n\n"
+                            f"**Authentication:** Bearer token required in Authorization header\n\n"
+                            f"**Protocol:** MCP Streamable HTTP (spec 2025-03-26)\n\n"
+                            f"**Request Format:**\n```json\n{{\n"
+                            f'  "jsonrpc": "2.0",\n'
+                            f'  "method": "tools/call",\n'
+                            f'  "params": {{\n'
+                            f'    "name": "tool_name",\n'
+                            f'    "arguments": {{}}\n'
+                            f'  }},\n'
+                            f'  "id": 1\n'
+                            f"}}\n```"
+                        ),
+                        "security": [{"bearerAuth": []}],
+                        "requestBody": {
+                            "required": True,
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "jsonrpc": {"type": "string", "example": "2.0"},
+                                            "method": {"type": "string", "example": "tools/call"},
+                                            "params": {"type": "object"},
+                                            "id": {"type": "integer"}
+                                        }
                                     }
                                 }
                             }
+                        },
+                        "responses": {
+                            "200": {"description": "Tool execution result"},
+                            "401": {"description": "Missing or invalid Bearer token"},
+                            "429": {"description": "Rate limit exceeded"}
                         }
                     },
-                    "responses": {
-                        "200": {"description": "Tool execution result"},
-                        "401": {"description": "Missing or invalid Bearer token"},
-                        "429": {"description": "Rate limit exceeded"}
-                    }
-                },
-                "get": {
-                    "tags": ["MCP Tools"],
-                    "summary": "MCP SSE Streaming Endpoint",
-                    "description": (
-                        "Server-Sent Events (SSE) streaming for MCP protocol.\n\n"
-                        "Used by Claude Desktop and other SSE-compatible clients.\n\n"
-                        "**Authentication:** Bearer token required in Authorization header"
-                    ),
-                    "security": [{"bearerAuth": []}],
-                    "responses": {
-                        "200": {"description": "SSE stream established"},
-                        "401": {"description": "Missing or invalid Bearer token"}
+                    "get": {
+                        "tags": ["MCP Tools"],
+                        "summary": "MCP SSE Streaming Endpoint",
+                        "description": (
+                            "Server-Sent Events (SSE) streaming for MCP protocol.\n\n"
+                            "Used by Claude Desktop and other SSE-compatible clients.\n\n"
+                            "**Authentication:** Bearer token required in Authorization header"
+                        ),
+                        "security": [{"bearerAuth": []}],
+                        "responses": {
+                            "200": {"description": "SSE stream established"},
+                            "401": {"description": "Missing or invalid Bearer token"}
+                        }
                     }
                 }
-            }
 
-            # Add security scheme for Bearer token
-            if "components" not in openapi_schema:
-                openapi_schema["components"] = {}
-            if "securitySchemes" not in openapi_schema["components"]:
-                openapi_schema["components"]["securitySchemes"] = {}
+                # Add tools list as a separate schema component for reference
+                tools_list = []
+                for tool_name, tool_def in TOOL_DEFINITIONS.items():
+                    tools_list.append({
+                        "name": tool_name,
+                        "description": tool_def.get('description', 'No description'),
+                        "inputSchema": tool_def.get('inputSchema', {})
+                    })
 
-            openapi_schema["components"]["securitySchemes"]["bearerAuth"] = {
-                "type": "http",
-                "scheme": "bearer",
-                "bearerFormat": "Token",
-                "description": "MCP API token from token management system"
-            }
-
-            # Add tools list as a separate schema component for reference
-            tools_list = []
-            for tool_name, tool_def in TOOL_DEFINITIONS.items():
-                tools_list.append({
-                    "name": tool_name,
-                    "description": tool_def.get('description', 'No description'),
-                    "inputSchema": tool_def.get('inputSchema', {})
-                })
-
-            openapi_schema["components"]["schemas"] = openapi_schema.get("components", {}).get("schemas", {})
-            openapi_schema["components"]["schemas"]["MCPTools"] = {
-                "type": "object",
-                "description": f"Available MCP Tools ({len(TOOL_DEFINITIONS)} tools)",
-                "properties": {
-                    "tools": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "name": {"type": "string"},
-                                "description": {"type": "string"},
-                                "inputSchema": {"type": "object"}
-                            }
-                        },
-                        "example": tools_list[:5]  # Show first 5 tools as example
+                openapi_schema["components"]["schemas"]["MCPTools"] = {
+                    "type": "object",
+                    "description": f"Available MCP Tools ({len(TOOL_DEFINITIONS)} tools)",
+                    "properties": {
+                        "tools": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "description": {"type": "string"},
+                                    "inputSchema": {"type": "object"}
+                                }
+                            },
+                            "example": tools_list[:5]  # Show first 5 tools as example
+                        }
                     }
                 }
-            }
 
-            app.openapi_schema = openapi_schema
-            return app.openapi_schema
+                app.openapi_schema = openapi_schema
+                return app.openapi_schema
+
+            except Exception as e:
+                logger.error(f"Error generating OpenAPI schema: {e}", exc_info=True)
+                # Return minimal schema on error
+                return {
+                    "openapi": "3.1.0",
+                    "info": {
+                        "title": app.title,
+                        "version": app.version
+                    },
+                    "paths": {}
+                }
 
         app.openapi = custom_openapi
 
