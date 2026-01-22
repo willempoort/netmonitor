@@ -54,15 +54,35 @@ echo ""
 
 echo -e "${YELLOW}Step 4: Verifying database schema...${NC}"
 echo "  Checking if all tables exist..."
-# Extract database password from config.yaml
-DB_PASS=$(grep -A 10 "postgresql:" config.yaml | grep "password:" | head -1 | sed 's/.*password: *//; s/ *#.*//')
-if [ -z "$DB_PASS" ]; then
-    echo -e "${YELLOW}  ⚠️  Could not extract database password from config.yaml${NC}"
-    echo "  Skipping database schema check"
-else
-    PGPASSWORD="$DB_PASS" psql -h localhost -U netmonitor -d netmonitor -c "\dt" > /dev/null 2>&1 && echo -e "${GREEN}  ✅ Database schema OK${NC}" || echo -e "${RED}  ❌ Database schema issues (check password in config.yaml)${NC}"
-fi
-echo ""
+# Use Python to check database connectivity (more reliable than psql with password)
+python3 -c "
+from database import DatabaseManager
+from config_loader import load_config
+
+config = load_config('config.yaml')
+db_config = config['database']['postgresql']
+
+try:
+    db = DatabaseManager(
+        host=db_config['host'],
+        port=db_config['port'],
+        database=db_config['database'],
+        user=db_config['user'],
+        password=db_config['password']
+    )
+    # Try a simple query
+    conn = db._get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) FROM schema_version')
+    count = cursor.fetchone()[0]
+    conn.commit()
+    db._return_connection(conn)
+    db.close()
+    print(f'  ✅ Database schema OK (schema_version found)')
+except Exception as e:
+    print(f'  ❌ Database connectivity issues: {e}')
+    exit(1)
+" && echo "" || echo ""
 
 echo -e "${YELLOW}Step 5: Checking sensor configurations...${NC}"
 python3 tools/diagnose_sensor_db.py
