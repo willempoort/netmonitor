@@ -12,13 +12,14 @@ Een krachtig netwerk monitoring platform voor Linux met **real-time web dashboar
 ### 🎛️ Centralized SOC Management
 - **Remote sensor management** - Control alle sensors vanuit één dashboard
 - **Configuration as Code** - Alle settings via GUI beheerbaar
-- **AI Integration** - MCP server voor Claude Desktop integratie
+- **AI Integration** - MCP server voor desktop integratie
+- **Netmonitor Chat** - Client Based WebUI oplossing voor On Prem MCP koppeling met Ollama of LM Studio
 - **Real-time synchronization** - Wijzigingen direct doorgevoerd
 - **Device Classification** - ML-gebaseerde apparaatherkenning met behavior learning
 
 ### 🖥️ Real-Time Web Dashboard
 
-**Professional SOC Dashboard op http://localhost:8080**
+**Professional SOC Dashboard**
 
 - **Live Alert Feed**: Real-time security alerts met kleuren en geluid
 - **Traffic Visualisaties**: Grafieken en gauges voor verkeer monitoring
@@ -27,6 +28,11 @@ Een krachtig netwerk monitoring platform voor Linux met **real-time web dashboar
 - **WebSocket Updates**: Sub-seconde real-time updates
 - **Dark Theme**: Professional security monitoring interface
 - **Responsive Design**: Werkt op desktop, tablet en mobile
+- **Sensor control**: cConfiguratie en software updates vanuit dashboard
+- **Machine Learning**: Automatische device herkenning aan de hand van templates
+- **Expert Finetuning**: Meer dan 300 instel opties (voor de expert en of met behulp van AI
+- **Advanced Whitelisting** Whitelisting globaal of per sensor in te stellen.
+- **Third party integrations** Integratie mogelijkheden met AbuseIPDB, MISP, OTX en SIEM oplossingen Wazuh, Syslog .... 
 
 [Zie DASHBOARD.md voor complete dashboard documentatie →](docs/usage/DASHBOARD.md)
 
