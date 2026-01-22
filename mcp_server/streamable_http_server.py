@@ -270,9 +270,9 @@ class NetMonitorStreamableHTTPServer:
             app.add_middleware(
                 TokenAuthMiddleware,
                 token_manager=self.token_manager,
-                exempt_paths=['/health']
+                exempt_paths=['/health', '/docs', '/redoc', '/openapi.json']
             )
-            logger.info("Token authentication enabled")
+            logger.info("Token authentication enabled (docs accessible without auth)")
 
         logger.info("Starlette ASGI application created")
         return app
