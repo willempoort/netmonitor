@@ -336,13 +336,8 @@ if [ "$MCP_API_ENABLED" = "true" ]; then
     #     SERVICES_INSTALLED=$((SERVICES_INSTALLED + 1))
     # fi
 
-    # Legacy HTTP service (optional backwards compatibility)
-    if [ -f "$INSTALL_DIR/services/netmonitor-mcp-http.service.template" ]; then
-        echo_info "Also installing legacy MCP HTTP service for backwards compatibility"
-        generate_service \
-            "$INSTALL_DIR/services/netmonitor-mcp-http.service.template" \
-            "/etc/systemd/system/netmonitor-mcp-http.service" || true
-    fi
+    # Legacy HTTP service removed - streamable server now has FastAPI with OpenAPI docs
+    # No need for backwards compatibility - netmonitor-mcp-streamable.service provides everything
 else
     echo_info "MCP API disabled (set MCP_API_ENABLED=true in .env to enable)"
 fi
