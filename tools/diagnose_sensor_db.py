@@ -24,7 +24,7 @@ def diagnose_sensors(config_file='config.yaml'):
     config = load_config(config_file)
 
     # Connect to database
-    db_config = config.get('database', {})
+    db_config = config.get('database', {}).get('postgresql', {})
     db = DatabaseManager(
         host=db_config.get('host', 'localhost'),
         port=db_config.get('port', 5432),

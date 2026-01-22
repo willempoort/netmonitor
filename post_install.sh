@@ -19,6 +19,18 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Activate Python virtual environment
+if [ -f "venv/bin/activate" ]; then
+    echo -e "${YELLOW}Activating Python virtual environment...${NC}"
+    source venv/bin/activate
+    echo -e "${GREEN}  ✅ Virtual environment activated${NC}"
+    echo ""
+else
+    echo -e "${RED}  ❌ Virtual environment not found at $SCRIPT_DIR/venv${NC}"
+    echo "  Run install_complete.sh first to create the virtual environment"
+    exit 1
+fi
+
 echo -e "${YELLOW}Step 1: Checking if SOC server self-monitoring is enabled...${NC}"
 SELF_MONITOR_ENABLED=$(grep -A 5 "^self_monitor:" config.yaml | grep "enabled:" | awk '{print $2}')
 echo "  self_monitor.enabled: $SELF_MONITOR_ENABLED"
@@ -42,11 +54,73 @@ echo ""
 
 echo -e "${YELLOW}Step 4: Verifying database schema...${NC}"
 echo "  Checking if all tables exist..."
-psql -U netmonitor -d netmonitor -c "\dt" > /dev/null 2>&1 && echo -e "${GREEN}  ✅ Database schema OK${NC}" || echo -e "${RED}  ❌ Database schema issues${NC}"
-echo ""
+# Use Python to check database connectivity (more reliable than psql with password)
+python3 -c "
+from database import DatabaseManager
+from config_loader import load_config
+
+config = load_config('config.yaml')
+db_config = config['database']['postgresql']
+
+try:
+    db = DatabaseManager(
+        host=db_config['host'],
+        port=db_config['port'],
+        database=db_config['database'],
+        user=db_config['user'],
+        password=db_config['password']
+    )
+    # Try a simple query
+    conn = db._get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) FROM schema_version')
+    count = cursor.fetchone()[0]
+    conn.commit()
+    db._return_connection(conn)
+    db.close()
+    print(f'  ✅ Database schema OK (schema_version found)')
+except Exception as e:
+    print(f'  ❌ Database connectivity issues: {e}')
+    exit(1)
+" && echo "" || echo ""
 
 echo -e "${YELLOW}Step 5: Checking sensor configurations...${NC}"
 python3 tools/diagnose_sensor_db.py
+echo ""
+
+echo -e "${YELLOW}Step 6: Loading builtin templates and service providers...${NC}"
+echo "  This ensures default data is available in the Web UI"
+python3 tools/load_builtin_data.py
+echo ""
+
+echo -e "${YELLOW}Step 7: Checking GeoIP database...${NC}"
+GEOIP_PATHS=(
+    "/var/lib/GeoIP/GeoLite2-Country.mmdb"
+    "/usr/share/GeoIP/GeoLite2-Country.mmdb"
+    "$(pwd)/GeoLite2-Country.mmdb"
+)
+
+GEOIP_FOUND=false
+for path in "${GEOIP_PATHS[@]}"; do
+    if [ -f "$path" ]; then
+        echo -e "${GREEN}  ✅ GeoIP database found: $path${NC}"
+        GEOIP_FOUND=true
+        break
+    fi
+done
+
+if [ "$GEOIP_FOUND" = false ]; then
+    echo -e "${YELLOW}  ⚠️  GeoIP database not found${NC}"
+    echo "  IP geolocation features will not work without this database."
+    echo ""
+    read -p "  Download free GeoIP database now? (y/N) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        bash download_geoip_db.sh
+    else
+        echo "  Skip GeoIP download - you can run './download_geoip_db.sh' later"
+    fi
+fi
 echo ""
 
 echo "======================================================================"

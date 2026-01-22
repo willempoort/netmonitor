@@ -3,13 +3,28 @@
 # Copyright (c) 2025 Willem M. Poort
 #
 # NetMonitor SOC - Complete Installation Script
-# Version: 2.1.0
+# Version: 2.3.0
 # Installs: PostgreSQL, TimescaleDB, NetMonitor, Web Auth, MCP API, Nginx
+#
+# Features:
+# - Enforces root execution for automatic dependency installation
+# - Reads existing .env values and uses them as defaults
+# - Uses .env.example as template if .env doesn't exist
+# - Supports Ubuntu 24.04 & Debian 12 (other distros need manual adaptation)
+# - Checks for existing database and prompts to keep or overwrite
+# - Configures all variables from .env including paths, ports, security settings
 #
 # Usage: sudo ./install_complete.sh
 #
+# Supported OS:
+# - Ubuntu 24.04 LTS (fully tested)
+# - Debian 12 (fully tested)
+# - Other Ubuntu/Debian versions may work but are not tested
+# - Other distributions require manual adaptation
+#
 
-set -e  # Exit on error
+# Don't use set -e globally - we handle errors manually for better user feedback
+# set -e would exit immediately on any error, hiding the actual problem from users
 
 # Colors for output
 RED='\033[0;31m'
@@ -18,12 +33,20 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
-INSTALL_DIR="/opt/netmonitor"
+# Default Configuration (can be overridden from .env or user input)
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Default installation directory
+INSTALL_DIR="${SCRIPT_DIR}"
+
+# Logging
 LOG_FILE="/tmp/netmonitor-install.log"
+
+# Database defaults (will be loaded from .env or prompted)
 DB_NAME="netmonitor"
 DB_USER="netmonitor"
-DB_PASS="netmonitor"  # Will prompt to change
+DB_PASS="netmonitor"
 
 # Functions
 print_header() {
@@ -32,22 +55,30 @@ print_header() {
     echo "$1"
     echo "============================================================"
     echo -e "${NC}"
+    echo "" >> $LOG_FILE 2>&1
+    echo "============================================================" >> $LOG_FILE 2>&1
+    echo "$1" >> $LOG_FILE 2>&1
+    echo "============================================================" >> $LOG_FILE 2>&1
 }
 
 print_success() {
     echo -e "${GREEN}✓ $1${NC}"
+    echo "[SUCCESS] $1" >> $LOG_FILE 2>&1
 }
 
 print_error() {
     echo -e "${RED}✗ $1${NC}"
+    echo "[ERROR] $1" >> $LOG_FILE 2>&1
 }
 
 print_warning() {
     echo -e "${YELLOW}⚠ $1${NC}"
+    echo "[WARNING] $1" >> $LOG_FILE 2>&1
 }
 
 print_info() {
     echo -e "${BLUE}ℹ $1${NC}"
+    echo "[INFO] $1" >> $LOG_FILE 2>&1
 }
 
 check_root() {
@@ -65,108 +96,216 @@ check_os() {
     fi
 
     . /etc/os-release
-    print_info "Detected OS: $PRETTY_NAME"
+    print_info "Gedetecteerd OS: $PRETTY_NAME"
 
-    if [[ "$ID" != "ubuntu" && "$ID" != "debian" ]]; then
-        print_warning "Dit script is getest op Ubuntu/Debian"
-        print_warning "Andere OS kunnen aanpassingen vereisen"
-        read -p "Doorgaan? (y/N) " -n 1 -r
+    # Check for supported distros: Ubuntu 24.04 or Debian 12
+    SUPPORTED=false
+
+    if [[ "$ID" == "ubuntu" && "$VERSION_ID" == "24.04" ]]; then
+        SUPPORTED=true
+        print_success "Ubuntu 24.04 gedetecteerd - volledig ondersteund"
+    elif [[ "$ID" == "debian" && "$VERSION_ID" == "12" ]]; then
+        SUPPORTED=true
+        print_success "Debian 12 gedetecteerd - volledig ondersteund"
+    elif [[ "$ID" == "ubuntu" || "$ID" == "debian" ]]; then
+        print_warning "Dit script is getest op Ubuntu 24.04 en Debian 12"
+        print_warning "Je versie: $PRETTY_NAME"
+        print_warning "Het script zou moeten werken, maar is niet getest op deze versie"
+    else
+        print_warning "Dit script is alleen getest op Ubuntu 24.04 en Debian 12"
+        print_warning "Je OS: $PRETTY_NAME"
+        print_warning "Andere distributies vereisen mogelijk aanpassingen"
+        print_warning "Voeg zelf ondersteuning toe voor jouw distributie indien nodig"
+    fi
+
+    if [ "$SUPPORTED" = false ]; then
+        echo
+        read -p "Toch doorgaan? (y/N) " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            exit 1
+            print_info "Installatie geannuleerd"
+            exit 0
         fi
     fi
 }
 
-load_existing_env() {
-    # Load existing .env values if file exists
-    if [ -f "$INSTALL_DIR/.env" ]; then
-        print_info "Bestaande .env gevonden, waarden worden geladen..."
-        source "$INSTALL_DIR/.env" 2>/dev/null || true
+parse_env_file() {
+    local env_file="$1"
+
+    if [ ! -f "$env_file" ]; then
+        return 1
     fi
+
+    # Parse .env file and export variables
+    # This properly handles comments, empty lines, and quoted values
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Skip comments and empty lines
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "${line// }" ]] && continue
+
+        # Extract KEY=VALUE (handle quotes)
+        if [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+            local key="${BASH_REMATCH[1]}"
+            local value="${BASH_REMATCH[2]}"
+
+            # Remove surrounding quotes if present
+            value="${value%\"}"
+            value="${value#\"}"
+            value="${value%\'}"
+            value="${value#\'}"
+
+            # Export the variable
+            export "$key=$value"
+        fi
+    done < "$env_file"
+
+    return 0
+}
+
+load_existing_env() {
+    # Try to load existing .env first
+    if [ -f "$INSTALL_DIR/.env" ]; then
+        print_info "Bestaande .env gevonden, waarden worden geladen als defaults..."
+        parse_env_file "$INSTALL_DIR/.env"
+        return 0
+    fi
+
+    # If no .env exists, load defaults from .env.example
+    if [ -f "$INSTALL_DIR/.env.example" ]; then
+        print_info "Geen .env gevonden, gebruik .env.example als template..."
+        parse_env_file "$INSTALL_DIR/.env.example"
+        return 0
+    fi
+
+    print_warning "Geen .env of .env.example gevonden, gebruik hardcoded defaults"
+    return 1
 }
 
 prompt_config() {
     print_header "CONFIGURATIE"
 
-    # Load existing .env if present
+    # Load existing .env if present (or .env.example as fallback)
     load_existing_env
 
     # Database configuration
     echo
     print_info "PostgreSQL Database Configuratie:"
 
-    read -p "Database host (huidige: ${DB_HOST:-localhost}): " DB_HOST_INPUT
+    read -p "Database host [${DB_HOST:-localhost}]: " DB_HOST_INPUT
     DB_HOST=${DB_HOST_INPUT:-${DB_HOST:-localhost}}
 
-    read -p "Database port (huidige: ${DB_PORT:-5432}): " DB_PORT_INPUT
+    read -p "Database port [${DB_PORT:-5432}]: " DB_PORT_INPUT
     DB_PORT=${DB_PORT_INPUT:-${DB_PORT:-5432}}
 
-    read -p "Database naam (huidige: ${DB_NAME:-netmonitor}): " DB_NAME_INPUT
+    read -p "Database naam [${DB_NAME:-netmonitor}]: " DB_NAME_INPUT
     DB_NAME=${DB_NAME_INPUT:-${DB_NAME:-netmonitor}}
 
-    read -p "Database user (huidige: ${DB_USER:-netmonitor}): " DB_USER_INPUT
+    read -p "Database user [${DB_USER:-netmonitor}]: " DB_USER_INPUT
     DB_USER=${DB_USER_INPUT:-${DB_USER:-netmonitor}}
 
-    read -sp "Database password (leeg = behoud huidige): " DB_PASS_INPUT
+    read -sp "Database password [${DB_PASSWORD:-netmonitor}]: " DB_PASS_INPUT
     echo
-    if [ ! -z "$DB_PASS_INPUT" ]; then
-        DB_PASS="$DB_PASS_INPUT"
-    elif [ -z "$DB_PASSWORD" ]; then
-        DB_PASS="netmonitor"
-    else
-        DB_PASS="$DB_PASSWORD"
-    fi
+    DB_PASS=${DB_PASS_INPUT:-${DB_PASSWORD:-netmonitor}}
 
     # Dashboard configuration
     echo
     print_info "Web Dashboard Configuratie:"
 
-    read -p "Dashboard host (huidige: ${DASHBOARD_HOST:-0.0.0.0}): " DASH_HOST_INPUT
+    read -p "Dashboard host [${DASHBOARD_HOST:-0.0.0.0}]: " DASH_HOST_INPUT
     DASHBOARD_HOST=${DASH_HOST_INPUT:-${DASHBOARD_HOST:-0.0.0.0}}
 
-    read -p "Dashboard port (huidige: ${DASHBOARD_PORT:-8080}): " DASH_PORT_INPUT
+    read -p "Dashboard port [${DASHBOARD_PORT:-8080}]: " DASH_PORT_INPUT
     DASHBOARD_PORT=${DASH_PORT_INPUT:-${DASHBOARD_PORT:-8080}}
+
+    read -p "Dashboard server mode [${DASHBOARD_SERVER:-embedded}] (embedded/gunicorn): " DASH_SERVER_INPUT
+    DASHBOARD_SERVER=${DASH_SERVER_INPUT:-${DASHBOARD_SERVER:-embedded}}
+
+    if [[ "$DASHBOARD_SERVER" == "gunicorn" ]]; then
+        read -p "Dashboard workers [${DASHBOARD_WORKERS:-4}]: " DASH_WORKERS_INPUT
+        DASHBOARD_WORKERS=${DASH_WORKERS_INPUT:-${DASHBOARD_WORKERS:-4}}
+    fi
 
     # Network interface
     echo
     print_info "Beschikbare network interfaces:"
     ip link show | grep -E "^[0-9]+:" | awk '{print "  - " $2}' | sed 's/:$//'
     echo
-    read -p "Welke interface wil je monitoren? (huidige: ${MONITOR_INTERFACE:-eth0}): " INTERFACE_INPUT
+    read -p "Welke interface wil je monitoren? [${MONITOR_INTERFACE:-eth0}]: " INTERFACE_INPUT
     INTERFACE=${INTERFACE_INPUT:-${MONITOR_INTERFACE:-eth0}}
 
     # Internal network
-    read -p "Jouw interne netwerk CIDR (huidige: ${INTERNAL_NETWORK:-192.168.1.0/24}): " INTERNAL_NET_INPUT
+    read -p "Jouw interne netwerk CIDR [${INTERNAL_NETWORK:-192.168.1.0/24}]: " INTERNAL_NET_INPUT
     INTERNAL_NET=${INTERNAL_NET_INPUT:-${INTERNAL_NETWORK:-192.168.1.0/24}}
+
+    # Installation directory
+    echo
+    print_info "Installatie Paden:"
+    read -p "Installatie directory [${INSTALL_DIR:-/opt/netmonitor}]: " INSTALL_DIR_INPUT
+    INSTALL_DIR=${INSTALL_DIR_INPUT:-${INSTALL_DIR:-/opt/netmonitor}}
+
+    read -p "Data directory [${DATA_DIR:-/var/lib/netmonitor}]: " DATA_DIR_INPUT
+    DATA_DIR=${DATA_DIR_INPUT:-${DATA_DIR:-/var/lib/netmonitor}}
+
+    read -p "Log directory [${LOG_DIR:-/var/log/netmonitor}]: " LOG_DIR_INPUT
+    LOG_DIR=${LOG_DIR_INPUT:-${LOG_DIR:-/var/log/netmonitor}}
 
     # Components
     echo
     print_info "Welke componenten wil je installeren?"
-    read -p "PostgreSQL + TimescaleDB? (Y/n) " INSTALL_DB
+    read -p "PostgreSQL + TimescaleDB? (Y/n): " INSTALL_DB
     INSTALL_DB=${INSTALL_DB:-Y}
 
-    read -p "NetMonitor Core? (Y/n) " INSTALL_CORE
+    read -p "NetMonitor Core? (Y/n): " INSTALL_CORE
     INSTALL_CORE=${INSTALL_CORE:-Y}
 
     # MCP API configuration
-    read -p "MCP HTTP API Server? (huidige: ${MCP_API_ENABLED:-false}, y/N) " INSTALL_MCP_INPUT
-    INSTALL_MCP=${INSTALL_MCP_INPUT:-N}
+    MCP_DEFAULT="N"
+    if [[ "${MCP_API_ENABLED}" == "true" ]]; then
+        MCP_DEFAULT="y"
+    fi
+    read -p "MCP HTTP API Server? (y/N) [${MCP_DEFAULT}]: " INSTALL_MCP_INPUT
+    INSTALL_MCP=${INSTALL_MCP_INPUT:-${MCP_DEFAULT}}
 
     if [[ $INSTALL_MCP =~ ^[Yy]$ ]]; then
         MCP_API_ENABLED="true"
-        read -p "MCP API port (huidige: ${MCP_API_PORT:-8000}): " MCP_PORT_INPUT
+        read -p "MCP API host [${MCP_API_HOST:-0.0.0.0}]: " MCP_HOST_INPUT
+        MCP_API_HOST=${MCP_HOST_INPUT:-${MCP_API_HOST:-0.0.0.0}}
+
+        read -p "MCP API port [${MCP_API_PORT:-8000}]: " MCP_PORT_INPUT
         MCP_API_PORT=${MCP_PORT_INPUT:-${MCP_API_PORT:-8000}}
+
+        read -p "MCP API workers [${MCP_API_WORKERS:-4}]: " MCP_WORKERS_INPUT
+        MCP_API_WORKERS=${MCP_WORKERS_INPUT:-${MCP_API_WORKERS:-4}}
     else
         MCP_API_ENABLED="false"
+        MCP_API_HOST=${MCP_API_HOST:-0.0.0.0}
         MCP_API_PORT=${MCP_API_PORT:-8000}
+        MCP_API_WORKERS=${MCP_API_WORKERS:-4}
     fi
 
-    read -p "Nginx reverse proxy? (y/N) " INSTALL_NGINX
+    # Security settings
+    echo
+    print_info "Security Instellingen:"
+    REQUIRE_2FA_DEFAULT="N"
+    if [[ "${REQUIRE_2FA}" == "true" ]]; then
+        REQUIRE_2FA_DEFAULT="Y"
+    fi
+    read -p "Verplicht 2FA voor dashboard login? (Y/n) [${REQUIRE_2FA_DEFAULT}]: " REQUIRE_2FA_INPUT
+    REQUIRE_2FA_INPUT=${REQUIRE_2FA_INPUT:-${REQUIRE_2FA_DEFAULT}}
+    if [[ $REQUIRE_2FA_INPUT =~ ^[Yy]$ ]]; then
+        REQUIRE_2FA="true"
+    else
+        REQUIRE_2FA="false"
+    fi
+
+    # Nginx
+    echo
+    read -p "Nginx reverse proxy? (y/N): " INSTALL_NGINX
     INSTALL_NGINX=${INSTALL_NGINX:-N}
 
     if [[ $INSTALL_NGINX =~ ^[Yy]$ ]]; then
-        read -p "Domain name (bijv. soc.example.com): " DOMAIN_NAME
+        read -p "Domain name [${NGINX_SERVER_NAME}] (bijv. soc.example.com): " DOMAIN_NAME_INPUT
+        DOMAIN_NAME=${DOMAIN_NAME_INPUT:-${NGINX_SERVER_NAME}}
     fi
 
     echo
@@ -232,13 +371,60 @@ setup_database() {
     systemctl enable postgresql
     print_success "PostgreSQL gestart"
 
-    # Create user and database
-    sudo -u postgres psql -c "DROP USER IF EXISTS $DB_USER;" >> $LOG_FILE 2>&1 || true
-    sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';" >> $LOG_FILE 2>&1
-    sudo -u postgres psql -c "DROP DATABASE IF EXISTS $DB_NAME;" >> $LOG_FILE 2>&1 || true
-    sudo -u postgres psql -c "CREATE DATABASE $DB_NAME OWNER $DB_USER;" >> $LOG_FILE 2>&1
-    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;" >> $LOG_FILE 2>&1
-    print_success "Database user en database aangemaakt"
+    # Check if database already exists
+    DB_EXISTS=$(sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" 2>/dev/null)
+
+    if [ "$DB_EXISTS" = "1" ]; then
+        print_warning "Database '$DB_NAME' bestaat al!"
+        echo
+        echo "Opties:"
+        echo "  1) Behouden (gebruik bestaande database)"
+        echo "  2) Overschrijven (VERWIJDERT ALLE DATA!)"
+        echo "  3) Annuleren (stop installatie)"
+        echo
+        read -p "Keuze (1/2/3): " -n 1 -r DB_CHOICE
+        echo
+
+        case "$DB_CHOICE" in
+            1)
+                print_info "Bestaande database wordt behouden"
+                # Check if user exists and update password if needed
+                USER_EXISTS=$(sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$DB_USER'" 2>/dev/null)
+                if [ "$USER_EXISTS" = "1" ]; then
+                    sudo -u postgres psql -c "ALTER USER $DB_USER WITH PASSWORD '$DB_PASS';" >> $LOG_FILE 2>&1
+                    print_success "Database user password bijgewerkt"
+                else
+                    sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';" >> $LOG_FILE 2>&1
+                    print_success "Database user aangemaakt"
+                fi
+                sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;" >> $LOG_FILE 2>&1
+                ;;
+            2)
+                print_warning "Database wordt overschreven..."
+                sudo -u postgres psql -c "DROP DATABASE IF EXISTS $DB_NAME;" >> $LOG_FILE 2>&1 || true
+                sudo -u postgres psql -c "DROP USER IF EXISTS $DB_USER;" >> $LOG_FILE 2>&1 || true
+                sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';" >> $LOG_FILE 2>&1
+                sudo -u postgres psql -c "CREATE DATABASE $DB_NAME OWNER $DB_USER;" >> $LOG_FILE 2>&1
+                sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;" >> $LOG_FILE 2>&1
+                print_success "Database opnieuw aangemaakt"
+                ;;
+            3)
+                print_info "Installatie geannuleerd door gebruiker"
+                exit 0
+                ;;
+            *)
+                print_error "Ongeldige keuze"
+                exit 1
+                ;;
+        esac
+    else
+        # Create user and database (fresh install)
+        sudo -u postgres psql -c "DROP USER IF EXISTS $DB_USER;" >> $LOG_FILE 2>&1 || true
+        sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';" >> $LOG_FILE 2>&1
+        sudo -u postgres psql -c "CREATE DATABASE $DB_NAME OWNER $DB_USER;" >> $LOG_FILE 2>&1
+        sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;" >> $LOG_FILE 2>&1
+        print_success "Database user en database aangemaakt"
+    fi
 
     # Enable TimescaleDB extension
     sudo -u postgres psql -d $DB_NAME -c "CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;" >> $LOG_FILE 2>&1
@@ -294,9 +480,21 @@ configure_netmonitor() {
         print_info "Bestaande .env backed up"
     fi
 
-    # Generate Flask secret key if not exists
-    if [ -z "$FLASK_SECRET_KEY" ]; then
+    # Create config.yaml from config.yaml.example if it doesn't exist
+    if [ ! -f config.yaml ]; then
+        if [ -f config.yaml.example ]; then
+            cp config.yaml.example config.yaml
+            print_info "config.yaml aangemaakt van config.yaml.example"
+        else
+            print_error "config.yaml.example niet gevonden!"
+            return 1
+        fi
+    fi
+
+    # Generate Flask secret key if not exists or empty
+    if [ -z "$FLASK_SECRET_KEY" ] || [ "$FLASK_SECRET_KEY" = "change-this-to-a-random-secret-key-in-production" ]; then
         FLASK_SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+        print_info "Nieuwe Flask secret key gegenereerd"
     fi
 
     # Create/Update .env from .env.example
@@ -310,21 +508,55 @@ configure_netmonitor() {
     # Start with .env.example as base
     cp .env.example .env.new
 
-    # Update with configured values
+    # Update with configured values (all variables from prompt_config)
+    # Installation paths
     sed -i "s|^INSTALL_DIR=.*|INSTALL_DIR=$INSTALL_DIR|" .env.new
+    sed -i "s|^DATA_DIR=.*|DATA_DIR=$DATA_DIR|" .env.new
+    sed -i "s|^LOG_DIR=.*|LOG_DIR=$LOG_DIR|" .env.new
+
+    # Database configuration
     sed -i "s|^DB_HOST=.*|DB_HOST=$DB_HOST|" .env.new
     sed -i "s|^DB_PORT=.*|DB_PORT=$DB_PORT|" .env.new
     sed -i "s|^DB_NAME=.*|DB_NAME=$DB_NAME|" .env.new
     sed -i "s|^DB_USER=.*|DB_USER=$DB_USER|" .env.new
     sed -i "s|^DB_PASSWORD=.*|DB_PASSWORD=$DB_PASS|" .env.new
     sed -i "s|^DB_TYPE=.*|DB_TYPE=postgresql|" .env.new
+
+    # Dashboard configuration
+    sed -i "s|^DASHBOARD_SERVER=.*|DASHBOARD_SERVER=$DASHBOARD_SERVER|" .env.new
     sed -i "s|^DASHBOARD_HOST=.*|DASHBOARD_HOST=$DASHBOARD_HOST|" .env.new
     sed -i "s|^DASHBOARD_PORT=.*|DASHBOARD_PORT=$DASHBOARD_PORT|" .env.new
+
+    if [ ! -z "$DASHBOARD_WORKERS" ]; then
+        sed -i "s|^DASHBOARD_WORKERS=.*|DASHBOARD_WORKERS=$DASHBOARD_WORKERS|" .env.new
+    fi
+
+    # Security
     sed -i "s|^FLASK_SECRET_KEY=.*|FLASK_SECRET_KEY=$FLASK_SECRET_KEY|" .env.new
+    sed -i "s|^REQUIRE_2FA=.*|REQUIRE_2FA=$REQUIRE_2FA|" .env.new
+
+    # MCP API configuration
     sed -i "s|^MCP_API_ENABLED=.*|MCP_API_ENABLED=$MCP_API_ENABLED|" .env.new
+    sed -i "s|^MCP_API_HOST=.*|MCP_API_HOST=$MCP_API_HOST|" .env.new
     sed -i "s|^MCP_API_PORT=.*|MCP_API_PORT=$MCP_API_PORT|" .env.new
-    sed -i "s|^MONITOR_INTERFACE=.*|MONITOR_INTERFACE=$INTERFACE|" .env.new
-    sed -i "s|^INTERNAL_NETWORK=.*|INTERNAL_NETWORK=$INTERNAL_NET|" .env.new
+    sed -i "s|^MCP_API_WORKERS=.*|MCP_API_WORKERS=$MCP_API_WORKERS|" .env.new
+
+    # Nginx (if configured)
+    if [ ! -z "$DOMAIN_NAME" ]; then
+        sed -i "s|^NGINX_SERVER_NAME=.*|NGINX_SERVER_NAME=$DOMAIN_NAME|" .env.new
+    fi
+
+    # Add MONITOR_INTERFACE and INTERNAL_NETWORK (these are not in .env.example by default)
+    # Check if they exist in .env.new, if not add them
+    if ! grep -q "^MONITOR_INTERFACE=" .env.new; then
+        echo "" >> .env.new
+        echo "# Network monitoring configuration (added by install script)" >> .env.new
+        echo "MONITOR_INTERFACE=$INTERFACE" >> .env.new
+        echo "INTERNAL_NETWORK=$INTERNAL_NET" >> .env.new
+    else
+        sed -i "s|^MONITOR_INTERFACE=.*|MONITOR_INTERFACE=$INTERFACE|" .env.new
+        sed -i "s|^INTERNAL_NETWORK=.*|INTERNAL_NETWORK=$INTERNAL_NET|" .env.new
+    fi
 
     # Move new .env into place
     mv .env.new .env
@@ -332,15 +564,26 @@ configure_netmonitor() {
     print_success ".env bestand aangemaakt/bijgewerkt (chmod 600 voor security)"
 
     # Update config.yaml with basic settings
-    sed -i "s/^interface:.*/interface: $INTERFACE/" config.yaml
-    sed -i "s|password: netmonitor|password: $DB_PASS|" config.yaml
+    if [ -f config.yaml ]; then
+        # Update monitor interface (main setting)
+        sed -i "s/^interface:.*/interface: $INTERFACE/" config.yaml
 
-    # Update internal networks in config.yaml
-    print_info "Internal network ingesteld op: $INTERNAL_NET"
+        # Update self_monitor.interface as well
+        sed -i "/^self_monitor:/,/^[a-z]/ s/interface: .*/interface: $INTERFACE/" config.yaml
 
-    # Add secret key to config.yaml if not exists
-    if ! grep -q "secret_key:" config.yaml; then
-        sed -i "/^dashboard:/a\  secret_key: \"$FLASK_SECRET_KEY\"" config.yaml
+        # Update database password in config.yaml
+        sed -i "s|password: netmonitor|password: $DB_PASS|" config.yaml
+        sed -i "s|password: .*  # PostgreSQL password|password: $DB_PASS  # PostgreSQL password|" config.yaml
+
+        # Update database host, port, name, user
+        sed -i "/postgresql:/,/user:/ s|host: .*|host: $DB_HOST|" config.yaml
+        sed -i "/postgresql:/,/port:/ s|port: .*|port: $DB_PORT|" config.yaml
+        sed -i "/postgresql:/,/database:/ s|database: .*|database: $DB_NAME|" config.yaml
+        sed -i "/postgresql:/,/user:/ s|user: .*|user: $DB_USER|" config.yaml
+
+        print_info "config.yaml bijgewerkt met database en interface instellingen"
+    else
+        print_warning "config.yaml niet gevonden na kopiëren - check handmatig"
     fi
 
     print_success "Configuratie bestanden bijgewerkt"
@@ -356,25 +599,69 @@ init_database_schema() {
     cd $INSTALL_DIR
     source venv/bin/activate
 
-    # Run Python to initialize database
-    python3 << EOF >> $LOG_FILE 2>&1
+    # Verify config.yaml exists
+    if [ ! -f config.yaml ]; then
+        print_error "config.yaml niet gevonden!"
+        print_error "Run 'configure_netmonitor' eerst"
+        return 1
+    fi
+
+    # Create a temporary Python script with better error handling
+    cat > /tmp/init_db.py << 'PYTHON_EOF'
 import sys
-sys.path.insert(0, '$INSTALL_DIR')
-from database import DatabaseManager
-from config_loader import load_config
+import os
 
-config = load_config('config.yaml')
-db_config = config['database']['postgresql']
+# Add install dir to path
+sys.path.insert(0, os.environ.get('INSTALL_DIR', '/opt/netmonitor'))
 
-db = DatabaseManager(
-    host=db_config['host'],
-    port=db_config['port'],
-    database=db_config['database'],
-    user=db_config['user'],
-    password=db_config['password']
-)
-print("Database schema created")
-EOF
+try:
+    from database import DatabaseManager
+    from config_loader import load_config
+
+    print("Loading config.yaml...")
+    config = load_config('config.yaml')
+
+    if 'database' not in config or 'postgresql' not in config['database']:
+        print("ERROR: Database configuration not found in config.yaml", file=sys.stderr)
+        sys.exit(1)
+
+    db_config = config['database']['postgresql']
+
+    print(f"Connecting to database {db_config['database']} at {db_config['host']}:{db_config['port']}...")
+
+    db = DatabaseManager(
+        host=db_config['host'],
+        port=db_config['port'],
+        database=db_config['database'],
+        user=db_config['user'],
+        password=db_config['password']
+    )
+
+    print("Database schema created successfully")
+    sys.exit(0)
+
+except Exception as e:
+    print(f"ERROR: Database initialization failed: {e}", file=sys.stderr)
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
+PYTHON_EOF
+
+    # Run the Python script with visible output
+    print_info "Database schema wordt aangemaakt..."
+
+    INSTALL_DIR=$INSTALL_DIR python3 /tmp/init_db.py
+    DB_INIT_STATUS=$?
+
+    # Clean up temp script
+    rm -f /tmp/init_db.py
+
+    if [ $DB_INIT_STATUS -ne 0 ]; then
+        print_error "Database schema initialisatie mislukt!"
+        print_error "Check de error messages hierboven"
+        print_error "Log file: $LOG_FILE"
+        return 1
+    fi
 
     print_success "Database schema geïnitialiseerd"
 }
@@ -718,11 +1005,17 @@ print_summary() {
 
 # Main execution
 main() {
+    # Initialize log file immediately
+    echo "=== NetMonitor Installation Log ===" > $LOG_FILE
+    echo "Started: $(date)" >> $LOG_FILE
+    echo >> $LOG_FILE
+
     clear
 
     print_header "NetMonitor SOC - Complete Installation"
-    echo "Versie: 2.1.0"
+    echo "Versie: 2.3.0"
     echo "Dit script installeert ALLES automatisch inclusief web authenticatie"
+    echo "Ondersteunde OS: Ubuntu 24.04 & Debian 12"
     echo
 
     check_root
@@ -730,9 +1023,11 @@ main() {
 
     echo
     print_warning "BELANGRIJK:"
+    echo "  - Dit script moet als root worden uitgevoerd"
     echo "  - Installatie duurt ~20-30 minuten"
-    echo "  - Systeem packages worden geïnstalleerd/geüpdatet"
-    echo "  - PostgreSQL database wordt aangemaakt"
+    echo "  - Systeem packages worden automatisch geïnstalleerd/geüpdatet"
+    echo "  - PostgreSQL database wordt aangemaakt (indien gekozen)"
+    echo "  - Bestaande .env waarden worden gebruikt als defaults"
     echo "  - Log file: $LOG_FILE"
     echo
     read -p "Doorgaan met installatie? (y/N) " -n 1 -r
@@ -742,26 +1037,34 @@ main() {
         exit 0
     fi
 
-    # Start logging
-    echo "=== NetMonitor Installation Log ===" > $LOG_FILE
-    echo "Started: $(date)" >> $LOG_FILE
-    echo >> $LOG_FILE
+    # Run installation steps with error handling
+    prompt_config || { print_error "Configuratie mislukt"; exit 1; }
 
-    # Run installation steps
-    prompt_config
-    install_system_packages
-    install_timescaledb
-    setup_database
-    install_netmonitor
-    configure_netmonitor
-    download_bootstrap_assets
-    init_database_schema
-    init_database_defaults
-    download_threat_feeds
-    setup_admin_user
-    setup_systemd_services
-    setup_mcp_api
-    setup_nginx
+    install_system_packages || { print_error "System packages installatie mislukt"; exit 1; }
+
+    install_timescaledb || { print_error "TimescaleDB installatie mislukt"; exit 1; }
+
+    setup_database || { print_error "Database setup mislukt"; exit 1; }
+
+    install_netmonitor || { print_error "NetMonitor installatie mislukt"; exit 1; }
+
+    configure_netmonitor || { print_error "NetMonitor configuratie mislukt"; exit 1; }
+
+    download_bootstrap_assets || { print_error "Bootstrap assets download mislukt"; exit 1; }
+
+    init_database_schema || { print_error "Database schema initialisatie mislukt"; exit 1; }
+
+    init_database_defaults || { print_error "Database defaults laden mislukt"; exit 1; }
+
+    download_threat_feeds || { print_error "Threat feeds download mislukt"; exit 1; }
+
+    setup_admin_user || { print_error "Admin user setup mislukt"; exit 1; }
+
+    setup_systemd_services || { print_error "Systemd services setup mislukt"; exit 1; }
+
+    setup_mcp_api || { print_error "MCP API setup mislukt"; exit 1; }
+
+    setup_nginx || { print_error "Nginx setup mislukt"; exit 1; }
 
     # Finish
     echo >> $LOG_FILE
@@ -777,15 +1080,16 @@ main() {
     echo
     print_info "Running post-installation configuration..."
 
-    if [ -f "./post_install.sh" ]; then
+    if [ -f "$INSTALL_DIR/post_install.sh" ]; then
+        cd $INSTALL_DIR
         if bash ./post_install.sh; then
             print_success "Post-installatie setup compleet"
         else
             print_warning "Post-installatie setup had warnings - check output above"
         fi
     else
-        print_warning "post_install.sh niet gevonden - skip post-installatie"
-        echo "  Run handmatig: ./post_install.sh"
+        print_warning "post_install.sh niet gevonden in $INSTALL_DIR"
+        echo "  Run handmatig: cd $INSTALL_DIR && ./post_install.sh"
     fi
 }
 
