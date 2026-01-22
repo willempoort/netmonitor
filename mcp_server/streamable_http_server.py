@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from fastapi import FastAPI, Request, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from starlette.types import Receive, Scope, Send
 from starlette.routing import Mount
 import uvicorn
@@ -365,8 +366,13 @@ class NetMonitorStreamableHTTPServer:
             if app.openapi_schema:
                 return app.openapi_schema
 
-            # Get default OpenAPI schema from FastAPI
-            openapi_schema = app.openapi()
+            # Get default OpenAPI schema from FastAPI using get_openapi utility
+            openapi_schema = get_openapi(
+                title=app.title,
+                version=app.version,
+                description=app.description,
+                routes=app.routes,
+            )
 
             # Add MCP tools documentation
             openapi_schema["paths"]["/mcp"] = {
