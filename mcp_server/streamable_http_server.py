@@ -290,6 +290,53 @@ class NetMonitorStreamableHTTPServer:
                 "timestamp": datetime.now().isoformat()
             }
 
+        @app.get("/tools", tags=["MCP Tools"])
+        async def list_tools():
+            """
+            List all available MCP tools - No authentication required
+
+            Returns comprehensive list of all 60+ NetMonitor security tools with:
+            - Tool names and descriptions
+            - Input parameter schemas
+            - Usage examples
+
+            This endpoint is public to allow exploration of available tools.
+            Tool execution via /mcp endpoint requires authentication.
+            """
+            tools_list = []
+            for tool_name, tool_def in TOOL_DEFINITIONS.items():
+                tools_list.append({
+                    "name": tool_name,
+                    "description": tool_def.get('description', 'No description available'),
+                    "inputSchema": tool_def.get('inputSchema', {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    })
+                })
+
+            # Sort by name for easier browsing
+            tools_list.sort(key=lambda x: x['name'])
+
+            return {
+                "total": len(tools_list),
+                "tools": tools_list,
+                "usage": {
+                    "endpoint": "/mcp",
+                    "method": "POST",
+                    "authentication": "Bearer token required",
+                    "example_request": {
+                        "jsonrpc": "2.0",
+                        "method": "tools/call",
+                        "params": {
+                            "name": "list_devices",
+                            "arguments": {}
+                        },
+                        "id": 1
+                    }
+                }
+            }
+
         # ==================== Middleware Configuration ====================
 
         # Add CORS middleware (must be added BEFORE TokenAuthMiddleware)
@@ -308,9 +355,124 @@ class NetMonitorStreamableHTTPServer:
             app.add_middleware(
                 TokenAuthMiddleware,
                 token_manager=self.token_manager,
-                exempt_paths=['/health', '/docs', '/redoc', '/openapi.json']
+                exempt_paths=['/health', '/docs', '/redoc', '/openapi.json', '/tools']
             )
-            logger.info("Token authentication enabled (docs accessible without auth)")
+            logger.info("Token authentication enabled (docs and /tools accessible without auth)")
+
+        # ==================== Custom OpenAPI Schema ====================
+        # Add MCP tools to OpenAPI schema (they don't appear automatically since /mcp is mounted)
+        def custom_openapi():
+            if app.openapi_schema:
+                return app.openapi_schema
+
+            # Get default OpenAPI schema from FastAPI
+            openapi_schema = app.openapi()
+
+            # Add MCP tools documentation
+            openapi_schema["paths"]["/mcp"] = {
+                "post": {
+                    "tags": ["MCP Tools"],
+                    "summary": "MCP JSON-RPC Endpoint",
+                    "description": (
+                        f"Execute MCP tools via JSON-RPC protocol.\n\n"
+                        f"**Available Tools:** {len(TOOL_DEFINITIONS)} tools for security monitoring\n\n"
+                        f"**Authentication:** Bearer token required in Authorization header\n\n"
+                        f"**Protocol:** MCP Streamable HTTP (spec 2025-03-26)\n\n"
+                        f"**Request Format:**\n```json\n{{\n"
+                        f'  "jsonrpc": "2.0",\n'
+                        f'  "method": "tools/call",\n'
+                        f'  "params": {{\n'
+                        f'    "name": "tool_name",\n'
+                        f'    "arguments": {{}}\n'
+                        f'  }},\n'
+                        f'  "id": 1\n'
+                        f"}}\n```"
+                    ),
+                    "security": [{"bearerAuth": []}],
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "jsonrpc": {"type": "string", "example": "2.0"},
+                                        "method": {"type": "string", "example": "tools/call"},
+                                        "params": {"type": "object"},
+                                        "id": {"type": "integer"}
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {"description": "Tool execution result"},
+                        "401": {"description": "Missing or invalid Bearer token"},
+                        "429": {"description": "Rate limit exceeded"}
+                    }
+                },
+                "get": {
+                    "tags": ["MCP Tools"],
+                    "summary": "MCP SSE Streaming Endpoint",
+                    "description": (
+                        "Server-Sent Events (SSE) streaming for MCP protocol.\n\n"
+                        "Used by Claude Desktop and other SSE-compatible clients.\n\n"
+                        "**Authentication:** Bearer token required in Authorization header"
+                    ),
+                    "security": [{"bearerAuth": []}],
+                    "responses": {
+                        "200": {"description": "SSE stream established"},
+                        "401": {"description": "Missing or invalid Bearer token"}
+                    }
+                }
+            }
+
+            # Add security scheme for Bearer token
+            if "components" not in openapi_schema:
+                openapi_schema["components"] = {}
+            if "securitySchemes" not in openapi_schema["components"]:
+                openapi_schema["components"]["securitySchemes"] = {}
+
+            openapi_schema["components"]["securitySchemes"]["bearerAuth"] = {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "Token",
+                "description": "MCP API token from token management system"
+            }
+
+            # Add tools list as a separate schema component for reference
+            tools_list = []
+            for tool_name, tool_def in TOOL_DEFINITIONS.items():
+                tools_list.append({
+                    "name": tool_name,
+                    "description": tool_def.get('description', 'No description'),
+                    "inputSchema": tool_def.get('inputSchema', {})
+                })
+
+            openapi_schema["components"]["schemas"] = openapi_schema.get("components", {}).get("schemas", {})
+            openapi_schema["components"]["schemas"]["MCPTools"] = {
+                "type": "object",
+                "description": f"Available MCP Tools ({len(TOOL_DEFINITIONS)} tools)",
+                "properties": {
+                    "tools": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "description": {"type": "string"},
+                                "inputSchema": {"type": "object"}
+                            }
+                        },
+                        "example": tools_list[:5]  # Show first 5 tools as example
+                    }
+                }
+            }
+
+            app.openapi_schema = openapi_schema
+            return app.openapi_schema
+
+        app.openapi = custom_openapi
 
         logger.info("FastAPI application created with OpenAPI docs")
         return app

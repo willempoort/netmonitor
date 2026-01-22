@@ -49,7 +49,7 @@ class TokenAuthMiddleware(BaseHTTPMiddleware):
         """
         super().__init__(app)
         self.token_manager = token_manager
-        self.exempt_paths = exempt_paths or ['/health', '/docs', '/redoc', '/openapi.json', '/metrics']
+        self.exempt_paths = exempt_paths or ['/health', '/docs', '/redoc', '/openapi.json', '/metrics', '/tools']
 
         # Get root_path from environment for reverse proxy support
         self.root_path = os.environ.get('MCP_ROOT_PATH', '').rstrip('/')
