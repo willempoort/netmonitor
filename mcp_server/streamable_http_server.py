@@ -304,12 +304,13 @@ class NetMonitorStreamableHTTPServer:
             This endpoint is public to allow exploration of available tools.
             Tool execution via /mcp endpoint requires authentication.
             """
+            # TOOL_DEFINITIONS is a list of dicts, not a dict itself
             tools_list = []
-            for tool_name, tool_def in TOOL_DEFINITIONS.items():
+            for tool_def in TOOL_DEFINITIONS:
                 tools_list.append({
-                    "name": tool_name,
+                    "name": tool_def.get('name', 'unknown'),
                     "description": tool_def.get('description', 'No description available'),
-                    "inputSchema": tool_def.get('inputSchema', {
+                    "inputSchema": tool_def.get('input_schema', {
                         "type": "object",
                         "properties": {},
                         "required": []
@@ -451,12 +452,13 @@ class NetMonitorStreamableHTTPServer:
                 }
 
                 # Add tools list as a separate schema component for reference
+                # TOOL_DEFINITIONS is a list of dicts, not a dict itself
                 tools_list = []
-                for tool_name, tool_def in TOOL_DEFINITIONS.items():
+                for tool_def in TOOL_DEFINITIONS:
                     tools_list.append({
-                        "name": tool_name,
+                        "name": tool_def.get('name', 'unknown'),
                         "description": tool_def.get('description', 'No description'),
-                        "inputSchema": tool_def.get('inputSchema', {})
+                        "inputSchema": tool_def.get('input_schema', {})
                     })
 
                 openapi_schema["components"]["schemas"]["MCPTools"] = {
