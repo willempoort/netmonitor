@@ -384,6 +384,23 @@ class NetMonitorStreamableHTTPServer:
                 if "schemas" not in openapi_schema["components"]:
                     openapi_schema["components"]["schemas"] = {}
 
+                # Set servers array for correct URL generation in Swagger UI
+                # This ensures Swagger UI generates URLs like /mcp/tools instead of /tools
+                if root_path:
+                    openapi_schema["servers"] = [
+                        {
+                            "url": root_path,
+                            "description": "MCP API (via nginx reverse proxy)"
+                        }
+                    ]
+                else:
+                    openapi_schema["servers"] = [
+                        {
+                            "url": "/",
+                            "description": "MCP API (direct access)"
+                        }
+                    ]
+
                 # Add security scheme for Bearer token
                 openapi_schema["components"]["securitySchemes"]["bearerAuth"] = {
                     "type": "http",
