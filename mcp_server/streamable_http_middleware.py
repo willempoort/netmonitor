@@ -44,10 +44,11 @@ class TokenAuthMiddleware(BaseHTTPMiddleware):
             app: ASGI application
             token_manager: TokenAuthManager instance
             exempt_paths: List of paths that don't require authentication
+                         (default: /health, /docs, /redoc, /openapi.json)
         """
         super().__init__(app)
         self.token_manager = token_manager
-        self.exempt_paths = exempt_paths or ['/health', '/metrics']
+        self.exempt_paths = exempt_paths or ['/health', '/docs', '/redoc', '/openapi.json', '/metrics']
 
         logger.info(f"Token auth middleware initialized (exempt paths: {self.exempt_paths})")
 
