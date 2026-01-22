@@ -541,6 +541,14 @@ configure_netmonitor() {
     sed -i "s|^MCP_API_PORT=.*|MCP_API_PORT=$MCP_API_PORT|" .env.new
     sed -i "s|^MCP_API_WORKERS=.*|MCP_API_WORKERS=$MCP_API_WORKERS|" .env.new
 
+    # MCP_ROOT_PATH: Set to /mcp if nginx is being installed for reverse proxy
+    if [[ $INSTALL_NGINX =~ ^[Yy]$ ]]; then
+        sed -i "s|^MCP_ROOT_PATH=.*|MCP_ROOT_PATH=/mcp|" .env.new
+        print_info "MCP_ROOT_PATH ingesteld op /mcp (nginx reverse proxy)"
+    else
+        sed -i "s|^MCP_ROOT_PATH=.*|MCP_ROOT_PATH=|" .env.new
+    fi
+
     # Nginx (if configured)
     if [ ! -z "$DOMAIN_NAME" ]; then
         sed -i "s|^NGINX_SERVER_NAME=.*|NGINX_SERVER_NAME=$DOMAIN_NAME|" .env.new
@@ -924,8 +932,17 @@ print_summary() {
 
     if [[ $INSTALL_MCP =~ ^[Yy]$ ]]; then
         echo -e "${BLUE}MCP HTTP API:${NC}"
-        echo "  URL:  http://localhost:8000"
-        echo "  Docs: http://localhost:8000/docs"
+        if [[ $INSTALL_NGINX =~ ^[Yy]$ ]] && [ ! -z "$DOMAIN_NAME" ]; then
+            echo "  Direct: http://localhost:8000"
+            echo "  Nginx:  https://$DOMAIN_NAME/mcp/"
+            echo "  Docs:   https://$DOMAIN_NAME/mcp/docs (Swagger UI)"
+            echo "  Docs:   https://$DOMAIN_NAME/mcp/redoc (ReDoc)"
+        else
+            echo "  URL:    http://localhost:8000"
+            echo "  Docs:   http://localhost:8000/docs (Swagger UI)"
+            echo "  Docs:   http://localhost:8000/redoc (ReDoc)"
+        fi
+        echo "  Tools:  52 AI tools voor monitoring, config, en management"
         echo
     fi
 
