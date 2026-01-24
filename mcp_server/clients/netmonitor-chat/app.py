@@ -664,6 +664,9 @@ class MCPBridgeClient:
                 "MCP_AUTH_TOKEN": self.auth_token
             })
 
+            print(f"[Bridge] Calling {self.bridge_path}")
+            print(f"[Bridge] Server URL: {self.server_url}")
+
             process = await asyncio.create_subprocess_exec(
                 "python3",
                 str(self.bridge_path),
@@ -677,15 +680,32 @@ class MCPBridgeClient:
                 input=json.dumps(request).encode()
             )
 
+            if stderr:
+                print(f"[Bridge] stderr: {stderr.decode()[:500]}")
+
             if process.returncode != 0:
+                print(f"[Bridge] Process failed with code {process.returncode}")
+                print(f"[Bridge] stdout: {stdout.decode()[:500]}")
                 return []
 
             response = json.loads(stdout.decode())
+
+            if "error" in response:
+                print(f"[Bridge] Error response: {response['error']}")
+                return []
+
             tools = response.get("result", {}).get("tools", [])
             return tools
 
+        except FileNotFoundError:
+            print(f"[Bridge] ERROR: Bridge not found at {self.bridge_path}")
+            return []
+        except json.JSONDecodeError as e:
+            print(f"[Bridge] Invalid JSON response: {e}")
+            print(f"[Bridge] Raw output: {stdout.decode()[:500]}")
+            return []
         except Exception as e:
-            print(f"Error listing tools: {e}")
+            print(f"[Bridge] Error: {type(e).__name__}: {e}")
             return []
 
 
@@ -1204,10 +1224,11 @@ async def websocket_chat(websocket: WebSocket):
 
 
 if __name__ == "__main__":
-    # Check configuration
-    if not MCP_AUTH_TOKEN:
-        print("WARNING: MCP_AUTH_TOKEN not set!")
-        print("Set with: export MCP_AUTH_TOKEN='your_token_here'")
+    # Check configuration - only warn if no config at all
+    if not MCP_AUTH_TOKEN and not MCP_CONFIGURATIONS:
+        print("WARNING: No MCP configuration found!")
+        print("Set MCP_CONFIG_1_NAME, MCP_CONFIG_1_URL, MCP_CONFIG_1_TOKEN")
+        print("Or use legacy: MCP_AUTH_TOKEN='your_token_here'")
 
     if not MCP_BRIDGE_PATH.exists():
         print(f"ERROR: MCP bridge not found at {MCP_BRIDGE_PATH}")
@@ -1218,8 +1239,13 @@ if __name__ == "__main__":
     print("NetMonitor Chat Starting")
     print("=" * 70)
     print(f"Ollama: {OLLAMA_BASE_URL}")
-    print(f"MCP Server: {MCP_SERVER_URL}")
     print(f"MCP Bridge: {MCP_BRIDGE_PATH}")
+    if MCP_CONFIGURATIONS:
+        print(f"MCP Configs: {len(MCP_CONFIGURATIONS)} loaded")
+        for cfg in MCP_CONFIGURATIONS:
+            print(f"  - {cfg['name']}: {cfg['url']} (token: {'set' if cfg['token'] else 'empty'})")
+    else:
+        print(f"MCP Server: {MCP_SERVER_URL} (legacy)")
     print(f"Interface: http://localhost:8000")
     print("=" * 70)
 
