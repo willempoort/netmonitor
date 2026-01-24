@@ -102,14 +102,29 @@ cat > .env << 'EOF'
 # Ollama API
 OLLAMA_BASE_URL=http://localhost:11434
 
-# MCP Server
-MCP_SERVER_URL=https://soc.poort.net/mcp
-MCP_AUTH_TOKEN=your_token_here
+# MCP Server Configuraties (meerdere mogelijk)
+# Formaat: MCP_CONFIG_{nummer}_{NAME|URL|TOKEN}
+MCP_CONFIG_1_NAME=Production
+MCP_CONFIG_1_URL=https://soc.poort.net/mcp
+MCP_CONFIG_1_TOKEN=your_production_token_here
+
+MCP_CONFIG_2_NAME=Development
+MCP_CONFIG_2_URL=http://localhost:8000/mcp
+MCP_CONFIG_2_TOKEN=your_dev_token_here
+
+# Legacy (backwards compatible, gebruikt als geen MCP_CONFIG_* gezet)
+# MCP_SERVER_URL=https://soc.poort.net/mcp
+# MCP_AUTH_TOKEN=your_token_here
 EOF
 
 # Set permissions
 chmod 600 .env
 ```
+
+**Multi-MCP Configuratie:**
+- Configuraties worden getoond in een dropdown in de UI
+- Tokens blijven veilig op de server (worden niet naar browser gestuurd)
+- Selecteer eenvoudig tussen Production, Development, etc.
 
 **Token verkrijgen:**
 ```bash
@@ -211,10 +226,11 @@ Open http://localhost:8000/api/tools
 {
   "tools": [
     {"name": "get_threat_detections", ...},
+    {"name": "get_top_talkers", ...},
     {"name": "analyze_ip", ...},
     ...
   ],
-  "count": 60
+  "count": 61
 }
 ```
 
@@ -236,8 +252,8 @@ In de web interface:
 ### Status Indicators (Header)
 - **LLM Provider**: Toont "Ollama" of "LM Studio" (dynamisch)
 - **Status**: Groen = verbonden, Rood = disconnected
-- **MCP**: Groen = verbonden, Rood = disconnected
-- **Tools count**: Aantal beschikbare MCP tools (60 totaal, 10-15 per request)
+- **MCP**: Toont geselecteerde config naam (bijv. "Production") + status indicator
+- **Tools count**: Aantal beschikbare MCP tools (61 totaal, 10-15 per request)
 
 ### Sidebar Controls
 - **Model selectie**: Dropdown met alle beschikbare models (Ollama of LM Studio)
@@ -248,8 +264,9 @@ In de web interface:
   - **LM Studio URL**: Configureerbaar endpoint (default: http://localhost:1234)
   - **Force Tools**: ✅ Verplicht voor LM Studio function calling (vink aan!)
   - **System Prompt**: (Optioneel) Custom system instructies voor het model
-  - **MCP Server URL**: Configureerbaar MCP endpoint
-  - **MCP Auth Token**: API token voor MCP server
+  - **MCP Server**: Dropdown met geconfigureerde servers (uit .env), of "Custom" voor handmatige invoer
+  - **MCP Server URL**: (alleen bij Custom) Handmatig MCP endpoint
+  - **MCP Auth Token**: (alleen bij Custom) Handmatig API token
   - **Configuratie Toepassen**: Herlaadt models en tools met nieuwe settings
 - **Beschikbare Tools** (klik om uit te klappen): Volledige lijst met alle MCP tools + beschrijvingen
 - **Debug Mode**: Toggle om tool calls en resultaten te tonen/verbergen (standaard uit)
@@ -326,7 +343,18 @@ Als dit werkt maar UI niet → check environment variables in .env
 2. **Verlaag temperature** naar 0.0 (meest deterministisch)
 3. **Wissel model**: probeer `qwen2.5-coder:14b` (beste tool calling)
 4. **Check tool output**: Kijk of tool calls verschijnen in de chat (gele blokken)
-5. **Check logs**: Terminal toont `[WebSocket] LM Studio with FORCED tools enabled (10 tools)`
+5. **Check logs**: Terminal toont `[WebSocket] LM Studio JSON fallback mode (10 tools in prompt)`
+
+**Hoe "Force Tools" werkt (JSON Fallback Mode):**
+
+Voor LLMs zonder native function calling (zoals LM Studio MLX modellen) gebruikt netmonitor-chat een JSON fallback mode:
+
+1. Tools worden beschreven in de system prompt
+2. Het model wordt geïnstrueerd om JSON te outputten: `{"name": "tool_name", "arguments": {...}}`
+3. De JSON wordt geparsed uit de response (ondersteunt pure JSON, code blocks, en embedded JSON)
+4. Tool wordt uitgevoerd en resultaat terug naar model gestuurd
+
+Dit werkt met elk model dat JSON kan genereren, ook zonder native function calling support.
 
 ### LM Studio geeft 400 errors
 
@@ -489,9 +517,22 @@ NetMonitor Chat gebruikt intelligente tool filtering om context size te reducere
   "status": "healthy",
   "ollama": "connected",
   "mcp": "connected",
+  "mcp_config": "Production",
   "timestamp": "2026-01-15T12:00:00"
 }
 ```
+
+**GET /api/mcp-configs**
+```json
+{
+  "configs": [
+    {"name": "Production", "url": "https://soc.poort.net/mcp", "has_token": true},
+    {"name": "Development", "url": "http://localhost:8000/mcp", "has_token": true}
+  ],
+  "default": "Production"
+}
+```
+*Tokens worden niet getoond voor security*
 
 ### WebSocket Endpoint
 
@@ -571,10 +612,14 @@ NetMonitor Chat gebruikt intelligente tool filtering om context size te reducere
 - [x] localStorage persistentie voor settings
 - [x] Force Tools optie voor LM Studio function calling
 - [x] System Prompt configuratie
-- [x] Smart tool filtering (60 → 10 tools) voor performance
+- [x] Smart tool filtering (61 → 10 tools) voor performance
 - [x] Nederlands + Engels keyword matching
 - [x] Incremental streaming tool calls voor LM Studio
 - [x] Dynamic status indicator (Ollama/LM Studio)
+- [x] **Multi-MCP server configuratie** (MCP_CONFIG_1_NAME/URL/TOKEN)
+- [x] **MCP server dropdown selector** in UI
+- [x] **JSON fallback mode** voor LLMs zonder native function calling
+- [x] **get_top_talkers tool** voor bandwidth analyse
 
 **Todo** 📋
 - [ ] Dockerfile voor productie deployment
