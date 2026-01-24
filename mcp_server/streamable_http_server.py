@@ -222,46 +222,20 @@ class NetMonitorStreamableHTTPServer:
             debug=self.config['debug']
         )
 
-        # Create handler function for MCP requests
-        async def handle_mcp_request(scope: Scope, receive: Receive, send: Send):
-            """Handle MCP Streamable HTTP requests"""
+        # Create raw ASGI handler for MCP endpoint that wraps the session manager
+        # This bypasses FastAPI's routing and prevents the 307 redirect issue
+        from starlette.routing import Route as StarletteRoute
+        from starlette.requests import Request as StarletteRequest
+
+        async def mcp_asgi_handler(scope: Scope, receive: Receive, send: Send):
+            """Raw ASGI handler for MCP Streamable HTTP requests"""
+            # Pass directly to session manager without any FastAPI interference
             await self.session_manager.handle_request(scope, receive, send)
 
-        # Add explicit routes for both POST and GET on /mcp
-        # This prevents FastAPI's mount() 307 redirect issue
-
-        async def mcp_endpoint(request):
-            """MCP endpoint handler for both GET (SSE) and POST (JSON-RPC)"""
-            scope = request.scope
-            receive = request.receive
-
-            # Build custom send that collects the response
-            response_body = []
-            response_status = 200
-            response_headers = []
-
-            async def send(message):
-                nonlocal response_status, response_headers
-                if message['type'] == 'http.response.start':
-                    response_status = message['status']
-                    response_headers = message.get('headers', [])
-                elif message['type'] == 'http.response.body':
-                    body = message.get('body', b'')
-                    if body:
-                        response_body.append(body)
-
-            # Call the MCP session manager
-            await handle_mcp_request(scope, receive, send)
-
-            # Return response
-            return Response(
-                content=b''.join(response_body),
-                status_code=response_status,
-                headers={k.decode('latin1'): v.decode('latin1') for k, v in response_headers}
-            )
-
-        # Add routes for /mcp endpoint (both GET and POST)
-        app.router.routes.insert(0, Route("/mcp", mcp_endpoint, methods=["GET", "POST"]))
+        # Add the /mcp endpoint as a Starlette Route (not FastAPI route)
+        # This is added to the router before other routes to have priority
+        mcp_route = StarletteRoute("/mcp", endpoint=mcp_asgi_handler, methods=["GET", "POST"])
+        app.router.routes.insert(0, mcp_route)
 
         # ==================== FastAPI Routes (for docs) ====================
 
