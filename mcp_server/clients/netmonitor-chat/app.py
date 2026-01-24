@@ -42,8 +42,79 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Configuration
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+# Legacy single MCP config (backwards compatible)
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "https://soc.poort.net/mcp")
 MCP_AUTH_TOKEN = os.getenv("MCP_AUTH_TOKEN", "")
+
+
+def load_mcp_configurations() -> List[Dict[str, str]]:
+    """
+    Load MCP server configurations from environment variables.
+
+    Supports multiple configurations with format:
+        MCP_CONFIG_1_NAME=Production
+        MCP_CONFIG_1_URL=https://soc.poort.net/mcp
+        MCP_CONFIG_1_TOKEN=secret_token
+
+        MCP_CONFIG_2_NAME=Development
+        MCP_CONFIG_2_URL=http://localhost:8000/mcp
+        MCP_CONFIG_2_TOKEN=dev_token
+
+    Also supports legacy single config:
+        MCP_SERVER_URL=https://soc.poort.net/mcp
+        MCP_AUTH_TOKEN=secret_token
+
+    Returns:
+        List of configuration dicts with keys: name, url, token
+    """
+    configs = []
+
+    # Find all MCP_CONFIG_X_NAME entries
+    config_indices = set()
+    for key in os.environ:
+        if key.startswith("MCP_CONFIG_") and key.endswith("_NAME"):
+            # Extract the index (e.g., "1" from "MCP_CONFIG_1_NAME")
+            try:
+                idx = key.replace("MCP_CONFIG_", "").replace("_NAME", "")
+                config_indices.add(idx)
+            except:
+                pass
+
+    # Load each configuration
+    for idx in sorted(config_indices):
+        name = os.getenv(f"MCP_CONFIG_{idx}_NAME", "")
+        url = os.getenv(f"MCP_CONFIG_{idx}_URL", "")
+        token = os.getenv(f"MCP_CONFIG_{idx}_TOKEN", "")
+
+        if name and url:
+            configs.append({
+                "name": name,
+                "url": url,
+                "token": token
+            })
+
+    # If no configs found, use legacy single config
+    if not configs and MCP_SERVER_URL:
+        configs.append({
+            "name": "Default",
+            "url": MCP_SERVER_URL,
+            "token": MCP_AUTH_TOKEN
+        })
+
+    return configs
+
+
+# Load MCP configurations at startup
+MCP_CONFIGURATIONS = load_mcp_configurations()
+
+# Get default config (first one, or empty)
+DEFAULT_MCP_CONFIG = MCP_CONFIGURATIONS[0] if MCP_CONFIGURATIONS else {
+    "name": "Default",
+    "url": "https://soc.poort.net/mcp",
+    "token": ""
+}
+
 
 # MCP Bridge path - configurable for different deployments
 _mcp_bridge_env = os.getenv("MCP_BRIDGE_PATH")
@@ -197,14 +268,16 @@ class LLMConfig(BaseModel):
     url: str = "http://localhost:11434"
 
 class MCPConfig(BaseModel):
-    url: str = "https://soc.poort.net/mcp"
-    token: str = ""
+    url: str = DEFAULT_MCP_CONFIG["url"]
+    token: str = DEFAULT_MCP_CONFIG["token"]
+    config_name: Optional[str] = None  # If set, look up config by name
 
 class HealthConfig(BaseModel):
     llm_provider: str = "ollama"
     llm_url: str = "http://localhost:11434"
-    mcp_url: str = "https://soc.poort.net/mcp"
-    mcp_token: str = ""
+    mcp_url: str = DEFAULT_MCP_CONFIG["url"]
+    mcp_token: str = DEFAULT_MCP_CONFIG["token"]
+    mcp_config_name: Optional[str] = None  # If set, look up config by name
 
 
 # Lifespan event handler (replaces on_event)
@@ -624,6 +697,37 @@ async def root():
     return FileResponse(Path(__file__).parent / "static" / "index.html")
 
 
+@app.get("/api/mcp-configs")
+async def get_mcp_configs():
+    """
+    Get available MCP server configurations.
+
+    These are loaded from environment variables at startup:
+        MCP_CONFIG_1_NAME, MCP_CONFIG_1_URL, MCP_CONFIG_1_TOKEN
+        MCP_CONFIG_2_NAME, MCP_CONFIG_2_URL, MCP_CONFIG_2_TOKEN
+        etc.
+
+    Returns configs without exposing tokens (only name and url).
+    """
+    # Return configs without tokens for security
+    safe_configs = [
+        {"name": c["name"], "url": c["url"], "has_token": bool(c["token"])}
+        for c in MCP_CONFIGURATIONS
+    ]
+    return {
+        "configs": safe_configs,
+        "default": DEFAULT_MCP_CONFIG["name"] if MCP_CONFIGURATIONS else None
+    }
+
+
+def get_mcp_config_by_name(name: str) -> Optional[Dict[str, str]]:
+    """Look up MCP config by name"""
+    for config in MCP_CONFIGURATIONS:
+        if config["name"] == name:
+            return config
+    return None
+
+
 @app.post("/api/models")
 async def post_models(config: LLMConfig):
     """Get available models from configured LLM provider"""
@@ -645,10 +749,19 @@ async def post_models(config: LLMConfig):
 async def post_tools(config: MCPConfig):
     """Get available MCP tools from configured server"""
     try:
+        # If config_name is provided, look up the config
+        url = config.url
+        token = config.token
+        if config.config_name:
+            named_config = get_mcp_config_by_name(config.config_name)
+            if named_config:
+                url = named_config["url"]
+                token = named_config["token"]
+
         bridge = MCPBridgeClient(
             bridge_path=MCP_BRIDGE_PATH,
-            server_url=config.url,
-            auth_token=config.token
+            server_url=url,
+            auth_token=token
         )
         tools = await bridge.list_tools()
         return {"tools": tools, "count": len(tools)}
@@ -670,11 +783,20 @@ async def post_health(config: HealthConfig):
         llm_ok = len(await llm_client.list_models()) > 0
         await llm_client.close()
 
+        # If mcp_config_name is provided, look up the config
+        mcp_url = config.mcp_url
+        mcp_token = config.mcp_token
+        if config.mcp_config_name:
+            named_config = get_mcp_config_by_name(config.mcp_config_name)
+            if named_config:
+                mcp_url = named_config["url"]
+                mcp_token = named_config["token"]
+
         # Check MCP server
         mcp_client = MCPBridgeClient(
             bridge_path=MCP_BRIDGE_PATH,
-            server_url=config.mcp_url,
-            auth_token=config.mcp_token
+            server_url=mcp_url,
+            auth_token=mcp_token
         )
         mcp_ok = len(await mcp_client.list_tools()) > 0
 
@@ -682,6 +804,7 @@ async def post_health(config: HealthConfig):
             "status": "healthy" if (llm_ok and mcp_ok) else "degraded",
             "ollama": "connected" if llm_ok else "disconnected",
             "mcp": "connected" if mcp_ok else "disconnected",
+            "mcp_config": config.mcp_config_name or "custom",
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
