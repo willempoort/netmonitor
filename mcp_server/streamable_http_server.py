@@ -208,6 +208,7 @@ class NetMonitorStreamableHTTPServer:
         root_path = os.environ.get('MCP_ROOT_PATH', '')
 
         # Create FastAPI app
+        # redirect_slashes=False prevents 307 redirect from /mcp to /mcp/
         app = FastAPI(
             title="NetMonitor MCP API",
             description="MCP Streamable HTTP API for NetMonitor Security Operations Center\n\n"
@@ -220,22 +221,11 @@ class NetMonitorStreamableHTTPServer:
             root_path=root_path,
             lifespan=lifespan,
             debug=self.config['debug']
+            # Note: redirect_slashes is left as default (True)
         )
 
-        # Create raw ASGI handler for MCP endpoint that wraps the session manager
-        # This bypasses FastAPI's routing and prevents the 307 redirect issue
-        from starlette.routing import Route as StarletteRoute
-        from starlette.requests import Request as StarletteRequest
-
-        async def mcp_asgi_handler(scope: Scope, receive: Receive, send: Send):
-            """Raw ASGI handler for MCP Streamable HTTP requests"""
-            # Pass directly to session manager without any FastAPI interference
-            await self.session_manager.handle_request(scope, receive, send)
-
-        # Add the /mcp endpoint as a Starlette Route (not FastAPI route)
-        # This is added to the router before other routes to have priority
-        mcp_route = StarletteRoute("/mcp", endpoint=mcp_asgi_handler, methods=["GET", "POST"])
-        app.router.routes.insert(0, mcp_route)
+        # Note: MCP middleware will be added at the end of create_app()
+        # to intercept /mcp requests before FastAPI's redirect_slashes
 
         # ==================== FastAPI Routes (for docs) ====================
 
@@ -348,7 +338,7 @@ class NetMonitorStreamableHTTPServer:
 
         # ==================== Middleware Configuration ====================
 
-        # Add CORS middleware (must be added BEFORE TokenAuthMiddleware)
+        # Add CORS middleware
         if self.config['cors']['enabled']:
             app.add_middleware(
                 CORSMiddleware,
@@ -359,14 +349,15 @@ class NetMonitorStreamableHTTPServer:
             )
             logger.info(f"CORS enabled for origins: {self.config['cors']['origins']}")
 
-        # Add token authentication middleware
+        # Token authentication middleware for non-MCP endpoints
+        # Note: /mcp is handled by MCPInterceptMiddleware with its own auth
         if self.config['auth']['required']:
             app.add_middleware(
                 TokenAuthMiddleware,
                 token_manager=self.token_manager,
-                exempt_paths=['/health', '/docs', '/redoc', '/openapi.json', '/tools']
+                exempt_paths=['/health', '/docs', '/redoc', '/openapi.json', '/tools', '/mcp', '/mcp/']
             )
-            logger.info("Token authentication enabled (docs and /tools accessible without auth)")
+            logger.info("Token authentication enabled for FastAPI routes")
 
         # ==================== Custom OpenAPI Schema ====================
         # Add MCP tools to OpenAPI schema (they don't appear automatically since /mcp is mounted)
@@ -522,11 +513,92 @@ class NetMonitorStreamableHTTPServer:
         app.openapi = custom_openapi
 
         logger.info("FastAPI application created with OpenAPI docs")
-        return app
+
+        # Create pure ASGI middleware to intercept /mcp requests
+        # This bypasses FastAPI's redirect_slashes feature completely
+        session_manager = self.session_manager
+        token_manager = self.token_manager
+        auth_required = self.config['auth']['required']
+
+        class MCPInterceptMiddleware:
+            """ASGI middleware that intercepts /mcp requests before FastAPI routing"""
+            def __init__(self, app):
+                self.app = app
+
+            async def __call__(self, scope: Scope, receive: Receive, send: Send):
+                if scope["type"] == "http":
+                    path = scope.get("path", "")
+                    # Handle both /mcp and /mcp/
+                    if path == "/mcp" or path == "/mcp/":
+                        # Authenticate the request if auth is required
+                        if auth_required:
+                            headers = dict(scope.get("headers", []))
+                            auth_header = headers.get(b"authorization", b"").decode()
+
+                            if not auth_header.startswith("Bearer "):
+                                # Return 401 Unauthorized
+                                await self._send_error(send, 401, {
+                                    "error": "missing_token",
+                                    "message": "Missing or invalid Authorization header. Use: Authorization: Bearer <token>"
+                                })
+                                return
+
+                            token = auth_header[7:]  # Remove "Bearer " prefix
+                            token_details = token_manager.validate_token(token)
+
+                            if not token_details:
+                                await self._send_error(send, 401, {
+                                    "error": "invalid_token",
+                                    "message": "Invalid or expired token"
+                                })
+                                return
+
+                            # Check rate limits
+                            if not token_manager.check_rate_limit(token_details['id'], token_details):
+                                await self._send_error(send, 429, {
+                                    "error": "rate_limit_exceeded",
+                                    "message": "Rate limit exceeded. Please try again later."
+                                })
+                                return
+
+                            logger.info(f"MCP middleware handling: {scope.get('method')} {path} (token: {token_details['name']})")
+                        else:
+                            logger.info(f"MCP middleware handling: {scope.get('method')} {path}")
+
+                        await session_manager.handle_request(scope, receive, send)
+                        return
+                await self.app(scope, receive, send)
+
+            async def _send_error(self, send, status_code: int, error_body: dict):
+                """Send an error response"""
+                import json
+                body = json.dumps(error_body).encode()
+                await send({
+                    "type": "http.response.start",
+                    "status": status_code,
+                    "headers": [
+                        [b"content-type", b"application/json"],
+                        [b"www-authenticate", b"Bearer"] if status_code == 401 else [b"x-error", b"true"]
+                    ]
+                })
+                await send({
+                    "type": "http.response.body",
+                    "body": body
+                })
+
+        # Wrap FastAPI app with MCP middleware
+        wrapped_app = MCPInterceptMiddleware(app)
+        # Store original FastAPI app for reference
+        wrapped_app.fastapi_app = app
+
+        logger.info("MCP intercept middleware registered for /mcp and /mcp/")
+        return wrapped_app
 
     def run(self):
         """Run the server with uvicorn"""
         app = self.create_app()
+        # Get original FastAPI app for logging
+        fastapi_app = getattr(app, 'fastapi_app', app)
 
         logger.info("=" * 70)
         logger.info("NetMonitor MCP Streamable HTTP Server (FastAPI Edition)")
