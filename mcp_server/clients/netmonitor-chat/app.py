@@ -127,6 +127,105 @@ else:
 
 # Helper Functions
 
+def extract_tool_call_from_text(text: str) -> Optional[Dict]:
+    """
+    Try to extract a tool call from text that might contain JSON.
+    Handles cases where the model outputs text mixed with JSON.
+
+    Returns:
+        Dict with 'name' and 'arguments' if found, None otherwise
+    """
+    import re
+
+    text = text.strip()
+
+    # Try 1: Pure JSON response
+    if text.startswith("{"):
+        try:
+            data = json.loads(text)
+            if "name" in data:
+                return {
+                    "name": data["name"],
+                    "arguments": data.get("arguments", data.get("params", {}))
+                }
+        except json.JSONDecodeError:
+            pass
+
+    # Try 2: Find JSON block in text (```json ... ```)
+    json_block_match = re.search(r'```(?:json)?\s*(\{[^`]+\})\s*```', text, re.DOTALL)
+    if json_block_match:
+        try:
+            data = json.loads(json_block_match.group(1))
+            if "name" in data:
+                return {
+                    "name": data["name"],
+                    "arguments": data.get("arguments", data.get("params", {}))
+                }
+        except json.JSONDecodeError:
+            pass
+
+    # Try 3: Find any JSON object with "name" field
+    json_match = re.search(r'\{[^{}]*"name"\s*:\s*"[^"]+"\s*[^{}]*\}', text)
+    if json_match:
+        try:
+            data = json.loads(json_match.group(0))
+            if "name" in data:
+                return {
+                    "name": data["name"],
+                    "arguments": data.get("arguments", data.get("params", {}))
+                }
+        except json.JSONDecodeError:
+            pass
+
+    # Try 4: Find nested JSON with arguments
+    json_match = re.search(r'\{[^{}]*"name"\s*:[^{}]*"arguments"\s*:\s*\{[^{}]*\}[^{}]*\}', text)
+    if json_match:
+        try:
+            data = json.loads(json_match.group(0))
+            if "name" in data:
+                return {
+                    "name": data["name"],
+                    "arguments": data.get("arguments", {})
+                }
+        except json.JSONDecodeError:
+            pass
+
+    return None
+
+
+def build_tool_prompt(tools: List[Dict], user_system_prompt: str = "") -> str:
+    """
+    Build a system prompt that instructs the model to use tools via JSON output.
+    Used as fallback for models without native function calling.
+    """
+    tool_descriptions = []
+    for tool in tools[:10]:  # Limit to 10 tools to avoid context overflow
+        name = tool.get("name", "unknown")
+        desc = tool.get("description", "No description")[:100]
+        params = tool.get("inputSchema", {}).get("properties", {})
+        param_names = list(params.keys())[:3]  # First 3 params
+        tool_descriptions.append(f"- {name}: {desc} (params: {param_names})")
+
+    tools_text = "\n".join(tool_descriptions)
+
+    prompt = f"""{user_system_prompt}
+
+BELANGRIJK: Je hebt toegang tot de volgende tools om actuele data op te halen:
+
+{tools_text}
+
+Als je een tool wilt gebruiken, antwoord dan ALLEEN met JSON in dit formaat:
+{{"name": "tool_naam", "arguments": {{"param": "waarde"}}}}
+
+Voorbeeld voor recente threats:
+{{"name": "get_recent_threats", "arguments": {{"hours": 1}}}}
+
+Geef GEEN tekst buiten de JSON als je een tool aanroept.
+Als je geen tool nodig hebt, antwoord dan gewoon in het Nederlands."""
+
+    return prompt
+
+
 def filter_relevant_tools(user_message: str, all_tools: List[Dict], max_tools: int = 10) -> List[Dict]:
     """
     Filter tools based on relevance to user message.
@@ -929,13 +1028,6 @@ async def websocket_chat(websocket: WebSocket):
                 auth_token=mcp_token
             )
 
-            # Build messages with optional system prompt
-            messages = []
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-
-            messages.extend(history + [{"role": "user", "content": message}])
-
             # Get available tools and filter to most relevant ones
             all_mcp_tools = await mcp_client.list_tools()
 
@@ -956,20 +1048,39 @@ async def websocket_chat(websocket: WebSocket):
                     }
                 })
 
-            # Stream response from LLM with filtered tools
-            full_response = ""
-            has_tool_call = False
-            accumulated_tool_calls = {}  # Dict to accumulate tool calls by index
+            # Determine tool mode
+            use_native_tools = False
+            use_json_fallback = False
 
-            # Determine if we should use tools
             if llm_provider == "ollama":
+                use_native_tools = True
                 use_tools = ollama_tools if ollama_tools else None
             elif llm_provider == "lmstudio" and force_tools_lmstudio:
-                use_tools = ollama_tools if ollama_tools else None
-                print(f"[WebSocket] LM Studio with FORCED tools enabled ({len(ollama_tools)} tools)")
+                # For LM Studio with Force Tools: use JSON fallback mode
+                # This works better than native function calling for most models
+                use_json_fallback = True
+                use_tools = None  # Don't pass tools natively
+                print(f"[WebSocket] LM Studio JSON fallback mode ({len(filtered_mcp_tools)} tools in prompt)")
             else:
                 use_tools = None
                 print("[WebSocket] LM Studio detected - function calling disabled (use Force Tools to enable)")
+
+            # Build messages with system prompt
+            messages = []
+
+            # For JSON fallback mode: inject tool instructions into system prompt
+            if use_json_fallback and filtered_mcp_tools:
+                enhanced_prompt = build_tool_prompt(filtered_mcp_tools, system_prompt)
+                messages.append({"role": "system", "content": enhanced_prompt})
+            elif system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+
+            messages.extend(history + [{"role": "user", "content": message}])
+
+            # Stream response from LLM
+            full_response = ""
+            has_tool_call = False
+            accumulated_tool_calls = {}  # Dict to accumulate tool calls by index
 
             async for chunk in llm_client.chat(
                 model,
@@ -1140,60 +1251,57 @@ async def websocket_chat(websocket: WebSocket):
                         response_stripped = full_response.strip()
                         is_tool_call = False
 
-                        # Try to parse as tool call JSON
-                        if response_stripped.startswith("{") and "\"name\":" in response_stripped:
-                            try:
-                                tool_data = json.loads(response_stripped)
-                                if "name" in tool_data and "arguments" in tool_data:
-                                    is_tool_call = True
-                                    # Valid tool call JSON!
-                                    tool_name = tool_data["name"]
-                                    tool_args = tool_data.get("arguments", {})
+                        # Try to extract tool call from response (handles various formats)
+                        tool_data = extract_tool_call_from_text(response_stripped)
 
-                                    # Notify client of tool call
-                                    await websocket.send_json({
-                                        "type": "tool_call",
-                                        "tool": tool_name,
-                                        "args": tool_args
-                                    })
+                        if tool_data:
+                            is_tool_call = True
+                            tool_name = tool_data["name"]
+                            tool_args = tool_data.get("arguments", {})
 
-                                    # Execute tool
-                                    result = await mcp_client.call_tool(tool_name, tool_args)
+                            print(f"[WebSocket] JSON fallback detected tool call: {tool_name}")
 
-                                    # Send result to client
-                                    await websocket.send_json({
-                                        "type": "tool_result",
-                                        "tool": tool_name,
-                                        "result": result
-                                    })
+                            # Notify client of tool call
+                            await websocket.send_json({
+                                "type": "tool_call",
+                                "tool": tool_name,
+                                "args": tool_args
+                            })
 
-                                    # Add tool result to conversation and get final response
-                                    messages.append({"role": "assistant", "content": full_response})
-                                    messages.append({
-                                        "role": "user",
-                                        "content": f"Tool {tool_name} returned: {json.dumps(result)}. Please provide a natural language response based on this data."
-                                    })
+                            # Execute tool
+                            result = await mcp_client.call_tool(tool_name, tool_args)
 
-                                    # Get final natural language response
-                                    async for chunk2 in llm_client.chat(
-                                        model,
-                                        messages,
-                                        stream=True,
-                                        temperature=temperature,
-                                        tools=None  # No tools on follow-up to avoid loop
-                                    ):
-                                        if "message" in chunk2:
-                                            content2 = chunk2["message"].get("content", "")
-                                            if content2:
-                                                await websocket.send_json({
-                                                    "type": "token",
-                                                    "content": content2
-                                                })
-                                        if chunk2.get("done"):
-                                            break
+                            # Send result to client
+                            await websocket.send_json({
+                                "type": "tool_result",
+                                "tool": tool_name,
+                                "result": result
+                            })
 
-                            except json.JSONDecodeError:
-                                pass  # Not valid JSON, treat as regular text
+                            # Add tool result to conversation and get final response
+                            messages.append({"role": "assistant", "content": full_response})
+                            messages.append({
+                                "role": "user",
+                                "content": f"Tool {tool_name} returned: {json.dumps(result)}. Geef een duidelijk Nederlands antwoord gebaseerd op deze data. Gebruik GEEN JSON meer."
+                            })
+
+                            # Get final natural language response
+                            async for chunk2 in llm_client.chat(
+                                model,
+                                messages,
+                                stream=True,
+                                temperature=temperature,
+                                tools=None  # No tools on follow-up to avoid loop
+                            ):
+                                if "message" in chunk2:
+                                    content2 = chunk2["message"].get("content", "")
+                                    if content2:
+                                        await websocket.send_json({
+                                            "type": "token",
+                                            "content": content2
+                                        })
+                                if chunk2.get("done"):
+                                    break
 
                         # If response looked like JSON but wasn't a tool call, send it now
                         if not is_tool_call and response_stripped.startswith("{"):
