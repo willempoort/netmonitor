@@ -868,7 +868,16 @@ async def websocket_chat(websocket: WebSocket):
             llm_url = data.get("llm_url", OLLAMA_BASE_URL)
             mcp_url = data.get("mcp_url", MCP_SERVER_URL)
             mcp_token = data.get("mcp_token", MCP_AUTH_TOKEN)
+            mcp_config_name = data.get("mcp_config_name")  # Named config lookup
             force_tools_lmstudio = data.get("force_tools_lmstudio", False)
+
+            # If mcp_config_name is provided, look up the config
+            if mcp_config_name:
+                named_config = get_mcp_config_by_name(mcp_config_name)
+                if named_config:
+                    mcp_url = named_config["url"]
+                    mcp_token = named_config["token"]
+                    print(f"[WebSocket] Using MCP config '{mcp_config_name}': {mcp_url}")
 
             print(f"[WebSocket] Provider: {llm_provider}, Model: {model}, URL: {llm_url}")
             if llm_provider == "lmstudio" and force_tools_lmstudio:
