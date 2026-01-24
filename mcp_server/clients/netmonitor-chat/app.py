@@ -270,8 +270,12 @@ def filter_relevant_tools(user_message: str, all_tools: List[Dict], max_tools: i
             ['log', 'syslog', 'event']
         ),
         'network': (
-            ['network', 'netwerk', 'traffic'],
+            ['network', 'netwerk', 'traffic', 'verkeer'],
             ['network', 'traffic', 'flow', 'connection']
+        ),
+        'toptalker': (
+            ['top', 'talker', 'talkers', 'meeste', 'grootste', 'bandwidth', 'volume'],
+            ['traffic', 'stats', 'top', 'bandwidth', 'volume', 'bytes']
         ),
         'dns': (
             ['dns', 'domain'],
