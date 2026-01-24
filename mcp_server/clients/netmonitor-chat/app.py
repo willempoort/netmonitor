@@ -595,7 +595,7 @@ class MCPBridgeClient:
         }
 
         try:
-            # Call bridge via subprocess
+            # Call bridge via subprocess using same Python as this script
             env = os.environ.copy()
             env.update({
                 "MCP_SERVER_URL": self.server_url,
@@ -603,7 +603,7 @@ class MCPBridgeClient:
             })
 
             process = await asyncio.create_subprocess_exec(
-                "python3",
+                sys.executable,
                 str(self.bridge_path),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
@@ -664,11 +664,13 @@ class MCPBridgeClient:
                 "MCP_AUTH_TOKEN": self.auth_token
             })
 
-            print(f"[Bridge] Calling {self.bridge_path}")
+            # Use the same Python interpreter that's running this script
+            python_executable = sys.executable
+            print(f"[Bridge] Calling {self.bridge_path} with {python_executable}")
             print(f"[Bridge] Server URL: {self.server_url}")
 
             process = await asyncio.create_subprocess_exec(
-                "python3",
+                python_executable,
                 str(self.bridge_path),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
