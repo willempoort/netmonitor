@@ -602,6 +602,51 @@ class NetMonitorTools:
 
     # ==================== Device Discovery Tool Implementations ====================
 
+    # get_top_talkers
+    async def get_top_talkers(self, params: Dict) -> Dict:
+        """Get top communicating hosts by traffic volume"""
+        hours = params.get('hours', 24)
+        limit = params.get('limit', 10)
+        direction = params.get('direction')  # Optional: 'inbound' or 'outbound'
+
+        try:
+            # Use the database client's get_top_talkers_stats method
+            top_talkers = self.db.get_top_talkers_stats(
+                hours=hours,
+                limit=limit,
+                direction=direction
+            )
+
+            # Format bytes for readability
+            def format_bytes(bytes_val):
+                if bytes_val is None:
+                    return "0 B"
+                for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+                    if bytes_val < 1024:
+                        return f"{bytes_val:.1f} {unit}"
+                    bytes_val /= 1024
+                return f"{bytes_val:.1f} PB"
+
+            # Enhance results with formatted values
+            for talker in top_talkers:
+                talker['total_bytes_formatted'] = format_bytes(talker.get('total_bytes', 0))
+                # Convert datetime objects to strings for JSON serialization
+                if 'last_seen' in talker and talker['last_seen']:
+                    talker['last_seen'] = str(talker['last_seen'])
+                if 'first_seen' in talker and talker['first_seen']:
+                    talker['first_seen'] = str(talker['first_seen'])
+
+            return {
+                'success': True,
+                'period_hours': hours,
+                'direction_filter': direction or 'all',
+                'count': len(top_talkers),
+                'top_talkers': top_talkers
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting top talkers: {e}")
+            return {'success': False, 'error': str(e)}
 
     # get_device_traffic_stats
     async def get_device_traffic_stats(self, params: Dict) -> Dict:
@@ -3026,8 +3071,21 @@ TOOL_DEFINITIONS = [
             },
             # Device Discovery Tools
             {
+                "name": "get_top_talkers",
+                "description": "Get top communicating hosts by traffic volume (bytes/packets). Perfect for finding bandwidth hogs or most active devices.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "hours": {"type": "number", "description": "Lookback period in hours (default: 24)"},
+                        "limit": {"type": "number", "description": "Maximum number of results (default: 10)"},
+                        "direction": {"type": "string", "enum": ["inbound", "outbound"], "description": "Filter by traffic direction (optional)"}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            {
                 "name": "get_device_traffic_stats",
-                "description": "Get traffic statistics for a device (ports, protocols, bytes, communication partners)",
+                "description": "Get traffic statistics for a specific device by IP (ports, protocols, bytes, communication partners)",
                 "input_schema": {
                     "type": "object",
                     "properties": {
