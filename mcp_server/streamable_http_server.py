@@ -35,7 +35,8 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from starlette.types import Receive, Scope, Send
-from starlette.routing import Mount
+from starlette.routing import Mount, Route
+from starlette.responses import Response
 import uvicorn
 
 # MCP SDK imports
@@ -221,14 +222,46 @@ class NetMonitorStreamableHTTPServer:
             debug=self.config['debug']
         )
 
-        # Create ASGI app for MCP endpoint
-        async def mcp_asgi_app(scope: Scope, receive: Receive, send: Send):
-            """Raw ASGI app for MCP Streamable HTTP requests"""
+        # Create handler function for MCP requests
+        async def handle_mcp_request(scope: Scope, receive: Receive, send: Send):
+            """Handle MCP Streamable HTTP requests"""
             await self.session_manager.handle_request(scope, receive, send)
 
-        # Mount MCP endpoint as raw ASGI app
-        # This MUST be done before adding middleware (FastAPI requirement)
-        app.mount("/mcp", app=mcp_asgi_app)
+        # Add explicit routes for both POST and GET on /mcp
+        # This prevents FastAPI's mount() 307 redirect issue
+
+        async def mcp_endpoint(request):
+            """MCP endpoint handler for both GET (SSE) and POST (JSON-RPC)"""
+            scope = request.scope
+            receive = request.receive
+
+            # Build custom send that collects the response
+            response_body = []
+            response_status = 200
+            response_headers = []
+
+            async def send(message):
+                nonlocal response_status, response_headers
+                if message['type'] == 'http.response.start':
+                    response_status = message['status']
+                    response_headers = message.get('headers', [])
+                elif message['type'] == 'http.response.body':
+                    body = message.get('body', b'')
+                    if body:
+                        response_body.append(body)
+
+            # Call the MCP session manager
+            await handle_mcp_request(scope, receive, send)
+
+            # Return response
+            return Response(
+                content=b''.join(response_body),
+                status_code=response_status,
+                headers={k.decode('latin1'): v.decode('latin1') for k, v in response_headers}
+            )
+
+        # Add routes for /mcp endpoint (both GET and POST)
+        app.router.routes.insert(0, Route("/mcp", mcp_endpoint, methods=["GET", "POST"]))
 
         # ==================== FastAPI Routes (for docs) ====================
 
