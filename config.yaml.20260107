@@ -1,0 +1,405 @@
+# Network Monitor Configuration
+
+# ============================================================================
+# SOC SERVER CONFIGURATION
+# ============================================================================
+# This section is for the SOC server itself (server-side monitoring)
+
+# Self-Monitoring Settings (SOC Server)
+self_monitor:
+  # Enable/disable local network monitoring on the SOC server
+  # Set to false if you only want to receive alerts from remote sensors
+  # NOTE: When enabled, SOC server will appear in sensor list with implicit heartbeat
+  #       via metrics (every 60s). No separate sensor_client.py needed.
+  enabled: true
+
+  # Sensor ID for the SOC server (must be unique)
+  # This is how the SOC server will appear in the sensor list
+  sensor_id: soc-server
+
+  # Hostname and location (optional, auto-detected if not specified)
+  hostname: "soc"  # Leave empty for auto-detection
+  location: "SOC Server - Main Location"
+
+  # Network interface(s) to monitor on the SOC server
+  # Options:
+  #   - Single interface: eth0, ens33, etc.
+  #   - Multiple interfaces: ens33, ens34, ens35 (comma-separated)
+  #   - All interfaces: any
+  # IMPORTANT: Default 'lo' only monitors loopback - change for real traffic!
+  interface: ens192
+
+# ============================================================================
+# DETECTION CONFIGURATION
+# ============================================================================
+# NOTE: For remote sensors, these settings are managed centrally via the
+# SOC server dashboard and pushed to sensors automatically.
+# Only the SOC server needs these detailed thresholds in config.yaml.
+
+# Network interface to monitor (legacy/backward compatibility)
+# When self_monitor.enabled=true, this is overridden by self_monitor.interface
+interface: ens192
+
+# Internal network ranges (voor internal traffic monitoring)
+# Pas deze aan naar je eigen netwerk configuratie
+internal_networks:
+  - 10.100.0.0/24
+#  - 172.16.0.0/12
+#  - 192.168.0.0/16
+
+# Detection thresholds
+thresholds:
+  # Port scan detection - aantal unieke poorten per source IP per tijdvenster
+  port_scan:
+    enabled: true
+    unique_ports: 20  # Aantal unieke poorten binnen time_window
+    time_window: 60   # Tijdvenster in seconden
+
+  # High connection rate detection
+  connection_flood:
+    enabled: true
+    connections_per_second: 100
+    time_window: 10
+
+  # Unusual packet size detection
+  packet_size:
+    enabled: true
+    min_suspicious_size: 6500  # Pakketten groter dan deze size zijn verdacht
+
+  # DNS tunneling detection (enhanced met entropy en DGA detection)
+  dns_tunnel:
+    enabled: true
+    query_length_threshold: 50  # DNS queries langer dan dit zijn verdacht
+    queries_per_minute: 150     # Verhoogd voor netwerken met monitoring sensoren
+
+  # ICMP tunneling detection
+  icmp_tunnel:
+    enabled: true
+    size_threshold: 500      # ICMP payload >500 bytes is verdacht
+    rate_threshold: 10       # >10 large ICMP packets per minute
+
+  # HTTP/HTTPS anomaly detection
+  http_anomaly:
+    enabled: true
+    post_threshold: 50       # Alert bij meer dan X POST requests
+    post_time_window: 300    # Tijdvenster in seconden (5 min)
+    dlp_min_payload_size: 1024  # Minimale payload size voor DLP scanning (bytes)
+    entropy_threshold: 6.5   # Entropy threshold voor encrypted data in plaintext HTTP
+
+  # SMTP/FTP large transfer detection
+  smtp_ftp_transfer:
+    enabled: true
+    size_threshold_mb: 50    # Alert bij meer dan X MB overdracht
+    time_window: 300         # Tijdvenster in seconden (5 min)
+
+  # Enhanced DNS detection parameters
+  dns_enhanced:
+    dga_threshold: 0.6       # DGA score threshold (0-1, hoger = strikter)
+    entropy_threshold: 4.5   # Shannon entropy threshold voor DNS queries
+    encoding_detection: true # Detecteer Base64/Hex encoding in queries
+
+  # Beaconing detection - detecteert regelmatige callbacks naar C&C servers
+  beaconing:
+    enabled: true
+    min_connections: 5        # Minimaal aantal connecties om te analyseren
+    max_jitter_percent: 20    # Max variatie in interval timing (%)
+
+  # Outbound traffic volume monitoring - detecteert data exfiltration
+  outbound_volume:
+    enabled: true
+    threshold_mb: 100         # Alert bij meer dan X MB outbound in time_window
+    time_window: 300          # Tijdvenster in seconden (5 min)
+
+  # Lateral movement detection - interne machine scant andere interne machines
+  lateral_movement:
+    enabled: true
+    unique_targets: 5         # Aantal unieke internal IPs
+    time_window: 300          # Tijdvenster in seconden
+
+  # Brute force detection - detecteert herhaalde login pogingen
+  brute_force:
+    enabled: true
+    attempts_threshold: 5     # Aantal pogingen dat als verdacht wordt gezien
+    time_window: 300          # Tijdvenster in seconden (5 min)
+    exclude_streaming: true   # Negeer bekende streaming services (Netflix, YouTube, etc.)
+    exclude_cdn: true         # Negeer bekende CDN providers (Cloudflare, Akamai, etc.)
+
+  # Modern Protocol Detection - QUIC/HTTP3 en streaming services
+  modern_protocols:
+    quic_detection: true      # Detecteer QUIC (HTTP/3) verkeer
+    http3_detection: true     # Detecteer HTTP/3 over QUIC
+    # Bekende streaming service IP ranges (updates via threat feeds mogelijk)
+    streaming_services:
+      - 23.246.0.0/18         # Netflix (Akamai CDN)
+      - 37.77.184.0/21        # Netflix (Akamai CDN)
+      - 45.57.0.0/17          # Netflix
+      - 64.120.128.0/17       # Netflix
+      - 66.197.128.0/17       # Netflix
+      - 108.175.32.0/20       # Netflix
+      - 185.2.220.0/22        # Netflix (Europe)
+      - 185.9.188.0/22        # Netflix (Europe)
+      - 192.173.64.0/18       # Netflix
+      - 198.38.96.0/19        # Netflix
+      - 198.45.48.0/20        # Netflix
+      - 208.75.76.0/22        # Netflix
+      - 2620:10c:7000::/44    # Netflix IPv6
+      - 142.250.0.0/15        # Google (YouTube, etc.)
+      - 172.217.0.0/16        # Google
+      - 173.194.0.0/16        # Google
+      - 216.58.192.0/19       # Google
+      - 2001:4860::/32        # Google IPv6
+      - 13.32.0.0/15          # Amazon CloudFront (Prime Video)
+      - 13.224.0.0/14         # Amazon CloudFront
+      - 13.249.0.0/16         # Amazon CloudFront
+      - 18.64.0.0/14          # Amazon CloudFront
+      - 2600:9000::/28        # Amazon CloudFront IPv6
+    # CDN providers (veel parallelle verbindingen is normaal)
+    cdn_providers:
+      - 104.16.0.0/13         # Cloudflare
+      - 172.64.0.0/13         # Cloudflare
+      - 162.158.0.0/15        # Cloudflare
+      - 2606:4700::/32        # Cloudflare IPv6
+      - 23.32.0.0/11          # Akamai
+      - 23.192.0.0/11         # Akamai
+      - 95.100.0.0/15         # Akamai
+      - 2.16.0.0/13           # Akamai
+      - 184.24.0.0/13         # Akamai
+      - 2600:1400::/24        # Akamai IPv6
+
+  # Protocol mismatch detection - detecteert protocollen op ongebruikelijke poorten
+  protocol_mismatch:
+    enabled: true
+    detect_http_non_standard: true   # HTTP verkeer op niet-standaard poorten
+    detect_ssh_non_standard: true    # SSH verkeer op andere poorten dan 22
+    detect_dns_non_standard: true    # DNS verkeer op andere poerten dan 53
+    detect_ftp_non_standard: true    # FTP verkeer op andere poorten dan 20/21
+    ignore_quic: true                # Negeer QUIC (UDP 443) voor HTTP detection
+
+  # Kerberos/Active Directory attack detection
+  kerberos:
+    enabled: true
+    tgs_req_threshold: 10            # TGS requests per window voor Kerberoasting detectie
+    tgs_req_window: 300              # Tijdvenster in seconden (5 min)
+    asrep_threshold: 5               # AS-REP responses met weak encryption
+    asrep_window: 300                # Tijdvenster in seconden
+    tgt_lifetime_max: 36000          # Max TGT lifetime in seconden (10 uur)
+
+  # Kill chain / multi-stage attack correlation
+  kill_chain:
+    enabled: true
+    chain_window: 3600               # Correlatie window in seconden (1 uur)
+    activity_timeout: 1800           # Inactivity timeout voor chain (30 min)
+    min_events: 3                    # Minimum events voor chain detectie
+    min_stages: 2                    # Minimum stages voor chain alert
+
+  # Protocol deep parsing (SMB/LDAP)
+  protocol_parsing:
+    enabled: true
+    flag_smb1: true                  # Flag SMB1 gebruik (deprecated)
+    detect_admin_shares: true        # Detecteer admin share access (C$, ADMIN$, etc.)
+    detect_sensitive_files: true     # Detecteer access to NTDS.dit, SAM, etc.
+    detect_ldap_sensitive: true      # Detecteer sensitive LDAP attribute queries
+
+  # Asset risk scoring
+  risk_scoring:
+    enabled: true
+    decay_rate: 0.1                  # Risk score decay rate per hour (10%)
+    decay_interval: 3600             # Decay check interval in seconden
+
+  # Enhanced encrypted traffic analysis
+  encrypted_traffic:
+    enabled: true
+    detect_weak_ciphers: true        # Detecteer zwakke/verouderde cipher suites
+    detect_self_signed: true         # Detecteer self-signed certificaten
+    detect_expired_certs: true       # Detecteer verlopen certificaten
+    detect_domain_fronting: true     # Detecteer domain fronting (C2 evasion)
+    detect_esni_ech: true            # Detecteer ESNI/ECH (verborgen hostnames)
+
+  # Advanced Threat Detection (database-backed, synced to sensors)
+  # NOTE: Managed centrally via Web UI > Configuration > Advanced Threats
+  # All settings stored in database (sensor_configs) for global + per-sensor override
+  advanced_threats:
+    enabled: true  # Master switch - configure via web UI after enabling
+
+# SOAR (Security Orchestration, Automation and Response)
+soar:
+  enabled: true
+  dry_run: true                      # BELANGRIJK: true = geen echte blocking actions
+  require_approval: true             # Vereist goedkeuring voor playbook execution
+  max_blocks_per_hour: 10            # Maximum aantal IP blocks per uur
+  webhook_url: null                  # Webhook URL voor notificaties (bijv. Slack)
+  email_enabled: false               # Email notificaties inschakelen
+  email_recipients: []               # Email adressen voor notificaties
+
+# Blacklisted IPs (known malicious IPs)
+blacklist:
+  - 192.0.2.0/24  # Example RFC5737 test network
+  # Voeg hier bekende malicious IPs toe
+
+# Whitelist (trusted IPs that should not trigger alerts)
+whitelist:
+  - 127.0.0.1
+  - 10.100.0.2
+#  - 192.168.1.0/24  # Pas aan naar je eigen netwerk
+
+# Logging
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR
+  file: /var/log/netmonitor/alerts.log
+  console: true
+  syslog: false
+
+# Alert options
+alerts:
+  # Maximum aantal alerts per minuut om flooding te voorkomen
+  max_per_minute: 100
+
+  # Alert naar file
+  file_enabled: true
+
+  # Alert naar syslog
+  syslog_enabled: false
+  syslog_facility: local0
+
+# Threat Intelligence Feeds
+threat_feeds:
+  # Enable/disable threat feed integration
+  enabled: true
+
+  # Feeds om te gebruiken (alle van abuse.ch zijn gratis)
+  feeds:
+    - feodotracker    # Botnet C&C servers
+    - urlhaus         # Malware distribution URLs
+    - threatfox       # Recent IOCs
+    - sslblacklist    # SSL/TLS malicious IPs
+
+  # Auto-update interval (in seconden, 3600 = 1 uur)
+  update_interval: 3600
+
+  # Cache directory voor feeds
+  cache_dir: /var/cache/netmonitor/feeds
+
+# AbuseIPDB API (optioneel, voor real-time IP reputation lookups)
+abuseipdb:
+  # Enable/disable AbuseIPDB lookups
+  enabled: true
+
+  # API key (gratis account op https://www.abuseipdb.com)
+  # Laat leeg om te disablen
+  api_key: "4f1da22b7d6a04ad5e185ea8232e6949469a10d50f9db44ffb"
+
+  # Rate limit (gratis tier = 1000/dag)
+  rate_limit: 1000
+
+  # Abuse score threshold (0-100, hoger = meer malicious)
+  # Alert alleen als score >= threshold
+  threshold: 50
+
+  # Query alleen verdachte IPs (beperkt API calls)
+  # Als false, wordt elke external IP gechecked (niet aanbevolen)
+  query_suspicious_only: true
+
+# Web Dashboard
+dashboard:
+  # Enable/disable web dashboard
+  enabled: true
+
+  # Host en port
+  host: 127.0.0.1  # 0.0.0.0 = toegankelijk vanaf andere machines
+  port: 8080
+
+  # Flask secret key for session security (optional)
+  # Can also be set via FLASK_SECRET_KEY environment variable
+  # Generate a secure key with: python3 -c "import secrets; print(secrets.token_hex(32))"
+  secret_key: "3bf9aab6fbef3fe1041ea3f1ef9f48ca95ce3039bc550ad497ae48a46145db0b"
+
+# Database Configuration (PostgreSQL + TimescaleDB)
+database:
+  # Database type: 'postgresql' or 'sqlite' (legacy)
+  type: postgresql
+
+  # PostgreSQL settings
+  postgresql:
+    host: localhost
+    port: 5432
+    database: netmonitor
+    user: netmonitor
+    password: netmonitor  # Change in production!
+    min_connections: 2
+    max_connections: 10
+
+  # Legacy SQLite (only used if type=sqlite)
+  sqlite:
+    path: /var/lib/netmonitor/netmonitor.db
+
+
+# =============================================================================
+# PERFORMANCE - Timing and intervals
+# =============================================================================
+performance:
+  metrics_interval: 60
+  heartbeat_interval: 30
+  command_poll_interval: 30
+  config_sync_interval: 300
+  whitelist_sync_interval: 300
+
+# =============================================================================
+# INTEGRATIONS - SIEM & Threat Intelligence (optional)
+# =============================================================================
+# All integrations are disabled by default.
+# Credentials come from .env file (MISP_API_KEY, WAZUH_API_PASSWORD, etc.)
+# See: docs/features/INTEGRATIONS.md
+integrations:
+  enabled: true
+  siem:
+    enabled: false
+    syslog:
+      enabled: false
+      host: localhost
+      port: 514
+      protocol: udp
+      format: cef
+      facility: local0
+      forward_severities:
+        - HIGH
+        - CRITICAL
+      forward_all: false
+  wazuh:
+    enabled: false
+    api_url: ""  # Set in .env: WAZUH_API_URL / MISP_URL
+    api_user: ""  # Set in .env: WAZUH_API_USER
+    api_password: ""  # Set in .env: WAZUH_API_PASSWORD
+    verify_ssl: true
+    use_api: true
+    syslog_fallback: true
+  threat_intel:
+    enabled: true
+    cache_ttl_hours: 24
+    misp:
+      enabled: false
+      url: ""  # Set in .env: MISP_URL
+      api_key: ""  # Set in .env: MISP_API_KEY / OTX_API_KEY / ABUSEIPDB_API_KEY
+      verify_ssl: true
+      timeout: 30
+    otx:
+      enabled: false
+      api_key: ""  # Set in .env: MISP_API_KEY / OTX_API_KEY / ABUSEIPDB_API_KEY
+      timeout: 30
+    abuseipdb:
+      enabled: true
+      api_key: "4f1da22b7d6a04ad5e185ea8232e6949469a10d50f9db44ffb"  # Set in .env: MISP_API_KEY / OTX_API_KEY / ABUSEIPDB_API_KEY
+      rate_limit: 1000
+      threshold: 50
+      query_suspicious_only: true
+      max_age_days: 90
+      min_confidence: 50
+      timeout: 30
+  notifications:
+      enabled: false
+      webhook:
+      enabled: false
+      url: ""  # Set in .env: MISP_URL
+      method: POST
+      headers:
+      forward_severities:
+        - CRITICAL

@@ -1,0 +1,298 @@
+# ============================================================================
+# NetMonitor Configuration Example - Minimal Production Setup
+# ============================================================================
+# This is a minimal configuration example for production deployments.
+# Copy this file to config.yaml and customize for your environment:
+#   cp config.yaml.example config.yaml
+#   nano config.yaml
+#
+# IMPORTANT: Secrets (API keys, passwords) belong in .env, NOT in config.yaml!
+# See: .env.example for secrets configuration
+#
+# Configuration sources (priority order):
+#   1. Database (runtime configuration via web UI)
+#   2. config.yaml (this file)
+#   3. Best practice defaults (config_defaults.py)
+# ============================================================================
+
+# ============================================================================
+# NETWORK MONITORING - REQUIRED
+# ============================================================================
+# Network interface to monitor on the SOC server
+# Use 'ip addr' or 'ifconfig' to find your interface name
+# Examples: eth0, ens33, ens192, enp0s3
+interface: ens192
+
+# Internal network ranges (adjust to your network)
+# Used to distinguish internal vs external traffic
+internal_networks:
+  - 10.100.0.0/24
+#  - 172.16.0.0/12
+#  - 192.168.0.0/16
+
+# ============================================================================
+# SOC SERVER SELF-MONITORING
+# ============================================================================
+# Enable monitoring of the SOC server itself
+# Set to false if you only want to receive alerts from remote sensors
+self_monitor:
+  enabled: true
+  sensor_id: soc-server
+  hostname: "soc"  # Auto-detect if empty
+  location: "SOC Server - Main Location"
+  interface: ens192  # Override 'interface' setting above for SOC server
+
+# ============================================================================
+# WEB DASHBOARD
+# ============================================================================
+dashboard:
+  enabled: true
+
+  # Network settings (can be overridden by .env)
+  # If DASHBOARD_HOST and DASHBOARD_PORT are set in .env, they take priority
+  host: 127.0.0.1  # 0.0.0.0 = accessible from other machines, 127.0.0.1 = localhost only
+  port: 8080
+
+  # Secret key for session security - SET IN .env AS FLASK_SECRET_KEY
+  # Generate: python3 -c "import secrets; print(secrets.token_hex(32))"
+  secret_key: ""  # Leave empty - will be loaded from .env
+
+  # NOTE: Dashboard server mode (embedded vs gunicorn) is configured in .env
+  # as DASHBOARD_SERVER=embedded or DASHBOARD_SERVER=gunicorn
+  # This controls whether dashboard runs in netmonitor.py or as separate service
+
+# ============================================================================
+# DATABASE (PostgreSQL + TimescaleDB)
+# ============================================================================
+database:
+  type: postgresql  # postgresql or sqlite (sqlite legacy only)
+
+  postgresql:
+    host: localhost
+    port: 5432
+    database: netmonitor
+    user: netmonitor
+    password: ""  # Leave empty - will be loaded from .env as DB_PASSWORD
+    min_connections: 2
+    max_connections: 10
+
+# ============================================================================
+# LOGGING
+# ============================================================================
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR
+  file: /var/log/netmonitor/alerts.log
+  console: true
+  syslog: false
+
+# Alert rate limiting
+alerts:
+  max_per_minute: 100
+
+# ============================================================================
+# DETECTION THRESHOLDS (Minimal - Most settings from defaults)
+# ============================================================================
+# Only specify thresholds you want to override from defaults
+# See config_defaults.py for full list of available settings
+thresholds:
+  # Port scan detection
+  port_scan:
+    enabled: true
+    unique_ports: 20
+    time_window: 60
+
+  # Brute force detection
+  brute_force:
+    enabled: true
+    attempts_threshold: 5
+    time_window: 300
+
+  # DNS tunneling detection
+  dns_tunnel:
+    enabled: true
+    query_length_threshold: 50
+    queries_per_minute: 150
+
+  # Beaconing detection (C&C callbacks)
+  beaconing:
+    enabled: true
+    min_connections: 5
+    max_jitter_percent: 20
+
+  # Lateral movement detection
+  lateral_movement:
+    enabled: true
+    unique_targets: 5
+    time_window: 300
+
+# Whitelist (trusted IPs that should not trigger alerts)
+whitelist:
+  - 127.0.0.1
+  # Add your trusted IPs here
+
+# Blacklist (known malicious IPs)
+blacklist: []
+  # Add known malicious IPs here
+
+# ============================================================================
+# DATA RETENTION (NIS-2 Compliant)
+# ============================================================================
+# Automatic cleanup of old data based on retention periods
+# NIS-2 minimums: 365 days alerts, 730 days audit logs
+data_retention:
+  enabled: true
+  alerts_days: 365        # 12 months (NIS-2 minimum)
+  metrics_days: 90        # 3 months
+  audit_logs_days: 730    # 24 months (NIS-2 minimum)
+  statistics_days: 30     # 1 month
+  devices_inactive_days: 180  # 6 months
+  cleanup_hour: 2         # 02:00 UTC
+  minimum_retention_days: 7
+  log_cleanup: true
+
+# ============================================================================
+# THREAT INTELLIGENCE FEEDS
+# ============================================================================
+threat_feeds:
+  enabled: true
+  feeds:
+    - feodotracker    # Botnet C&C servers
+    - urlhaus         # Malware distribution URLs
+    - threatfox       # Recent IOCs
+    - sslblacklist    # SSL/TLS malicious IPs
+  update_interval: 3600  # 1 hour
+  cache_dir: /var/cache/netmonitor/feeds
+
+# ============================================================================
+# INTEGRATIONS (SIEM & Threat Intelligence)
+# ============================================================================
+# All integrations are disabled by default
+# Credentials MUST be set in .env file (not here!)
+# See .env.example for required environment variables
+integrations:
+  enabled: true  # Master switch
+
+  # SIEM Integration
+  siem:
+    enabled: false
+
+    # Syslog output
+    syslog:
+      enabled: false
+      host: localhost
+      port: 514
+      protocol: udp  # udp or tcp
+      format: cef    # cef, json, or syslog
+      facility: local0
+      forward_severities:
+        - HIGH
+        - CRITICAL
+
+    # Wazuh SIEM
+    wazuh:
+      enabled: false
+      api_url: ""        # Set in .env as WAZUH_API_URL
+      api_user: ""       # Set in .env as WAZUH_API_USER
+      api_password: ""   # Set in .env as WAZUH_API_PASSWORD
+      verify_ssl: true
+
+  # Threat Intelligence
+  threat_intel:
+    enabled: true  # Enable this to use threat intelligence sources
+    cache_ttl_hours: 24
+
+    # MISP Threat Platform
+    misp:
+      enabled: false
+      url: ""          # Set in .env as MISP_URL
+      api_key: ""      # Set in .env as MISP_API_KEY
+      verify_ssl: true
+      timeout: 30
+
+    # AlienVault OTX
+    otx:
+      enabled: false
+      api_key: ""      # Set in .env as OTX_API_KEY
+      timeout: 30
+
+    # AbuseIPDB (Recommended - Free tier available)
+    abuseipdb:
+      enabled: true
+      api_key: ""                 # Set in .env as ABUSEIPDB_API_KEY
+      rate_limit: 1000            # Free tier = 1000 queries/day
+      threshold: 50               # Abuse score threshold (0-100)
+      query_suspicious_only: true # Only query suspicious IPs (saves API calls)
+      max_age_days: 90
+      min_confidence: 50
+      timeout: 30
+
+  # Notifications
+  notifications:
+    enabled: false
+    webhook:
+      enabled: false
+      url: ""          # Set in .env as SLACK_WEBHOOK_URL or custom webhook
+      method: POST
+      forward_severities:
+        - CRITICAL
+
+# ============================================================================
+# SOAR (Security Orchestration & Response)
+# ============================================================================
+soar:
+  enabled: false
+  dry_run: true              # IMPORTANT: true = no actual blocking
+  require_approval: true     # Require manual approval for actions
+  max_blocks_per_hour: 10
+  webhook_url: null
+  email_enabled: false
+  email_recipients: []
+
+# ============================================================================
+# PERFORMANCE TUNING
+# ============================================================================
+performance:
+  metrics_interval: 60       # Sensor metrics reporting interval (seconds)
+  heartbeat_interval: 30     # Sensor heartbeat interval (seconds)
+  command_poll_interval: 30  # Sensor command polling interval (seconds)
+  config_sync_interval: 300  # Configuration sync interval (seconds)
+  whitelist_sync_interval: 300  # Whitelist sync interval (seconds)
+
+# ============================================================================
+# NOTES: Configuration Structure
+# ============================================================================
+# Secrets (in .env - never commit):
+#   - FLASK_SECRET_KEY (required for dashboard)
+#   - DB_PASSWORD (if using PostgreSQL)
+#   - ABUSEIPDB_API_KEY, MISP_API_KEY, OTX_API_KEY (optional)
+#   - WAZUH_API_PASSWORD (optional)
+#   - SMTP_PASSWORD, SLACK_WEBHOOK_URL (optional)
+#
+# Deployment Settings (in .env - deployment-specific):
+#   - DASHBOARD_SERVER=embedded|gunicorn (service architecture)
+#   - DASHBOARD_HOST, DASHBOARD_PORT (network settings)
+#   - DASHBOARD_WORKERS (gunicorn workers, if using gunicorn)
+#   - MCP_API_ENABLED, MCP_API_PORT (AI integration)
+#
+# Application Config (in this file - shared across deployments):
+#   - Detection thresholds (thresholds.*)
+#   - Feature enables (integrations.*.enabled)
+#   - Network ranges (internal_networks)
+#   - Data retention policies
+#   - Logging configuration
+#
+# Service Architecture:
+#   DASHBOARD_SERVER=embedded:
+#     - 1 service: netmonitor.service (includes embedded Flask dashboard)
+#     - Good for: development, testing, small deployments (1-10 users)
+#
+#   DASHBOARD_SERVER=gunicorn:
+#     - 2 services: netmonitor.service + netmonitor-dashboard.service
+#     - Good for: production, high availability (10+ concurrent users)
+#     - Requires: install_services.sh to set up both services
+#
+# Advanced Configuration:
+#   - Runtime config: Web UI > Configuration (stored in database)
+#   - Full defaults: config_defaults.py
+#   - Documentation: docs/CONFIG_MIGRATION.md
+# ============================================================================

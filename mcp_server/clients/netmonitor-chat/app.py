@@ -757,13 +757,18 @@ async def post_tools(config: MCPConfig):
             if named_config:
                 url = named_config["url"]
                 token = named_config["token"]
+                print(f"[API] Using MCP config '{config.config_name}': {url}")
+            else:
+                print(f"[API] WARNING: MCP config '{config.config_name}' not found, using defaults")
 
+        print(f"[API] Loading tools from {url} (token: {'set' if token else 'empty'})")
         bridge = MCPBridgeClient(
             bridge_path=MCP_BRIDGE_PATH,
             server_url=url,
             auth_token=token
         )
         tools = await bridge.list_tools()
+        print(f"[API] Loaded {len(tools)} tools")
         return {"tools": tools, "count": len(tools)}
     except Exception as e:
         print(f"Error getting tools: {e}")
@@ -791,14 +796,20 @@ async def post_health(config: HealthConfig):
             if named_config:
                 mcp_url = named_config["url"]
                 mcp_token = named_config["token"]
+                print(f"[Health] Using MCP config '{config.mcp_config_name}': {mcp_url}")
+            else:
+                print(f"[Health] WARNING: MCP config '{config.mcp_config_name}' not found")
 
         # Check MCP server
+        print(f"[Health] Checking MCP at {mcp_url} (token: {'set' if mcp_token else 'empty'})")
         mcp_client = MCPBridgeClient(
             bridge_path=MCP_BRIDGE_PATH,
             server_url=mcp_url,
             auth_token=mcp_token
         )
-        mcp_ok = len(await mcp_client.list_tools()) > 0
+        tools_count = len(await mcp_client.list_tools())
+        mcp_ok = tools_count > 0
+        print(f"[Health] MCP returned {tools_count} tools, status: {'connected' if mcp_ok else 'disconnected'}")
 
         return {
             "status": "healthy" if (llm_ok and mcp_ok) else "degraded",

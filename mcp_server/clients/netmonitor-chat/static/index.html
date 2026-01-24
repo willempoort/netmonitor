@@ -559,13 +559,27 @@
                         const response = await fetch('/api/mcp-configs');
                         const data = await response.json();
                         this.mcpConfigs = data.configs || [];
-                        // If we have configs and no selection yet, select the default
-                        if (this.mcpConfigs.length > 0 && !this.selectedMcpConfig) {
-                            this.selectedMcpConfig = data.default || this.mcpConfigs[0].name;
+                        console.log('[MCP] Loaded configs:', this.mcpConfigs.map(c => c.name));
+
+                        if (this.mcpConfigs.length > 0) {
+                            // If no selection yet, select the default
+                            if (!this.selectedMcpConfig) {
+                                this.selectedMcpConfig = data.default || this.mcpConfigs[0].name;
+                            }
+                            // If selected config not found in list, switch to custom
+                            else if (this.selectedMcpConfig !== '__custom__' &&
+                                     !this.mcpConfigs.find(c => c.name === this.selectedMcpConfig)) {
+                                console.warn('[MCP] Selected config not found:', this.selectedMcpConfig, '- switching to custom');
+                                this.selectedMcpConfig = '__custom__';
+                            }
+                        } else {
+                            // No configs available - force custom mode
+                            console.log('[MCP] No configs available, using custom mode');
+                            this.selectedMcpConfig = '__custom__';
                         }
                     } catch (err) {
                         console.error('Error loading MCP configs:', err);
-                        // Keep empty - will use custom URL/token
+                        this.selectedMcpConfig = '__custom__';
                     }
                 },
 
