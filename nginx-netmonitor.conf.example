@@ -1,13 +1,23 @@
 # Nginx Configuration for NetMonitor SOC
-# Complete setup with SSL and built-in authentication
+# Supports both Web Dashboard (8080) and MCP HTTP API (8000)
+#
+# INSTALLATIE:
+#   sudo cp nginx-netmonitor.conf.example /etc/nginx/sites-available/netmonitor
+#   sudo ln -s /etc/nginx/sites-available/netmonitor /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+#
+# SSL CERTIFICATEN:
+#   sudo certbot --nginx -d soc.example.com
 
-# Upstream voor de dashboard backend
-# BELANGRIJK: Deze poort moet overeenkomen met:
-#   - config.yaml -> dashboard.port (default: 8080)
-#   - .env -> DASHBOARD_PORT (default: 8080)
-#   - web_dashboard.py command line: python3 web_dashboard.py -p 8080
+# Upstream voor Web Dashboard (Flask/eventlet/SocketIO)
 upstream netmonitor_dashboard {
-    server 127.0.0.1:8080;
+    server 127.0.0.1:8080 fail_timeout=0;
+    keepalive 32;
+}
+
+# Upstream voor MCP HTTP API (FastAPI/Uvicorn)
+upstream netmonitor_mcp_api {
+    server 127.0.0.1:8000 fail_timeout=0;
     keepalive 32;
 }
 
@@ -28,17 +38,18 @@ server {
     }
 }
 
-# HTTPS Server met MFA en CORS
+# HTTPS Server
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
     server_name soc.example.com;  # WIJZIG NAAR JE DOMEIN
 
     # SSL Certificaten
-    # GENEREER MET: sudo certbot --nginx -d soc.example.com
     ssl_certificate /etc/letsencrypt/live/soc.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/soc.example.com/privkey.pem;
     ssl_trusted_certificate /etc/letsencrypt/live/soc.example.com/chain.pem;
+    ssl_stapling on;
+    ssl_stapling_verify on;
 
     # SSL Security Settings (Mozilla Intermediate)
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -48,7 +59,7 @@ server {
     ssl_session_timeout 10m;
     ssl_session_tickets off;
 
-    # HSTS (preload list)
+    # HSTS
     add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
 
     # Security Headers
@@ -57,37 +68,88 @@ server {
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Referrer-Policy "no-referrer-when-downgrade" always;
 
-    # CORS Headers (voor alle responses)
-    add_header Access-Control-Allow-Origin "*" always;
-    add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
-    add_header Access-Control-Allow-Headers "Authorization, Content-Type, X-Requested-With" always;
-    add_header Access-Control-Max-Age 3600 always;
-
-    # Handle preflight OPTIONS requests
-    if ($request_method = 'OPTIONS') {
-        return 204;
-    }
-
-    # Client body size (voor alert uploads)
+    # Client body size
     client_max_body_size 10M;
 
     # Timeouts
-    proxy_connect_timeout 60s;
-    proxy_send_timeout 60s;
-    proxy_read_timeout 60s;
+    proxy_connect_timeout 300s;
+    proxy_send_timeout 300s;
+    proxy_read_timeout 300s;
 
     # Logging
     access_log /var/log/nginx/netmonitor_access.log;
     error_log /var/log/nginx/netmonitor_error.log;
 
-    # ==================== SENSOR API ENDPOINTS ====================
-    # Deze endpoints hebben GEEN MFA, alleen token authenticatie
-    # Tokens worden ge valideerd door de Flask applicatie zelf
+    # ==================== MCP HTTP API (POORT 8000) ====================
+    # FastAPI/Uvicorn MCP server met token authenticatie
+    # OpenAPI docs: /mcp/docs (Swagger UI) en /mcp/redoc (ReDoc)
+
+    # Exact match voor /mcp - DIRECT naar backend /mcp endpoint (GEEN rewrite!)
+    location = /mcp {
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, X-Requested-With, X-API-Key" always;
+        add_header Access-Control-Max-Age 3600 always;
+
+        if ($request_method = 'OPTIONS') {
+            return 204;
+        }
+
+        # BELANGRIJK: /mcp suffix - stuurt request naar backend /mcp endpoint
+        proxy_pass http://netmonitor_mcp_api/mcp;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-API-Key $http_x_api_key;
+        proxy_pass_header Authorization;
+
+        # SSE streaming settings
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_redirect off;
+        proxy_read_timeout 86400s;
+    }
+
+    # Prefix match voor /mcp/* (docs, health, tools, etc.)
+    location /mcp/ {
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, X-Requested-With, X-API-Key" always;
+        add_header Access-Control-Max-Age 3600 always;
+
+        if ($request_method = 'OPTIONS') {
+            return 204;
+        }
+
+        # Rewrite /mcp/docs naar /docs, /mcp/health naar /health, etc.
+        rewrite ^/mcp/(.*) /$1 break;
+
+        proxy_pass http://netmonitor_mcp_api;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-API-Key $http_x_api_key;
+        proxy_pass_header Authorization;
+
+        # SSE streaming settings
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_redirect off;
+        proxy_read_timeout 86400s;
+    }
+
+    # ==================== SENSOR API ENDPOINTS (POORT 8080) ====================
+    # Flask dashboard sensor endpoints met sensor token authenticatie
 
     location /api/sensors/ {
-        # No MFA for sensor endpoints
-        # Token validation happens in Flask app (@require_sensor_token decorator)
-
         proxy_pass http://netmonitor_dashboard;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -95,19 +157,21 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $server_name;
 
-        # Preserve Authorization header for token auth
+        # Preserve Authorization header
         proxy_set_header Authorization $http_authorization;
         proxy_pass_header Authorization;
 
-        # WebSocket support (voor real-time updates)
+        # WebSocket support
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
+
+        proxy_buffering off;
+        proxy_redirect off;
     }
 
-    # ==================== WEB DASHBOARD (MET FLASK-LOGIN AUTHENTICATIE) ====================
-    # Authenticatie wordt afgehandeld door Flask-Login in de applicatie zelf
-    # Flask @login_required decorators beschermen de routes
+    # ==================== WEB DASHBOARD (POORT 8080) ====================
+    # Flask dashboard met Flask-Login authenticatie
 
     # Kiosk Mode - Public access (GEEN authenticatie vereist)
     location ~ ^/(kiosk|api/kiosk/) {
@@ -117,11 +181,11 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # NO cookie passthrough - kiosk is public
-        # NO authentication required
+        proxy_buffering off;
+        proxy_redirect off;
     }
 
-    # Login en authenticatie endpoints - GEEN authenticatie vereist
+    # Login endpoints - GEEN authenticatie vereist
     location ~ ^/(login|api/auth/) {
         proxy_pass http://netmonitor_dashboard;
         proxy_set_header Host $host;
@@ -129,12 +193,15 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # Cookie passthrough voor sessie management
+        # Cookie passthrough
         proxy_set_header Cookie $http_cookie;
         proxy_pass_header Set-Cookie;
+
+        proxy_buffering off;
+        proxy_redirect off;
     }
 
-    # Dashboard (HTML pages) - Authenticatie via Flask-Login
+    # Dashboard root - Flask-Login authenticatie
     location / {
         proxy_pass http://netmonitor_dashboard;
         proxy_set_header Host $host;
@@ -142,7 +209,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # Cookie passthrough voor sessie management
+        # Cookie passthrough
         proxy_set_header Cookie $http_cookie;
         proxy_pass_header Set-Cookie;
 
@@ -150,25 +217,28 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
+
+        proxy_buffering off;
+        proxy_redirect off;
     }
 
-    # Dashboard API endpoints (voor web UI) - Authenticatie via Flask-Login
+    # Dashboard API endpoints - Flask-Login authenticatie
     location /api/ {
-        # SKIP sensors endpoints (handled above)
-        # SKIP auth endpoints (handled above)
-
         proxy_pass http://netmonitor_dashboard;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # Cookie passthrough voor sessie management
+        # Cookie passthrough
         proxy_set_header Cookie $http_cookie;
         proxy_pass_header Set-Cookie;
+
+        proxy_buffering off;
+        proxy_redirect off;
     }
 
-    # WebSocket endpoint - Authenticatie via Flask-Login
+    # WebSocket endpoint - Flask-Login authenticatie
     location /socket.io/ {
         proxy_pass http://netmonitor_dashboard;
         proxy_set_header Host $host;
@@ -176,7 +246,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # Cookie passthrough voor sessie management
+        # Cookie passthrough
         proxy_set_header Cookie $http_cookie;
         proxy_pass_header Set-Cookie;
 
@@ -185,15 +255,13 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_buffering off;
-        proxy_cache off;
 
-        # Long polling / WebSocket timeouts
-        proxy_connect_timeout 300s;
-        proxy_send_timeout 300s;
-        proxy_read_timeout 300s;
+        # Longer timeout voor persistent connections
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
     }
 
-    # Static files - No authenticatie
+    # Static files
     location /static/ {
         alias /opt/netmonitor/web/static/;
         expires 30d;
