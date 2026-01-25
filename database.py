@@ -41,7 +41,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 16  # Increment this when schema changes
+        SCHEMA_VERSION = 17  # Increment this when schema changes
 
         if self._check_schema_version(SCHEMA_VERSION):
             self.logger.info(f"Database schema is up to date (v{SCHEMA_VERSION})")
@@ -658,6 +658,18 @@ class DatabaseManager:
                         CREATE INDEX IF NOT EXISTS idx_top_talkers_sensor_id ON top_talkers(sensor_id);
                     END IF;
                 END $$;
+            """)
+
+            # Migration v17: Add indexes for top_talkers MCP query optimization
+            # These indexes improve query performance for get_device_traffic_stats()
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_top_talkers_timestamp ON top_talkers(timestamp DESC);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_top_talkers_ip_address ON top_talkers(ip_address);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_top_talkers_direction ON top_talkers(direction);
             """)
 
             conn.commit()
