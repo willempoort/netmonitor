@@ -758,6 +758,65 @@ class MCPDatabaseClient:
                 'total_service_providers': 0
             }
 
+    def get_device_traffic_stats(self, ip_address: str, hours: int = 168) -> Optional[Dict]:
+        """
+        Get traffic statistics for a specific device from top_talkers table.
+
+        Args:
+            ip_address: IP address to get stats for
+            hours: Lookback period in hours (default 168 = 1 week)
+
+        Returns:
+            Dictionary with inbound/outbound byte counts, or None if no data
+        """
+        try:
+            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+            cutoff_time = datetime.now() - timedelta(hours=hours)
+
+            cursor.execute('''
+                SELECT
+                    direction,
+                    SUM(byte_count) as total_bytes,
+                    SUM(packet_count) as total_packets,
+                    COUNT(*) as observation_count,
+                    MAX(timestamp) as last_seen,
+                    MIN(timestamp) as first_seen
+                FROM top_talkers
+                WHERE ip_address = %s::inet
+                  AND timestamp > %s
+                GROUP BY direction
+            ''', (ip_address, cutoff_time))
+
+            rows = cursor.fetchall()
+
+            if not rows:
+                return None
+
+            result = {
+                'ip_address': ip_address,
+                'period_hours': hours,
+                'inbound': {'bytes': 0, 'packets': 0, 'observations': 0},
+                'outbound': {'bytes': 0, 'packets': 0, 'observations': 0},
+                'internal': {'bytes': 0, 'packets': 0, 'observations': 0}
+            }
+
+            for row in rows:
+                direction = row.get('direction', 'unknown')
+                if direction in ('inbound', 'outbound', 'internal'):
+                    result[direction] = {
+                        'bytes': row.get('total_bytes', 0) or 0,
+                        'packets': row.get('total_packets', 0) or 0,
+                        'observations': row.get('observation_count', 0) or 0,
+                        'first_seen': str(row.get('first_seen')) if row.get('first_seen') else None,
+                        'last_seen': str(row.get('last_seen')) if row.get('last_seen') else None
+                    }
+
+            return result
+
+        except Exception as e:
+            self.logger.error(f"Error getting device traffic stats: {e}")
+            return None
+
     def close(self):
         """Close database connection"""
         if hasattr(self, 'conn'):

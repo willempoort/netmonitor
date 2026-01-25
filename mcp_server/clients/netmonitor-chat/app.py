@@ -1085,6 +1085,10 @@ async def websocket_chat(websocket: WebSocket):
             full_response = ""
             has_tool_call = False
             accumulated_tool_calls = {}  # Dict to accumulate tool calls by index
+            # Buffer tokens when tools are available - don't stream until we know
+            # there's no tool call (prevents hallucinated data before tool execution)
+            buffer_tokens = bool(use_tools)
+            buffered_content = ""
 
             async for chunk in llm_client.chat(
                 model,
@@ -1108,11 +1112,13 @@ async def websocket_chat(websocket: WebSocket):
                     if content:
                         full_response += content
 
-                    # Only stream content if we're sure it's not a tool call
-                    # (tool calls starting with { won't be streamed until we verify)
+                    # When tools are available, buffer content until we know if there's a tool call
+                    # This prevents streaming hallucinated data before the tool executes
                     if content and not has_tool_call:
-                        # If response looks like JSON, wait until end to determine if tool call
-                        if not full_response.strip().startswith("{"):
+                        if buffer_tokens:
+                            # Buffer content - will be discarded if tool call happens
+                            buffered_content += content
+                        elif not full_response.strip().startswith("{"):
                             await websocket.send_json({
                                 "type": "token",
                                 "content": content
@@ -1313,6 +1319,14 @@ async def websocket_chat(websocket: WebSocket):
                                 "type": "token",
                                 "content": full_response
                             })
+
+                    # If we buffered content and there was NO tool call, send the buffered content now
+                    # (This handles cases where the model just answered without using tools)
+                    elif buffered_content and not accumulated_tool_calls:
+                        await websocket.send_json({
+                            "type": "token",
+                            "content": buffered_content
+                        })
 
                     await websocket.send_json({"type": "done"})
 

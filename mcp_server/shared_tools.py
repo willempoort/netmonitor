@@ -13,6 +13,7 @@ All tool logic is maintained here as the single source of truth.
 import os
 import sys
 import json
+import asyncio
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -611,7 +612,9 @@ class NetMonitorTools:
 
         try:
             # Use the database client's get_top_talkers_stats method
-            top_talkers = self.db.get_top_talkers_stats(
+            # Run in thread pool to avoid blocking the event loop
+            top_talkers = await asyncio.to_thread(
+                self.db.get_top_talkers_stats,
                 hours=hours,
                 limit=limit,
                 direction=direction
@@ -650,50 +653,80 @@ class NetMonitorTools:
 
     # get_device_traffic_stats
     async def get_device_traffic_stats(self, params: Dict) -> Dict:
-        """Implement get_device_traffic_stats tool"""
-        import requests
-
+        """Get traffic statistics for a specific device"""
         ip_address = params.get('ip_address')
+        hours = params.get('hours', 168)  # Default 1 week
 
         if not ip_address:
             return {'success': False, 'error': 'ip_address is required'}
 
-        # Get traffic stats from dashboard API
-        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
-
         try:
-            response = requests.get(
-                f"{dashboard_url}/api/devices/{ip_address}/traffic-stats",
-                timeout=10
+            # Query database directly using thread pool to avoid blocking
+            stats = await asyncio.to_thread(
+                self.db.get_device_traffic_stats,
+                ip_address=ip_address,
+                hours=hours
             )
 
-            if response.status_code == 200:
-                data = response.json()
+            if not stats:
                 return {
                     'success': True,
                     'ip_address': ip_address,
-                    'traffic_stats': data.get('stats', {})
-                }
-            elif response.status_code == 404:
-                return {
-                    'success': True,
-                    'ip_address': ip_address,
-                    'traffic_stats': None,
-                    'message': f'No traffic statistics available for {ip_address}'
-                }
-            else:
-                return {
-                    'success': False,
-                    'error': f'API returned status {response.status_code}'
+                    'message': f'No traffic data found for {ip_address} in the last {hours} hours'
                 }
 
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error getting device traffic stats: {e}")
+            # Format bytes for readability
+            def format_bytes(bytes_val):
+                if bytes_val is None or bytes_val == 0:
+                    return "0 B"
+                for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+                    if bytes_val < 1024:
+                        return f"{bytes_val:.2f} {unit}"
+                    bytes_val /= 1024
+                return f"{bytes_val:.2f} PB"
+
+            inbound = stats.get('inbound', {})
+            outbound = stats.get('outbound', {})
+            internal = stats.get('internal', {})
+
+            total_bytes = inbound.get('bytes', 0) + outbound.get('bytes', 0) + internal.get('bytes', 0)
+            total_packets = inbound.get('packets', 0) + outbound.get('packets', 0) + internal.get('packets', 0)
+
             return {
-                'success': False,
-                'error': str(e),
-                'message': 'Failed to retrieve traffic stats. Ensure the dashboard API is running.'
+                'success': True,
+                'ip_address': ip_address,
+                'period_hours': hours,
+                'inbound': {
+                    'bytes': inbound.get('bytes', 0),
+                    'bytes_formatted': format_bytes(inbound.get('bytes', 0)),
+                    'packets': inbound.get('packets', 0),
+                    'first_seen': inbound.get('first_seen'),
+                    'last_seen': inbound.get('last_seen')
+                },
+                'outbound': {
+                    'bytes': outbound.get('bytes', 0),
+                    'bytes_formatted': format_bytes(outbound.get('bytes', 0)),
+                    'packets': outbound.get('packets', 0),
+                    'first_seen': outbound.get('first_seen'),
+                    'last_seen': outbound.get('last_seen')
+                },
+                'internal': {
+                    'bytes': internal.get('bytes', 0),
+                    'bytes_formatted': format_bytes(internal.get('bytes', 0)),
+                    'packets': internal.get('packets', 0),
+                    'first_seen': internal.get('first_seen'),
+                    'last_seen': internal.get('last_seen')
+                },
+                'total': {
+                    'bytes': total_bytes,
+                    'bytes_formatted': format_bytes(total_bytes),
+                    'packets': total_packets
+                }
             }
+
+        except Exception as e:
+            logger.error(f"Error getting device traffic stats: {e}")
+            return {'success': False, 'error': str(e)}
 
 
     # get_device_classification_hints
