@@ -2970,7 +2970,7 @@ TOOL_DEFINITIONS = [
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "category": {"type": "string", "enum": ["iot", "server", "endpoint", "other"], "description": "Filter by category"}
+                        "category": {"type": ["string", "null"], "enum": ["iot", "server", "endpoint", "other", None], "description": "Filter by category"}
                     }
                 },
                 "scope_required": "read_only"
@@ -3047,7 +3047,7 @@ TOOL_DEFINITIONS = [
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "category": {"type": "string", "enum": ["streaming", "cdn", "cloud", "social", "gaming", "other"], "description": "Filter by category"}
+                        "category": {"type": ["string", "null"], "enum": ["streaming", "cdn", "cloud", "social", "gaming", "other", None], "description": "Filter by category"}
                     }
                 },
                 "scope_required": "read_only"
@@ -3111,7 +3111,7 @@ TOOL_DEFINITIONS = [
                     "properties": {
                         "hours": {"type": "number", "description": "Lookback period in hours (default: 24)"},
                         "limit": {"type": "number", "description": "Maximum number of results (default: 10)"},
-                        "direction": {"type": "string", "enum": ["inbound", "outbound"], "description": "Filter by traffic direction (optional)"}
+                        "direction": {"type": ["string", "null"], "enum": ["inbound", "outbound", None], "description": "Filter by traffic direction (optional)"}
                     }
                 },
                 "scope_required": "read_only"
@@ -3148,7 +3148,7 @@ TOOL_DEFINITIONS = [
                     "properties": {
                         "ip_address": {"type": "string", "description": "IP address of the device to learn from"},
                         "template_name": {"type": "string", "description": "Name for the new template"},
-                        "category": {"type": "string", "enum": ["iot", "server", "endpoint", "other"]}
+                        "category": {"type": ["string", "null"], "enum": ["iot", "server", "endpoint", "other", None]}
                     },
                     "required": ["ip_address", "template_name"]
                 },
