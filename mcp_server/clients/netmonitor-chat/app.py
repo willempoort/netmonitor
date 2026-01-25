@@ -42,8 +42,79 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Configuration
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+# Legacy single MCP config (backwards compatible)
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "https://soc.poort.net/mcp")
 MCP_AUTH_TOKEN = os.getenv("MCP_AUTH_TOKEN", "")
+
+
+def load_mcp_configurations() -> List[Dict[str, str]]:
+    """
+    Load MCP server configurations from environment variables.
+
+    Supports multiple configurations with format:
+        MCP_CONFIG_1_NAME=Production
+        MCP_CONFIG_1_URL=https://soc.poort.net/mcp
+        MCP_CONFIG_1_TOKEN=secret_token
+
+        MCP_CONFIG_2_NAME=Development
+        MCP_CONFIG_2_URL=http://localhost:8000/mcp
+        MCP_CONFIG_2_TOKEN=dev_token
+
+    Also supports legacy single config:
+        MCP_SERVER_URL=https://soc.poort.net/mcp
+        MCP_AUTH_TOKEN=secret_token
+
+    Returns:
+        List of configuration dicts with keys: name, url, token
+    """
+    configs = []
+
+    # Find all MCP_CONFIG_X_NAME entries
+    config_indices = set()
+    for key in os.environ:
+        if key.startswith("MCP_CONFIG_") and key.endswith("_NAME"):
+            # Extract the index (e.g., "1" from "MCP_CONFIG_1_NAME")
+            try:
+                idx = key.replace("MCP_CONFIG_", "").replace("_NAME", "")
+                config_indices.add(idx)
+            except:
+                pass
+
+    # Load each configuration
+    for idx in sorted(config_indices):
+        name = os.getenv(f"MCP_CONFIG_{idx}_NAME", "")
+        url = os.getenv(f"MCP_CONFIG_{idx}_URL", "")
+        token = os.getenv(f"MCP_CONFIG_{idx}_TOKEN", "")
+
+        if name and url:
+            configs.append({
+                "name": name,
+                "url": url,
+                "token": token
+            })
+
+    # If no configs found, use legacy single config
+    if not configs and MCP_SERVER_URL:
+        configs.append({
+            "name": "Default",
+            "url": MCP_SERVER_URL,
+            "token": MCP_AUTH_TOKEN
+        })
+
+    return configs
+
+
+# Load MCP configurations at startup
+MCP_CONFIGURATIONS = load_mcp_configurations()
+
+# Get default config (first one, or empty)
+DEFAULT_MCP_CONFIG = MCP_CONFIGURATIONS[0] if MCP_CONFIGURATIONS else {
+    "name": "Default",
+    "url": "https://soc.poort.net/mcp",
+    "token": ""
+}
+
 
 # MCP Bridge path - configurable for different deployments
 _mcp_bridge_env = os.getenv("MCP_BRIDGE_PATH")
@@ -55,6 +126,105 @@ else:
 
 
 # Helper Functions
+
+def extract_tool_call_from_text(text: str) -> Optional[Dict]:
+    """
+    Try to extract a tool call from text that might contain JSON.
+    Handles cases where the model outputs text mixed with JSON.
+
+    Returns:
+        Dict with 'name' and 'arguments' if found, None otherwise
+    """
+    import re
+
+    text = text.strip()
+
+    # Try 1: Pure JSON response
+    if text.startswith("{"):
+        try:
+            data = json.loads(text)
+            if "name" in data:
+                return {
+                    "name": data["name"],
+                    "arguments": data.get("arguments", data.get("params", {}))
+                }
+        except json.JSONDecodeError:
+            pass
+
+    # Try 2: Find JSON block in text (```json ... ```)
+    json_block_match = re.search(r'```(?:json)?\s*(\{[^`]+\})\s*```', text, re.DOTALL)
+    if json_block_match:
+        try:
+            data = json.loads(json_block_match.group(1))
+            if "name" in data:
+                return {
+                    "name": data["name"],
+                    "arguments": data.get("arguments", data.get("params", {}))
+                }
+        except json.JSONDecodeError:
+            pass
+
+    # Try 3: Find any JSON object with "name" field
+    json_match = re.search(r'\{[^{}]*"name"\s*:\s*"[^"]+"\s*[^{}]*\}', text)
+    if json_match:
+        try:
+            data = json.loads(json_match.group(0))
+            if "name" in data:
+                return {
+                    "name": data["name"],
+                    "arguments": data.get("arguments", data.get("params", {}))
+                }
+        except json.JSONDecodeError:
+            pass
+
+    # Try 4: Find nested JSON with arguments
+    json_match = re.search(r'\{[^{}]*"name"\s*:[^{}]*"arguments"\s*:\s*\{[^{}]*\}[^{}]*\}', text)
+    if json_match:
+        try:
+            data = json.loads(json_match.group(0))
+            if "name" in data:
+                return {
+                    "name": data["name"],
+                    "arguments": data.get("arguments", {})
+                }
+        except json.JSONDecodeError:
+            pass
+
+    return None
+
+
+def build_tool_prompt(tools: List[Dict], user_system_prompt: str = "") -> str:
+    """
+    Build a system prompt that instructs the model to use tools via JSON output.
+    Used as fallback for models without native function calling.
+    """
+    tool_descriptions = []
+    for tool in tools[:10]:  # Limit to 10 tools to avoid context overflow
+        name = tool.get("name", "unknown")
+        desc = tool.get("description", "No description")[:100]
+        params = tool.get("inputSchema", {}).get("properties", {})
+        param_names = list(params.keys())[:3]  # First 3 params
+        tool_descriptions.append(f"- {name}: {desc} (params: {param_names})")
+
+    tools_text = "\n".join(tool_descriptions)
+
+    prompt = f"""{user_system_prompt}
+
+BELANGRIJK: Je hebt toegang tot de volgende tools om actuele data op te halen:
+
+{tools_text}
+
+Als je een tool wilt gebruiken, antwoord dan ALLEEN met JSON in dit formaat:
+{{"name": "tool_naam", "arguments": {{"param": "waarde"}}}}
+
+Voorbeeld voor recente threats:
+{{"name": "get_recent_threats", "arguments": {{"hours": 1}}}}
+
+Geef GEEN tekst buiten de JSON als je een tool aanroept.
+Als je geen tool nodig hebt, antwoord dan gewoon in het Nederlands."""
+
+    return prompt
+
 
 def filter_relevant_tools(user_message: str, all_tools: List[Dict], max_tools: int = 10) -> List[Dict]:
     """
@@ -100,8 +270,12 @@ def filter_relevant_tools(user_message: str, all_tools: List[Dict], max_tools: i
             ['log', 'syslog', 'event']
         ),
         'network': (
-            ['network', 'netwerk', 'traffic'],
+            ['network', 'netwerk', 'traffic', 'verkeer'],
             ['network', 'traffic', 'flow', 'connection']
+        ),
+        'toptalker': (
+            ['top', 'talker', 'talkers', 'meeste', 'grootste', 'bandwidth', 'volume'],
+            ['traffic', 'stats', 'top', 'bandwidth', 'volume', 'bytes']
         ),
         'dns': (
             ['dns', 'domain'],
@@ -197,14 +371,16 @@ class LLMConfig(BaseModel):
     url: str = "http://localhost:11434"
 
 class MCPConfig(BaseModel):
-    url: str = "https://soc.poort.net/mcp"
-    token: str = ""
+    url: str = DEFAULT_MCP_CONFIG["url"]
+    token: str = DEFAULT_MCP_CONFIG["token"]
+    config_name: Optional[str] = None  # If set, look up config by name
 
 class HealthConfig(BaseModel):
     llm_provider: str = "ollama"
     llm_url: str = "http://localhost:11434"
-    mcp_url: str = "https://soc.poort.net/mcp"
-    mcp_token: str = ""
+    mcp_url: str = DEFAULT_MCP_CONFIG["url"]
+    mcp_token: str = DEFAULT_MCP_CONFIG["token"]
+    mcp_config_name: Optional[str] = None  # If set, look up config by name
 
 
 # Lifespan event handler (replaces on_event)
@@ -522,7 +698,7 @@ class MCPBridgeClient:
         }
 
         try:
-            # Call bridge via subprocess
+            # Call bridge via subprocess using same Python as this script
             env = os.environ.copy()
             env.update({
                 "MCP_SERVER_URL": self.server_url,
@@ -530,7 +706,7 @@ class MCPBridgeClient:
             })
 
             process = await asyncio.create_subprocess_exec(
-                "python3",
+                sys.executable,
                 str(self.bridge_path),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
@@ -591,8 +767,13 @@ class MCPBridgeClient:
                 "MCP_AUTH_TOKEN": self.auth_token
             })
 
+            # Use the same Python interpreter that's running this script
+            python_executable = sys.executable
+            print(f"[Bridge] Calling {self.bridge_path} with {python_executable}")
+            print(f"[Bridge] Server URL: {self.server_url}")
+
             process = await asyncio.create_subprocess_exec(
-                "python3",
+                python_executable,
                 str(self.bridge_path),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
@@ -604,15 +785,32 @@ class MCPBridgeClient:
                 input=json.dumps(request).encode()
             )
 
+            if stderr:
+                print(f"[Bridge] stderr: {stderr.decode()[:500]}")
+
             if process.returncode != 0:
+                print(f"[Bridge] Process failed with code {process.returncode}")
+                print(f"[Bridge] stdout: {stdout.decode()[:500]}")
                 return []
 
             response = json.loads(stdout.decode())
+
+            if "error" in response:
+                print(f"[Bridge] Error response: {response['error']}")
+                return []
+
             tools = response.get("result", {}).get("tools", [])
             return tools
 
+        except FileNotFoundError:
+            print(f"[Bridge] ERROR: Bridge not found at {self.bridge_path}")
+            return []
+        except json.JSONDecodeError as e:
+            print(f"[Bridge] Invalid JSON response: {e}")
+            print(f"[Bridge] Raw output: {stdout.decode()[:500]}")
+            return []
         except Exception as e:
-            print(f"Error listing tools: {e}")
+            print(f"[Bridge] Error: {type(e).__name__}: {e}")
             return []
 
 
@@ -622,6 +820,37 @@ class MCPBridgeClient:
 async def root():
     """Serve main page"""
     return FileResponse(Path(__file__).parent / "static" / "index.html")
+
+
+@app.get("/api/mcp-configs")
+async def get_mcp_configs():
+    """
+    Get available MCP server configurations.
+
+    These are loaded from environment variables at startup:
+        MCP_CONFIG_1_NAME, MCP_CONFIG_1_URL, MCP_CONFIG_1_TOKEN
+        MCP_CONFIG_2_NAME, MCP_CONFIG_2_URL, MCP_CONFIG_2_TOKEN
+        etc.
+
+    Returns configs without exposing tokens (only name and url).
+    """
+    # Return configs without tokens for security
+    safe_configs = [
+        {"name": c["name"], "url": c["url"], "has_token": bool(c["token"])}
+        for c in MCP_CONFIGURATIONS
+    ]
+    return {
+        "configs": safe_configs,
+        "default": DEFAULT_MCP_CONFIG["name"] if MCP_CONFIGURATIONS else None
+    }
+
+
+def get_mcp_config_by_name(name: str) -> Optional[Dict[str, str]]:
+    """Look up MCP config by name"""
+    for config in MCP_CONFIGURATIONS:
+        if config["name"] == name:
+            return config
+    return None
 
 
 @app.post("/api/models")
@@ -645,12 +874,26 @@ async def post_models(config: LLMConfig):
 async def post_tools(config: MCPConfig):
     """Get available MCP tools from configured server"""
     try:
+        # If config_name is provided, look up the config
+        url = config.url
+        token = config.token
+        if config.config_name:
+            named_config = get_mcp_config_by_name(config.config_name)
+            if named_config:
+                url = named_config["url"]
+                token = named_config["token"]
+                print(f"[API] Using MCP config '{config.config_name}': {url}")
+            else:
+                print(f"[API] WARNING: MCP config '{config.config_name}' not found, using defaults")
+
+        print(f"[API] Loading tools from {url} (token: {'set' if token else 'empty'})")
         bridge = MCPBridgeClient(
             bridge_path=MCP_BRIDGE_PATH,
-            server_url=config.url,
-            auth_token=config.token
+            server_url=url,
+            auth_token=token
         )
         tools = await bridge.list_tools()
+        print(f"[API] Loaded {len(tools)} tools")
         return {"tools": tools, "count": len(tools)}
     except Exception as e:
         print(f"Error getting tools: {e}")
@@ -670,18 +913,34 @@ async def post_health(config: HealthConfig):
         llm_ok = len(await llm_client.list_models()) > 0
         await llm_client.close()
 
+        # If mcp_config_name is provided, look up the config
+        mcp_url = config.mcp_url
+        mcp_token = config.mcp_token
+        if config.mcp_config_name:
+            named_config = get_mcp_config_by_name(config.mcp_config_name)
+            if named_config:
+                mcp_url = named_config["url"]
+                mcp_token = named_config["token"]
+                print(f"[Health] Using MCP config '{config.mcp_config_name}': {mcp_url}")
+            else:
+                print(f"[Health] WARNING: MCP config '{config.mcp_config_name}' not found")
+
         # Check MCP server
+        print(f"[Health] Checking MCP at {mcp_url} (token: {'set' if mcp_token else 'empty'})")
         mcp_client = MCPBridgeClient(
             bridge_path=MCP_BRIDGE_PATH,
-            server_url=config.mcp_url,
-            auth_token=config.mcp_token
+            server_url=mcp_url,
+            auth_token=mcp_token
         )
-        mcp_ok = len(await mcp_client.list_tools()) > 0
+        tools_count = len(await mcp_client.list_tools())
+        mcp_ok = tools_count > 0
+        print(f"[Health] MCP returned {tools_count} tools, status: {'connected' if mcp_ok else 'disconnected'}")
 
         return {
             "status": "healthy" if (llm_ok and mcp_ok) else "degraded",
             "ollama": "connected" if llm_ok else "disconnected",
             "mcp": "connected" if mcp_ok else "disconnected",
+            "mcp_config": config.mcp_config_name or "custom",
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
@@ -745,7 +1004,16 @@ async def websocket_chat(websocket: WebSocket):
             llm_url = data.get("llm_url", OLLAMA_BASE_URL)
             mcp_url = data.get("mcp_url", MCP_SERVER_URL)
             mcp_token = data.get("mcp_token", MCP_AUTH_TOKEN)
+            mcp_config_name = data.get("mcp_config_name")  # Named config lookup
             force_tools_lmstudio = data.get("force_tools_lmstudio", False)
+
+            # If mcp_config_name is provided, look up the config
+            if mcp_config_name:
+                named_config = get_mcp_config_by_name(mcp_config_name)
+                if named_config:
+                    mcp_url = named_config["url"]
+                    mcp_token = named_config["token"]
+                    print(f"[WebSocket] Using MCP config '{mcp_config_name}': {mcp_url}")
 
             print(f"[WebSocket] Provider: {llm_provider}, Model: {model}, URL: {llm_url}")
             if llm_provider == "lmstudio" and force_tools_lmstudio:
@@ -763,13 +1031,6 @@ async def websocket_chat(websocket: WebSocket):
                 server_url=mcp_url,
                 auth_token=mcp_token
             )
-
-            # Build messages with optional system prompt
-            messages = []
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-
-            messages.extend(history + [{"role": "user", "content": message}])
 
             # Get available tools and filter to most relevant ones
             all_mcp_tools = await mcp_client.list_tools()
@@ -791,20 +1052,39 @@ async def websocket_chat(websocket: WebSocket):
                     }
                 })
 
-            # Stream response from LLM with filtered tools
-            full_response = ""
-            has_tool_call = False
-            accumulated_tool_calls = {}  # Dict to accumulate tool calls by index
+            # Determine tool mode
+            use_native_tools = False
+            use_json_fallback = False
 
-            # Determine if we should use tools
             if llm_provider == "ollama":
+                use_native_tools = True
                 use_tools = ollama_tools if ollama_tools else None
             elif llm_provider == "lmstudio" and force_tools_lmstudio:
-                use_tools = ollama_tools if ollama_tools else None
-                print(f"[WebSocket] LM Studio with FORCED tools enabled ({len(ollama_tools)} tools)")
+                # For LM Studio with Force Tools: use JSON fallback mode
+                # This works better than native function calling for most models
+                use_json_fallback = True
+                use_tools = None  # Don't pass tools natively
+                print(f"[WebSocket] LM Studio JSON fallback mode ({len(filtered_mcp_tools)} tools in prompt)")
             else:
                 use_tools = None
                 print("[WebSocket] LM Studio detected - function calling disabled (use Force Tools to enable)")
+
+            # Build messages with system prompt
+            messages = []
+
+            # For JSON fallback mode: inject tool instructions into system prompt
+            if use_json_fallback and filtered_mcp_tools:
+                enhanced_prompt = build_tool_prompt(filtered_mcp_tools, system_prompt)
+                messages.append({"role": "system", "content": enhanced_prompt})
+            elif system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+
+            messages.extend(history + [{"role": "user", "content": message}])
+
+            # Stream response from LLM
+            full_response = ""
+            has_tool_call = False
+            accumulated_tool_calls = {}  # Dict to accumulate tool calls by index
 
             async for chunk in llm_client.chat(
                 model,
@@ -975,60 +1255,57 @@ async def websocket_chat(websocket: WebSocket):
                         response_stripped = full_response.strip()
                         is_tool_call = False
 
-                        # Try to parse as tool call JSON
-                        if response_stripped.startswith("{") and "\"name\":" in response_stripped:
-                            try:
-                                tool_data = json.loads(response_stripped)
-                                if "name" in tool_data and "arguments" in tool_data:
-                                    is_tool_call = True
-                                    # Valid tool call JSON!
-                                    tool_name = tool_data["name"]
-                                    tool_args = tool_data.get("arguments", {})
+                        # Try to extract tool call from response (handles various formats)
+                        tool_data = extract_tool_call_from_text(response_stripped)
 
-                                    # Notify client of tool call
-                                    await websocket.send_json({
-                                        "type": "tool_call",
-                                        "tool": tool_name,
-                                        "args": tool_args
-                                    })
+                        if tool_data:
+                            is_tool_call = True
+                            tool_name = tool_data["name"]
+                            tool_args = tool_data.get("arguments", {})
 
-                                    # Execute tool
-                                    result = await mcp_client.call_tool(tool_name, tool_args)
+                            print(f"[WebSocket] JSON fallback detected tool call: {tool_name}")
 
-                                    # Send result to client
-                                    await websocket.send_json({
-                                        "type": "tool_result",
-                                        "tool": tool_name,
-                                        "result": result
-                                    })
+                            # Notify client of tool call
+                            await websocket.send_json({
+                                "type": "tool_call",
+                                "tool": tool_name,
+                                "args": tool_args
+                            })
 
-                                    # Add tool result to conversation and get final response
-                                    messages.append({"role": "assistant", "content": full_response})
-                                    messages.append({
-                                        "role": "user",
-                                        "content": f"Tool {tool_name} returned: {json.dumps(result)}. Please provide a natural language response based on this data."
-                                    })
+                            # Execute tool
+                            result = await mcp_client.call_tool(tool_name, tool_args)
 
-                                    # Get final natural language response
-                                    async for chunk2 in llm_client.chat(
-                                        model,
-                                        messages,
-                                        stream=True,
-                                        temperature=temperature,
-                                        tools=None  # No tools on follow-up to avoid loop
-                                    ):
-                                        if "message" in chunk2:
-                                            content2 = chunk2["message"].get("content", "")
-                                            if content2:
-                                                await websocket.send_json({
-                                                    "type": "token",
-                                                    "content": content2
-                                                })
-                                        if chunk2.get("done"):
-                                            break
+                            # Send result to client
+                            await websocket.send_json({
+                                "type": "tool_result",
+                                "tool": tool_name,
+                                "result": result
+                            })
 
-                            except json.JSONDecodeError:
-                                pass  # Not valid JSON, treat as regular text
+                            # Add tool result to conversation and get final response
+                            messages.append({"role": "assistant", "content": full_response})
+                            messages.append({
+                                "role": "user",
+                                "content": f"Tool {tool_name} returned: {json.dumps(result)}. Geef een duidelijk Nederlands antwoord gebaseerd op deze data. Gebruik GEEN JSON meer."
+                            })
+
+                            # Get final natural language response
+                            async for chunk2 in llm_client.chat(
+                                model,
+                                messages,
+                                stream=True,
+                                temperature=temperature,
+                                tools=None  # No tools on follow-up to avoid loop
+                            ):
+                                if "message" in chunk2:
+                                    content2 = chunk2["message"].get("content", "")
+                                    if content2:
+                                        await websocket.send_json({
+                                            "type": "token",
+                                            "content": content2
+                                        })
+                                if chunk2.get("done"):
+                                    break
 
                         # If response looked like JSON but wasn't a tool call, send it now
                         if not is_tool_call and response_stripped.startswith("{"):
@@ -1061,10 +1338,11 @@ async def websocket_chat(websocket: WebSocket):
 
 
 if __name__ == "__main__":
-    # Check configuration
-    if not MCP_AUTH_TOKEN:
-        print("WARNING: MCP_AUTH_TOKEN not set!")
-        print("Set with: export MCP_AUTH_TOKEN='your_token_here'")
+    # Check configuration - only warn if no config at all
+    if not MCP_AUTH_TOKEN and not MCP_CONFIGURATIONS:
+        print("WARNING: No MCP configuration found!")
+        print("Set MCP_CONFIG_1_NAME, MCP_CONFIG_1_URL, MCP_CONFIG_1_TOKEN")
+        print("Or use legacy: MCP_AUTH_TOKEN='your_token_here'")
 
     if not MCP_BRIDGE_PATH.exists():
         print(f"ERROR: MCP bridge not found at {MCP_BRIDGE_PATH}")
@@ -1075,8 +1353,13 @@ if __name__ == "__main__":
     print("NetMonitor Chat Starting")
     print("=" * 70)
     print(f"Ollama: {OLLAMA_BASE_URL}")
-    print(f"MCP Server: {MCP_SERVER_URL}")
     print(f"MCP Bridge: {MCP_BRIDGE_PATH}")
+    if MCP_CONFIGURATIONS:
+        print(f"MCP Configs: {len(MCP_CONFIGURATIONS)} loaded")
+        for cfg in MCP_CONFIGURATIONS:
+            print(f"  - {cfg['name']}: {cfg['url']} (token: {'set' if cfg['token'] else 'empty'})")
+    else:
+        print(f"MCP Server: {MCP_SERVER_URL} (legacy)")
     print(f"Interface: http://localhost:8000")
     print("=" * 70)
 

@@ -100,7 +100,7 @@
                         <div class="flex items-center space-x-2">
                             <div :class="health.mcp === 'connected' ? 'bg-green-400' : 'bg-red-400'"
                                  class="w-3 h-3 rounded-full"></div>
-                            <span class="text-sm">MCP</span>
+                            <span class="text-sm" x-text="selectedMcpConfig && selectedMcpConfig !== '__custom__' ? selectedMcpConfig : 'MCP'"></span>
                         </div>
 
                         <!-- Tools Count -->
@@ -208,23 +208,46 @@
                             </label>
                         </div>
 
-                        <!-- MCP Server URL -->
+                        <!-- MCP Server Selection -->
                         <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">MCP Server URL</label>
-                            <input type="text"
-                                   x-model="mcpServerUrl"
-                                   placeholder="https://soc.poort.net/mcp"
-                                   class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
+                            <label class="block text-xs font-medium text-gray-700 mb-1">MCP Server</label>
+                            <select x-model="selectedMcpConfig"
+                                    class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
+                                <template x-for="config in mcpConfigs" :key="config.name">
+                                    <option :value="config.name">
+                                        <span x-text="config.name"></span>
+                                        <span x-show="config.has_token"> 🔑</span>
+                                    </option>
+                                </template>
+                                <option value="__custom__">⚙️ Custom...</option>
+                            </select>
+                            <template x-if="selectedMcpConfig && selectedMcpConfig !== '__custom__'">
+                                <p class="text-xs text-gray-500 mt-1" x-text="mcpConfigs.find(c => c.name === selectedMcpConfig)?.url || ''"></p>
+                            </template>
                         </div>
 
-                        <!-- MCP Auth Token -->
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">MCP Auth Token</label>
-                            <input type="password"
-                                   x-model="mcpAuthToken"
-                                   placeholder="Token (optioneel)"
-                                   class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
-                        </div>
+                        <!-- Custom MCP Config (only shown when custom selected) -->
+                        <template x-if="selectedMcpConfig === '__custom__' || mcpConfigs.length === 0">
+                            <div class="space-y-3 border-l-2 border-gray-200 pl-3">
+                                <!-- MCP Server URL -->
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">MCP Server URL</label>
+                                    <input type="text"
+                                           x-model="mcpServerUrl"
+                                           placeholder="https://soc.poort.net/mcp"
+                                           class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
+                                </div>
+
+                                <!-- MCP Auth Token -->
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">MCP Auth Token</label>
+                                    <input type="password"
+                                           x-model="mcpAuthToken"
+                                           placeholder="Token (optioneel)"
+                                           class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
+                                </div>
+                            </div>
+                        </template>
 
                         <!-- System Prompt -->
                         <div>
@@ -440,6 +463,8 @@
                 llmProvider: 'ollama',  // 'ollama' or 'lmstudio'
                 ollamaUrl: 'http://localhost:11434',
                 lmstudioUrl: 'http://localhost:1234',
+                mcpConfigs: [],  // Available MCP configurations from server
+                selectedMcpConfig: '',  // Selected config name (empty = custom)
                 mcpServerUrl: 'https://soc.poort.net/mcp',
                 mcpAuthToken: '',
                 systemPrompt: 'Je bent een security expert die helpt met NetMonitor. Gebruik de beschikbare tools om actuele informatie op te halen. Geef altijd duidelijke, Nederlandse antwoorden.',
@@ -455,6 +480,7 @@
                     const savedLlmProvider = localStorage.getItem('netmonitor-chat-llm-provider');
                     const savedOllamaUrl = localStorage.getItem('netmonitor-chat-ollama-url');
                     const savedLmstudioUrl = localStorage.getItem('netmonitor-chat-lmstudio-url');
+                    const savedMcpConfig = localStorage.getItem('netmonitor-chat-mcp-config');
                     const savedMcpUrl = localStorage.getItem('netmonitor-chat-mcp-url');
                     const savedMcpToken = localStorage.getItem('netmonitor-chat-mcp-token');
                     const savedSystemPrompt = localStorage.getItem('netmonitor-chat-system-prompt');
@@ -463,10 +489,14 @@
                     if (savedLlmProvider) this.llmProvider = savedLlmProvider;
                     if (savedOllamaUrl) this.ollamaUrl = savedOllamaUrl;
                     if (savedLmstudioUrl) this.lmstudioUrl = savedLmstudioUrl;
+                    if (savedMcpConfig) this.selectedMcpConfig = savedMcpConfig;
                     if (savedMcpUrl) this.mcpServerUrl = savedMcpUrl;
                     if (savedMcpToken) this.mcpAuthToken = savedMcpToken;
                     if (savedSystemPrompt) this.systemPrompt = savedSystemPrompt;
                     if (savedForceTools !== null) this.forceToolsLMStudio = savedForceTools === 'true';
+
+                    // Load MCP configurations from server
+                    await this.loadMcpConfigs();
 
                     // NOW load models/tools with the configured provider
                     await this.loadModels();
@@ -516,10 +546,52 @@
                     this.$watch('llmProvider', (value) => localStorage.setItem('netmonitor-chat-llm-provider', value));
                     this.$watch('ollamaUrl', (value) => localStorage.setItem('netmonitor-chat-ollama-url', value));
                     this.$watch('lmstudioUrl', (value) => localStorage.setItem('netmonitor-chat-lmstudio-url', value));
+                    this.$watch('selectedMcpConfig', (value) => localStorage.setItem('netmonitor-chat-mcp-config', value));
                     this.$watch('mcpServerUrl', (value) => localStorage.setItem('netmonitor-chat-mcp-url', value));
                     this.$watch('mcpAuthToken', (value) => localStorage.setItem('netmonitor-chat-mcp-token', value));
                     this.$watch('systemPrompt', (value) => localStorage.setItem('netmonitor-chat-system-prompt', value));
                     this.$watch('forceToolsLMStudio', (value) => localStorage.setItem('netmonitor-chat-force-tools-lmstudio', value));
+                },
+
+                // Load available MCP configurations
+                async loadMcpConfigs() {
+                    try {
+                        const response = await fetch('/api/mcp-configs');
+                        const data = await response.json();
+                        this.mcpConfigs = data.configs || [];
+                        console.log('[MCP] Loaded configs:', this.mcpConfigs.map(c => c.name));
+
+                        if (this.mcpConfigs.length > 0) {
+                            // If no selection yet, select the default
+                            if (!this.selectedMcpConfig) {
+                                this.selectedMcpConfig = data.default || this.mcpConfigs[0].name;
+                            }
+                            // If selected config not found in list, switch to custom
+                            else if (this.selectedMcpConfig !== '__custom__' &&
+                                     !this.mcpConfigs.find(c => c.name === this.selectedMcpConfig)) {
+                                console.warn('[MCP] Selected config not found:', this.selectedMcpConfig, '- switching to custom');
+                                this.selectedMcpConfig = '__custom__';
+                            }
+                        } else {
+                            // No configs available - force custom mode
+                            console.log('[MCP] No configs available, using custom mode');
+                            this.selectedMcpConfig = '__custom__';
+                        }
+                    } catch (err) {
+                        console.error('Error loading MCP configs:', err);
+                        this.selectedMcpConfig = '__custom__';
+                    }
+                },
+
+                // Get current MCP config (selected or custom)
+                getCurrentMcpConfig() {
+                    if (this.selectedMcpConfig && this.selectedMcpConfig !== '__custom__') {
+                        const config = this.mcpConfigs.find(c => c.name === this.selectedMcpConfig);
+                        if (config) {
+                            return { name: config.name, url: config.url, useConfigName: true };
+                        }
+                    }
+                    return { url: this.mcpServerUrl, token: this.mcpAuthToken, useConfigName: false };
                 },
 
                 // Apply configuration
@@ -555,13 +627,15 @@
                 // Load available tools
                 async loadTools() {
                     try {
+                        const mcpConfig = this.getCurrentMcpConfig();
+                        const body = mcpConfig.useConfigName
+                            ? { config_name: mcpConfig.name }
+                            : { url: mcpConfig.url, token: mcpConfig.token };
+
                         const response = await fetch('/api/tools', {
                             method: 'POST',
                             headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({
-                                url: this.mcpServerUrl,
-                                token: this.mcpAuthToken
-                            })
+                            body: JSON.stringify(body)
                         });
                         const data = await response.json();
                         this.tools = data.tools;
@@ -576,15 +650,24 @@
                 async checkHealth() {
                     try {
                         const llmUrl = this.llmProvider === 'lmstudio' ? this.lmstudioUrl : this.ollamaUrl;
+                        const mcpConfig = this.getCurrentMcpConfig();
+
+                        const body = {
+                            llm_provider: this.llmProvider,
+                            llm_url: llmUrl
+                        };
+
+                        if (mcpConfig.useConfigName) {
+                            body.mcp_config_name = mcpConfig.name;
+                        } else {
+                            body.mcp_url = mcpConfig.url;
+                            body.mcp_token = mcpConfig.token;
+                        }
+
                         const response = await fetch('/api/health', {
                             method: 'POST',
                             headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({
-                                llm_provider: this.llmProvider,
-                                llm_url: llmUrl,
-                                mcp_url: this.mcpServerUrl,
-                                mcp_token: this.mcpAuthToken
-                            })
+                            body: JSON.stringify(body)
                         });
                         const data = await response.json();
                         this.health.ollama = data.ollama;
@@ -634,6 +717,20 @@
                     this.ws.onopen = () => {
                         // Send message with configuration
                         const llmUrl = this.llmProvider === 'lmstudio' ? this.lmstudioUrl : this.ollamaUrl;
+                        const mcpConfig = this.getCurrentMcpConfig();
+
+                        // For WebSocket we need to pass URL and token (backend looks up by name)
+                        let mcpUrl, mcpToken;
+                        if (mcpConfig.useConfigName) {
+                            // Find the config to get its URL (token stays on server)
+                            const config = this.mcpConfigs.find(c => c.name === mcpConfig.name);
+                            mcpUrl = config ? config.url : this.mcpServerUrl;
+                            mcpToken = '';  // Token is looked up server-side by config name
+                        } else {
+                            mcpUrl = mcpConfig.url;
+                            mcpToken = mcpConfig.token;
+                        }
+
                         this.ws.send(JSON.stringify({
                             model: this.selectedModel,
                             message: userMessage,
@@ -641,8 +738,9 @@
                             temperature: this.temperature,
                             llm_provider: this.llmProvider,
                             llm_url: llmUrl,
-                            mcp_url: this.mcpServerUrl,
-                            mcp_token: this.mcpAuthToken,
+                            mcp_url: mcpUrl,
+                            mcp_token: mcpToken,
+                            mcp_config_name: mcpConfig.useConfigName ? mcpConfig.name : null,
                             system_prompt: this.systemPrompt,
                             force_tools_lmstudio: this.forceToolsLMStudio
                         }));

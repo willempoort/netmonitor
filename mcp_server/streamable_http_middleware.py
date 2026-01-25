@@ -9,6 +9,7 @@ Validates Bearer tokens and enforces rate limits.
 """
 
 import logging
+import os
 import time
 from typing import List, Optional
 
@@ -48,9 +49,12 @@ class TokenAuthMiddleware(BaseHTTPMiddleware):
         """
         super().__init__(app)
         self.token_manager = token_manager
-        self.exempt_paths = exempt_paths or ['/health', '/docs', '/redoc', '/openapi.json', '/metrics']
+        self.exempt_paths = exempt_paths or ['/health', '/docs', '/redoc', '/openapi.json', '/metrics', '/tools']
 
-        logger.info(f"Token auth middleware initialized (exempt paths: {self.exempt_paths})")
+        # Get root_path from environment for reverse proxy support
+        self.root_path = os.environ.get('MCP_ROOT_PATH', '').rstrip('/')
+
+        logger.info(f"Token auth middleware initialized (root_path: '{self.root_path}', exempt paths: {self.exempt_paths})")
 
     async def dispatch(self, request, call_next):
         """
@@ -65,9 +69,18 @@ class TokenAuthMiddleware(BaseHTTPMiddleware):
         """
         start_time = time.time()
 
-        # Skip auth for exempt paths (health check, etc.)
-        if request.url.path in self.exempt_paths:
-            logger.debug(f"Exempt path requested: {request.url.path}")
+        # Normalize path by stripping root_path for exempt path checking
+        # Example: /mcp/docs -> /docs when MCP_ROOT_PATH=/mcp
+        request_path = request.url.path
+        normalized_path = request_path
+        if self.root_path and request_path.startswith(self.root_path):
+            normalized_path = request_path[len(self.root_path):]
+            if not normalized_path:
+                normalized_path = '/'
+
+        # Skip auth for exempt paths (health check, docs, etc.)
+        if normalized_path in self.exempt_paths:
+            logger.debug(f"Exempt path requested: {request_path} (normalized: {normalized_path})")
             return await call_next(request)
 
         # Extract Bearer token from Authorization header

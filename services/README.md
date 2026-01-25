@@ -19,7 +19,7 @@ by values from `EnvironmentFile` (`.env`).
 |----------|-------------|-----------------|
 | `netmonitor.service.template` | Main monitoring engine + embedded dashboard | Yes |
 | `netmonitor-dashboard.service.template` | Separate Gunicorn dashboard (production) | Only if `DASHBOARD_SERVER=gunicorn` |
-| `netmonitor-mcp-http.service.template` | MCP HTTP API for AI integration | Only if `MCP_API_ENABLED=true` |
+| `netmonitor-mcp-streamable.service.template` | MCP Streamable HTTP API with FastAPI + OpenAPI docs | Only if `MCP_API_ENABLED=true` |
 | `netmonitor-mcp-sse.service.template` | MCP SSE Server (legacy Claude Desktop) | Manual install |
 | `netmonitor-sensor.service.template` | Remote sensor client | Remote sensors only |
 | `netmonitor-feed-update.service.template` | Threat feed updates (timer-based) | Yes |
@@ -96,10 +96,11 @@ netmonitor-dashboard.service (Optional - Gunicorn)
 ├── Requires: netmonitor.service
 └── Enabled only if: DASHBOARD_SERVER=gunicorn
 
-netmonitor-mcp-http.service (Optional - AI Integration)
-├── Starts: mcp_server/http_server.py
+netmonitor-mcp-streamable.service (Optional - AI Integration)
+├── Starts: mcp_server/streamable_http_server.py (FastAPI)
 ├── Wants: postgresql.service
-├── Port: MCP_API_PORT (default 8000)
+├── Port: MCP_STREAMABLE_PORT (default 8000)
+├── Features: MCP Streamable HTTP + OpenAPI docs (/docs, /redoc)
 └── Enabled only if: MCP_API_ENABLED=true
 
 netmonitor-mcp-sse.service (Optional - Legacy Claude Desktop)
