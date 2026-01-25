@@ -84,25 +84,48 @@ server {
     # FastAPI/Uvicorn MCP server met token authenticatie
     # OpenAPI docs: /mcp/docs (Swagger UI) en /mcp/redoc (ReDoc)
 
-    # Exact match voor /mcp (zonder trailing slash) - redirect naar /mcp/
+    # Exact match voor /mcp - DIRECT naar backend /mcp endpoint (GEEN rewrite!)
     location = /mcp {
-        rewrite ^ /mcp/ last;
-    }
-
-    # Prefix match voor /mcp/* (MCP Streamable HTTP en andere endpoints)
-    location /mcp/ {
-        # CORS Headers voor MCP API
         add_header Access-Control-Allow-Origin "*" always;
         add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
         add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, X-Requested-With, X-API-Key" always;
         add_header Access-Control-Max-Age 3600 always;
 
-        # Handle preflight
         if ($request_method = 'OPTIONS') {
             return 204;
         }
 
-        # Rewrite /mcp/xxx naar /xxx voor MCP API
+        # BELANGRIJK: /mcp suffix - stuurt request naar backend /mcp endpoint
+        proxy_pass http://netmonitor_mcp_api/mcp;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-API-Key $http_x_api_key;
+        proxy_pass_header Authorization;
+
+        # SSE streaming settings
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_redirect off;
+        proxy_read_timeout 86400s;
+    }
+
+    # Prefix match voor /mcp/* (docs, health, tools, etc.)
+    location /mcp/ {
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, X-Requested-With, X-API-Key" always;
+        add_header Access-Control-Max-Age 3600 always;
+
+        if ($request_method = 'OPTIONS') {
+            return 204;
+        }
+
+        # Rewrite /mcp/docs naar /docs, /mcp/health naar /health, etc.
         rewrite ^/mcp/(.*) /$1 break;
 
         proxy_pass http://netmonitor_mcp_api;
@@ -111,16 +134,15 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # Preserve Authorization header en X-API-Key voor token auth
         proxy_set_header Authorization $http_authorization;
         proxy_set_header X-API-Key $http_x_api_key;
         proxy_pass_header Authorization;
 
         # SSE streaming settings
-        proxy_buffering off;
-        proxy_redirect off;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_redirect off;
         proxy_read_timeout 86400s;
     }
 
