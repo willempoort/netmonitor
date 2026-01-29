@@ -621,19 +621,61 @@ psql -U netmonitor -d netmonitor -h localhost \
 
 ## 📈 Performance Tuning
 
-### PostgreSQL Configuration
+### Quick Tuning (Aanbevolen)
+
+Gebruik het tuning script voor bestaande installaties:
 
 ```bash
-sudo nano /etc/postgresql/14/main/postgresql.conf
+sudo ./tune_postgresql.sh
 ```
 
-**Voor server met 4GB RAM:**
+Dit script:
+- Toont huidige vs aanbevolen settings
+- Vraagt om bevestiging voordat wijzigingen worden doorgevoerd
+- Past settings toe via ALTER SYSTEM (persistent)
+
+### PostgreSQL Memory Best Practices
+
+| Setting | Standaard | Aanbevolen | Beschrijving |
+|---------|-----------|------------|--------------|
+| `shared_buffers` | 128MB | **25% van RAM** | Gedeeld geheugen voor caching (max ~8GB) |
+| `work_mem` | 4MB | **10MB** | Geheugen per sort/hash operatie |
+| `maintenance_work_mem` | 64MB | **256MB** | Geheugen voor VACUUM, CREATE INDEX |
+| `effective_cache_size` | 4GB | **75% van RAM** | Hint voor query planner |
+
+**⚠️ WAARSCHUWING:** Zet `maintenance_work_mem` NIET hoger dan 512MB. Dit geheugen wordt per VACUUM/INDEX operatie gereserveerd en kan snel het RAM uitputten.
+
+### Connection Timeout Settings (Voorkomt Memory Leaks)
+
+```sql
+-- Via ALTER SYSTEM (persistent, aanbevolen)
+ALTER SYSTEM SET idle_in_transaction_session_timeout = '300000';  -- 5 minuten
+ALTER SYSTEM SET idle_session_timeout = '600000';                  -- 10 minuten
 ```
-# Memory
-shared_buffers = 1GB
-effective_cache_size = 3GB
-work_mem = 16MB
-maintenance_work_mem = 256MB
+
+Deze settings sluiten automatisch:
+- Transacties die > 5 minuten idle zijn (voorkomt locks)
+- Connecties die > 10 minuten idle zijn (bespaart RAM)
+
+### Handmatige Configuratie
+
+```bash
+# Detecteer PostgreSQL versie
+PG_VERSION=$(psql --version | grep -oP '\d+' | head -1)
+sudo nano /etc/postgresql/${PG_VERSION}/main/postgresql.conf
+```
+
+**Voorbeeld voor server met 16GB RAM:**
+```ini
+# Memory Settings
+shared_buffers = 4GB                    # 25% van 16GB
+effective_cache_size = 12GB             # 75% van 16GB
+work_mem = 10MB                         # Per operatie
+maintenance_work_mem = 256MB            # NIET hoger dan 512MB!
+
+# Connection Timeouts (voorkomt memory leaks)
+idle_in_transaction_session_timeout = 300000   # 5 min in ms
+idle_session_timeout = 600000                  # 10 min in ms
 
 # Checkpoints
 checkpoint_completion_target = 0.9
@@ -645,9 +687,26 @@ log_min_duration_statement = 1000  # Log queries > 1s
 log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
 ```
 
-**Restart na wijzigingen:**
+**Toepassen:**
 ```bash
 sudo systemctl restart postgresql
+
+# Verifieer
+sudo -u postgres psql -c "SHOW maintenance_work_mem; SHOW idle_session_timeout;"
+```
+
+### Monitoring Memory Usage
+
+```bash
+# Actieve connecties en status
+sudo -u postgres psql -c "
+SELECT count(*), state
+FROM pg_stat_activity
+WHERE datname = 'netmonitor'
+GROUP BY state;"
+
+# Memory per connectie (schatting)
+sudo -u postgres psql -c "SHOW shared_buffers; SHOW work_mem;"
 ```
 
 ### TimescaleDB Compression (Advanced)
