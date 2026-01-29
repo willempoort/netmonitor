@@ -230,6 +230,50 @@ try:
     for table in tables:
         print(f"   - {table}")
 
+    # Check MCP readonly user permissions
+    print(f"\n🔐 Checking MCP readonly user permissions...")
+
+    cursor.execute("SELECT 1 FROM pg_roles WHERE rolname = 'mcp_readonly'")
+    mcp_user_exists = cursor.fetchone() is not None
+
+    if mcp_user_exists:
+        # Check permissions on key tables
+        key_tables = ['alerts', 'devices', 'device_templates', 'service_providers', 'top_talkers']
+        missing_grants = []
+
+        for table in key_tables:
+            cursor.execute(f"""
+                SELECT has_table_privilege('mcp_readonly', '{table}', 'SELECT')
+            """)
+            has_access = cursor.fetchone()[0]
+            if not has_access:
+                missing_grants.append(table)
+
+        if missing_grants:
+            print(f"⚠️  mcp_readonly user missing SELECT on: {', '.join(missing_grants)}")
+            print("   Auto-fixing permissions...")
+
+            try:
+                # Grant SELECT on all tables
+                cursor.execute("GRANT SELECT ON ALL TABLES IN SCHEMA public TO mcp_readonly")
+                cursor.execute("GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO mcp_readonly")
+
+                # Set default privileges for future tables
+                cursor.execute("ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT ON TABLES TO mcp_readonly")
+                cursor.execute("ALTER DEFAULT PRIVILEGES FOR ROLE netmonitor IN SCHEMA public GRANT SELECT ON TABLES TO mcp_readonly")
+                conn.commit()
+
+                print("   ✓ Permissions fixed for mcp_readonly user")
+            except Exception as grant_error:
+                conn.rollback()
+                print(f"   ✗ Failed to fix permissions: {grant_error}")
+                print("   Run manually: sudo -u postgres psql -d netmonitor -f setup_mcp_db_user.sql")
+        else:
+            print("✓ mcp_readonly user has correct permissions")
+    else:
+        print("⚠️  mcp_readonly user does not exist")
+        print("   Create with: sudo -u postgres psql -d netmonitor -f setup_mcp_db_user.sql")
+
     db._return_connection(conn)
     db.close()
 
