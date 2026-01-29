@@ -1056,9 +1056,12 @@ async def websocket_chat(websocket: WebSocket):
             use_native_tools = False
             use_json_fallback = False
 
+            print(f"[WebSocket] Preparing LLM call with {len(ollama_tools)} tools")
+
             if llm_provider == "ollama":
                 use_native_tools = True
                 use_tools = ollama_tools if ollama_tools else None
+                print(f"[WebSocket] Ollama native tools mode enabled")
             elif llm_provider == "lmstudio" and force_tools_lmstudio:
                 # For LM Studio with Force Tools: use JSON fallback mode
                 # This works better than native function calling for most models
@@ -1080,6 +1083,8 @@ async def websocket_chat(websocket: WebSocket):
                 messages.append({"role": "system", "content": system_prompt})
 
             messages.extend(history + [{"role": "user", "content": message}])
+
+            print(f"[WebSocket] Starting LLM chat with {len(messages)} messages, tools={use_tools is not None}")
 
             # Stream response from LLM
             full_response = ""

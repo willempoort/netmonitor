@@ -44,6 +44,44 @@ apt-get install -y postgresql postgresql-contrib timescaledb-2-postgresql-14
 echo "Tuning TimescaleDB..."
 timescaledb-tune --quiet --yes
 
+# Apply NetMonitor recommended PostgreSQL settings
+echo ""
+echo "🔧 Applying NetMonitor recommended PostgreSQL settings..."
+
+# Detect PostgreSQL version and config path
+PG_VERSION=$(psql --version | grep -oP '\d+' | head -1)
+PG_CONF="/etc/postgresql/${PG_VERSION}/main/postgresql.conf"
+
+if [ -f "$PG_CONF" ]; then
+    # Calculate recommended values based on system RAM
+    TOTAL_RAM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    TOTAL_RAM_MB=$((TOTAL_RAM_KB / 1024))
+
+    # shared_buffers = 25% of RAM (max 8GB)
+    SHARED_BUFFERS_MB=$((TOTAL_RAM_MB / 4))
+    [ $SHARED_BUFFERS_MB -gt 8192 ] && SHARED_BUFFERS_MB=8192
+
+    # effective_cache_size = 75% of RAM
+    EFFECTIVE_CACHE_MB=$((TOTAL_RAM_MB * 3 / 4))
+
+    echo "  System RAM: ${TOTAL_RAM_MB}MB"
+    echo "  Recommended shared_buffers: ${SHARED_BUFFERS_MB}MB"
+    echo "  Recommended effective_cache_size: ${EFFECTIVE_CACHE_MB}MB"
+
+    # Apply settings via ALTER SYSTEM (persists across restarts)
+    sudo -u postgres psql -c "ALTER SYSTEM SET maintenance_work_mem = '256MB';"
+    sudo -u postgres psql -c "ALTER SYSTEM SET work_mem = '10MB';"
+    sudo -u postgres psql -c "ALTER SYSTEM SET idle_in_transaction_session_timeout = '300000';"
+    sudo -u postgres psql -c "ALTER SYSTEM SET idle_session_timeout = '600000';"
+
+    echo "  ✓ maintenance_work_mem = 256MB"
+    echo "  ✓ work_mem = 10MB"
+    echo "  ✓ idle_in_transaction_session_timeout = 5 minutes"
+    echo "  ✓ idle_session_timeout = 10 minutes"
+else
+    echo "  ⚠️  Could not find postgresql.conf at $PG_CONF"
+fi
+
 # Restart PostgreSQL
 systemctl restart postgresql
 
