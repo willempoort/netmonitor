@@ -25,6 +25,29 @@ fi
 PG_VERSION=$(psql --version | grep -oP '\d+' | head -1)
 echo "PostgreSQL version: $PG_VERSION"
 
+# Check if PostgreSQL is running
+if ! systemctl is-active --quiet postgresql@${PG_VERSION}-main 2>/dev/null && \
+   ! systemctl is-active --quiet postgresql 2>/dev/null; then
+    echo ""
+    echo "ERROR: PostgreSQL is not running!"
+    echo ""
+    echo "Start PostgreSQL first:"
+    echo "  sudo systemctl start postgresql"
+    echo "  # or"
+    echo "  sudo systemctl start postgresql@${PG_VERSION}-main"
+    exit 1
+fi
+
+# Verify we can connect
+if ! sudo -u postgres psql -c "SELECT 1" &>/dev/null; then
+    echo ""
+    echo "ERROR: Cannot connect to PostgreSQL."
+    echo "Check if PostgreSQL is running and accessible."
+    exit 1
+fi
+
+echo "PostgreSQL status: running"
+
 # Get current settings
 echo ""
 echo "Current PostgreSQL Settings:"
