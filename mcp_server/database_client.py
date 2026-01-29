@@ -57,28 +57,27 @@ class MCPDatabaseClient:
             List of alert dictionaries
         """
         try:
-            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cutoff_time = datetime.now() - timedelta(hours=hours)
 
-            cutoff_time = datetime.now() - timedelta(hours=hours)
+                cursor.execute('''
+                    SELECT
+                        id,
+                        timestamp,
+                        severity,
+                        threat_type,
+                        source_ip::text as source_ip,
+                        destination_ip::text as destination_ip,
+                        description,
+                        metadata,
+                        acknowledged
+                    FROM alerts
+                    WHERE (source_ip::text = %s OR destination_ip::text = %s)
+                      AND timestamp > %s
+                    ORDER BY timestamp DESC
+                ''', (ip_address, ip_address, cutoff_time))
 
-            cursor.execute('''
-                SELECT
-                    id,
-                    timestamp,
-                    severity,
-                    threat_type,
-                    source_ip::text as source_ip,
-                    destination_ip::text as destination_ip,
-                    description,
-                    metadata,
-                    acknowledged
-                FROM alerts
-                WHERE (source_ip::text = %s OR destination_ip::text = %s)
-                  AND timestamp > %s
-                ORDER BY timestamp DESC
-            ''', (ip_address, ip_address, cutoff_time))
-
-            return [dict(row) for row in cursor.fetchall()]
+                return [dict(row) for row in cursor.fetchall()]
 
         except Exception as e:
             self.logger.error(f"Error getting alerts by IP: {e}")
@@ -100,42 +99,41 @@ class MCPDatabaseClient:
             List of alert dictionaries
         """
         try:
-            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cutoff_time = datetime.now() - timedelta(hours=hours)
 
-            cutoff_time = datetime.now() - timedelta(hours=hours)
+                # Build query with optional filters
+                query = '''
+                    SELECT
+                        id,
+                        timestamp,
+                        severity,
+                        threat_type,
+                        source_ip::text as source_ip,
+                        destination_ip::text as destination_ip,
+                        description,
+                        metadata,
+                        acknowledged
+                    FROM alerts
+                    WHERE timestamp > %s
+                '''
 
-            # Build query with optional filters
-            query = '''
-                SELECT
-                    id,
-                    timestamp,
-                    severity,
-                    threat_type,
-                    source_ip::text as source_ip,
-                    destination_ip::text as destination_ip,
-                    description,
-                    metadata,
-                    acknowledged
-                FROM alerts
-                WHERE timestamp > %s
-            '''
+                params = [cutoff_time]
 
-            params = [cutoff_time]
+                if severity:
+                    query += ' AND severity = %s'
+                    params.append(severity)
 
-            if severity:
-                query += ' AND severity = %s'
-                params.append(severity)
+                if threat_type:
+                    query += ' AND threat_type = %s'
+                    params.append(threat_type)
 
-            if threat_type:
-                query += ' AND threat_type = %s'
-                params.append(threat_type)
+                query += ' ORDER BY timestamp DESC LIMIT %s'
+                params.append(limit)
 
-            query += ' ORDER BY timestamp DESC LIMIT %s'
-            params.append(limit)
+                cursor.execute(query, params)
 
-            cursor.execute(query, params)
-
-            return [dict(row) for row in cursor.fetchall()]
+                return [dict(row) for row in cursor.fetchall()]
 
         except Exception as e:
             self.logger.error(f"Error getting recent alerts: {e}")
@@ -154,36 +152,35 @@ class MCPDatabaseClient:
             Chronological list of alerts
         """
         try:
-            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cutoff_time = datetime.now() - timedelta(hours=hours)
 
-            cutoff_time = datetime.now() - timedelta(hours=hours)
+                query = '''
+                    SELECT
+                        id,
+                        timestamp,
+                        severity,
+                        threat_type,
+                        source_ip::text as source_ip,
+                        destination_ip::text as destination_ip,
+                        description,
+                        metadata,
+                        acknowledged
+                    FROM alerts
+                    WHERE timestamp > %s
+                '''
 
-            query = '''
-                SELECT
-                    id,
-                    timestamp,
-                    severity,
-                    threat_type,
-                    source_ip::text as source_ip,
-                    destination_ip::text as destination_ip,
-                    description,
-                    metadata,
-                    acknowledged
-                FROM alerts
-                WHERE timestamp > %s
-            '''
+                params = [cutoff_time]
 
-            params = [cutoff_time]
+                if source_ip:
+                    query += ' AND source_ip::text = %s'
+                    params.append(source_ip)
 
-            if source_ip:
-                query += ' AND source_ip::text = %s'
-                params.append(source_ip)
+                query += ' ORDER BY timestamp ASC'  # Chronological order
 
-            query += ' ORDER BY timestamp ASC'  # Chronological order
+                cursor.execute(query, params)
 
-            cursor.execute(query, params)
-
-            return [dict(row) for row in cursor.fetchall()]
+                return [dict(row) for row in cursor.fetchall()]
 
         except Exception as e:
             self.logger.error(f"Error getting threat timeline: {e}")
@@ -197,55 +194,54 @@ class MCPDatabaseClient:
             Dictionary with dashboard stats
         """
         try:
-            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cutoff_time = datetime.now() - timedelta(hours=24)
 
-            cutoff_time = datetime.now() - timedelta(hours=24)
+                # Total alerts
+                cursor.execute(
+                    'SELECT COUNT(*) as total FROM alerts WHERE timestamp > %s',
+                    (cutoff_time,)
+                )
+                total = cursor.fetchone()['total']
 
-            # Total alerts
-            cursor.execute(
-                'SELECT COUNT(*) as total FROM alerts WHERE timestamp > %s',
-                (cutoff_time,)
-            )
-            total = cursor.fetchone()['total']
+                # By severity
+                cursor.execute('''
+                    SELECT severity, COUNT(*) as count
+                    FROM alerts
+                    WHERE timestamp > %s
+                    GROUP BY severity
+                ''', (cutoff_time,))
+                by_severity = {row['severity']: row['count'] for row in cursor.fetchall()}
 
-            # By severity
-            cursor.execute('''
-                SELECT severity, COUNT(*) as count
-                FROM alerts
-                WHERE timestamp > %s
-                GROUP BY severity
-            ''', (cutoff_time,))
-            by_severity = {row['severity']: row['count'] for row in cursor.fetchall()}
+                # By type
+                cursor.execute('''
+                    SELECT threat_type, COUNT(*) as count
+                    FROM alerts
+                    WHERE timestamp > %s
+                    GROUP BY threat_type
+                    ORDER BY count DESC
+                    LIMIT 10
+                ''', (cutoff_time,))
+                by_type = {row['threat_type']: row['count'] for row in cursor.fetchall()}
 
-            # By type
-            cursor.execute('''
-                SELECT threat_type, COUNT(*) as count
-                FROM alerts
-                WHERE timestamp > %s
-                GROUP BY threat_type
-                ORDER BY count DESC
-                LIMIT 10
-            ''', (cutoff_time,))
-            by_type = {row['threat_type']: row['count'] for row in cursor.fetchall()}
+                # Top source IPs
+                cursor.execute('''
+                    SELECT source_ip::text as ip, COUNT(*) as count
+                    FROM alerts
+                    WHERE timestamp > %s AND source_ip IS NOT NULL
+                    GROUP BY source_ip
+                    ORDER BY count DESC
+                    LIMIT 10
+                ''', (cutoff_time,))
+                top_sources = [dict(row) for row in cursor.fetchall()]
 
-            # Top source IPs
-            cursor.execute('''
-                SELECT source_ip::text as ip, COUNT(*) as count
-                FROM alerts
-                WHERE timestamp > %s AND source_ip IS NOT NULL
-                GROUP BY source_ip
-                ORDER BY count DESC
-                LIMIT 10
-            ''', (cutoff_time,))
-            top_sources = [dict(row) for row in cursor.fetchall()]
-
-            return {
-                'total': total,
-                'by_severity': by_severity,
-                'by_type': by_type,
-                'top_sources': top_sources,
-                'period_hours': 24
-            }
+                return {
+                    'total': total,
+                    'by_severity': by_severity,
+                    'by_type': by_type,
+                    'top_sources': top_sources,
+                    'period_hours': 24
+                }
 
         except Exception as e:
             self.logger.error(f"Error getting dashboard stats: {e}")
@@ -269,33 +265,33 @@ class MCPDatabaseClient:
             List of traffic metrics grouped by time interval
         """
         try:
-            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
-            cutoff_time = datetime.now() - timedelta(hours=hours)
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cutoff_time = datetime.now() - timedelta(hours=hours)
 
-            # Determine time bucket based on interval
-            if interval == 'daily':
-                time_bucket = "1 day"
-            else:  # hourly
-                time_bucket = "1 hour"
+                # Determine time bucket based on interval
+                if interval == 'daily':
+                    time_bucket = "1 day"
+                else:  # hourly
+                    time_bucket = "1 hour"
 
-            cursor.execute(f'''
-                SELECT
-                    time_bucket(%s, timestamp) AS time_period,
-                    SUM(total_packets) as total_packets,
-                    SUM(total_bytes) as total_bytes,
-                    SUM(inbound_packets) as inbound_packets,
-                    SUM(inbound_bytes) as inbound_bytes,
-                    SUM(outbound_packets) as outbound_packets,
-                    SUM(outbound_bytes) as outbound_bytes,
-                    AVG(total_packets) as avg_packets,
-                    AVG(total_bytes) as avg_bytes
-                FROM traffic_metrics
-                WHERE timestamp > %s
-                GROUP BY time_period
-                ORDER BY time_period DESC
-            ''', (time_bucket, cutoff_time))
+                cursor.execute(f'''
+                    SELECT
+                        time_bucket(%s, timestamp) AS time_period,
+                        SUM(total_packets) as total_packets,
+                        SUM(total_bytes) as total_bytes,
+                        SUM(inbound_packets) as inbound_packets,
+                        SUM(inbound_bytes) as inbound_bytes,
+                        SUM(outbound_packets) as outbound_packets,
+                        SUM(outbound_bytes) as outbound_bytes,
+                        AVG(total_packets) as avg_packets,
+                        AVG(total_bytes) as avg_bytes
+                    FROM traffic_metrics
+                    WHERE timestamp > %s
+                    GROUP BY time_period
+                    ORDER BY time_period DESC
+                ''', (time_bucket, cutoff_time))
 
-            return [dict(row) for row in cursor.fetchall()]
+                return [dict(row) for row in cursor.fetchall()]
 
         except Exception as e:
             self.logger.error(f"Error getting traffic trends: {e}")
@@ -315,36 +311,36 @@ class MCPDatabaseClient:
             List of top talkers with packet/byte counts
         """
         try:
-            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
-            cutoff_time = datetime.now() - timedelta(hours=hours)
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cutoff_time = datetime.now() - timedelta(hours=hours)
 
-            # Build query with optional direction filter
-            direction_filter = ""
-            params = [cutoff_time, limit]
+                # Build query with optional direction filter
+                direction_filter = ""
+                params = [cutoff_time, limit]
 
-            if direction:
-                direction_filter = "AND direction = %s"
-                params.insert(1, direction)
+                if direction:
+                    direction_filter = "AND direction = %s"
+                    params.insert(1, direction)
 
-            cursor.execute(f'''
-                SELECT
-                    ip_address::text as ip_address,
-                    hostname,
-                    direction,
-                    SUM(packet_count) as total_packets,
-                    SUM(byte_count) as total_bytes,
-                    COUNT(*) as observation_count,
-                    MAX(timestamp) as last_seen,
-                    MIN(timestamp) as first_seen
-                FROM top_talkers
-                WHERE timestamp > %s
-                {direction_filter}
-                GROUP BY ip_address, hostname, direction
-                ORDER BY total_bytes DESC
-                LIMIT %s
-            ''', params)
+                cursor.execute(f'''
+                    SELECT
+                        ip_address::text as ip_address,
+                        hostname,
+                        direction,
+                        SUM(packet_count) as total_packets,
+                        SUM(byte_count) as total_bytes,
+                        COUNT(*) as observation_count,
+                        MAX(timestamp) as last_seen,
+                        MIN(timestamp) as first_seen
+                    FROM top_talkers
+                    WHERE timestamp > %s
+                    {direction_filter}
+                    GROUP BY ip_address, hostname, direction
+                    ORDER BY total_bytes DESC
+                    LIMIT %s
+                ''', params)
 
-            return [dict(row) for row in cursor.fetchall()]
+                return [dict(row) for row in cursor.fetchall()]
 
         except Exception as e:
             self.logger.error(f"Error getting top talkers: {e}")
@@ -362,67 +358,67 @@ class MCPDatabaseClient:
             Dictionary with statistics
         """
         try:
-            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
-            cutoff_time = datetime.now() - timedelta(hours=hours)
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cutoff_time = datetime.now() - timedelta(hours=hours)
 
-            # Get total count
-            cursor.execute('''
-                SELECT COUNT(*) as total
-                FROM alerts
-                WHERE timestamp > %s
-            ''', (cutoff_time,))
-
-            total = cursor.fetchone()['total']
-
-            # Get grouped statistics
-            if group_by == 'hour':
+                # Get total count
                 cursor.execute('''
-                    SELECT
-                        time_bucket('1 hour', timestamp) AS time_period,
-                        COUNT(*) as count
+                    SELECT COUNT(*) as total
                     FROM alerts
                     WHERE timestamp > %s
-                    GROUP BY time_period
-                    ORDER BY time_period DESC
-                ''', (cutoff_time,))
-            elif group_by == 'threat_type':
-                cursor.execute('''
-                    SELECT
-                        threat_type as category,
-                        COUNT(*) as count,
-                        MAX(timestamp) as last_occurrence
-                    FROM alerts
-                    WHERE timestamp > %s
-                    GROUP BY threat_type
-                    ORDER BY count DESC
-                ''', (cutoff_time,))
-            else:  # severity
-                cursor.execute('''
-                    SELECT
-                        severity as category,
-                        COUNT(*) as count,
-                        MAX(timestamp) as last_occurrence
-                    FROM alerts
-                    WHERE timestamp > %s
-                    GROUP BY severity
-                    ORDER BY
-                        CASE severity
-                            WHEN 'CRITICAL' THEN 1
-                            WHEN 'HIGH' THEN 2
-                            WHEN 'MEDIUM' THEN 3
-                            WHEN 'LOW' THEN 4
-                            WHEN 'INFO' THEN 5
-                        END
                 ''', (cutoff_time,))
 
-            grouped_data = [dict(row) for row in cursor.fetchall()]
+                total = cursor.fetchone()['total']
 
-            return {
-                'total_alerts': total,
-                'analysis_period_hours': hours,
-                'grouped_by': group_by,
-                'data': grouped_data
-            }
+                # Get grouped statistics
+                if group_by == 'hour':
+                    cursor.execute('''
+                        SELECT
+                            time_bucket('1 hour', timestamp) AS time_period,
+                            COUNT(*) as count
+                        FROM alerts
+                        WHERE timestamp > %s
+                        GROUP BY time_period
+                        ORDER BY time_period DESC
+                    ''', (cutoff_time,))
+                elif group_by == 'threat_type':
+                    cursor.execute('''
+                        SELECT
+                            threat_type as category,
+                            COUNT(*) as count,
+                            MAX(timestamp) as last_occurrence
+                        FROM alerts
+                        WHERE timestamp > %s
+                        GROUP BY threat_type
+                        ORDER BY count DESC
+                    ''', (cutoff_time,))
+                else:  # severity
+                    cursor.execute('''
+                        SELECT
+                            severity as category,
+                            COUNT(*) as count,
+                            MAX(timestamp) as last_occurrence
+                        FROM alerts
+                        WHERE timestamp > %s
+                        GROUP BY severity
+                        ORDER BY
+                            CASE severity
+                                WHEN 'CRITICAL' THEN 1
+                                WHEN 'HIGH' THEN 2
+                                WHEN 'MEDIUM' THEN 3
+                                WHEN 'LOW' THEN 4
+                                WHEN 'INFO' THEN 5
+                            END
+                    ''', (cutoff_time,))
+
+                grouped_data = [dict(row) for row in cursor.fetchall()]
+
+                return {
+                    'total_alerts': total,
+                    'analysis_period_hours': hours,
+                    'grouped_by': group_by,
+                    'data': grouped_data
+                }
 
         except Exception as e:
             self.logger.error(f"Error getting alert statistics: {e}")
@@ -448,20 +444,20 @@ class MCPDatabaseClient:
             List of device template dictionaries
         """
         try:
-            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
-            query = 'SELECT * FROM device_templates WHERE 1=1'
-            params = []
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                query = 'SELECT * FROM device_templates WHERE 1=1'
+                params = []
 
-            if not include_inactive:
-                query += ' AND is_active = TRUE'
+                if not include_inactive:
+                    query += ' AND is_active = TRUE'
 
-            if category:
-                query += ' AND category = %s'
-                params.append(category)
+                if category:
+                    query += ' AND category = %s'
+                    params.append(category)
 
-            query += ' ORDER BY is_builtin DESC, name ASC'
-            cursor.execute(query, params)
-            return [dict(row) for row in cursor.fetchall()]
+                query += ' ORDER BY is_builtin DESC, name ASC'
+                cursor.execute(query, params)
+                return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             self.logger.error(f"Error getting device templates: {e}")
             return []
@@ -477,25 +473,24 @@ class MCPDatabaseClient:
             Device template dictionary with behaviors, or None
         """
         try:
-            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                # Get template
+                cursor.execute('SELECT * FROM device_templates WHERE id = %s', (template_id,))
+                template = cursor.fetchone()
+                if not template:
+                    return None
 
-            # Get template
-            cursor.execute('SELECT * FROM device_templates WHERE id = %s', (template_id,))
-            template = cursor.fetchone()
-            if not template:
-                return None
+                template = dict(template)
 
-            template = dict(template)
+                # Get behaviors
+                cursor.execute('''
+                    SELECT * FROM template_behaviors
+                    WHERE template_id = %s
+                    ORDER BY behavior_type
+                ''', (template_id,))
+                template['behaviors'] = [dict(row) for row in cursor.fetchall()]
 
-            # Get behaviors
-            cursor.execute('''
-                SELECT * FROM template_behaviors
-                WHERE template_id = %s
-                ORDER BY behavior_type
-            ''', (template_id,))
-            template['behaviors'] = [dict(row) for row in cursor.fetchall()]
-
-            return template
+                return template
         except Exception as e:
             self.logger.error(f"Error getting device template: {e}")
             return None
@@ -514,34 +509,34 @@ class MCPDatabaseClient:
             List of device dictionaries
         """
         try:
-            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
-            query = '''
-                SELECT d.*,
-                       d.ip_address::text as ip_address,
-                       d.mac_address::text as mac_address,
-                       t.name as template_name,
-                       t.icon as template_icon,
-                       t.category as template_category
-                FROM devices d
-                LEFT JOIN device_templates t ON d.template_id = t.id
-                WHERE 1=1
-            '''
-            params = []
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                query = '''
+                    SELECT d.*,
+                           d.ip_address::text as ip_address,
+                           d.mac_address::text as mac_address,
+                           t.name as template_name,
+                           t.icon as template_icon,
+                           t.category as template_category
+                    FROM devices d
+                    LEFT JOIN device_templates t ON d.template_id = t.id
+                    WHERE 1=1
+                '''
+                params = []
 
-            if not include_inactive:
-                query += ' AND d.is_active = TRUE'
+                if not include_inactive:
+                    query += ' AND d.is_active = TRUE'
 
-            if sensor_id:
-                query += ' AND d.sensor_id = %s'
-                params.append(sensor_id)
+                if sensor_id:
+                    query += ' AND d.sensor_id = %s'
+                    params.append(sensor_id)
 
-            if template_id:
-                query += ' AND d.template_id = %s'
-                params.append(template_id)
+                if template_id:
+                    query += ' AND d.template_id = %s'
+                    params.append(template_id)
 
-            query += ' ORDER BY d.last_seen DESC'
-            cursor.execute(query, params)
-            return [dict(row) for row in cursor.fetchall()]
+                query += ' ORDER BY d.last_seen DESC'
+                cursor.execute(query, params)
+                return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             self.logger.error(f"Error getting devices: {e}")
             return []
@@ -558,26 +553,26 @@ class MCPDatabaseClient:
             Device dictionary or None
         """
         try:
-            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
-            query = '''
-                SELECT d.*,
-                       d.ip_address::text as ip_address,
-                       d.mac_address::text as mac_address,
-                       t.name as template_name,
-                       t.icon as template_icon
-                FROM devices d
-                LEFT JOIN device_templates t ON d.template_id = t.id
-                WHERE d.ip_address = %s
-            '''
-            params = [ip_address]
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                query = '''
+                    SELECT d.*,
+                           d.ip_address::text as ip_address,
+                           d.mac_address::text as mac_address,
+                           t.name as template_name,
+                           t.icon as template_icon
+                    FROM devices d
+                    LEFT JOIN device_templates t ON d.template_id = t.id
+                    WHERE d.ip_address = %s
+                '''
+                params = [ip_address]
 
-            if sensor_id:
-                query += ' AND d.sensor_id = %s'
-                params.append(sensor_id)
+                if sensor_id:
+                    query += ' AND d.sensor_id = %s'
+                    params.append(sensor_id)
 
-            cursor.execute(query, params)
-            result = cursor.fetchone()
-            return dict(result) if result else None
+                cursor.execute(query, params)
+                result = cursor.fetchone()
+                return dict(result) if result else None
         except Exception as e:
             self.logger.error(f"Error getting device by IP: {e}")
             return None
@@ -595,20 +590,20 @@ class MCPDatabaseClient:
             List of service provider dictionaries
         """
         try:
-            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
-            query = 'SELECT * FROM service_providers WHERE 1=1'
-            params = []
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                query = 'SELECT * FROM service_providers WHERE 1=1'
+                params = []
 
-            if not include_inactive:
-                query += ' AND is_active = TRUE'
+                if not include_inactive:
+                    query += ' AND is_active = TRUE'
 
-            if category:
-                query += ' AND category = %s'
-                params.append(category)
+                if category:
+                    query += ' AND category = %s'
+                    params.append(category)
 
-            query += ' ORDER BY category, name'
-            cursor.execute(query, params)
-            return [dict(row) for row in cursor.fetchall()]
+                query += ' ORDER BY category, name'
+                cursor.execute(query, params)
+                return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             self.logger.error(f"Error getting service providers: {e}")
             return []
@@ -624,10 +619,10 @@ class MCPDatabaseClient:
             Service provider dictionary or None
         """
         try:
-            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
-            cursor.execute('SELECT * FROM service_providers WHERE id = %s', (provider_id,))
-            result = cursor.fetchone()
-            return dict(result) if result else None
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute('SELECT * FROM service_providers WHERE id = %s', (provider_id,))
+                result = cursor.fetchone()
+                return dict(result) if result else None
         except Exception as e:
             self.logger.error(f"Error getting service provider: {e}")
             return None
@@ -682,69 +677,68 @@ class MCPDatabaseClient:
             Dictionary with classification statistics
         """
         try:
-            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                # Total devices
+                cursor.execute('SELECT COUNT(*) as total FROM devices WHERE is_active = TRUE')
+                total_devices = cursor.fetchone()['total']
 
-            # Total devices
-            cursor.execute('SELECT COUNT(*) as total FROM devices WHERE is_active = TRUE')
-            total_devices = cursor.fetchone()['total']
+                # Classified vs unclassified
+                cursor.execute('''
+                    SELECT
+                        COUNT(*) FILTER (WHERE template_id IS NOT NULL) as classified,
+                        COUNT(*) FILTER (WHERE template_id IS NULL) as unclassified
+                    FROM devices
+                    WHERE is_active = TRUE
+                ''')
+                classification = dict(cursor.fetchone())
 
-            # Classified vs unclassified
-            cursor.execute('''
-                SELECT
-                    COUNT(*) FILTER (WHERE template_id IS NOT NULL) as classified,
-                    COUNT(*) FILTER (WHERE template_id IS NULL) as unclassified
-                FROM devices
-                WHERE is_active = TRUE
-            ''')
-            classification = dict(cursor.fetchone())
+                # By template category
+                cursor.execute('''
+                    SELECT
+                        COALESCE(t.category, 'unclassified') as category,
+                        COUNT(*) as count
+                    FROM devices d
+                    LEFT JOIN device_templates t ON d.template_id = t.id
+                    WHERE d.is_active = TRUE
+                    GROUP BY t.category
+                    ORDER BY count DESC
+                ''')
+                by_category = {row['category']: row['count'] for row in cursor.fetchall()}
 
-            # By template category
-            cursor.execute('''
-                SELECT
-                    COALESCE(t.category, 'unclassified') as category,
-                    COUNT(*) as count
-                FROM devices d
-                LEFT JOIN device_templates t ON d.template_id = t.id
-                WHERE d.is_active = TRUE
-                GROUP BY t.category
-                ORDER BY count DESC
-            ''')
-            by_category = {row['category']: row['count'] for row in cursor.fetchall()}
+                # By template
+                cursor.execute('''
+                    SELECT
+                        COALESCE(t.name, 'Unclassified') as template_name,
+                        COUNT(*) as count
+                    FROM devices d
+                    LEFT JOIN device_templates t ON d.template_id = t.id
+                    WHERE d.is_active = TRUE
+                    GROUP BY t.name
+                    ORDER BY count DESC
+                    LIMIT 10
+                ''')
+                by_template = [dict(row) for row in cursor.fetchall()]
 
-            # By template
-            cursor.execute('''
-                SELECT
-                    COALESCE(t.name, 'Unclassified') as template_name,
-                    COUNT(*) as count
-                FROM devices d
-                LEFT JOIN device_templates t ON d.template_id = t.id
-                WHERE d.is_active = TRUE
-                GROUP BY t.name
-                ORDER BY count DESC
-                LIMIT 10
-            ''')
-            by_template = [dict(row) for row in cursor.fetchall()]
+                # Active templates count
+                cursor.execute('SELECT COUNT(*) as total FROM device_templates WHERE is_active = TRUE')
+                total_templates = cursor.fetchone()['total']
 
-            # Active templates count
-            cursor.execute('SELECT COUNT(*) as total FROM device_templates WHERE is_active = TRUE')
-            total_templates = cursor.fetchone()['total']
+                # Service providers count
+                cursor.execute('SELECT COUNT(*) as total FROM service_providers WHERE is_active = TRUE')
+                total_providers = cursor.fetchone()['total']
 
-            # Service providers count
-            cursor.execute('SELECT COUNT(*) as total FROM service_providers WHERE is_active = TRUE')
-            total_providers = cursor.fetchone()['total']
-
-            return {
-                'total_devices': total_devices,
-                'classified_devices': classification['classified'],
-                'unclassified_devices': classification['unclassified'],
-                'classification_rate': round(
-                    (classification['classified'] / total_devices * 100) if total_devices > 0 else 0, 1
-                ),
-                'by_category': by_category,
-                'by_template': by_template,
-                'total_templates': total_templates,
-                'total_service_providers': total_providers
-            }
+                return {
+                    'total_devices': total_devices,
+                    'classified_devices': classification['classified'],
+                    'unclassified_devices': classification['unclassified'],
+                    'classification_rate': round(
+                        (classification['classified'] / total_devices * 100) if total_devices > 0 else 0, 1
+                    ),
+                    'by_category': by_category,
+                    'by_template': by_template,
+                    'total_templates': total_templates,
+                    'total_service_providers': total_providers
+                }
         except Exception as e:
             self.logger.error(f"Error getting device classification stats: {e}")
             return {
@@ -770,48 +764,48 @@ class MCPDatabaseClient:
             Dictionary with inbound/outbound byte counts, or None if no data
         """
         try:
-            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
-            cutoff_time = datetime.now() - timedelta(hours=hours)
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cutoff_time = datetime.now() - timedelta(hours=hours)
 
-            cursor.execute('''
-                SELECT
-                    direction,
-                    SUM(byte_count) as total_bytes,
-                    SUM(packet_count) as total_packets,
-                    COUNT(*) as observation_count,
-                    MAX(timestamp) as last_seen,
-                    MIN(timestamp) as first_seen
-                FROM top_talkers
-                WHERE ip_address = %s::inet
-                  AND timestamp > %s
-                GROUP BY direction
-            ''', (ip_address, cutoff_time))
+                cursor.execute('''
+                    SELECT
+                        direction,
+                        SUM(byte_count) as total_bytes,
+                        SUM(packet_count) as total_packets,
+                        COUNT(*) as observation_count,
+                        MAX(timestamp) as last_seen,
+                        MIN(timestamp) as first_seen
+                    FROM top_talkers
+                    WHERE ip_address = %s::inet
+                      AND timestamp > %s
+                    GROUP BY direction
+                ''', (ip_address, cutoff_time))
 
-            rows = cursor.fetchall()
+                rows = cursor.fetchall()
 
-            if not rows:
-                return None
+                if not rows:
+                    return None
 
-            result = {
-                'ip_address': ip_address,
-                'period_hours': hours,
-                'inbound': {'bytes': 0, 'packets': 0, 'observations': 0},
-                'outbound': {'bytes': 0, 'packets': 0, 'observations': 0},
-                'internal': {'bytes': 0, 'packets': 0, 'observations': 0}
-            }
+                result = {
+                    'ip_address': ip_address,
+                    'period_hours': hours,
+                    'inbound': {'bytes': 0, 'packets': 0, 'observations': 0},
+                    'outbound': {'bytes': 0, 'packets': 0, 'observations': 0},
+                    'internal': {'bytes': 0, 'packets': 0, 'observations': 0}
+                }
 
-            for row in rows:
-                direction = row.get('direction', 'unknown')
-                if direction in ('inbound', 'outbound', 'internal'):
-                    result[direction] = {
-                        'bytes': row.get('total_bytes', 0) or 0,
-                        'packets': row.get('total_packets', 0) or 0,
-                        'observations': row.get('observation_count', 0) or 0,
-                        'first_seen': str(row.get('first_seen')) if row.get('first_seen') else None,
-                        'last_seen': str(row.get('last_seen')) if row.get('last_seen') else None
-                    }
+                for row in rows:
+                    direction = row.get('direction', 'unknown')
+                    if direction in ('inbound', 'outbound', 'internal'):
+                        result[direction] = {
+                            'bytes': row.get('total_bytes', 0) or 0,
+                            'packets': row.get('total_packets', 0) or 0,
+                            'observations': row.get('observation_count', 0) or 0,
+                            'first_seen': str(row.get('first_seen')) if row.get('first_seen') else None,
+                            'last_seen': str(row.get('last_seen')) if row.get('last_seen') else None
+                        }
 
-            return result
+                return result
 
         except Exception as e:
             self.logger.error(f"Error getting device traffic stats: {e}")

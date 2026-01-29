@@ -923,6 +923,119 @@ performance:
 
 ---
 
+## 🐘 **PostgreSQL Best Practices**
+
+### Memory Configuration
+
+PostgreSQL memory settings hebben grote impact op RAM-gebruik. Pas deze aan in `/etc/postgresql/*/main/postgresql.conf`:
+
+```bash
+# Edit PostgreSQL config
+sudo nano /etc/postgresql/18/main/postgresql.conf
+```
+
+#### Aanbevolen Settings voor NetMonitor
+
+| Setting | Standaard | Aanbevolen | Beschrijving |
+|---------|-----------|------------|--------------|
+| `shared_buffers` | 128MB | **25% van RAM** | Gedeeld geheugen voor caching (max ~8GB) |
+| `work_mem` | 4MB | **5-10MB** | Geheugen per sort/hash operatie |
+| `maintenance_work_mem` | 64MB | **256MB** | Geheugen voor VACUUM, CREATE INDEX |
+| `effective_cache_size` | 4GB | **50-75% van RAM** | Hint voor query planner |
+
+**Voorbeeld voor server met 16GB RAM:**
+```ini
+# /etc/postgresql/18/main/postgresql.conf
+
+# Memory Settings
+shared_buffers = 4GB                    # 25% van 16GB
+work_mem = 10MB                         # Per operatie, niet te hoog!
+maintenance_work_mem = 256MB            # Voor VACUUM/INDEX operaties
+effective_cache_size = 12GB             # 75% van 16GB
+
+# Connection Timeouts (voorkomt memory leaks)
+idle_in_transaction_session_timeout = 300000   # 5 minuten in ms
+idle_session_timeout = 600000                  # 10 minuten in ms
+
+# Connection Limits
+max_connections = 100                   # Standaard is voldoende
+```
+
+**⚠️ WAARSCHUWING:** Zet `maintenance_work_mem` NIET hoger dan 1GB. Dit geheugen wordt per VACUUM/INDEX operatie gereserveerd en kan snel oplopen.
+
+#### Toepassen van Wijzigingen
+
+```bash
+# Controleer syntax
+sudo -u postgres pg_ctlcluster 18 main status
+
+# Herstart PostgreSQL (vereist voor shared_buffers)
+sudo systemctl restart postgresql@18-main
+
+# Verifieer nieuwe settings
+sudo -u postgres psql -c "SHOW shared_buffers; SHOW work_mem; SHOW maintenance_work_mem;"
+```
+
+### Connection Management
+
+NetMonitor MCP servers houden database connecties open. Configureer timeouts om "zombie" connecties te voorkomen:
+
+```sql
+-- Bekijk actieve connecties
+SELECT pid, state, query_start, NOW() - query_start AS duration
+FROM pg_stat_activity
+WHERE datname = 'netmonitor'
+ORDER BY duration DESC;
+
+-- Handmatig idle connecties sluiten (indien nodig)
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE datname = 'netmonitor'
+  AND state = 'idle'
+  AND query_start < NOW() - INTERVAL '30 minutes';
+```
+
+### TimescaleDB Specifieke Tuning
+
+Voor betere performance met time-series data:
+
+```sql
+-- Bekijk chunk sizes
+SELECT hypertable_name, chunk_name, range_start, range_end
+FROM timescaledb_information.chunks
+WHERE hypertable_name = 'alerts'
+ORDER BY range_start DESC
+LIMIT 5;
+
+-- Compressie inschakelen voor oude data (optioneel)
+ALTER TABLE alerts SET (
+  timescaledb.compress,
+  timescaledb.compress_segmentby = 'severity'
+);
+
+SELECT add_compression_policy('alerts', INTERVAL '7 days');
+```
+
+### Monitoring
+
+```bash
+# Database grootte
+sudo -u postgres psql -d netmonitor -c "SELECT pg_size_pretty(pg_database_size('netmonitor'));"
+
+# Tabel groottes
+sudo -u postgres psql -d netmonitor -c "
+SELECT relname AS table,
+       pg_size_pretty(pg_total_relation_size(relid)) AS total_size
+FROM pg_catalog.pg_statio_user_tables
+ORDER BY pg_total_relation_size(relid) DESC
+LIMIT 10;"
+
+# Actieve connecties
+sudo -u postgres psql -c "SELECT count(*), state FROM pg_stat_activity WHERE datname = 'netmonitor' GROUP BY state;"
+```
+
+---
+
 ## 🔄 **Updates & Maintenance**
 
 ### Update NetMonitor
