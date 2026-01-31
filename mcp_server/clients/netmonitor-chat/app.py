@@ -1175,10 +1175,29 @@ Regels:
             else:
                 await send_status("Model inschakelen...", "llm_thinking")
 
-            # Build messages
+            # Build messages with appropriate system prompt
             messages: List[Dict[str, Any]] = []
             if use_json_fallback and filtered_mcp_tools:
+                # JSON fallback mode - detailed tool instructions
                 messages.append({"role": "system", "content": build_tool_prompt(filtered_mcp_tools, system_prompt)})
+            elif use_tools:
+                # Native tool calling mode - also needs multi-tool instructions
+                native_tool_prompt = f"""{system_prompt}
+
+Je bent een security assistent voor NetMonitor. Je hebt toegang tot {len(ollama_tools)} tools om netwerkdata op te halen.
+
+BELANGRIJK VOOR COMPLEXE VRAGEN:
+- Roep MEERDERE tools aan als de vraag dat vereist (bijv. sensor status + top talkers + threats)
+- Na elk tool resultaat kun je MEER tools aanroepen voordat je een eindantwoord geeft
+- Gebruik web_search voor internet lookups over security topics
+- Gebruik dns_lookup om domeinnamen naar IP-adressen te vertalen
+- Geef pas een eindantwoord als je ALLE benodigde informatie hebt verzameld
+
+VOORBEELD: "Geef een netwerkrapport" vereist minimaal:
+1. get_sensor_status - voor sensor health
+2. get_top_talkers - voor traffic overzicht
+3. get_threat_detections - voor security status"""
+                messages.append({"role": "system", "content": native_tool_prompt})
             elif system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
             messages.extend(history + [{"role": "user", "content": message}])
