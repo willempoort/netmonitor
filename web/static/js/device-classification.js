@@ -1290,19 +1290,60 @@ async function runMLClassification() {
     }
 
     try {
+        // Start classification (runs in background on server)
         const response = await fetch('/api/ml/classify-all', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ update_db: true })
         });
 
+        const startResult = await response.json();
+
+        if (!startResult.success) {
+            throw new Error(startResult.error || 'Failed to start classification');
+        }
+
+        // Poll for completion
+        pollMLClassificationStatus(btn, statusDiv);
+
+    } catch (error) {
+        console.error('Error starting ML classification:', error);
+        if (statusDiv) {
+            statusDiv.innerHTML = `
+                <div class="alert alert-danger mt-2 mb-0">
+                    <i class="bi bi-x-circle me-2"></i>
+                    <strong>Fout:</strong> ${error.message || 'Kon classificatie niet starten'}
+                </div>
+            `;
+        }
+        showError('ML Classificatie fout: ' + error.message);
+        resetMLButton(btn);
+    }
+}
+
+async function pollMLClassificationStatus(btn, statusDiv) {
+    try {
+        const response = await fetch('/api/ml/classify-all/status');
         const result = await response.json();
 
-        if (result.success) {
+        if (result.status === 'running') {
+            // Still running, update status and poll again
+            if (statusDiv) {
+                statusDiv.innerHTML = `
+                    <div class="alert alert-info mt-2 mb-0">
+                        <i class="bi bi-hourglass-split me-2"></i>
+                        <strong>ML Classificatie bezig...</strong> Even geduld, devices worden geanalyseerd.
+                    </div>
+                `;
+            }
+            // Poll again in 2 seconds
+            setTimeout(() => pollMLClassificationStatus(btn, statusDiv), 2000);
+
+        } else if (result.status === 'completed' && result.result) {
+            // Completed successfully
             const r = result.result;
             const templatesAssigned = r.templates_assigned || 0;
 
-            // Show success in status div
             if (statusDiv) {
                 statusDiv.innerHTML = `
                     <div class="alert alert-success mt-2 mb-0">
@@ -1311,19 +1352,17 @@ async function runMLClassification() {
                         <small>${r.classified} devices geclassificeerd, ${templatesAssigned} templates toegewezen, ${r.unknown} onbekend</small>
                     </div>
                 `;
-                // Auto-hide after 10 seconds
-                setTimeout(() => {
-                    statusDiv.style.display = 'none';
-                }, 10000);
+                setTimeout(() => { statusDiv.style.display = 'none'; }, 10000);
             }
 
             showSuccess(`ML Classificatie voltooid: ${templatesAssigned} templates toegewezen`);
-
-            // Reload devices to show updated classifications
             loadDevices();
             loadClassificationStats();
             loadMLStatus();
-        } else {
+            resetMLButton(btn);
+
+        } else if (result.status === 'error') {
+            // Error occurred
             if (statusDiv) {
                 statusDiv.innerHTML = `
                     <div class="alert alert-danger mt-2 mb-0">
@@ -1333,25 +1372,34 @@ async function runMLClassification() {
                 `;
             }
             showError('ML Classificatie mislukt: ' + (result.error || 'Onbekende fout'));
+            resetMLButton(btn);
+
+        } else {
+            // Idle or unknown state - classification may have finished before we started polling
+            // Check if we have a result
+            if (result.result) {
+                const r = result.result;
+                const templatesAssigned = r.templates_assigned || 0;
+                showSuccess(`ML Classificatie voltooid: ${templatesAssigned} templates toegewezen`);
+                loadDevices();
+            }
+            resetMLButton(btn);
+            if (statusDiv) statusDiv.style.display = 'none';
         }
+
     } catch (error) {
-        console.error('Error running ML classification:', error);
-        if (statusDiv) {
-            statusDiv.innerHTML = `
-                <div class="alert alert-danger mt-2 mb-0">
-                    <i class="bi bi-x-circle me-2"></i>
-                    <strong>Netwerkfout:</strong> Kon classificatie niet starten
-                </div>
-            `;
-        }
-        showError('Netwerkfout bij ML classificatie');
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.classList.remove('btn-secondary');
-            btn.classList.add('btn-primary');
-            btn.innerHTML = '<i class="bi bi-cpu"></i> Run ML Classification';
-        }
+        console.error('Error polling ML status:', error);
+        // On network error, try again in 3 seconds (server might be busy)
+        setTimeout(() => pollMLClassificationStatus(btn, statusDiv), 3000);
+    }
+}
+
+function resetMLButton(btn) {
+    if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('btn-secondary');
+        btn.classList.add('btn-primary');
+        btn.innerHTML = '<i class="bi bi-cpu"></i> Run ML Classification';
     }
 }
 
