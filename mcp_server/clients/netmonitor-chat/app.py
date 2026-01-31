@@ -557,7 +557,7 @@ def extract_tool_call_from_text(text: str) -> Optional[Dict[str, Any]]:
     """Extract tool call JSON from model output text."""
     text = text.strip()
 
-    # Try pure JSON
+    # Try pure JSON (starts with {)
     if text.startswith("{"):
         try:
             data = json.loads(text)
@@ -576,15 +576,50 @@ def extract_tool_call_from_text(text: str) -> Optional[Dict[str, Any]]:
         except json.JSONDecodeError:
             pass
 
-    # Try JSON with "name" field
-    json_match = re.search(r'\{[^{}]*"name"\s*:\s*"[^"]+"\s*[^{}]*\}', text)
-    if json_match:
-        try:
-            data = json.loads(json_match.group(0))
-            if "name" in data:
-                return {"name": data["name"], "arguments": data.get("arguments", data.get("params", {}))}
-        except json.JSONDecodeError:
-            pass
+    # Find JSON with "name" field - handle nested braces by finding balanced JSON
+    # Look for {"name": and then try to parse balanced JSON from that position
+    name_match = re.search(r'\{"name"\s*:', text)
+    if name_match:
+        start_pos = name_match.start()
+        # Try to find balanced braces
+        brace_count = 0
+        end_pos = start_pos
+        for i, char in enumerate(text[start_pos:], start_pos):
+            if char == '{':
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    end_pos = i + 1
+                    break
+
+        if end_pos > start_pos:
+            try:
+                json_str = text[start_pos:end_pos]
+                data = json.loads(json_str)
+                if "name" in data:
+                    return {"name": data["name"], "arguments": data.get("arguments", data.get("params", {}))}
+            except json.JSONDecodeError:
+                pass
+
+    # Last resort: try to find any JSON object in the text
+    for match in re.finditer(r'\{', text):
+        start_pos = match.start()
+        brace_count = 0
+        for i, char in enumerate(text[start_pos:], start_pos):
+            if char == '{':
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    try:
+                        json_str = text[start_pos:i + 1]
+                        data = json.loads(json_str)
+                        if "name" in data:
+                            return {"name": data["name"], "arguments": data.get("arguments", data.get("params", {}))}
+                    except json.JSONDecodeError:
+                        pass
+                    break
 
     return None
 
