@@ -1131,195 +1131,201 @@ Regels:
                 messages.append({"role": "system", "content": system_prompt})
             messages.extend(history + [{"role": "user", "content": message}])
 
-            # Stream LLM response
-            full_response = ""
-            has_tool_call = False
-            accumulated_tool_calls: Dict[int, Dict[str, Any]] = {}
-            buffer_tokens = bool(use_tools)
-            buffered_content = ""
-            first_token_sent = False
+            # Multi-tool loop: keep calling LLM until no more tool calls
+            MAX_TOOL_ITERATIONS = 10  # Prevent infinite loops
+            tool_iteration = 0
 
-            async for chunk in llm_client.chat(model, messages, stream=True, temperature=temperature, tools=use_tools):
-                if "error" in chunk:
-                    await websocket.send_json({"type": "error", "content": chunk["error"]})
+            while tool_iteration < MAX_TOOL_ITERATIONS:
+                tool_iteration += 1
+                full_response = ""
+                has_tool_call = False
+                accumulated_tool_calls: Dict[int, Dict[str, Any]] = {}
+                buffer_tokens = bool(use_tools) and tool_iteration == 1
+                buffered_content = ""
+                first_token_sent = False
+                llm_error = False
+
+                if tool_iteration > 1:
+                    await send_status(f"Volgende stap bepalen... ({tool_iteration}/{MAX_TOOL_ITERATIONS})", "llm_thinking")
+
+                async for chunk in llm_client.chat(model, messages, stream=True, temperature=temperature, tools=use_tools):
+                    if "error" in chunk:
+                        await websocket.send_json({"type": "error", "content": chunk["error"]})
+                        llm_error = True
+                        break
+
+                    if "message" in chunk:
+                        msg = chunk["message"]
+                        content = msg.get("content", "")
+
+                        if content:
+                            full_response += content
+
+                            if not first_token_sent and not has_tool_call:
+                                await send_status("Antwoord genereren...", "generating")
+                                first_token_sent = True
+
+                            if not has_tool_call:
+                                if buffer_tokens:
+                                    buffered_content += content
+                                elif not full_response.strip().startswith("{"):
+                                    await websocket.send_json({"type": "token", "content": content})
+
+                        # Accumulate tool calls
+                        tool_calls = msg.get("tool_calls")
+                        if tool_calls:
+                            has_tool_call = True
+                            if not first_token_sent:
+                                await send_status("Tool selecteren...", "tool_selection")
+                                first_token_sent = True
+
+                            for tc_chunk in tool_calls:
+                                idx = tc_chunk.get("index", 0)
+                                if idx not in accumulated_tool_calls:
+                                    accumulated_tool_calls[idx] = {
+                                        "id": tc_chunk.get("id", f"call_{idx}"),
+                                        "type": tc_chunk.get("type", "function"),
+                                        "function": {"name": "", "arguments": ""}
+                                    }
+                                if "id" in tc_chunk and tc_chunk["id"]:
+                                    new_id = tc_chunk["id"]
+                                    if new_id and str(new_id).startswith("call_"):
+                                        accumulated_tool_calls[idx]["id"] = new_id
+                                    elif not str(accumulated_tool_calls[idx]["id"]).startswith("call_"):
+                                        accumulated_tool_calls[idx]["id"] = new_id
+                                if "type" in tc_chunk and tc_chunk["type"]:
+                                    accumulated_tool_calls[idx]["type"] = tc_chunk["type"]
+                                if "function" in tc_chunk:
+                                    func_chunk = tc_chunk["function"]
+                                    if "name" in func_chunk and func_chunk["name"]:
+                                        accumulated_tool_calls[idx]["function"]["name"] = func_chunk["name"]
+                                    if "arguments" in func_chunk and func_chunk["arguments"]:
+                                        accumulated_tool_calls[idx]["function"]["arguments"] += func_chunk["arguments"]
+
+                    if chunk.get("done"):
+                        break
+
+                # Handle errors
+                if llm_error:
                     break
 
-                if "message" in chunk:
-                    msg = chunk["message"]
-                    content = msg.get("content", "")
+                # Process accumulated tool calls
+                if accumulated_tool_calls:
+                    for idx in sorted(accumulated_tool_calls.keys()):
+                        tool_call = accumulated_tool_calls[idx]
+                        func = tool_call.get("function", {})
+                        tool_name = func.get("name", "")
+                        tool_args_str = func.get("arguments", "{}")
+                        tool_call_id = tool_call.get("id", f"call_{idx}")
 
-                    if content:
-                        full_response += content
+                        try:
+                            tool_args = json.loads(tool_args_str) if isinstance(tool_args_str, str) else tool_args_str
+                        except json.JSONDecodeError:
+                            tool_args = {}
 
-                        if not first_token_sent and not has_tool_call:
-                            await send_status("Antwoord genereren...", "generating")
-                            first_token_sent = True
+                        if not tool_name:
+                            continue
 
-                        if not has_tool_call:
-                            if buffer_tokens:
-                                buffered_content += content
-                            elif not full_response.strip().startswith("{"):
-                                await websocket.send_json({"type": "token", "content": content})
+                        await send_status(f"Tool uitvoeren: {tool_name} ({idx + 1}/{len(accumulated_tool_calls)})", "tool_call")
+                        await websocket.send_json({"type": "tool_call", "tool": tool_name, "args": tool_args})
 
-                    # Accumulate tool calls
-                    tool_calls = msg.get("tool_calls")
-                    if tool_calls:
-                        has_tool_call = True
-                        if not first_token_sent:
-                            await send_status("Tool selecteren...", "tool_selection")
-                            first_token_sent = True
-
-                        for tc_chunk in tool_calls:
-                            idx = tc_chunk.get("index", 0)
-                            if idx not in accumulated_tool_calls:
-                                accumulated_tool_calls[idx] = {
-                                    "id": tc_chunk.get("id", f"call_{idx}"),
-                                    "type": tc_chunk.get("type", "function"),
-                                    "function": {"name": "", "arguments": ""}
-                                }
-                            if "id" in tc_chunk and tc_chunk["id"]:
-                                new_id = tc_chunk["id"]
-                                if new_id and str(new_id).startswith("call_"):
-                                    accumulated_tool_calls[idx]["id"] = new_id
-                                elif not str(accumulated_tool_calls[idx]["id"]).startswith("call_"):
-                                    accumulated_tool_calls[idx]["id"] = new_id
-                            if "type" in tc_chunk and tc_chunk["type"]:
-                                accumulated_tool_calls[idx]["type"] = tc_chunk["type"]
-                            if "function" in tc_chunk:
-                                func_chunk = tc_chunk["function"]
-                                if "name" in func_chunk and func_chunk["name"]:
-                                    accumulated_tool_calls[idx]["function"]["name"] = func_chunk["name"]
-                                if "arguments" in func_chunk and func_chunk["arguments"]:
-                                    accumulated_tool_calls[idx]["function"]["arguments"] += func_chunk["arguments"]
-
-                if chunk.get("done"):
-                    # Process accumulated tool calls
-                    if accumulated_tool_calls:
-                        for idx in sorted(accumulated_tool_calls.keys()):
-                            tool_call = accumulated_tool_calls[idx]
-                            func = tool_call.get("function", {})
-                            tool_name = func.get("name", "")
-                            tool_args_str = func.get("arguments", "{}")
-                            tool_call_id = tool_call.get("id", "call_1")
-
-                            try:
-                                tool_args = json.loads(tool_args_str) if isinstance(tool_args_str, str) else tool_args_str
-                            except json.JSONDecodeError:
-                                tool_args = {}
-
-                            if not tool_name:
-                                continue
-
-                            await send_status(f"Tool uitvoeren: {tool_name}", "tool_call")
-                            await websocket.send_json({"type": "tool_call", "tool": tool_name, "args": tool_args})
-
-                            # Execute tool with streaming
-                            final_result = None
-                            async for evt in mcp_client.call_tool_stream(tool_name, tool_args):
-                                if evt.get("type") == "notification":
-                                    msg_evt = evt["message"]
-                                    if msg_evt.get("method") == "progress":
-                                        await websocket.send_json({"type": "tool_progress", "data": msg_evt.get("params", {})})
-                                elif evt.get("type") == "result":
-                                    if "error" in evt:
-                                        final_result = {"success": False, "error": evt["error"].get("message", "Unknown")}
+                        # Execute tool with streaming
+                        final_result = None
+                        async for evt in mcp_client.call_tool_stream(tool_name, tool_args):
+                            if evt.get("type") == "notification":
+                                msg_evt = evt["message"]
+                                if msg_evt.get("method") == "progress":
+                                    await websocket.send_json({"type": "tool_progress", "data": msg_evt.get("params", {})})
+                            elif evt.get("type") == "result":
+                                if "error" in evt:
+                                    final_result = {"success": False, "error": evt["error"].get("message", "Unknown")}
+                                else:
+                                    content_list = evt.get("result", {}).get("content", [])
+                                    if content_list and isinstance(content_list, list) and content_list[0].get("type") == "text":
+                                        txt = content_list[0].get("text", "")
+                                        try:
+                                            final_result = {"success": True, "data": json.loads(txt)}
+                                        except json.JSONDecodeError:
+                                            final_result = {"success": True, "data": txt}
                                     else:
-                                        content_list = evt.get("result", {}).get("content", [])
-                                        if content_list and isinstance(content_list, list) and content_list[0].get("type") == "text":
-                                            txt = content_list[0].get("text", "")
-                                            try:
-                                                final_result = {"success": True, "data": json.loads(txt)}
-                                            except json.JSONDecodeError:
-                                                final_result = {"success": True, "data": txt}
-                                        else:
-                                            final_result = {"success": True, "data": evt.get("result")}
-                                    break
+                                        final_result = {"success": True, "data": evt.get("result")}
+                                break
 
-                            await websocket.send_json({"type": "tool_result", "tool": tool_name, "result": final_result})
+                        await websocket.send_json({"type": "tool_result", "tool": tool_name, "result": final_result})
 
-                            # RAG Enrichment for threat-related tool results
-                            enrichment_context = ""
-                            threat_related = ('threat', 'risk', 'alert', 'detection', 'malware', 'ip')
-                            if any(kw in tool_name.lower() for kw in threat_related) and final_result:
-                                enrichment_context = await enrich_with_threat_intel(mcp_client, final_result, send_status)
+                        # RAG Enrichment for threat-related tool results
+                        enrichment_context = ""
+                        threat_related = ('threat', 'risk', 'alert', 'detection', 'malware', 'ip')
+                        if any(kw in tool_name.lower() for kw in threat_related) and final_result:
+                            enrichment_context = await enrich_with_threat_intel(mcp_client, final_result, send_status)
 
-                            # Add to conversation
-                            complete_tool_call = {
-                                "id": tool_call_id,
-                                "type": "function",
-                                "function": {"name": tool_name, "arguments": tool_args_str}
-                            }
-                            messages.append({"role": "assistant", "content": "", "tool_calls": [complete_tool_call]})
+                        # Add to conversation
+                        complete_tool_call = {
+                            "id": tool_call_id,
+                            "type": "function",
+                            "function": {"name": tool_name, "arguments": tool_args_str}
+                        }
+                        messages.append({"role": "assistant", "content": "", "tool_calls": [complete_tool_call]})
 
-                            tool_content = json.dumps(final_result) if final_result else "{}"
-                            if enrichment_context:
-                                tool_content += f"\n\n{enrichment_context}"
-                            tool_message: Dict[str, Any] = {"role": "tool", "content": tool_content}
-                            if llm_provider == "lmstudio":
-                                tool_message["tool_call_id"] = tool_call_id
-                                tool_message["name"] = tool_name
-                            messages.append(tool_message)
+                        tool_content = json.dumps(final_result) if final_result else "{}"
+                        if enrichment_context:
+                            tool_content += f"\n\n{enrichment_context}"
+                        tool_message: Dict[str, Any] = {"role": "tool", "content": tool_content}
+                        if llm_provider == "lmstudio":
+                            tool_message["tool_call_id"] = tool_call_id
+                            tool_message["name"] = tool_name
+                        messages.append(tool_message)
 
-                            # Get follow-up response
-                            await send_status("Antwoord formuleren...", "formatting")
-                            async for chunk2 in llm_client.chat(model, messages, stream=True, temperature=temperature, tools=ollama_tools if ollama_tools else None):
-                                if "message" in chunk2:
-                                    content2 = chunk2["message"].get("content", "")
-                                    if content2:
-                                        await websocket.send_json({"type": "token", "content": content2})
-                                if chunk2.get("done"):
-                                    break
+                    # Continue loop to let LLM decide if more tools needed
+                    continue
 
-                    # JSON fallback tool call
-                    elif not has_tool_call and full_response.strip():
-                        response_stripped = full_response.strip()
-                        tool_data = extract_tool_call_from_text(response_stripped)
+                # JSON fallback tool call (first iteration only)
+                if tool_iteration == 1 and not has_tool_call and full_response.strip():
+                    response_stripped = full_response.strip()
+                    tool_data = extract_tool_call_from_text(response_stripped)
 
-                        if tool_data:
-                            tool_name = tool_data["name"]
-                            tool_args = tool_data.get("arguments", {})
+                    if tool_data:
+                        tool_name = tool_data["name"]
+                        tool_args = tool_data.get("arguments", {})
 
-                            await send_status(f"Tool uitvoeren: {tool_name}", "tool_call")
-                            await websocket.send_json({"type": "tool_call", "tool": tool_name, "args": tool_args})
+                        await send_status(f"Tool uitvoeren: {tool_name}", "tool_call")
+                        await websocket.send_json({"type": "tool_call", "tool": tool_name, "args": tool_args})
 
-                            result = await mcp_client.call_tool(tool_name, tool_args)
-                            await websocket.send_json({"type": "tool_result", "tool": tool_name, "result": result})
+                        result = await mcp_client.call_tool(tool_name, tool_args)
+                        await websocket.send_json({"type": "tool_result", "tool": tool_name, "result": result})
 
-                            # RAG Enrichment for JSON fallback path
-                            enrichment_context = ""
-                            threat_related = ('threat', 'risk', 'alert', 'detection', 'malware', 'ip')
-                            if any(kw in tool_name.lower() for kw in threat_related) and result:
-                                enrichment_context = await enrich_with_threat_intel(mcp_client, result, send_status)
+                        # RAG Enrichment for JSON fallback path
+                        enrichment_context = ""
+                        threat_related = ('threat', 'risk', 'alert', 'detection', 'malware', 'ip')
+                        if any(kw in tool_name.lower() for kw in threat_related) and result:
+                            enrichment_context = await enrich_with_threat_intel(mcp_client, result, send_status)
 
-                            result_with_context = json.dumps(result)
-                            if enrichment_context:
-                                result_with_context += f"\n\n{enrichment_context}"
+                        result_with_context = json.dumps(result)
+                        if enrichment_context:
+                            result_with_context += f"\n\n{enrichment_context}"
 
-                            messages.append({"role": "assistant", "content": full_response})
-                            messages.append({
-                                "role": "user",
-                                "content": f"Tool {tool_name} returned: {result_with_context}. Geef een duidelijk Nederlands antwoord met aanbevelingen indien van toepassing. Geen JSON."
-                            })
+                        messages.append({"role": "assistant", "content": full_response})
+                        messages.append({
+                            "role": "user",
+                            "content": f"Tool {tool_name} returned: {result_with_context}. Geef een duidelijk Nederlands antwoord met aanbevelingen indien van toepassing. Geen JSON."
+                        })
 
-                            await send_status("Antwoord formuleren...", "formatting")
-                            async for chunk2 in llm_client.chat(model, messages, stream=True, temperature=temperature, tools=None):
-                                if "message" in chunk2:
-                                    content2 = chunk2["message"].get("content", "")
-                                    if content2:
-                                        await websocket.send_json({"type": "token", "content": content2})
-                                if chunk2.get("done"):
-                                    break
-                        elif response_stripped.startswith("{"):
-                            await websocket.send_json({"type": "token", "content": full_response})
+                        # Continue loop for potential follow-up tools
+                        use_tools = None  # Disable native tools for JSON fallback follow-up
+                        continue
+                    elif response_stripped.startswith("{"):
+                        await websocket.send_json({"type": "token", "content": full_response})
 
-                    # Send buffered content if no tool call
-                    elif buffered_content and not accumulated_tool_calls:
-                        await websocket.send_json({"type": "token", "content": buffered_content})
+                # No tool calls - send buffered content and exit loop
+                if buffered_content and not accumulated_tool_calls:
+                    await websocket.send_json({"type": "token", "content": buffered_content})
 
-                    await websocket.send_json({"type": "done"})
-                    await llm_client.close()
-                    await mcp_client.close()
-                    break
+                # Done - no more tool calls
+                break
+
+            await websocket.send_json({"type": "done"})
+            await llm_client.close()
+            await mcp_client.close()
 
     except WebSocketDisconnect:
         print("Client disconnected")
