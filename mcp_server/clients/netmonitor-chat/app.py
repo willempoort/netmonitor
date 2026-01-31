@@ -179,6 +179,24 @@ QUICK_INTENTS: List[Tuple[str, str, Dict[str, Any], str]] = [
      "get_security_recommendation", {"threat_type": "lateral_movement"}, "aanbevelingen voor laterale beweging"),
     (r"(aanbevel|recommend|advies|advice).*(voor|for|bij).*(phish)",
      "get_security_recommendation", {"threat_type": "phishing"}, "aanbevelingen voor phishing"),
+
+    # Web search - for internet/external information
+    (r"(zoek|search|vind|find).*(op.*internet|online|web)",
+     "web_search", {}, "zoeken op internet"),
+    (r"(wat.*zegt|wat.*vind|wat.*staat).*(internet|online|web)",
+     "web_search", {}, "zoeken op internet"),
+    (r"(actuele|huidige|laatste|recente).*(kennis|informatie|info).*(internet|online|extern)",
+     "web_search", {}, "actuele informatie zoeken"),
+    (r"(cve|vulnerability|kwetsbaarheid).*(\d{4}[-_]\d+)",
+     "web_search", {}, "CVE informatie zoeken"),
+    (r"(meer.*weten|informatie|info).*(over|about).*(malware|ransomware|threat|attack)",
+     "web_search", {}, "threat informatie zoeken"),
+
+    # DNS lookup
+    (r"(wat.*is|geef|vind).*(ip|ip-adres|ip.*address).*(van|voor|of)",
+     "dns_lookup", {}, "DNS lookup uitvoeren"),
+    (r"(dns|resolve|lookup).*(domain|domein|hostname)",
+     "dns_lookup", {}, "DNS lookup uitvoeren"),
 ]
 
 
