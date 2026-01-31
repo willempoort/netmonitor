@@ -1394,16 +1394,14 @@ Roep tools ÉÉN VOOR ÉÉN aan. Geef pas een eindantwoord als je ALLE benodigde
                         if enrichment_context:
                             result_with_context += f"\n\n{enrichment_context}"
 
-                        # Add clean assistant message (not the raw JSON to avoid model confusion)
-                        messages.append({"role": "assistant", "content": f"Ik roep tool {tool_name} aan."})
+                        # Add tool result to conversation for LLM context
+                        messages.append({"role": "assistant", "content": f"[Tool {tool_name} aangeroepen]"})
                         messages.append({
                             "role": "user",
-                            "content": f"Tool {tool_name} resultaat: {result_with_context}\n\nJe hebt nu {len(called_tools)} tool(s) aangeroepen. Als je meer informatie nodig hebt, roep nog een tool aan met JSON: {{\"name\": \"tool_naam\", \"arguments\": {{...}}}}. Als je voldoende informatie hebt, geef dan een duidelijk Nederlands rapport zonder JSON."
+                            "content": f"Resultaat van {tool_name}: {result_with_context}"
                         })
 
-                        # Continue loop for potential follow-up tools (keep JSON fallback active)
-                        use_tools = None  # Disable native tools, keep JSON fallback
-                        use_json_fallback = True
+                        # Continue loop - keep current tool mode (don't switch modes mid-conversation)
                         continue
                     elif response_stripped.startswith("{"):
                         await websocket.send_json({"type": "token", "content": full_response})
