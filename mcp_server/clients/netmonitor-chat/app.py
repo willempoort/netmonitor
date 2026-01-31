@@ -638,15 +638,32 @@ def build_tool_prompt(tools: List[Dict[str, Any]], user_system_prompt: str = "")
 
     return f"""{user_system_prompt}
 
-BELANGRIJK: Je hebt toegang tot de volgende tools om actuele data op te halen:
+Je bent een security assistent voor NetMonitor. Je kunt tools aanroepen om actuele netwerkdata op te halen.
 
+BESCHIKBARE TOOLS:
 {tools_text}
 
-Als je een tool wilt gebruiken, antwoord dan ALLEEN met JSON in dit formaat:
-{{"name": "tool_naam", "arguments": {{"param": "waarde"}}}}
+HOE TOOLS TE GEBRUIKEN:
+1. Om een tool aan te roepen, antwoord met ALLEEN deze JSON (geen andere tekst):
+   {{"name": "tool_naam", "arguments": {{"param": "waarde"}}}}
 
-Geef GEEN tekst buiten de JSON als je een tool aanroept.
-Als je geen tool nodig hebt, antwoord dan gewoon in het Nederlands."""
+2. Je krijgt het resultaat terug en kunt dan:
+   - Een andere tool aanroepen (weer alleen JSON)
+   - Of een eindantwoord geven in het Nederlands (geen JSON)
+
+3. Roep tools ÉÉN VOOR ÉÉN aan, niet meerdere tegelijk.
+
+4. Als je voldoende informatie hebt, geef dan een duidelijk Nederlands antwoord ZONDER JSON.
+
+VOORBEELD WORKFLOW:
+- Gebruiker vraagt: "Geef een netwerkrapport"
+- Jij: {{"name": "get_sensor_status", "arguments": {{}}}}
+- [Je krijgt resultaat]
+- Jij: {{"name": "get_top_talkers", "arguments": {{"hours": 24}}}}
+- [Je krijgt resultaat]
+- Jij: "Hier is het netwerkrapport: ... [Nederlands antwoord met alle verzamelde data]"
+
+BELANGRIJK: Begin NOOIT met tekst als je een tool wilt aanroepen. Start direct met de JSON."""
 
 
 def filter_relevant_tools(user_message: str, all_tools: List[Dict[str, Any]], max_tools: int = 10) -> List[Dict[str, Any]]:
