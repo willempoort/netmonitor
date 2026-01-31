@@ -53,6 +53,178 @@ class NetMonitorTools:
 
     # ==================== Tool Implementations ====================
 
+    # web_search - Search the internet using DuckDuckGo (or SearXNG)
+    async def web_search(self, params: Dict) -> Dict:
+        """
+        Search the internet for information.
+
+        Currently uses DuckDuckGo. Can be switched to SearXNG by setting
+        SEARXNG_URL environment variable.
+        """
+        query = params.get('query')
+        if not query:
+            return {'success': False, 'error': 'query parameter is required'}
+
+        max_results = params.get('max_results', 5)
+        search_type = params.get('type', 'text')  # text, news
+
+        # Check if SearXNG is configured
+        searxng_url = os.environ.get('SEARXNG_URL')
+
+        if searxng_url:
+            # Use SearXNG
+            return await self._search_searxng(query, max_results, search_type, searxng_url)
+        else:
+            # Use DuckDuckGo
+            return await self._search_duckduckgo(query, max_results, search_type)
+
+    async def _search_duckduckgo(self, query: str, max_results: int, search_type: str) -> Dict:
+        """Search using DuckDuckGo"""
+        try:
+            # Try new ddgs package first, fall back to duckduckgo_search
+            try:
+                from ddgs import DDGS
+            except ImportError:
+                from duckduckgo_search import DDGS
+
+            ddgs = DDGS()
+            results = []
+
+            if search_type == 'news':
+                search_results = list(ddgs.news(query, max_results=max_results))
+            else:
+                search_results = list(ddgs.text(query, max_results=max_results))
+
+            for r in search_results:
+                results.append({
+                    'title': r.get('title', ''),
+                    'url': r.get('href') or r.get('url') or r.get('link', ''),
+                    'snippet': r.get('body') or r.get('description', ''),
+                    'source': r.get('source', 'DuckDuckGo')
+                })
+
+            return {
+                'success': True,
+                'query': query,
+                'provider': 'DuckDuckGo',
+                'results': results,
+                'count': len(results)
+            }
+
+        except ImportError:
+            return {
+                'success': False,
+                'error': 'ddgs library not installed. Run: pip install ddgs'
+            }
+        except Exception as e:
+            logger.error(f"DuckDuckGo search error: {e}")
+            return {
+                'success': False,
+                'query': query,
+                'error': f'Search failed: {str(e)}'
+            }
+
+    async def _search_searxng(self, query: str, max_results: int, search_type: str, base_url: str) -> Dict:
+        """Search using SearXNG instance"""
+        import aiohttp
+
+        try:
+            # SearXNG API endpoint
+            search_url = f"{base_url.rstrip('/')}/search"
+            params = {
+                'q': query,
+                'format': 'json',
+                'categories': 'general' if search_type == 'text' else 'news'
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(search_url, params=params, timeout=10) as resp:
+                    if resp.status != 200:
+                        return {
+                            'success': False,
+                            'error': f'SearXNG returned status {resp.status}'
+                        }
+
+                    data = await resp.json()
+                    results = []
+
+                    for r in data.get('results', [])[:max_results]:
+                        results.append({
+                            'title': r.get('title', ''),
+                            'url': r.get('url', ''),
+                            'snippet': r.get('content', ''),
+                            'source': r.get('engine', 'SearXNG')
+                        })
+
+                    return {
+                        'success': True,
+                        'query': query,
+                        'provider': 'SearXNG',
+                        'results': results,
+                        'count': len(results)
+                    }
+
+        except Exception as e:
+            logger.error(f"SearXNG search error: {e}")
+            return {
+                'success': False,
+                'query': query,
+                'error': f'SearXNG search failed: {str(e)}'
+            }
+
+    # dns_lookup - Resolve domain names to IP addresses
+    async def dns_lookup(self, params: Dict) -> Dict:
+        """Resolve a domain name to IP address(es)"""
+        import socket
+
+        domain = params.get('domain') or params.get('hostname')
+        if not domain:
+            return {'success': False, 'error': 'domain parameter is required'}
+
+        # Clean up domain (remove protocol, path, etc.)
+        domain = domain.strip()
+        if domain.startswith('http://'):
+            domain = domain[7:]
+        if domain.startswith('https://'):
+            domain = domain[8:]
+        domain = domain.split('/')[0]  # Remove path
+        domain = domain.split(':')[0]  # Remove port
+
+        try:
+            # Get all IP addresses for the domain
+            results = socket.getaddrinfo(domain, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+
+            ipv4_addresses = []
+            ipv6_addresses = []
+
+            for result in results:
+                family, _, _, _, addr = result
+                ip = addr[0]
+                if family == socket.AF_INET and ip not in ipv4_addresses:
+                    ipv4_addresses.append(ip)
+                elif family == socket.AF_INET6 and ip not in ipv6_addresses:
+                    ipv6_addresses.append(ip)
+
+            return {
+                'success': True,
+                'domain': domain,
+                'ipv4_addresses': ipv4_addresses,
+                'ipv6_addresses': ipv6_addresses,
+                'primary_ip': ipv4_addresses[0] if ipv4_addresses else (ipv6_addresses[0] if ipv6_addresses else None)
+            }
+        except socket.gaierror as e:
+            return {
+                'success': False,
+                'domain': domain,
+                'error': f'DNS lookup failed: {str(e)}'
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'domain': domain,
+                'error': f'Error: {str(e)}'
+            }
+
     # analyze_ip
     async def analyze_ip(self, params: Dict) -> Dict:
         """Implement analyze_ip tool"""
@@ -3206,7 +3378,32 @@ class NetMonitorTools:
 # ==================== Tool Definitions Registry ====================
 
 TOOL_DEFINITIONS = [
-
+            {
+                "name": "web_search",
+                "description": "Search the internet for information. Use this to find current information about security threats, CVEs, malware, best practices, or any other topic. Returns web search results with titles, URLs and snippets.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "Search query (e.g., 'CVE-2024-1234 exploit', 'ransomware mitigation best practices')"},
+                        "max_results": {"type": "number", "description": "Maximum number of results to return", "default": 5},
+                        "type": {"type": "string", "enum": ["text", "news"], "description": "Type of search: text (general) or news", "default": "text"}
+                    },
+                    "required": ["query"]
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "dns_lookup",
+                "description": "Resolve a domain name (hostname) to IP address(es). Use this to find the IP of a website or server.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "domain": {"type": "string", "description": "Domain name to resolve (e.g., google.com, poort.net)"}
+                    },
+                    "required": ["domain"]
+                },
+                "scope_required": "read_only"
+            },
             {
                 "name": "analyze_ip",
                 "description": "Analyze a specific IP address to get detailed threat intelligence",
