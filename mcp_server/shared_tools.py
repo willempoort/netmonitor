@@ -2665,39 +2665,28 @@ class NetMonitorTools:
         threat_type = params.get('threat_type')
         limit = params.get('limit', 50)
 
-        # Get recent alerts filtered by advanced threat types
-        advanced_threat_types = [
-            'CRYPTOMINING_DETECTED',
-            'PHISHING_DOMAIN_QUERY',
-            'TOR_EXIT_NODE_CONNECTION',
-            'CLOUD_METADATA_ACCESS',
-            'DNS_ANOMALY'
-        ]
-
+        # Get recent alerts - all alerts are threat detections
         alerts = self.db.get_recent_alerts(
             limit=limit,
             hours=hours,
             threat_type=threat_type
         )
 
-        # Filter only advanced threat detections
-        threat_alerts = [a for a in alerts if a.get('threat_type') in advanced_threat_types]
-
         # Calculate statistics
         by_type = {}
         unique_sources = set()
 
-        for alert in threat_alerts:
-            t_type = alert['threat_type']
+        for alert in alerts:
+            t_type = alert.get('threat_type', 'UNKNOWN')
             by_type[t_type] = by_type.get(t_type, 0) + 1
             unique_sources.add(alert.get('source_ip', 'unknown'))
 
         return {
             'success': True,
-            'total_detections': len(threat_alerts),
+            'total_detections': len(alerts),
             'by_type': by_type,
             'unique_sources': len(unique_sources),
-            'detections': threat_alerts
+            'detections': alerts
         }
 
 
