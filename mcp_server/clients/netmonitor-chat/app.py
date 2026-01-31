@@ -180,17 +180,9 @@ QUICK_INTENTS: List[Tuple[str, str, Dict[str, Any], str]] = [
     (r"(aanbevel|recommend|advies|advice).*(voor|for|bij).*(phish)",
      "get_security_recommendation", {"threat_type": "phishing"}, "aanbevelingen voor phishing"),
 
-    # Web search - for internet/external information
-    (r"(zoek|search|vind|find).*(op.*internet|online|web)",
-     "web_search", {}, "zoeken op internet"),
-    (r"(wat.*zegt|wat.*vind|wat.*staat).*(internet|online|web)",
-     "web_search", {}, "zoeken op internet"),
-    (r"(actuele|huidige|laatste|recente).*(kennis|informatie|info).*(internet|online|extern)",
-     "web_search", {}, "actuele informatie zoeken"),
-    (r"(cve|vulnerability|kwetsbaarheid).*(\d{4}[-_]\d+)",
-     "web_search", {}, "CVE informatie zoeken"),
-    (r"(meer.*weten|informatie|info).*(over|about).*(malware|ransomware|threat|attack)",
-     "web_search", {}, "threat informatie zoeken"),
+    # Web search - REMOVED: web_search requires a query parameter that must be
+    # determined by the LLM based on context. Quick intents can't provide this.
+    # The LLM will call web_search with appropriate query when needed.
 
     # DNS lookup
     (r"(wat.*is|geef|vind).*(ip|ip-adres|ip.*address).*(van|voor|of)",
