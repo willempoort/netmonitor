@@ -1169,6 +1169,7 @@ Regels:
             # Multi-tool loop: keep calling LLM until no more tool calls
             MAX_TOOL_ITERATIONS = 10  # Prevent infinite loops
             tool_iteration = 0
+            called_tools: List[str] = []  # Track called tools to detect loops
 
             while tool_iteration < MAX_TOOL_ITERATIONS:
                 tool_iteration += 1
@@ -1261,6 +1262,16 @@ Regels:
                         if not tool_name:
                             continue
 
+                        # Check for loop (same tool with same args)
+                        tool_signature = f"{tool_name}:{json.dumps(tool_args, sort_keys=True)}"
+                        if tool_signature in called_tools:
+                            await websocket.send_json({
+                                "type": "token",
+                                "content": f"\n\n*Loop gedetecteerd: {tool_name} werd al aangeroepen.*\n\n"
+                            })
+                            continue
+                        called_tools.append(tool_signature)
+
                         await send_status(f"Tool uitvoeren: {tool_name} ({idx + 1}/{len(accumulated_tool_calls)})", "tool_call")
                         await websocket.send_json({"type": "tool_call", "tool": tool_name, "args": tool_args})
 
@@ -1323,6 +1334,17 @@ Regels:
                         tool_name = tool_data["name"]
                         tool_args = tool_data.get("arguments", {})
 
+                        # Create a signature to detect repeated calls
+                        tool_signature = f"{tool_name}:{json.dumps(tool_args, sort_keys=True)}"
+                        if tool_signature in called_tools:
+                            # Same tool with same args called again - likely stuck in loop
+                            await websocket.send_json({
+                                "type": "token",
+                                "content": f"\n\n*Loop gedetecteerd: {tool_name} werd al aangeroepen met dezelfde parameters. Rapport wordt nu gegenereerd.*\n\n"
+                            })
+                            break
+                        called_tools.append(tool_signature)
+
                         await send_status(f"Tool uitvoeren: {tool_name}", "tool_call")
                         await websocket.send_json({"type": "tool_call", "tool": tool_name, "args": tool_args})
 
@@ -1339,10 +1361,11 @@ Regels:
                         if enrichment_context:
                             result_with_context += f"\n\n{enrichment_context}"
 
-                        messages.append({"role": "assistant", "content": full_response})
+                        # Add clean assistant message (not the raw JSON to avoid model confusion)
+                        messages.append({"role": "assistant", "content": f"Ik roep tool {tool_name} aan."})
                         messages.append({
                             "role": "user",
-                            "content": f"Tool {tool_name} resultaat: {result_with_context}\n\nAls je meer tools nodig hebt, roep ze aan met JSON: {{\"name\": \"tool_naam\", \"arguments\": {{...}}}}. Als je alle informatie hebt, geef dan een duidelijk Nederlands antwoord."
+                            "content": f"Tool {tool_name} resultaat: {result_with_context}\n\nJe hebt nu {len(called_tools)} tool(s) aangeroepen. Als je meer informatie nodig hebt, roep nog een tool aan met JSON: {{\"name\": \"tool_naam\", \"arguments\": {{...}}}}. Als je voldoende informatie hebt, geef dan een duidelijk Nederlands rapport zonder JSON."
                         })
 
                         # Continue loop for potential follow-up tools (keep JSON fallback active)
