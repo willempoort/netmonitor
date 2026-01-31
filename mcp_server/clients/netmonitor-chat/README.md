@@ -9,16 +9,19 @@ Simple, reliable web interface for Ollama + NetMonitor MCP Tools. Built after di
 - ⚙️ **Configureerbare UI** - MCP en LLM servers via web interface
 - 🚀 **Hybrid Mode** - Snelle intent matching (<2 sec) voor veelvoorkomende queries
 - 🔌 **Native MCP Client** - Directe HTTP/SSE communicatie (geen bridge subprocess)
-- 🔧 **Automatic Tool Calling** - Native function calling + JSON fallback
+- 🔧 **Multi-Tool Loop** - LLM kan meerdere tools sequentieel aanroepen voor complexe taken
 - ⚡ **Smart Tool Filtering** - Automatische selectie van relevante tools (60 → 10)
 - 📊 **Real-time Status Feedback** - Visuele indicatoren tijdens verwerking
 - 📡 **Streaming MCP** - SSE ondersteuning voor progress/notifications
-- 🛡️ **60 Security Tools** - Volledige NetMonitor MCP tool access
+- 🛡️ **60+ Security Tools** - Volledige NetMonitor MCP tool access
+- 🔍 **Web Search** - DuckDuckGo integratie (optioneel SearXNG)
+- 🌐 **DNS Lookup** - Domein naar IP resolutie
 - 🧠 **RAG Enrichment** - Automatische threat intel en aanbevelingen uit knowledge base
+- 📋 **Device Context** - Top talkers tonen device type/template voor betere analyse
 - 🏠 **100% On-Premise** - Geen cloud, volledige privacy
 - 🎯 **Debug Mode** - Optioneel tool calls en resultaten tonen (standaard uit)
 - 💾 **Persistente Configuratie** - Settings blijven bewaard in browser localStorage
-- 🌐 **Meertalig** - Nederlands en Engels keyword matching voor tool filtering
+- 🌍 **Meertalig** - Nederlands en Engels keyword matching voor tool filtering
 
 ## 🏗️ Architectuur
 
@@ -87,7 +90,13 @@ Simple, reliable web interface for Ollama + NetMonitor MCP Tools. Built after di
    - Security aanbevelingen uit knowledge base (MITRE ATT&CK mapping)
    - Context wordt meegestuurd naar LLM voor betere antwoorden
 
-4. **Format Response**: LLM formatteert resultaat (snel, geen tools)
+4. **Multi-Tool Loop**: Voor complexe taken
+   - LLM kan meerdere tools sequentieel aanroepen
+   - Na elke tool execution bepaalt LLM of meer tools nodig zijn
+   - Maximum 10 iteraties ter bescherming tegen loops
+   - Status toont voortgang: "Volgende stap bepalen... (2/10)"
+
+5. **Format Response**: LLM formatteert resultaat (snel, geen tools)
 
 ## 📋 Vereisten
 
@@ -294,6 +303,35 @@ In de web interface:
 - 💬 Assistant: Samenvatting van bedreigingen met ECHTE 10.100.0.x IPs
 
 **GEEN** verzonnen 192.168.1.x IPs! ✅
+
+### Test 4: Multi-Tool Loop
+
+**Vraag:** "Maak een rapport van de sensor status, top talkers en recente threats"
+
+**Verwacht:**
+- 🔧 Tool call 1: `get_sensor_status({})`
+- ✓ Tool result 1
+- 🔧 Tool call 2: `get_top_talkers({"hours": 24})`
+- ✓ Tool result 2
+- 🔧 Tool call 3: `get_threat_detections({"hours": 24})`
+- ✓ Tool result 3
+- 💬 Assistant: Gecombineerd rapport met alle informatie
+
+### Test 5: Web Search & DNS
+
+**Vraag:** "Zoek op internet wat ransomware mitigatie best practices zijn"
+
+**Verwacht:**
+- 🔧 Tool call: `web_search({"query": "ransomware mitigation best practices"})`
+- ✓ Tool result met search results
+- 💬 Assistant: Samenvatting van gevonden informatie
+
+**Vraag:** "Wat is het IP adres van google.com?"
+
+**Verwacht:**
+- 🔧 Tool call: `dns_lookup({"domain": "google.com"})`
+- ✓ Tool result met IP adressen
+- 💬 Assistant: IP adressen uitleg
 
 ## 🎨 UI Features
 
@@ -517,9 +555,16 @@ NetMonitor Chat gebruikt intelligente tool filtering om context size te reducere
 ```
 
 ### Model Selectie
-- **qwen2.5-coder:14b**: Beste tool calling, trager (~5-10s)
-- **llama3.1:8b**: Goede balans (~3-5s)
-- **mistral:7b-instruct**: Snelst (~2-3s), zwakkere tools
+
+| Model | Tool Calling | Multi-Tool | Snelheid | Aanbeveling |
+|-------|--------------|------------|----------|-------------|
+| **qwen2.5-coder:14b** | ⭐⭐⭐ Excellent | ⭐⭐⭐ | ~5-10s | **Aanbevolen** |
+| **qwen2.5:14b** | ⭐⭐⭐ Excellent | ⭐⭐⭐ | ~5-10s | **Aanbevolen** |
+| **llama3.1:8b** | ⭐⭐ Goed | ⭐⭐ | ~3-5s | Budget optie |
+| **mistral:7b** | ⭐ Basis | ⭐ | ~2-3s | Alleen simpele taken |
+| **llama3.2:3b** | ❌ Slecht | ❌ | ~1-2s | **Niet aanbevolen** |
+
+> **Let op**: Modellen kleiner dan 7B parameters hebben vaak problemen met multi-tool calling. Ze stoppen na de eerste tool of hallucinereren tool formaten.
 
 **LM Studio op Mac**: Vaak 2-3x sneller door Metal GPU optimalisatie!
 
@@ -675,6 +720,10 @@ NetMonitor Chat gebruikt intelligente tool filtering om context size te reducere
 - [x] **RAG Enrichment** - Automatische threat intel en aanbevelingen
 - [x] **Threat Intel Cache** - Lokale cache van AbuseIPDB, Tor exits, Feodo C2
 - [x] **Security Knowledge Base** - MITRE ATT&CK mappings en aanbevelingen
+- [x] **Multi-tool loop** - LLM kan meerdere tools sequentieel aanroepen (max 10 iteraties)
+- [x] **Web search tool** - DuckDuckGo integratie met SearXNG fallback support
+- [x] **DNS lookup tool** - Domein naam naar IP resolutie
+- [x] **Device template enrichment** - Top talkers tonen device type voor context-aware analyse
 
 **Todo** 📋
 - [ ] Dockerfile voor productie deployment

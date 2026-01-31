@@ -24,16 +24,31 @@ This directory contains client configurations and setup guides for connecting va
 
 [Setup Guide](./claude-desktop/README.md)
 
-### 2. Open-WebUI 0.7.2 (Docker) ⭐ **RECOMMENDED FOR ON-PREMISE**
+### 2. NetMonitor Chat ⭐ **RECOMMENDED FOR LOCAL LLM**
+- **Directory:** `netmonitor-chat/`
+- **Protocol:** Native MCP Streamable HTTP
+- **Status:** ✅ Fully working with multi-tool support
+- **Models:** Ollama of LM Studio (qwen2.5-coder:14b recommended)
+- **Best for:** On-premise, multi-tool workflows, web search, full privacy
+
+**Key Features:**
+- Multi-tool loop (LLM kan meerdere tools sequentieel aanroepen)
+- Web search (DuckDuckGo/SearXNG) en DNS lookup
+- Device template enrichment voor context-aware analyse
+- Smart tool filtering (60 → 10 tools per request)
+
+[Setup Guide](./netmonitor-chat/README.md)
+
+### 3. Open-WebUI 0.7.2 (Docker)
 - **Directory:** `open-webui/`
 - **Protocol:** Native MCP support
-- **Status:** ✅ Recommended for local/on-premise
+- **Status:** ✅ Good for basic use
 - **Models:** Any Ollama model (qwen2.5-coder:14b recommended)
-- **Best for:** On-premise deployments, privacy-focused, mature project
+- **Best for:** Users who prefer Docker-based deployments
 
 [Setup Guide](./open-webui/SETUP.md) | [Quick Start](./open-webui/start.sh)
 
-### 3. Ollama-MCP-Bridge-WebUI
+### 4. Ollama-MCP-Bridge-WebUI
 - **Directory:** `ollama-mcp-bridge/`
 - **Protocol:** MCP via custom Node.js bridge
 - **Status:** ⚠️ Experimental - known tool calling issues
@@ -44,15 +59,18 @@ This directory contains client configurations and setup guides for connecting va
 
 ## Quick Comparison
 
-| Feature | Claude Desktop | Open-WebUI 0.7.2 | Ollama-MCP-Bridge |
-|---------|---------------|------------------|-------------------|
-| All 60 tools | ✅ Yes | ✅ Yes | ✅ Yes |
-| Tool calling works | ✅ Perfect | ✅ Good | ⚠️ Problematic |
-| Local model | ❌ No | ✅ Yes | ✅ Yes |
-| Privacy | Cloud | 100% On-Premise | 100% On-Premise |
-| Setup complexity | Easy | Medium (Docker) | Hard + Debugging |
-| WebUI included | ❌ No | ✅ Yes | ✅ Yes |
-| Production ready | ✅ Yes | ✅ Yes | ❌ No |
+| Feature | Claude Desktop | NetMonitor Chat | Open-WebUI | Ollama-MCP-Bridge |
+|---------|---------------|-----------------|------------|-------------------|
+| All 60+ tools | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
+| Tool calling | ✅ Perfect | ✅ Excellent | ✅ Good | ⚠️ Problematic |
+| **Multi-tool loop** | ✅ Native | ✅ Yes (max 10) | ❌ No | ❌ No |
+| **Web search** | ❌ No | ✅ DuckDuckGo | ❌ No | ❌ No |
+| **Device context** | ❌ No | ✅ Yes | ❌ No | ❌ No |
+| Local model | ❌ No | ✅ Yes | ✅ Yes | ✅ Yes |
+| Privacy | Cloud | 100% On-Premise | 100% On-Premise | 100% On-Premise |
+| Setup complexity | Easy | Easy (venv) | Medium (Docker) | Hard |
+| WebUI included | ❌ No | ✅ Yes | ✅ Yes | ✅ Yes |
+| Production ready | ✅ Yes | ✅ Yes | ✅ Yes | ❌ No |
 
 ## Server Information
 

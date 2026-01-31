@@ -44,7 +44,7 @@ curl http://localhost:8000/health
 
 ## 🎯 Tool Categorieën
 
-De MCP server biedt **23+ tools** verdeeld over 6 categorieën:
+De MCP server biedt **60+ tools** verdeeld over 7 categorieën:
 
 ### 🔍 Security Analysis (read_only)
 Real-time threat intelligence en security monitoring:
@@ -89,6 +89,12 @@ Ollama integration voor deep analysis:
 - `suggest_incident_response` - AI response suggesties
 - `explain_ioc` - IOC uitleg via AI
 - `get_ollama_status` - Ollama beschikbaarheid
+
+### 🔧 Utility Tools (read_only)
+Algemene hulpmiddelen:
+- `web_search` - Internet zoeken via DuckDuckGo (of SearXNG)
+- `dns_lookup` - Domein naar IP resolutie
+- `get_top_talkers` - Top communicerende hosts met device context
 
 **Volledige lijst:** `curl -H "Authorization: Bearer TOKEN" http://localhost:8000/mcp/tools`
 
