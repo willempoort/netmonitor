@@ -158,7 +158,10 @@ class NetMonitorStreamableHTTPServer:
             # Find tool definition
             tool_def = next((t for t in TOOL_DEFINITIONS if t['name'] == name), None)
             if not tool_def:
-                error_msg = f"Unknown tool: {name}"
+                # Find similar tools to suggest
+                similar = [t['name'] for t in TOOL_DEFINITIONS if name.split('_')[0] in t['name'] or any(part in t['name'] for part in name.split('_'))][:5]
+                suggestion = f" Similar tools: {', '.join(similar)}" if similar else ""
+                error_msg = f"Unknown tool: {name}.{suggestion} Use get_threat_detections for security alerts."
                 logger.error(error_msg)
                 return [TextContent(
                     type="text",
