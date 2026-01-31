@@ -4249,10 +4249,40 @@ def api_ml_classify_device(ip_address):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# Global state for background ML classification
+_ml_classification_task = {
+    'running': False,
+    'result': None,
+    'error': None,
+    'started_at': None
+}
+
+def _run_ml_classification_background(ml, update_db):
+    """Run ML classification in background thread."""
+    global _ml_classification_task
+    try:
+        _ml_classification_task['running'] = True
+        _ml_classification_task['error'] = None
+        _ml_classification_task['started_at'] = datetime.now().isoformat()
+
+        result = ml.classifier.classify_all_devices(update_db=update_db)
+
+        _ml_classification_task['result'] = result
+        _ml_classification_task['running'] = False
+        logger.info(f"Background ML classification complete: {result.get('classified', 0)} classified")
+
+    except Exception as e:
+        logger.error(f"Background ML classification error: {e}")
+        _ml_classification_task['error'] = str(e)
+        _ml_classification_task['running'] = False
+
+
 @app.route('/api/ml/classify-all', methods=['POST'])
 @login_required
 def api_ml_classify_all():
-    """Classify all devices using ML."""
+    """Classify all devices using ML (runs in background)."""
+    global _ml_classification_task
+
     ml = get_ml_classifier()
     if not ml:
         return jsonify({
@@ -4260,19 +4290,70 @@ def api_ml_classify_all():
             'error': 'ML classification not available'
         }), 400
 
+    # Check if already running
+    if _ml_classification_task['running']:
+        return jsonify({
+            'success': True,
+            'status': 'already_running',
+            'message': 'ML classification is already running',
+            'started_at': _ml_classification_task['started_at']
+        })
+
     try:
         data = request.get_json(silent=True) or {}
         update_db = data.get('update_db', False)
 
-        result = ml.classifier.classify_all_devices(update_db=update_db)
+        # Start classification in background thread
+        import threading
+        thread = threading.Thread(
+            target=_run_ml_classification_background,
+            args=(ml, update_db),
+            daemon=True
+        )
+        thread.start()
+
         return jsonify({
             'success': True,
-            'result': result
+            'status': 'started',
+            'message': 'ML classification started in background'
         })
+
     except Exception as e:
         error_trace = traceback.format_exc()
-        logger.error(f"Error classifying all devices: {e}\n{error_trace}")
+        logger.error(f"Error starting ML classification: {e}\n{error_trace}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/ml/classify-all/status')
+@login_required
+def api_ml_classify_all_status():
+    """Get status of background ML classification."""
+    global _ml_classification_task
+
+    if _ml_classification_task['running']:
+        return jsonify({
+            'success': True,
+            'status': 'running',
+            'started_at': _ml_classification_task['started_at']
+        })
+    elif _ml_classification_task['error']:
+        return jsonify({
+            'success': False,
+            'status': 'error',
+            'error': _ml_classification_task['error']
+        })
+    elif _ml_classification_task['result']:
+        return jsonify({
+            'success': True,
+            'status': 'completed',
+            'result': _ml_classification_task['result']
+        })
+    else:
+        return jsonify({
+            'success': True,
+            'status': 'idle',
+            'message': 'No classification running'
+        })
 
 
 @app.route('/api/ml/start-background-training', methods=['POST'])
