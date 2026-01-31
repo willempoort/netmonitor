@@ -802,7 +802,7 @@ class NetMonitorTools:
                     bytes_val /= 1024
                 return f"{bytes_val:.1f} PB"
 
-            # Enhance results with formatted values
+            # Enhance results with formatted values and device info
             for talker in top_talkers:
                 talker['total_bytes_formatted'] = format_bytes(talker.get('total_bytes', 0))
                 # Convert datetime objects to strings for JSON serialization
@@ -810,6 +810,20 @@ class NetMonitorTools:
                     talker['last_seen'] = str(talker['last_seen'])
                 if 'first_seen' in talker and talker['first_seen']:
                     talker['first_seen'] = str(talker['first_seen'])
+
+                # Enrich with device template information
+                ip = talker.get('ip_address', '').replace('/32', '')
+                device = await asyncio.to_thread(self.db.get_device_by_ip, ip)
+                if device:
+                    talker['device_type'] = device.get('template_name') or 'Unclassified'
+                    talker['device_icon'] = device.get('template_icon')
+                    talker['device_notes'] = device.get('notes')
+                    talker['classification_method'] = device.get('classification_method')
+                    talker['classification_confidence'] = device.get('classification_confidence')
+                else:
+                    talker['device_type'] = 'Unknown'
+                    talker['device_icon'] = None
+                    talker['device_notes'] = None
 
             return {
                 'success': True,
