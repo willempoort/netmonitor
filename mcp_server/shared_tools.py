@@ -1740,29 +1740,29 @@ class NetMonitorTools:
     # get_memory_status
     async def get_memory_status(self, params: Dict) -> Dict:
         """Get current memory usage of SOC server"""
-        import requests
-
         try:
-            # Call the internal API endpoint
-            response = requests.get(
-                f"{self.base_url}/api/internal/memory/status",
-                timeout=5
-            )
-            response.raise_for_status()
-            data = response.json()
+            import psutil
 
-            if data.get('success'):
-                return {
-                    'success': True,
-                    'memory': data.get('memory', {}),
-                    'message': 'Retrieved memory status successfully'
-                }
-            else:
-                return {
-                    'success': False,
-                    'error': data.get('error', 'Unknown error')
-                }
+            # Get memory info directly
+            mem = psutil.virtual_memory()
+            swap = psutil.swap_memory()
 
+            return {
+                'success': True,
+                'memory': {
+                    'total_gb': round(mem.total / (1024**3), 2),
+                    'available_gb': round(mem.available / (1024**3), 2),
+                    'used_gb': round(mem.used / (1024**3), 2),
+                    'percent_used': mem.percent,
+                    'swap_total_gb': round(swap.total / (1024**3), 2),
+                    'swap_used_gb': round(swap.used / (1024**3), 2),
+                    'swap_percent': swap.percent
+                },
+                'message': 'Retrieved memory status successfully'
+            }
+
+        except ImportError:
+            return {'success': False, 'error': 'psutil not installed'}
         except Exception as e:
             logger.error(f"Error getting memory status: {e}")
             return {'success': False, 'error': str(e)}
@@ -1770,33 +1770,36 @@ class NetMonitorTools:
 
     # flush_memory
     async def flush_memory(self, params: Dict) -> Dict:
-        """Trigger emergency memory flush on SOC server"""
-        import requests
-
+        """Trigger garbage collection to free memory"""
         try:
-            # Call the internal API endpoint
-            response = requests.post(
-                f"{self.base_url}/api/internal/memory/flush",
-                timeout=30
-            )
-            response.raise_for_status()
-            data = response.json()
+            import gc
+            import psutil
 
-            if data.get('success'):
-                return {
-                    'success': True,
-                    'before': data.get('before', {}),
-                    'after': data.get('after', {}),
-                    'reduction': data.get('reduction', {}),
-                    'collected_objects': data.get('collected_objects', 0),
-                    'message': f"Memory flushed successfully. System RAM reduced by {data.get('reduction', {}).get('system_percent', 0):.1f}%"
-                }
-            else:
-                return {
-                    'success': False,
-                    'error': data.get('error', 'Unknown error')
-                }
+            # Get memory before
+            mem_before = psutil.virtual_memory()
+            before_used = mem_before.used
 
+            # Force garbage collection
+            collected = gc.collect()
+
+            # Get memory after
+            mem_after = psutil.virtual_memory()
+            after_used = mem_after.used
+
+            freed_bytes = before_used - after_used
+            freed_mb = freed_bytes / (1024**2)
+
+            return {
+                'success': True,
+                'before': {'used_gb': round(before_used / (1024**3), 2), 'percent': mem_before.percent},
+                'after': {'used_gb': round(after_used / (1024**3), 2), 'percent': mem_after.percent},
+                'collected_objects': collected,
+                'freed_mb': round(freed_mb, 2),
+                'message': f"Garbage collection completed. Collected {collected} objects, freed {freed_mb:.1f} MB"
+            }
+
+        except ImportError:
+            return {'success': False, 'error': 'psutil not installed'}
         except Exception as e:
             logger.error(f"Error flushing memory: {e}")
             return {'success': False, 'error': str(e)}
@@ -2037,11 +2040,10 @@ class NetMonitorTools:
     async def get_kerberos_stats(self, params: Dict) -> Dict:
         """Get Kerberos attack detection statistics"""
         hours = params.get('hours', 24)
-        sensor_id = params.get('sensor_id')
 
         try:
             # Query alerts related to Kerberos attacks
-            kerberos_types = ['kerberoasting', 'asrep_roasting', 'dcsync', 'pass_the_hash', 'golden_ticket', 'weak_encryption']
+            kerberos_types = ['kerberoasting', 'asrep_roasting', 'dcsync', 'pass_the_hash', 'golden_ticket', 'weak_encryption', 'kerberos']
 
             stats = {
                 'period_hours': hours,
@@ -2052,7 +2054,7 @@ class NetMonitorTools:
                 'unique_targets': set()
             }
 
-            alerts = self.db.get_recent_alerts(hours=hours, sensor_id=sensor_id)
+            alerts = self.db.get_recent_alerts(hours=hours, limit=500)
 
             for alert in alerts:
                 alert_type = alert.get('alert_type', '').lower()
@@ -2164,6 +2166,45 @@ class NetMonitorTools:
 
 
     # get_attack_chains
+    def _map_to_kill_chain_stage(self, threat_type: str) -> str:
+        """Map threat type to cyber kill chain stage"""
+        if not threat_type:
+            return None
+
+        threat_type_lower = threat_type.lower()
+
+        # Reconnaissance
+        if any(x in threat_type_lower for x in ['scan', 'reconnaissance', 'discovery', 'enumeration']):
+            return 'reconnaissance'
+
+        # Weaponization (typically not detected in network traffic)
+
+        # Delivery
+        if any(x in threat_type_lower for x in ['phishing', 'malware', 'dropper', 'download']):
+            return 'delivery'
+
+        # Exploitation
+        if any(x in threat_type_lower for x in ['exploit', 'injection', 'overflow', 'rce', 'vulnerability']):
+            return 'exploitation'
+
+        # Installation
+        if any(x in threat_type_lower for x in ['backdoor', 'webshell', 'persistence', 'install']):
+            return 'installation'
+
+        # Command & Control
+        if any(x in threat_type_lower for x in ['c2', 'beacon', 'command', 'control', 'tunnel', 'dns_tunnel', 'tor']):
+            return 'command_and_control'
+
+        # Actions on Objectives
+        if any(x in threat_type_lower for x in ['exfil', 'lateral', 'privilege', 'credential', 'ransom', 'encrypt', 'data_theft']):
+            return 'actions_on_objectives'
+
+        # General threat indicators
+        if any(x in threat_type_lower for x in ['brute', 'attack', 'suspicious', 'anomaly', 'risk']):
+            return 'reconnaissance'  # Default to early stage
+
+        return None
+
     async def get_attack_chains(self, params: Dict) -> Dict:
         """Get detected multi-stage attack chains"""
         min_stages = params.get('min_stages', 2)
@@ -2896,11 +2937,12 @@ class NetMonitorTools:
         from psycopg2.extras import RealDictCursor
 
         try:
-            ip_address = params.get('ip_address')
+            # Accept both 'ip' and 'ip_address' for convenience
+            ip_address = params.get('ip_address') or params.get('ip')
             domain = params.get('domain')
 
             if not ip_address and not domain:
-                return {'success': False, 'error': 'Either ip_address or domain is required'}
+                return {'success': False, 'error': 'Either ip/ip_address or domain is required'}
 
             host = os.environ.get('DB_HOST', 'localhost')
             database = os.environ.get('DB_NAME', 'netmonitor')
