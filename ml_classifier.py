@@ -37,6 +37,7 @@ logger = logging.getLogger('NetMonitor.MLClassifier')
 
 
 # Device type categories for classification
+# NOTE: template_name must match actual template names in the database (case-insensitive)
 DEVICE_CATEGORIES = {
     'workstation': {
         'description': 'Desktop or laptop computer',
@@ -46,7 +47,7 @@ DEVICE_CATEGORIES = {
     },
     'server': {
         'description': 'Server providing services',
-        'template_name': 'Server',
+        'template_name': 'Web Server',  # Maps to generic web server template
         'typical_ports': {22, 80, 443, 3306, 5432, 8080, 8443},
         'characteristics': {'has_listening_ports': True, 'many_inbound': True}
     },
@@ -58,7 +59,7 @@ DEVICE_CATEGORIES = {
     },
     'iot_sensor': {
         'description': 'IoT sensor or low-power device',
-        'template_name': 'IoT Sensor',
+        'template_name': 'IoT Sensor',  # Needs to be created in database
         'typical_ports': {80, 443, 8883, 1883},
         'characteristics': {'low_traffic': True, 'periodic': True}
     },
@@ -70,7 +71,7 @@ DEVICE_CATEGORIES = {
     },
     'nas': {
         'description': 'Network Attached Storage',
-        'template_name': 'NAS/File Server',
+        'template_name': 'File Server (NAS)',  # Matches database template name
         'typical_ports': {139, 445, 548, 2049, 80, 443},
         'characteristics': {'file_sharing': True, 'many_inbound': True}
     },
@@ -94,13 +95,13 @@ DEVICE_CATEGORIES = {
     },
     'network_device': {
         'description': 'Router, switch, or network infrastructure',
-        'template_name': 'Network Device',
+        'template_name': 'Network Device',  # Needs to be created in database
         'typical_ports': {22, 23, 80, 443, 161, 162},
         'characteristics': {'management_ports': True, 'stable': True}
     },
     'unknown': {
         'description': 'Unknown device type',
-        'template_name': 'Unknown Device',
+        'template_name': None,  # Don't assign template for unknown
         'typical_ports': set(),
         'characteristics': {}
     }
@@ -635,6 +636,7 @@ class DeviceClassifier:
 
         Args:
             update_db: Whether to update device records with classifications
+                       This now also assigns templates based on device type.
 
         Returns:
             Summary of classification results
@@ -648,9 +650,13 @@ class DeviceClassifier:
             'classified': 0,
             'unknown': 0,
             'updated': 0,
+            'templates_assigned': 0,
             'by_type': defaultdict(int),
             'devices': []
         }
+
+        # Cache template lookups to avoid repeated DB queries
+        template_cache = {}
 
         for device in devices:
             classification = self.classify(device)
@@ -673,14 +679,44 @@ class DeviceClassifier:
                 # SKIP devices with manual classification to preserve user choices
                 if update_db and classification['confidence'] >= 0.7:
                     existing_method = device.get('classification_method')
+                    existing_template = device.get('template_id')
+
                     if existing_method != 'manual':
                         try:
-                            self.db.update_device_classification(
-                                device_id=device['id'],
-                                classification_method='ml_classifier',
-                                classification_confidence=classification['confidence']
-                            )
-                            results['updated'] += 1
+                            # Look up template for this device type
+                            device_type = classification['device_type']
+                            template_name = DEVICE_CATEGORIES.get(device_type, {}).get('template_name')
+
+                            template_id = None
+                            if template_name:
+                                # Check cache first
+                                if template_name not in template_cache:
+                                    template = self.db.get_device_template_by_name(template_name)
+                                    template_cache[template_name] = template.get('id') if template else None
+                                template_id = template_cache.get(template_name)
+
+                            if template_id and (not existing_template or existing_template != template_id):
+                                # Assign the template along with classification
+                                self.db.assign_template_to_device(
+                                    device_id=device['id'],
+                                    template_id=template_id,
+                                    method=classification['method'],
+                                    confidence=classification['confidence']
+                                )
+                                results['templates_assigned'] += 1
+                                results['updated'] += 1
+                                self.logger.debug(
+                                    f"Assigned template '{template_name}' to {device.get('ip_address')} "
+                                    f"(confidence: {classification['confidence']:.1%})"
+                                )
+                            else:
+                                # Just update classification metadata (no template found or already has same template)
+                                self.db.update_device_classification(
+                                    device_id=device['id'],
+                                    classification_method=classification['method'],
+                                    classification_confidence=classification['confidence']
+                                )
+                                results['updated'] += 1
                         except Exception as e:
                             self.logger.debug(f"Failed to update device classification: {e}")
                     else:

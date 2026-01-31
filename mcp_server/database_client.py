@@ -524,6 +524,63 @@ class MCPDatabaseClient:
             self.logger.error(f"Error getting device template: {e}")
             return None
 
+    def get_device_template_by_name(self, name: str) -> Optional[Dict]:
+        """
+        Get a device template by its name (case-insensitive)
+
+        Args:
+            name: Template name
+
+        Returns:
+            Device template dictionary, or None
+        """
+        try:
+            self._ensure_connection()
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute('''
+                    SELECT * FROM device_templates
+                    WHERE LOWER(name) = LOWER(%s) AND is_active = TRUE
+                    LIMIT 1
+                ''', (name,))
+                row = cursor.fetchone()
+                return dict(row) if row else None
+        except Exception as e:
+            self.logger.error(f"Error getting device template by name: {e}")
+            return None
+
+    def assign_template_to_device(self, device_id: int, template_id: int,
+                                  method: str = 'ml_classifier',
+                                  confidence: float = None) -> bool:
+        """
+        Assign a template to a device with classification metadata.
+
+        Args:
+            device_id: Device ID
+            template_id: Template ID to assign
+            method: Classification method (e.g., 'ml_classifier', 'manual')
+            confidence: Classification confidence (0.0-1.0)
+
+        Returns:
+            True if successful
+        """
+        try:
+            self._ensure_connection()
+            with self.conn.cursor() as cursor:
+                cursor.execute('''
+                    UPDATE devices
+                    SET template_id = %s,
+                        classification_method = %s,
+                        classification_confidence = %s,
+                        last_seen = NOW()
+                    WHERE id = %s
+                ''', (template_id, method, confidence, device_id))
+                self.conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            self.conn.rollback()
+            self.logger.error(f"Error assigning template to device: {e}")
+            return False
+
     def get_devices(self, sensor_id: str = None, template_id: int = None,
                    include_inactive: bool = False) -> List[Dict]:
         """

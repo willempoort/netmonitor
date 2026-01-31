@@ -2218,6 +2218,60 @@ def api_assign_device_template(ip_address):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/devices/<path:ip_address>/inherit', methods=['POST'])
+@login_required
+def api_inherit_device_settings(ip_address):
+    """
+    Inherit settings from another device.
+
+    Useful for devices with MAC randomization (iPhone, Android privacy mode)
+    where the user knows two devices are actually the same physical device.
+
+    Request body:
+    {
+        "source_ip": "192.168.1.100",  // Device to copy settings from
+        "inherit_template": true,       // Copy template assignment
+        "inherit_behavior": true,       // Copy learned behavior profile
+        "deactivate_source": false      // Mark source as inactive after transfer
+    }
+    """
+    try:
+        data = request.get_json()
+        source_ip = data.get('source_ip')
+
+        if not source_ip:
+            return jsonify({'success': False, 'error': 'source_ip is required'}), 400
+
+        # Get both devices
+        target_device = db.get_device_by_ip(ip_address)
+        source_device = db.get_device_by_ip(source_ip)
+
+        if not target_device:
+            return jsonify({'success': False, 'error': f'Target device {ip_address} not found'}), 404
+        if not source_device:
+            return jsonify({'success': False, 'error': f'Source device {source_ip} not found'}), 404
+
+        success = db.inherit_device_settings(
+            target_device_id=target_device['id'],
+            source_device_id=source_device['id'],
+            inherit_template=data.get('inherit_template', True),
+            inherit_behavior=data.get('inherit_behavior', True),
+            deactivate_source=data.get('deactivate_source', False)
+        )
+
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Settings inherited from {source_ip} to {ip_address}'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to inherit settings'}), 500
+
+    except Exception as e:
+        logger.error(f"Error inheriting settings for {ip_address}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/devices/<path:ip_address>', methods=['DELETE'])
 @login_required
 def api_delete_device(ip_address):

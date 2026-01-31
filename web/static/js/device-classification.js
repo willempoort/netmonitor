@@ -37,6 +37,7 @@ function initDeviceClassification() {
             loadTemplates();
             loadProviders();
             loadClassificationStats();
+            loadMLStatus();
         });
     }
 
@@ -423,6 +424,9 @@ async function showDeviceDetails(ipAddress) {
         // Load classification hints
         loadDeviceClassificationHints(ipAddress);
 
+        // Load devices for "inherit from" dropdown
+        populateInheritFromSelect(device);
+
         // Show modal
         const modal = new bootstrap.Modal(document.getElementById('deviceDetailsModal'));
         modal.show();
@@ -477,6 +481,118 @@ async function loadDeviceClassificationHints(ipAddress) {
         }
     } catch (error) {
         console.error('Error loading classification hints:', error);
+    }
+}
+
+function populateInheritFromSelect(currentDevice) {
+    const select = document.getElementById('inherit-from-device');
+    const card = document.getElementById('link-to-previous-device-card');
+    if (!select || !card) return;
+
+    // Clear existing options except first
+    while (select.options.length > 1) {
+        select.remove(1);
+    }
+
+    // Find devices that could be previous versions of this device:
+    // - Same hostname (most reliable for MAC randomization)
+    // - Same vendor with similar hostname pattern
+    // - Must have a template assigned
+    const currentHostname = (currentDevice.hostname || '').toLowerCase();
+    const currentVendor = (currentDevice.vendor || '').toLowerCase();
+    const currentIp = currentDevice.ip_address;
+
+    let matchingDevices = allDevices.filter(d => {
+        // Skip current device
+        if (d.ip_address === currentIp) return false;
+
+        // Must have a template
+        if (!d.template_id) return false;
+
+        const hostname = (d.hostname || '').toLowerCase();
+        const vendor = (d.vendor || '').toLowerCase();
+
+        // Exact hostname match (best indicator for MAC randomization)
+        if (currentHostname && hostname === currentHostname) return true;
+
+        // Same vendor + similar hostname (e.g., "iphone-van-" prefix)
+        if (currentVendor && vendor === currentVendor) {
+            // Check for similar hostname patterns
+            if (currentHostname && hostname) {
+                // Same first 5 characters or Levenshtein-like similarity
+                if (hostname.substring(0, 8) === currentHostname.substring(0, 8)) return true;
+            }
+        }
+
+        return false;
+    });
+
+    // Sort by relevance: exact hostname match first, then by last_seen
+    matchingDevices.sort((a, b) => {
+        const aHostname = (a.hostname || '').toLowerCase();
+        const bHostname = (b.hostname || '').toLowerCase();
+        const exactA = aHostname === currentHostname ? 0 : 1;
+        const exactB = bHostname === currentHostname ? 0 : 1;
+        if (exactA !== exactB) return exactA - exactB;
+        return new Date(b.last_seen) - new Date(a.last_seen);
+    });
+
+    if (matchingDevices.length === 0) {
+        // Hide the card if no matching devices
+        card.style.display = 'none';
+        return;
+    }
+
+    card.style.display = 'block';
+
+    // Populate dropdown
+    matchingDevices.forEach(d => {
+        const option = document.createElement('option');
+        option.value = d.ip_address;
+        const hostnameMatch = (d.hostname || '').toLowerCase() === currentHostname ? ' (exact match)' : '';
+        option.textContent = `${d.ip_address} - ${d.hostname || 'No hostname'} [${d.template_name}]${hostnameMatch}`;
+        select.appendChild(option);
+    });
+}
+
+async function inheritFromDevice() {
+    const ipAddress = document.getElementById('device-detail-ip').value;
+    const sourceIp = document.getElementById('inherit-from-device').value;
+
+    if (!sourceIp) {
+        showError('Selecteer eerst een device om instellingen van over te nemen');
+        return;
+    }
+
+    if (!confirm(`Instellingen overnemen van ${sourceIp}?\n\nDit kopieert de template en geleerd gedrag naar dit device.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/devices/${ipAddress}/inherit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                source_ip: sourceIp,
+                inherit_template: true,
+                inherit_behavior: true,
+                deactivate_source: false
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showSuccess(`Instellingen overgenomen van ${sourceIp}`);
+            // Close modal and reload devices
+            bootstrap.Modal.getInstance(document.getElementById('deviceDetailsModal')).hide();
+            loadDevices();
+        } else {
+            showError('Overnemen mislukt: ' + (result.error || 'Onbekende fout'));
+        }
+    } catch (error) {
+        console.error('Error inheriting from device:', error);
+        showError('Netwerkfout bij overnemen instellingen');
     }
 }
 
@@ -1146,6 +1262,124 @@ async function loadClassificationStats() {
         }
     } catch (error) {
         console.error('Error loading classification stats:', error);
+    }
+}
+
+// ==================== ML Classification Functions ====================
+
+async function runMLClassification() {
+    const btn = document.getElementById('run-ml-classification-btn');
+    const statusDiv = document.getElementById('ml-classification-status');
+
+    if (btn) {
+        btn.disabled = true;
+        btn.classList.add('btn-secondary');
+        btn.classList.remove('btn-primary');
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Bezig met classificeren...';
+    }
+
+    // Show progress indicator
+    if (statusDiv) {
+        statusDiv.innerHTML = `
+            <div class="alert alert-info mt-2 mb-0">
+                <i class="bi bi-hourglass-split me-2"></i>
+                <strong>ML Classificatie gestart...</strong> Dit kan even duren afhankelijk van het aantal devices.
+            </div>
+        `;
+        statusDiv.style.display = 'block';
+    }
+
+    try {
+        const response = await fetch('/api/ml/classify-all', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ update_db: true })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            const r = result.result;
+            const templatesAssigned = r.templates_assigned || 0;
+
+            // Show success in status div
+            if (statusDiv) {
+                statusDiv.innerHTML = `
+                    <div class="alert alert-success mt-2 mb-0">
+                        <i class="bi bi-check-circle me-2"></i>
+                        <strong>Classificatie voltooid!</strong><br>
+                        <small>${r.classified} devices geclassificeerd, ${templatesAssigned} templates toegewezen, ${r.unknown} onbekend</small>
+                    </div>
+                `;
+                // Auto-hide after 10 seconds
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 10000);
+            }
+
+            showSuccess(`ML Classificatie voltooid: ${templatesAssigned} templates toegewezen`);
+
+            // Reload devices to show updated classifications
+            loadDevices();
+            loadClassificationStats();
+            loadMLStatus();
+        } else {
+            if (statusDiv) {
+                statusDiv.innerHTML = `
+                    <div class="alert alert-danger mt-2 mb-0">
+                        <i class="bi bi-x-circle me-2"></i>
+                        <strong>Classificatie mislukt:</strong> ${result.error || 'Onbekende fout'}
+                    </div>
+                `;
+            }
+            showError('ML Classificatie mislukt: ' + (result.error || 'Onbekende fout'));
+        }
+    } catch (error) {
+        console.error('Error running ML classification:', error);
+        if (statusDiv) {
+            statusDiv.innerHTML = `
+                <div class="alert alert-danger mt-2 mb-0">
+                    <i class="bi bi-x-circle me-2"></i>
+                    <strong>Netwerkfout:</strong> Kon classificatie niet starten
+                </div>
+            `;
+        }
+        showError('Netwerkfout bij ML classificatie');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.classList.remove('btn-secondary');
+            btn.classList.add('btn-primary');
+            btn.innerHTML = '<i class="bi bi-cpu"></i> Run ML Classification';
+        }
+    }
+}
+
+async function loadMLStatus() {
+    try {
+        const response = await fetch('/api/ml/status');
+        const result = await response.json();
+
+        const statusDiv = document.getElementById('ml-status-info');
+        if (!statusDiv) return;
+
+        if (result.success && result.available) {
+            const status = result.status;
+            const classifier = status.classifier || {};
+            const stats = classifier.statistics || {};
+
+            statusDiv.innerHTML = `
+                <small class="text-muted">
+                    Model: ${classifier.is_trained ? '<span class="text-success">Trained</span>' : '<span class="text-warning">Not trained</span>'}
+                    ${stats.model_accuracy ? ` (${(stats.model_accuracy * 100).toFixed(1)}% accuracy)` : ''}
+                    ${stats.last_training ? `, Last: ${formatRelativeTime(new Date(stats.last_training))}` : ''}
+                </small>
+            `;
+        } else {
+            statusDiv.innerHTML = '<small class="text-warning">ML not available</small>';
+        }
+    } catch (error) {
+        console.error('Error loading ML status:', error);
     }
 }
 

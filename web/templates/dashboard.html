@@ -873,6 +873,23 @@
                                             </div>
                                         </div>
                                     </div>
+                                    <hr class="my-4 border-secondary">
+                                    <div class="row">
+                                        <div class="col-12">
+                                            <h6><i class="bi bi-cpu"></i> ML Device Classification</h6>
+                                            <p class="text-muted small mb-2">
+                                                Automatically classify unclassified devices based on their learned traffic patterns.
+                                                Devices with learning status "Ready" will be analyzed and assigned suggested templates.
+                                            </p>
+                                            <div id="ml-status-info" class="mb-2">
+                                                <small class="text-muted">Loading ML status...</small>
+                                            </div>
+                                            <button class="btn btn-primary" id="run-ml-classification-btn" onclick="runMLClassification()">
+                                                <i class="bi bi-cpu"></i> Run ML Classification
+                                            </button>
+                                            <div id="ml-classification-status" style="display: none;"></div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1403,6 +1420,28 @@
                     <div id="device-classification-hints" class="alert alert-info" style="display: none;">
                         <strong><i class="bi bi-lightbulb"></i> Suggested Templates:</strong>
                         <ul class="mb-0 mt-2" id="device-hints-list"></ul>
+                    </div>
+
+                    <!-- Link to Previous Device (for MAC randomization) -->
+                    <div class="card bg-secondary border-0 mt-3" id="link-to-previous-device-card">
+                        <div class="card-body">
+                            <h6><i class="bi bi-link-45deg"></i> Link to Previous Device</h6>
+                            <small class="text-muted d-block mb-2">
+                                For devices with MAC randomization (iPhone, Android): inherit template and learned behavior from a previous version of this device.
+                            </small>
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <select class="form-select bg-dark text-light border-secondary" id="inherit-from-device">
+                                        <option value="">Select previous device...</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <button class="btn btn-outline-primary w-100" onclick="inheritFromDevice()">
+                                        <i class="bi bi-arrow-down-circle"></i> Inherit
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Create Template from Device -->

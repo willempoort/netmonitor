@@ -2718,6 +2718,51 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
+    def get_device_template_by_name(self, name: str) -> Optional[Dict]:
+        """Get a device template by its name (case-insensitive)"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute('''
+                SELECT * FROM device_templates
+                WHERE LOWER(name) = LOWER(%s) AND is_active = TRUE
+                LIMIT 1
+            ''', (name,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            self.logger.error(f"Error getting device template by name: {e}")
+            return None
+        finally:
+            self._return_connection(conn)
+
+    def assign_template_to_device(self, device_id: int, template_id: int,
+                                  method: str = 'ml_classifier',
+                                  confidence: float = None) -> bool:
+        """
+        Assign a template to a device with classification metadata.
+        Used by ML classifier to auto-assign templates.
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE devices
+                SET template_id = %s,
+                    classification_method = %s,
+                    classification_confidence = %s,
+                    last_seen = NOW()
+                WHERE id = %s
+            ''', (template_id, method, confidence, device_id))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error assigning template to device: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
     def update_device_template(self, template_id: int, **kwargs) -> bool:
         """Update a device template"""
         conn = self._get_connection()
@@ -2955,11 +3000,48 @@ class DatabaseManager:
 
                     return device_id
 
-            # No MAC or MAC not found - use IP-based matching with UPSERT
+            # No MAC or MAC not found - check for hostname-based matching first
+            # This handles devices with MAC randomization (iPhone, Android privacy mode)
+            # that keep a consistent hostname like "iPhone-van-Annelies"
+            inherited_template_id = template_id
+            inherited_confidence = None
+            inherited_method = None
+
+            if hostname and not template_id:
+                # Look for existing device with same hostname that has a template
+                # Prioritize manually assigned templates, then any template
+                cursor.execute('''
+                    SELECT id, template_id, classification_confidence, classification_method,
+                           learned_behavior
+                    FROM devices
+                    WHERE hostname = %s
+                      AND sensor_id = %s
+                      AND template_id IS NOT NULL
+                      AND ip_address != %s
+                    ORDER BY
+                        CASE WHEN classification_method = 'manual' THEN 0 ELSE 1 END,
+                        last_seen DESC
+                    LIMIT 1
+                ''', (hostname, sensor_id, ip_address))
+                hostname_match = cursor.fetchone()
+
+                if hostname_match:
+                    old_id, inherited_template_id, inherited_confidence, inherited_method, old_behavior = hostname_match
+                    self.logger.info(
+                        f"Hostname match found for '{hostname}': inheriting template "
+                        f"(method: {inherited_method or 'hostname_match'})"
+                    )
+                    # Use hostname_match as method if not manually assigned
+                    if inherited_method != 'manual':
+                        inherited_method = 'hostname_match'
+                        inherited_confidence = 0.85  # High confidence for exact hostname match
+
+            # Use IP-based matching with UPSERT
             cursor.execute('''
                 INSERT INTO devices
-                (ip_address, sensor_id, mac_address, hostname, vendor, template_id, created_by)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                (ip_address, sensor_id, mac_address, hostname, vendor, template_id,
+                 classification_confidence, classification_method, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT ON CONSTRAINT unique_device_per_sensor
                 DO UPDATE SET
                     mac_address = COALESCE(EXCLUDED.mac_address, devices.mac_address),
@@ -2974,7 +3056,8 @@ class DatabaseManager:
                         ELSE TRUE
                     END
                 RETURNING id
-            ''', (ip_address, sensor_id, mac_address, hostname, vendor, template_id, created_by))
+            ''', (ip_address, sensor_id, mac_address, hostname, vendor,
+                  inherited_template_id, inherited_confidence, inherited_method, created_by))
             device_id = cursor.fetchone()[0]
             conn.commit()
             return device_id
@@ -2987,11 +3070,12 @@ class DatabaseManager:
                         mac_address = COALESCE(%s, mac_address),
                         hostname = COALESCE(%s, hostname),
                         vendor = COALESCE(%s, vendor),
+                        template_id = COALESCE(template_id, %s),
                         last_seen = NOW(),
                         is_active = TRUE
                     WHERE ip_address = %s AND sensor_id = %s
                     RETURNING id
-                ''', (mac_address, hostname, vendor, ip_address, sensor_id))
+                ''', (mac_address, hostname, vendor, template_id, ip_address, sensor_id))
                 result = cursor.fetchone()
                 if result:
                     conn.commit()
@@ -3153,6 +3237,84 @@ class DatabaseManager:
         except Exception as e:
             conn.rollback()
             self.logger.error(f"Error updating device learned behavior: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    def inherit_device_settings(self, target_device_id: int, source_device_id: int,
+                                 inherit_template: bool = True,
+                                 inherit_behavior: bool = True,
+                                 deactivate_source: bool = False) -> bool:
+        """
+        Inherit settings from one device to another.
+
+        Useful for:
+        - Devices with MAC randomization (iPhone) that get new IPs/MACs
+        - Manual linking of devices the user knows are the same
+
+        Args:
+            target_device_id: Device to receive settings
+            source_device_id: Device to copy settings from
+            inherit_template: Copy template assignment
+            inherit_behavior: Copy learned behavior profile
+            deactivate_source: Mark source device as inactive after transfer
+
+        Returns:
+            True if successful
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            # Get source device
+            cursor.execute('SELECT * FROM devices WHERE id = %s', (source_device_id,))
+            source = cursor.fetchone()
+            if not source:
+                self.logger.error(f"Source device {source_device_id} not found")
+                return False
+
+            # Build update for target
+            updates = []
+            params = []
+
+            if inherit_template and source['template_id']:
+                updates.append('template_id = %s')
+                params.append(source['template_id'])
+                updates.append('classification_method = %s')
+                params.append('inherited')
+                updates.append('classification_confidence = %s')
+                params.append(source.get('classification_confidence', 0.9))
+
+            if inherit_behavior and source['learned_behavior']:
+                updates.append('learned_behavior = %s')
+                params.append(json.dumps(source['learned_behavior']) if isinstance(source['learned_behavior'], dict) else source['learned_behavior'])
+
+            if not updates:
+                self.logger.info("Nothing to inherit from source device")
+                return True
+
+            params.append(target_device_id)
+            cursor.execute(f'''
+                UPDATE devices SET {', '.join(updates)}, last_seen = NOW()
+                WHERE id = %s
+            ''', params)
+
+            # Optionally deactivate source
+            if deactivate_source:
+                cursor.execute('''
+                    UPDATE devices SET is_active = FALSE WHERE id = %s
+                ''', (source_device_id,))
+                self.logger.info(f"Deactivated source device {source_device_id}")
+
+            conn.commit()
+            self.logger.info(
+                f"Inherited settings from device {source_device_id} to {target_device_id}"
+            )
+            return True
+
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error inheriting device settings: {e}")
             return False
         finally:
             self._return_connection(conn)
@@ -3728,6 +3890,18 @@ class DatabaseManager:
                     {'type': 'allowed_ports', 'params': {'ports': [22, 23, 80, 161, 443, 830]}, 'action': 'allow'},
                     {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'ICMP', 'SNMP', 'LLDP', 'STP']}, 'action': 'allow'},
                     {'type': 'expected_destinations', 'params': {'internal_only': True}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Network Device',
+                'description': 'Generic network infrastructure device (router, gateway, firewall)',
+                'icon': 'router',
+                'category': 'infrastructure',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [22, 23, 80, 161, 162, 443, 830]}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'ICMP', 'SNMP', 'LLDP']}, 'action': 'allow'},
+                    {'type': 'expected_destinations', 'params': {'internal_only': True}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'management_access': True}, 'action': 'allow'},
                 ]
             },
             {
