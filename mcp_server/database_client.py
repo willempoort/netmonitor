@@ -26,24 +26,44 @@ class MCPDatabaseClient:
             port: Database port (default 5432)
         """
         self.logger = logging.getLogger('MCP.Database')
+        self._host = host
+        self._port = port
+        self._database = database
+        self._user = user
+        self._password = password
+        self.conn = None
+        self._connect()
 
+    def _connect(self):
+        """Establish database connection"""
         try:
             self.conn = psycopg2.connect(
-                host=host,
-                port=port,
-                database=database,
-                user=user,
-                password=password
+                host=self._host,
+                port=self._port,
+                database=self._database,
+                user=self._user,
+                password=self._password
             )
-
             # Force read-only mode for extra safety
             self.conn.set_session(readonly=True, autocommit=True)
-
-            self.logger.info(f"Connected to database as {user} (read-only)")
-
+            self.logger.info(f"Connected to database as {self._user} (read-only)")
         except Exception as e:
             self.logger.error(f"Failed to connect to database: {e}")
             raise
+
+    def _ensure_connection(self):
+        """Ensure database connection is alive, reconnect if needed"""
+        try:
+            if self.conn is None or self.conn.closed:
+                self.logger.info("Database connection closed, reconnecting...")
+                self._connect()
+            else:
+                # Test connection with a simple query
+                with self.conn.cursor() as cursor:
+                    cursor.execute("SELECT 1")
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+            self.logger.warning(f"Database connection lost ({e}), reconnecting...")
+            self._connect()
 
     def get_alerts_by_ip(self, ip_address: str, hours: int = 24) -> List[Dict]:
         """
@@ -57,6 +77,7 @@ class MCPDatabaseClient:
             List of alert dictionaries
         """
         try:
+            self._ensure_connection()
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cutoff_time = datetime.now() - timedelta(hours=hours)
 
@@ -99,6 +120,7 @@ class MCPDatabaseClient:
             List of alert dictionaries
         """
         try:
+            self._ensure_connection()
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cutoff_time = datetime.now() - timedelta(hours=hours)
 
@@ -152,6 +174,7 @@ class MCPDatabaseClient:
             Chronological list of alerts
         """
         try:
+            self._ensure_connection()
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cutoff_time = datetime.now() - timedelta(hours=hours)
 
@@ -194,6 +217,7 @@ class MCPDatabaseClient:
             Dictionary with dashboard stats
         """
         try:
+            self._ensure_connection()
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cutoff_time = datetime.now() - timedelta(hours=24)
 
@@ -265,6 +289,7 @@ class MCPDatabaseClient:
             List of traffic metrics grouped by time interval
         """
         try:
+            self._ensure_connection()
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cutoff_time = datetime.now() - timedelta(hours=hours)
 
@@ -311,6 +336,7 @@ class MCPDatabaseClient:
             List of top talkers with packet/byte counts
         """
         try:
+            self._ensure_connection()
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cutoff_time = datetime.now() - timedelta(hours=hours)
 
@@ -358,6 +384,7 @@ class MCPDatabaseClient:
             Dictionary with statistics
         """
         try:
+            self._ensure_connection()
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cutoff_time = datetime.now() - timedelta(hours=hours)
 
@@ -444,6 +471,7 @@ class MCPDatabaseClient:
             List of device template dictionaries
         """
         try:
+            self._ensure_connection()
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 query = 'SELECT * FROM device_templates WHERE 1=1'
                 params = []
@@ -473,6 +501,7 @@ class MCPDatabaseClient:
             Device template dictionary with behaviors, or None
         """
         try:
+            self._ensure_connection()
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 # Get template
                 cursor.execute('SELECT * FROM device_templates WHERE id = %s', (template_id,))
@@ -509,6 +538,7 @@ class MCPDatabaseClient:
             List of device dictionaries
         """
         try:
+            self._ensure_connection()
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 query = '''
                     SELECT d.*,
@@ -553,6 +583,7 @@ class MCPDatabaseClient:
             Device dictionary or None
         """
         try:
+            self._ensure_connection()
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 query = '''
                     SELECT d.*,
@@ -590,6 +621,7 @@ class MCPDatabaseClient:
             List of service provider dictionaries
         """
         try:
+            self._ensure_connection()
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 query = 'SELECT * FROM service_providers WHERE 1=1'
                 params = []
@@ -619,6 +651,7 @@ class MCPDatabaseClient:
             Service provider dictionary or None
         """
         try:
+            self._ensure_connection()
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cursor.execute('SELECT * FROM service_providers WHERE id = %s', (provider_id,))
                 result = cursor.fetchone()
@@ -677,6 +710,7 @@ class MCPDatabaseClient:
             Dictionary with classification statistics
         """
         try:
+            self._ensure_connection()
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 # Total devices
                 cursor.execute('SELECT COUNT(*) as total FROM devices WHERE is_active = TRUE')
@@ -764,6 +798,7 @@ class MCPDatabaseClient:
             Dictionary with inbound/outbound byte counts, or None if no data
         """
         try:
+            self._ensure_connection()
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cutoff_time = datetime.now() - timedelta(hours=hours)
 
