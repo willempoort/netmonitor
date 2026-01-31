@@ -643,27 +643,30 @@ Je bent een security assistent voor NetMonitor. Je kunt tools aanroepen om actue
 BESCHIKBARE TOOLS:
 {tools_text}
 
+BELANGRIJKE TOOL PARAMETERS:
+- web_search VEREIST query: {{"name": "web_search", "arguments": {{"query": "zoekterm hier"}}}}
+- dns_lookup VEREIST domain: {{"name": "dns_lookup", "arguments": {{"domain": "example.com"}}}}
+- get_top_talkers: hours=168 voor week, hours=24 voor dag
+- get_sensor_status: geen arguments nodig {{}}
+
 HOE TOOLS TE GEBRUIKEN:
-1. Om een tool aan te roepen, antwoord met ALLEEN deze JSON (geen andere tekst):
+1. Antwoord met ALLEEN JSON (geen tekst ervoor of erna):
    {{"name": "tool_naam", "arguments": {{"param": "waarde"}}}}
 
-2. Je krijgt het resultaat terug en kunt dan:
-   - Een andere tool aanroepen (weer alleen JSON)
-   - Of een eindantwoord geven in het Nederlands (geen JSON)
+2. Na het resultaat kun je:
+   - Nog een tool aanroepen (weer alleen JSON)
+   - Of een eindantwoord geven (geen JSON, gewoon Nederlands)
 
-3. Roep tools ÉÉN VOOR ÉÉN aan, niet meerdere tegelijk.
+3. Roep tools ÉÉN VOOR ÉÉN aan.
 
-4. Als je voldoende informatie hebt, geef dan een duidelijk Nederlands antwoord ZONDER JSON.
+WORKFLOW VOOR RAPPORTAGES:
+Stap 1: {{"name": "get_sensor_status", "arguments": {{}}}}
+Stap 2: {{"name": "get_top_talkers", "arguments": {{"hours": 168, "limit": 10}}}}
+Stap 3: {{"name": "get_threat_detections", "arguments": {{"hours": 24}}}}
+Stap 4: {{"name": "web_search", "arguments": {{"query": "network security recommendations"}}}}
+Stap 5: Nederlands rapport met alle data (GEEN JSON)
 
-VOORBEELD WORKFLOW:
-- Gebruiker vraagt: "Geef een netwerkrapport"
-- Jij: {{"name": "get_sensor_status", "arguments": {{}}}}
-- [Je krijgt resultaat]
-- Jij: {{"name": "get_top_talkers", "arguments": {{"hours": 24}}}}
-- [Je krijgt resultaat]
-- Jij: "Hier is het netwerkrapport: ... [Nederlands antwoord met alle verzamelde data]"
-
-BELANGRIJK: Begin NOOIT met tekst als je een tool wilt aanroepen. Start direct met de JSON."""
+BELANGRIJK: Start DIRECT met JSON, geen tekst ervoor."""
 
 
 def filter_relevant_tools(user_message: str, all_tools: List[Dict[str, Any]], max_tools: int = 10) -> List[Dict[str, Any]]:
@@ -1184,19 +1187,21 @@ Regels:
                 # Native tool calling mode - also needs multi-tool instructions
                 native_tool_prompt = f"""{system_prompt}
 
-Je bent een security assistent voor NetMonitor. Je hebt toegang tot {len(ollama_tools)} tools om netwerkdata op te halen.
+Je bent een security assistent voor NetMonitor met toegang tot {len(ollama_tools)} tools.
 
-BELANGRIJK VOOR COMPLEXE VRAGEN:
-- Roep MEERDERE tools aan als de vraag dat vereist (bijv. sensor status + top talkers + threats)
-- Na elk tool resultaat kun je MEER tools aanroepen voordat je een eindantwoord geeft
-- Gebruik web_search voor internet lookups over security topics
-- Gebruik dns_lookup om domeinnamen naar IP-adressen te vertalen
-- Geef pas een eindantwoord als je ALLE benodigde informatie hebt verzameld
+BELANGRIJKE TOOL PARAMETERS:
+- web_search(query="zoekterm") - VEREIST een query parameter, bijv: query="network security best practices"
+- dns_lookup(domain="example.com") - VEREIST een domain parameter
+- get_top_talkers(hours=168, limit=10) - hours=168 voor een week, hours=24 voor een dag
+- get_threat_detections(hours=24, limit=20) - recente bedreigingen
+- get_sensor_status() - geen parameters nodig
 
-VOORBEELD: "Geef een netwerkrapport" vereist minimaal:
-1. get_sensor_status - voor sensor health
-2. get_top_talkers - voor traffic overzicht
-3. get_threat_detections - voor security status"""
+WORKFLOW VOOR RAPPORTAGES:
+1. EERST netwerk data ophalen: get_sensor_status, get_top_talkers, get_threat_detections
+2. DAARNA internet zoeken voor aanbevelingen: web_search(query="relevante zoekterm")
+3. TENSLOTTE een compleet rapport schrijven met alle verzamelde informatie
+
+Roep tools ÉÉN VOOR ÉÉN aan. Geef pas een eindantwoord als je ALLE benodigde data hebt."""
                 messages.append({"role": "system", "content": native_tool_prompt})
             elif system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
