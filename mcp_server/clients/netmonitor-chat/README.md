@@ -7,10 +7,14 @@ Simple, reliable web interface for Ollama + NetMonitor MCP Tools. Built after di
 - 🎨 **Clean Chat Interface** - ChatGPT-style UI met Alpine.js
 - 🤖 **Multiple LLM Providers** - Ollama en LM Studio ondersteuning
 - ⚙️ **Configureerbare UI** - MCP en LLM servers via web interface
-- 🔧 **Automatic Tool Calling** - Via mcp_bridge.py (proven working)
-- ⚡ **Smart Tool Filtering** - Automatische selectie van relevante tools (60 → 10) voor snellere responses
-- 📡 **Real-time Streaming** - WebSocket-based responses met incrementele tool calls
+- 🚀 **Hybrid Mode** - Snelle intent matching (<2 sec) voor veelvoorkomende queries
+- 🔌 **Native MCP Client** - Directe HTTP/SSE communicatie (geen bridge subprocess)
+- 🔧 **Automatic Tool Calling** - Native function calling + JSON fallback
+- ⚡ **Smart Tool Filtering** - Automatische selectie van relevante tools (60 → 10)
+- 📊 **Real-time Status Feedback** - Visuele indicatoren tijdens verwerking
+- 📡 **Streaming MCP** - SSE ondersteuning voor progress/notifications
 - 🛡️ **60 Security Tools** - Volledige NetMonitor MCP tool access
+- 🧠 **RAG Enrichment** - Automatische threat intel en aanbevelingen uit knowledge base
 - 🏠 **100% On-Premise** - Geen cloud, volledige privacy
 - 🎯 **Debug Mode** - Optioneel tool calls en resultaten tonen (standaard uit)
 - 💾 **Persistente Configuratie** - Settings blijven bewaard in browser localStorage
@@ -19,22 +23,48 @@ Simple, reliable web interface for Ollama + NetMonitor MCP Tools. Built after di
 ## 🏗️ Architectuur
 
 ```
+                    ┌─────────────────────────────────────────┐
+                    │           User Question                 │
+                    └────────────────┬────────────────────────┘
+                                     │
+                                     ▼
+                    ┌─────────────────────────────────────────┐
+                    │       Quick Intent Match (regex)        │
+                    │   "toon sensors" → get_sensors()        │
+                    └──────────┬─────────────────┬────────────┘
+                               │                 │
+                      Match found            No match
+                      (< 2 sec)              (fallback)
+                               │                 │
+                               ▼                 ▼
+                    ┌──────────────────┐ ┌─────────────────────┐
+                    │  Direct MCP Call │ │  LLM + Tools (slow) │
+                    └────────┬─────────┘ └──────────┬──────────┘
+                             │                      │
+                             └──────────┬───────────┘
+                                        │
+                                        ▼
+                    ┌─────────────────────────────────────────┐
+                    │        LLM Format Response              │
+                    │    (summarize data, no tools)           │
+                    └────────────────┬────────────────────────┘
+                                     │
+                                     ▼
+                    ┌─────────────────────────────────────────┐
+                    │          Stream to Browser              │
+                    └─────────────────────────────────────────┘
+
 ┌─────────────────┐
-│  Browser :8000  │  (Alpine.js + Tailwind)
+│  Browser :8000  │  (Alpine.js + Tailwind + Status Feedback)
 └────────┬────────┘
-         │ WebSocket
+         │ WebSocket (bidirectional)
          ▼
 ┌─────────────────┐      ┌──────────────────┐
 │  FastAPI        │─────▶│  Ollama :11434   │
-│  (Python)       │      │  (Host)          │
+│  (Python)       │      │  (or LM Studio)  │
 └────────┬────────┘      └──────────────────┘
          │
-         │ Subprocess (STDIO)
-         ▼
-┌─────────────────┐
-│  mcp_bridge.py  │
-└────────┬────────┘
-         │ HTTPS
+         │ Native HTTP/SSE (no subprocess!)
          ▼
 ┌─────────────────┐
 │  MCP Server     │
@@ -42,40 +72,58 @@ Simple, reliable web interface for Ollama + NetMonitor MCP Tools. Built after di
 └─────────────────┘
 ```
 
+### Hybrid Processing Flow
+
+1. **Quick Match** (instant): Regex patterns voor veelvoorkomende queries
+   - "toon sensors", "show threats", "top talkers", "status", etc.
+   - Bypasses LLM tool selection entirely
+
+2. **Slow Path** (fallback): Full LLM met tool calling
+   - Voor complexe/onbekende queries
+   - Smart tool filtering reduceert context
+
+3. **RAG Enrichment**: Voor threat-gerelateerde resultaten
+   - Automatisch IP reputatie lookup (threat intel cache)
+   - Security aanbevelingen uit knowledge base (MITRE ATT&CK mapping)
+   - Context wordt meegestuurd naar LLM voor betere antwoorden
+
+4. **Format Response**: LLM formatteert resultaat (snel, geen tools)
+
 ## 📋 Vereisten
 
-1. **Python 3.11+**
-2. **Ollama** (draaiend op localhost:11434)
+1. **Python 3.11+** (zie versie aanbevelingen hieronder)
+2. **Ollama** (draaiend op localhost:11434) of **LM Studio**
 3. **MCP Server** (toegang tot https://soc.poort.net/mcp)
 4. **MCP Auth Token**
 
+### Python Versie Aanbeveling
+
+| Versie | Aanbeveling | Toelichting |
+|--------|-------------|-------------|
+| **3.12** | ✅ **Aanbevolen** | Beste performance + stabiliteit |
+| **3.11** | ✅ **Aanbevolen** | Zeer goed, brede library support |
+| 3.13 | ✅ Goed | Werkt prima |
+| 3.10 | ⚠️ Ondersteund | Werkt, maar ~20% trager dan 3.11+ |
+| 3.14 | ❌ Vermijden | Pydantic/FastAPI build issues |
+
+> **Waarom 3.11+?** Python 3.11 introduceerde het "Faster CPython" project met 10-60% snellere uitvoering. Python 3.12 bouwde hier verder op. Voor async workloads (zoals deze FastAPI app) is het verschil merkbaar.
+
 ## 🚀 Quick Start (Development)
 
-### ⚠️ Mac M1/M2 Users - Python Version
-
-**BELANGRIJK voor Mac gebruikers:**
-
-Als je Python 3.14 hebt, krijg je een build error met pydantic. Gebruik Python 3.13 of 3.12:
+### Stap 0: Check Python Versie
 
 ```bash
-# Check welke Python versies je hebt
+# Check huidige Python versie
+python3 --version
+
+# Als je Python 3.14 hebt (bleeding edge), gebruik 3.12 of 3.13:
 which -a python3.12 python3.13
 
-# Maak venv met Python 3.13 (aanbevolen)
-python3.13 -m venv venv
-
-# Of met Python 3.12
+# Maak venv met specifieke versie (aanbevolen: 3.12)
 python3.12 -m venv venv
 ```
 
-**Als je tóch Python 3.14 wilt gebruiken:**
-```bash
-# Gebruik alternatieve requirements
-pip install -r requirements-py314.txt
-
-# Of force build met compatibility flag
-PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 pip install -r requirements.txt
-```
+> **Tip voor Mac M1/M2/M3:** Python 3.12 via Homebrew (`brew install python@3.12`) werkt uitstekend.
 
 ### Stap 1: Installeer Dependencies
 
@@ -620,6 +668,13 @@ NetMonitor Chat gebruikt intelligente tool filtering om context size te reducere
 - [x] **MCP server dropdown selector** in UI
 - [x] **JSON fallback mode** voor LLMs zonder native function calling
 - [x] **get_top_talkers tool** voor bandwidth analyse
+- [x] **Native MCP client** - geen bridge subprocess meer nodig
+- [x] **Hybrid intent matching** - snelle regex voor veelvoorkomende queries
+- [x] **Real-time status feedback** - visuele indicatoren tijdens verwerking
+- [x] **SSE streaming** - MCP progress/notifications ondersteuning
+- [x] **RAG Enrichment** - Automatische threat intel en aanbevelingen
+- [x] **Threat Intel Cache** - Lokale cache van AbuseIPDB, Tor exits, Feodo C2
+- [x] **Security Knowledge Base** - MITRE ATT&CK mappings en aanbevelingen
 
 **Todo** 📋
 - [ ] Dockerfile voor productie deployment
@@ -629,7 +684,6 @@ NetMonitor Chat gebruikt intelligente tool filtering om context size te reducere
 - [ ] Multi-user support
 - [ ] Model comparison mode (side-by-side)
 - [ ] Export chat transcripts (JSON/Markdown)
-- [ ] RAG integration voor document search
 - [ ] Token usage tracking en statistics
 
 ## 🐛 Known Issues

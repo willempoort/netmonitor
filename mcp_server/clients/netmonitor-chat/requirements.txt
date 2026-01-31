@@ -1,23 +1,15 @@
-# NetMonitor Chat - Python Dependencies
+# NetMonitor Chat v2.0 - Python Dependencies
 
 # Web Framework
-fastapi==0.115.0
-uvicorn[standard]==0.30.0
-pydantic==2.9.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.9.0
 
 # Environment variable management
-python-dotenv==1.0.0
+python-dotenv>=1.0.0
 
-# WebSocket support
-python-multipart==0.0.9
-websockets==12.0
-
-# HTTP client for Ollama API
-httpx==0.27.0
-requests==2.31.0
+# Async HTTP client (for Ollama, LM Studio, and native MCP)
+httpx>=0.27.0
 
 # Python 3.11+ compatibility
-typing-extensions==4.12.0
-
-# For subprocess management (mcp_bridge.py)
-# No additional deps needed - uses stdlib
+typing-extensions>=4.12.0

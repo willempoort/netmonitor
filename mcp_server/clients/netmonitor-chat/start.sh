@@ -22,37 +22,40 @@ echo -e "${BLUE}================================================================
 echo
 
 # Check Python version
-echo -e "${YELLOW}[1/7]${NC} Checking Python version..."
+echo -e "${YELLOW}[1/6]${NC} Checking Python version..."
 PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
 PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
 PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
 
-if [ "$PYTHON_MAJOR" -lt 3 ] || [ "$PYTHON_MINOR" -lt 11 ]; then
-    echo -e "${RED}✗ Python 3.11+ required, found $PYTHON_VERSION${NC}"
+if [ "$PYTHON_MAJOR" -lt 3 ] || [ "$PYTHON_MINOR" -lt 10 ]; then
+    echo -e "${RED}✗ Python 3.10+ required, found $PYTHON_VERSION${NC}"
     exit 1
 fi
 
-if [ "$PYTHON_MINOR" -ge 14 ]; then
-    echo -e "${YELLOW}⚠ Python $PYTHON_VERSION detected${NC}"
-    echo -e "${YELLOW}  FastAPI/pydantic may have issues with Python 3.14+${NC}"
-    echo -e "${YELLOW}  Recommended: Use Python 3.13 or 3.12${NC}"
+if [ "$PYTHON_MINOR" -eq 10 ]; then
+    echo -e "${YELLOW}✓ Python $PYTHON_VERSION${NC}"
+    echo -e "${YELLOW}  Tip: Python 3.11/3.12 is ~20% faster${NC}"
+elif [ "$PYTHON_MINOR" -ge 14 ]; then
+    echo -e "${YELLOW}⚠ Python $PYTHON_VERSION detected (bleeding edge)${NC}"
+    echo -e "${YELLOW}  Pydantic/FastAPI may have build issues${NC}"
+    echo -e "${YELLOW}  Recommended: Python 3.12 or 3.13${NC}"
     echo
     read -p "Continue anyway? (y/N) " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         echo -e "${RED}✗ Aborted${NC}"
         echo
-        echo "Create venv with Python 3.13:"
-        echo "  python3.13 -m venv venv"
+        echo "Create venv with Python 3.12:"
+        echo "  python3.12 -m venv venv"
         exit 1
     fi
+else
+    echo -e "${GREEN}✓ Python $PYTHON_VERSION (optimal)${NC}"
 fi
-
-echo -e "${GREEN}✓ Python $PYTHON_VERSION${NC}"
 
 # Check if virtual environment exists
 echo
-echo -e "${YELLOW}[2/7]${NC} Checking virtual environment..."
+echo -e "${YELLOW}[2/6]${NC} Checking virtual environment..."
 if [ ! -d "venv" ]; then
     echo -e "${YELLOW}  Creating virtual environment...${NC}"
     python3 -m venv venv
@@ -63,20 +66,20 @@ fi
 
 # Activate virtual environment
 echo
-echo -e "${YELLOW}[3/7]${NC} Activating virtual environment..."
+echo -e "${YELLOW}[3/6]${NC} Activating virtual environment..."
 source venv/bin/activate
 echo -e "${GREEN}✓ Virtual environment activated${NC}"
 
 # Install/upgrade dependencies
 echo
-echo -e "${YELLOW}[4/7]${NC} Installing dependencies..."
+echo -e "${YELLOW}[4/6]${NC} Installing dependencies..."
 pip install --upgrade pip > /dev/null 2>&1
 pip install -r requirements.txt > /dev/null 2>&1
 echo -e "${GREEN}✓ Dependencies installed${NC}"
 
 # Check .env file
 echo
-echo -e "${YELLOW}[5/7]${NC} Checking configuration..."
+echo -e "${YELLOW}[5/6]${NC} Checking configuration..."
 if [ ! -f ".env" ]; then
     echo -e "${RED}✗ .env file not found${NC}"
     echo
@@ -101,19 +104,9 @@ fi
 
 echo -e "${GREEN}✓ Configuration file exists${NC}"
 
-# Check MCP bridge exists
-echo
-echo -e "${YELLOW}[6/7]${NC} Checking MCP bridge..."
-MCP_BRIDGE="../ollama-mcp-bridge/mcp_bridge.py"
-if [ ! -f "$MCP_BRIDGE" ]; then
-    echo -e "${RED}✗ MCP bridge not found at $MCP_BRIDGE${NC}"
-    exit 1
-fi
-echo -e "${GREEN}✓ MCP bridge found${NC}"
-
 # Check Ollama
 echo
-echo -e "${YELLOW}[7/7]${NC} Checking Ollama..."
+echo -e "${YELLOW}[6/6]${NC} Checking Ollama..."
 if ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
     echo -e "${RED}✗ Ollama not running on localhost:11434${NC}"
     echo

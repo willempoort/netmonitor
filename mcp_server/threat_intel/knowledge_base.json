@@ -1,0 +1,339 @@
+{
+  "threat_types": {
+    "malware_c2": {
+      "title": "Malware Command & Control (C2) Communicatie",
+      "severity": "critical",
+      "mitre": ["T1071", "T1095", "T1573"],
+      "description": "Gedetecteerde communicatie met bekende Command & Control servers wijst op actieve malware-infectie.",
+      "indicators": [
+        "Periodieke beaconing naar externe IP's",
+        "Ongebruikelijke poorten (4444, 8080, 8443)",
+        "Gecodeerde payloads in HTTP/HTTPS verkeer",
+        "DNS tunneling patronen"
+      ],
+      "recommendations": [
+        "URGENT: Isoleer het getroffen systeem direct van het netwerk",
+        "Blokkeer het C2 IP/domein op de firewall",
+        "Verzamel forensische bewijzen (memory dump, logs)",
+        "Scan het systeem met meerdere AV/EDR tools",
+        "Onderzoek laterale beweging naar andere systemen",
+        "Reset alle credentials die op het systeem zijn gebruikt",
+        "Meld bij CERT indien vereist door compliance"
+      ],
+      "immediate_actions": [
+        "Netwerk isolatie",
+        "Firewall blokkade"
+      ]
+    },
+    "brute_force": {
+      "title": "Brute Force Aanval",
+      "severity": "high",
+      "mitre": ["T1110", "T1110.001", "T1110.003"],
+      "description": "Herhaalde inlogpogingen gedetecteerd, mogelijk credential stuffing of password spraying.",
+      "indicators": [
+        "Vele mislukte inlogpogingen in korte tijd",
+        "Pogingen vanaf meerdere bronnen naar één doel",
+        "Pogingen met bekende default credentials",
+        "Variaties in gebruikersnamen met zelfde wachtwoord"
+      ],
+      "recommendations": [
+        "Blokkeer het bron-IP tijdelijk (15-60 minuten)",
+        "Controleer of accounts zijn gecompromitteerd",
+        "Implementeer rate limiting op authenticatie endpoints",
+        "Activeer MFA voor getroffen accounts",
+        "Controleer logs op succesvolle inlogpogingen na de aanval",
+        "Overweeg IP reputatie check voor toekomstige pogingen"
+      ],
+      "prevention": [
+        "Implementeer account lockout na X mislukte pogingen",
+        "Gebruik CAPTCHA na meerdere mislukte pogingen",
+        "Activeer MFA voor alle accounts",
+        "Monitor voor password spray patronen"
+      ]
+    },
+    "port_scan": {
+      "title": "Port Scan / Reconnaissance",
+      "severity": "medium",
+      "mitre": ["T1046", "T1595.001"],
+      "description": "Systematisch scannen van poorten gedetecteerd, typisch de eerste fase van een aanval.",
+      "indicators": [
+        "Verbindingen naar vele poorten in korte tijd",
+        "SYN scans (half-open connecties)",
+        "Sequentiële of random port patronen",
+        "Scans van bekende vulnerability scanners"
+      ],
+      "recommendations": [
+        "Documenteer het bron-IP en tijdstip",
+        "Controleer of open poorten kwetsbaarheden bevatten",
+        "Overweeg tijdelijke IP blokkade als scans doorgaan",
+        "Verifieer dat alleen noodzakelijke poorten open zijn",
+        "Update IDS/IPS signatures"
+      ],
+      "note": "Port scans zijn vaak geautomatiseerd en niet altijd gericht. Focus op wat de scanner heeft kunnen ontdekken."
+    },
+    "data_exfiltration": {
+      "title": "Data Exfiltratie",
+      "severity": "critical",
+      "mitre": ["T1041", "T1048", "T1567"],
+      "description": "Ongebruikelijke uitgaande dataoverdracht gedetecteerd, mogelijk datalekvan gevoelige informatie.",
+      "indicators": [
+        "Grote uitgaande datatransfers buiten kantooruren",
+        "Uploads naar onbekende cloud diensten",
+        "Gecodeerde transfers naar externe IP's",
+        "DNS tunneling voor data extractie",
+        "Ongebruikelijke protocol gebruik (ICMP, DNS)"
+      ],
+      "recommendations": [
+        "URGENT: Onderzoek welke data mogelijk is gelekt",
+        "Identificeer het bron-systeem en gebruiker",
+        "Blokkeer de externe bestemming",
+        "Verzamel en bewaar forensische logs",
+        "Evalueer compliance implicaties (GDPR, etc.)",
+        "Overweeg melding aan toezichthouder indien PII betrokken",
+        "Activeer incident response procedure"
+      ],
+      "compliance": [
+        "GDPR: Melding binnen 72 uur bij persoonsgegevens",
+        "NIS2: Melding bij significante incidenten",
+        "Interne rapportage aan CISO/management"
+      ]
+    },
+    "lateral_movement": {
+      "title": "Laterale Beweging",
+      "severity": "critical",
+      "mitre": ["T1021", "T1021.001", "T1021.002", "T1550"],
+      "description": "Verdachte activiteit die wijst op beweging tussen interne systemen, typisch na initiële compromittering.",
+      "indicators": [
+        "Ongebruikelijke RDP/SSH verbindingen tussen systemen",
+        "Pass-the-hash of pass-the-ticket activiteit",
+        "Admin tool gebruik vanaf onverwachte systemen",
+        "WMI/PowerShell remoting naar meerdere systemen"
+      ],
+      "recommendations": [
+        "URGENT: Identificeer het eerste gecompromitteerde systeem (patient zero)",
+        "Breng alle betrokken systemen in kaart",
+        "Overweeg netwerk segmentatie te versterken",
+        "Reset credentials van getroffen accounts",
+        "Zoek naar persistence mechanismen",
+        "Controleer Active Directory op verdachte wijzigingen"
+      ],
+      "investigation": [
+        "Analyseer authentication logs",
+        "Controleer scheduled tasks op alle betrokken systemen",
+        "Zoek naar nieuwe lokale accounts",
+        "Controleer registry run keys"
+      ]
+    },
+    "dns_tunneling": {
+      "title": "DNS Tunneling",
+      "severity": "high",
+      "mitre": ["T1071.004", "T1048.003"],
+      "description": "Misbruik van DNS protocol voor data exfiltratie of C2 communicatie.",
+      "indicators": [
+        "Ongewoon lange DNS queries",
+        "Hoge volume DNS requests naar één domein",
+        "Base64/hex gecodeerde subdomeinen",
+        "TXT record queries met grote responses"
+      ],
+      "recommendations": [
+        "Blokkeer het verdachte domein",
+        "Implementeer DNS filtering/monitoring",
+        "Overweeg interne DNS resolvers met logging",
+        "Onderzoek het bron-systeem op malware",
+        "Activeer DNS over HTTPS (DoH) blokkade"
+      ]
+    },
+    "cryptomining": {
+      "title": "Cryptomining Activiteit",
+      "severity": "medium",
+      "mitre": ["T1496"],
+      "description": "Ongeautoriseerd gebruik van systeem resources voor cryptocurrency mining.",
+      "indicators": [
+        "Hoog CPU/GPU gebruik zonder duidelijke oorzaak",
+        "Verbindingen naar mining pools",
+        "Stratum protocol verkeer",
+        "PowerShell/script executie met mining tools"
+      ],
+      "recommendations": [
+        "Identificeer en stop het mining proces",
+        "Blokkeer verbindingen naar mining pools",
+        "Onderzoek hoe de miner is geïnstalleerd",
+        "Scan systeem op andere malware",
+        "Controleer of er credentials zijn gestolen"
+      ],
+      "note": "Cryptominers zijn vaak een indicator van diepere compromittering"
+    },
+    "phishing": {
+      "title": "Phishing Poging",
+      "severity": "high",
+      "mitre": ["T1566", "T1566.001", "T1566.002"],
+      "description": "Verdachte email of website die probeert credentials of malware te verspreiden.",
+      "indicators": [
+        "Lookalike domeinen (typosquatting)",
+        "Verdachte email bijlagen",
+        "Links naar credential harvesting pagina's",
+        "Urgente of dreigende taalgebruik"
+      ],
+      "recommendations": [
+        "Blokkeer het phishing domein/URL",
+        "Waarschuw gebruikers die mogelijk zijn blootgesteld",
+        "Controleer of iemand credentials heeft ingevoerd",
+        "Reset wachtwoorden van getroffen gebruikers",
+        "Rapporteer aan phishing databases",
+        "Update email filters"
+      ],
+      "user_guidance": [
+        "Klik niet op links in verdachte emails",
+        "Verifieer de afzender via een ander kanaal",
+        "Meld verdachte emails bij IT/Security"
+      ]
+    },
+    "tor_usage": {
+      "title": "Tor Network Gebruik",
+      "severity": "medium",
+      "mitre": ["T1090.003"],
+      "description": "Verkeer naar of van het Tor anonimiteitsnetwerk gedetecteerd.",
+      "indicators": [
+        "Verbindingen naar bekende Tor relays/exits",
+        "Gebruik van Tor poorten (9001, 9030)",
+        "Tor Browser fingerprint in user-agent"
+      ],
+      "recommendations": [
+        "Bepaal of Tor gebruik geautoriseerd is",
+        "Bij ongeautoriseerd: onderzoek het systeem en gebruiker",
+        "Overweeg Tor blokkade op netwerkniveau",
+        "Let op: Tor kan wijzen op data exfiltratie pogingen"
+      ],
+      "note": "Tor gebruik is niet altijd kwaadaardig, maar vereist onderzoek in zakelijke omgevingen"
+    },
+    "ransomware_indicator": {
+      "title": "Ransomware Indicator",
+      "severity": "critical",
+      "mitre": ["T1486", "T1490", "T1489"],
+      "description": "Activiteit gedetecteerd die kan wijzen op ransomware executie of voorbereiding.",
+      "indicators": [
+        "Massale bestandsmodificaties in korte tijd",
+        "Volume Shadow Copy verwijdering",
+        "Encryptie van bestanden",
+        "Ransom notes in directories"
+      ],
+      "recommendations": [
+        "KRITIEK: Isoleer systeem ONMIDDELLIJK",
+        "Schakel netwerk verbindingen uit (niet het systeem zelf)",
+        "Documenteer wat je ziet voordat je actie onderneemt",
+        "Neem GEEN contact op met aanvallers zonder overleg",
+        "Activeer disaster recovery procedures",
+        "Controleer backup integriteit VOORDAT je herstelt",
+        "Meld bij NCSC en/of politie"
+      ],
+      "do_not": [
+        "Betaal NIET zonder juridisch/verzekering advies",
+        "Herstart systemen NIET (vernietigt forensisch bewijs)",
+        "Restore backups NIET voordat scope duidelijk is"
+      ]
+    }
+  },
+  "network_anomalies": {
+    "unusual_port": {
+      "title": "Ongebruikelijke Poort Activiteit",
+      "severity": "low",
+      "description": "Verkeer op een poort die normaal niet wordt gebruikt in de omgeving.",
+      "recommendations": [
+        "Verifieer of de applicatie legitiem is",
+        "Controleer of de poort volgens beleid is toegestaan",
+        "Update firewall regels indien nodig"
+      ]
+    },
+    "high_bandwidth": {
+      "title": "Hoog Bandwidth Gebruik",
+      "severity": "low",
+      "description": "Ongebruikelijk hoge dataoverdracht gedetecteerd.",
+      "recommendations": [
+        "Identificeer de applicatie/proces",
+        "Controleer of dit verwacht gedrag is (backup, sync)",
+        "Monitor voor herhalend patroon"
+      ]
+    },
+    "new_external_connection": {
+      "title": "Nieuwe Externe Verbinding",
+      "severity": "info",
+      "description": "Eerste verbinding naar een extern IP/domein gedetecteerd.",
+      "recommendations": [
+        "Verifieer of de bestemming legitiem is",
+        "Voeg toe aan baseline indien goedgekeurd",
+        "Blokkeer indien verdacht"
+      ]
+    }
+  },
+  "ip_reputation": {
+    "tor_exit": {
+      "title": "Tor Exit Node",
+      "severity": "medium",
+      "description": "Dit IP is een bekende Tor exit node. Verkeer kan afkomstig zijn van anonieme gebruikers.",
+      "recommendations": [
+        "Overweeg of Tor verkeer acceptabel is voor uw dienst",
+        "Implementeer extra verificatie voor gevoelige acties",
+        "Monitor voor verdacht gedrag"
+      ]
+    },
+    "known_c2": {
+      "title": "Bekende C2 Server",
+      "severity": "critical",
+      "description": "Dit IP staat bekend als Command & Control server voor malware.",
+      "recommendations": [
+        "BLOKKEER dit IP onmiddellijk op alle firewalls",
+        "Onderzoek alle systemen die verbinding hebben gemaakt",
+        "Behandel verbonden systemen als gecompromitteerd"
+      ]
+    },
+    "high_abuse_score": {
+      "title": "Hoge AbuseIPDB Score",
+      "severity": "high",
+      "description": "Dit IP heeft veel abuse rapportages en is waarschijnlijk kwaadaardig.",
+      "recommendations": [
+        "Blokkeer dit IP",
+        "Onderzoek eerdere interacties met dit IP",
+        "Rapporteer nieuwe abuse indien relevant"
+      ]
+    },
+    "datacenter_ip": {
+      "title": "Datacenter/Cloud IP",
+      "severity": "info",
+      "description": "Dit IP behoort tot een hosting provider of cloud dienst.",
+      "recommendations": [
+        "Verifieer of de dienst legitiem is",
+        "Let op: aanvallers gebruiken vaak cloud infrastructuur"
+      ]
+    },
+    "vpn_proxy": {
+      "title": "VPN/Proxy Service",
+      "severity": "low",
+      "description": "Dit IP is geassocieerd met een VPN of proxy dienst.",
+      "recommendations": [
+        "Overweeg of VPN gebruik acceptabel is",
+        "Implementeer extra verificatie indien nodig"
+      ]
+    }
+  },
+  "general_recommendations": {
+    "incident_response": [
+      "Documenteer alle observaties met timestamps",
+      "Bewaar logs en forensische data",
+      "Volg het incident response plan",
+      "Escaleer naar de juiste personen",
+      "Communiceer via beveiligde kanalen"
+    ],
+    "containment": [
+      "Isoleer getroffen systemen",
+      "Blokkeer kwaadaardige IPs/domeinen",
+      "Disable gecompromitteerde accounts",
+      "Bewaar systemen voor forensisch onderzoek"
+    ],
+    "recovery": [
+      "Verifieer backup integriteit",
+      "Herstel vanuit bekende goede staat",
+      "Reset alle mogelijk gecompromitteerde credentials",
+      "Monitor extra nauwkeurig na herstel"
+    ]
+  }
+}

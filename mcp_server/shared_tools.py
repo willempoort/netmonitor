@@ -2899,6 +2899,278 @@ class NetMonitorTools:
             return {'success': False, 'error': str(e)}
 
 
+    # ==================== Threat Intelligence Tools ====================
+
+    async def lookup_threat_intel(self, params: Dict) -> Dict:
+        """Look up IP/domain in threat intelligence cache"""
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+
+        try:
+            ip_address = params.get('ip_address')
+            domain = params.get('domain')
+
+            if not ip_address and not domain:
+                return {'success': False, 'error': 'Either ip_address or domain is required'}
+
+            host = os.environ.get('DB_HOST', 'localhost')
+            database = os.environ.get('DB_NAME', 'netmonitor')
+            user = os.environ.get('DB_USER', 'netmonitor')
+            password = os.environ.get('DB_PASSWORD', 'netmonitor')
+
+            conn = psycopg2.connect(host=host, database=database, user=user, password=password)
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            result = {'success': True}
+
+            if ip_address:
+                cursor.execute('''
+                    SELECT
+                        ip_address::text,
+                        abuseipdb_score,
+                        abuseipdb_reports,
+                        is_tor_exit,
+                        is_tor_relay,
+                        is_vpn,
+                        is_proxy,
+                        is_datacenter,
+                        is_known_attacker,
+                        is_known_c2,
+                        is_known_scanner,
+                        threat_level,
+                        tags,
+                        categories,
+                        sources,
+                        last_updated
+                    FROM threat_intel_ip_cache
+                    WHERE ip_address = %s::inet
+                ''', (ip_address,))
+                row = cursor.fetchone()
+
+                if row:
+                    result['ip_intel'] = dict(row)
+                    result['ip_intel']['last_updated'] = str(row['last_updated']) if row['last_updated'] else None
+                else:
+                    result['ip_intel'] = None
+                    result['ip_not_in_cache'] = True
+
+            if domain:
+                cursor.execute('''
+                    SELECT *
+                    FROM threat_intel_domain_cache
+                    WHERE domain = %s
+                ''', (domain,))
+                row = cursor.fetchone()
+
+                if row:
+                    result['domain_intel'] = dict(row)
+                else:
+                    result['domain_intel'] = None
+
+            conn.close()
+            return result
+
+        except Exception as e:
+            logger.error(f"Error looking up threat intel: {e}")
+            return {'success': False, 'error': str(e)}
+
+
+    async def get_security_recommendation(self, params: Dict) -> Dict:
+        """Get security recommendations from knowledge base"""
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+
+        try:
+            threat_type = params.get('threat_type')
+            category = params.get('category')
+            search_query = params.get('search_query')
+
+            host = os.environ.get('DB_HOST', 'localhost')
+            database = os.environ.get('DB_NAME', 'netmonitor')
+            user = os.environ.get('DB_USER', 'netmonitor')
+            password = os.environ.get('DB_PASSWORD', 'netmonitor')
+
+            conn = psycopg2.connect(host=host, database=database, user=user, password=password)
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            if threat_type:
+                # Look up specific threat type
+                cursor.execute('''
+                    SELECT
+                        category, key, title, summary, description,
+                        indicators, recommendations, mitre_mapping, severity, priority
+                    FROM security_knowledge_base
+                    WHERE key = %s OR key ILIKE %s
+                    ORDER BY priority ASC
+                    LIMIT 5
+                ''', (threat_type, f'%{threat_type}%'))
+            elif category:
+                # Get all entries in category
+                cursor.execute('''
+                    SELECT
+                        category, key, title, summary,
+                        recommendations, severity, priority
+                    FROM security_knowledge_base
+                    WHERE category = %s
+                    ORDER BY priority ASC
+                    LIMIT 20
+                ''', (category,))
+            elif search_query:
+                # Full-text search
+                cursor.execute('''
+                    SELECT
+                        category, key, title, summary,
+                        recommendations, severity, priority,
+                        ts_rank(search_vector, query) as rank
+                    FROM security_knowledge_base,
+                         plainto_tsquery('english', %s) query
+                    WHERE search_vector @@ query
+                    ORDER BY rank DESC
+                    LIMIT 10
+                ''', (search_query,))
+            else:
+                # Return general recommendations
+                cursor.execute('''
+                    SELECT
+                        category, key, title, summary, recommendations, severity
+                    FROM security_knowledge_base
+                    WHERE category = 'general_recommendation'
+                    ORDER BY priority ASC
+                ''')
+
+            rows = cursor.fetchall()
+            conn.close()
+
+            return {
+                'success': True,
+                'count': len(rows),
+                'recommendations': [dict(row) for row in rows]
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting security recommendation: {e}")
+            return {'success': False, 'error': str(e)}
+
+
+    async def get_threat_context(self, params: Dict) -> Dict:
+        """Get full threat context including intel, recommendations, and MITRE mapping"""
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+
+        try:
+            threat_type = params.get('threat_type')
+            ip_address = params.get('ip_address')
+
+            if not threat_type and not ip_address:
+                return {'success': False, 'error': 'Either threat_type or ip_address is required'}
+
+            host = os.environ.get('DB_HOST', 'localhost')
+            database = os.environ.get('DB_NAME', 'netmonitor')
+            user = os.environ.get('DB_USER', 'netmonitor')
+            password = os.environ.get('DB_PASSWORD', 'netmonitor')
+
+            conn = psycopg2.connect(host=host, database=database, user=user, password=password)
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            context = {'success': True}
+
+            # Get IP intel if provided
+            if ip_address:
+                cursor.execute('''
+                    SELECT
+                        ip_address::text, threat_level, abuseipdb_score,
+                        is_tor_exit, is_known_c2, is_known_attacker,
+                        tags, sources
+                    FROM threat_intel_ip_cache
+                    WHERE ip_address = %s::inet
+                ''', (ip_address,))
+                row = cursor.fetchone()
+                if row:
+                    context['ip_intel'] = dict(row)
+
+                    # Map to threat type based on IP intel
+                    if row['is_known_c2']:
+                        threat_type = 'malware_c2'
+                    elif row['is_tor_exit']:
+                        threat_type = 'tor_usage'
+                    elif row['is_known_attacker']:
+                        threat_type = 'brute_force'
+
+            # Get knowledge base entry
+            if threat_type:
+                cursor.execute('''
+                    SELECT
+                        title, description, indicators, recommendations,
+                        mitre_mapping, severity
+                    FROM security_knowledge_base
+                    WHERE key = %s
+                    LIMIT 1
+                ''', (threat_type,))
+                row = cursor.fetchone()
+                if row:
+                    context['knowledge'] = dict(row)
+                    context['threat_type'] = threat_type
+
+            # Get IP reputation context if we have IP intel
+            if context.get('ip_intel'):
+                threat_level = context['ip_intel'].get('threat_level', 'unknown')
+                rep_key = {
+                    'critical': 'known_c2',
+                    'high': 'high_abuse_score',
+                    'medium': 'tor_exit',
+                    'low': 'vpn_proxy',
+                }.get(threat_level)
+
+                if rep_key:
+                    cursor.execute('''
+                        SELECT title, description, recommendations
+                        FROM security_knowledge_base
+                        WHERE category = 'ip_reputation' AND key = %s
+                        LIMIT 1
+                    ''', (rep_key,))
+                    row = cursor.fetchone()
+                    if row:
+                        context['ip_reputation_context'] = dict(row)
+
+            conn.close()
+            return context
+
+        except Exception as e:
+            logger.error(f"Error getting threat context: {e}")
+            return {'success': False, 'error': str(e)}
+
+
+    async def sync_threat_feeds(self, params: Dict) -> Dict:
+        """Trigger synchronization of threat intelligence feeds"""
+        import sys
+        from pathlib import Path
+
+        try:
+            feed_name = params.get('feed_name')  # Optional: specific feed
+            sync_all = params.get('sync_all', False)
+
+            # Import sync service
+            sys.path.insert(0, str(Path(__file__).parent / 'threat_intel'))
+            from sync_service import ThreatIntelSync
+
+            import asyncio
+
+            async def do_sync():
+                async with ThreatIntelSync() as syncer:
+                    if feed_name:
+                        return await syncer.sync_feed(feed_name)
+                    elif sync_all:
+                        return await syncer.sync_all()
+                    else:
+                        return await syncer.sync_due_feeds()
+
+            result = asyncio.get_event_loop().run_until_complete(do_sync())
+            return {'success': True, 'sync_result': result}
+
+        except Exception as e:
+            logger.error(f"Error syncing threat feeds: {e}")
+            return {'success': False, 'error': str(e)}
+
 
 # ==================== Tool Definitions Registry ====================
 
@@ -3709,6 +3981,56 @@ TOOL_DEFINITIONS = [
                         "sensor_id": {"type": "string", "description": "Optional sensor ID for sensor-specific config"}
                     },
                     "required": ["threat_type", "enabled"]
+                },
+                "scope_required": "read_write"
+            },
+            # Threat Intelligence Tools
+            {
+                "name": "lookup_threat_intel",
+                "description": "Look up IP address or domain in threat intelligence cache. Returns reputation data, threat level, and known indicators.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "ip_address": {"type": "string", "description": "IP address to look up"},
+                        "domain": {"type": "string", "description": "Domain to look up"}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "get_security_recommendation",
+                "description": "Get security recommendations and remediation steps from the knowledge base for specific threat types or general security guidance.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "threat_type": {"type": "string", "description": "Specific threat type (e.g., 'malware_c2', 'brute_force', 'ransomware_indicator')"},
+                        "category": {"type": "string", "enum": ["threat_type", "network_anomaly", "ip_reputation", "general_recommendation"], "description": "Category to browse"},
+                        "search_query": {"type": "string", "description": "Free-text search in knowledge base"}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "get_threat_context",
+                "description": "Get full context for a threat including IP intel, recommendations, and MITRE ATT&CK mapping. Use this when analyzing alerts or detections.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "threat_type": {"type": "string", "description": "Type of threat (e.g., 'malware_c2', 'brute_force')"},
+                        "ip_address": {"type": "string", "description": "IP address involved in the threat"}
+                    }
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "sync_threat_feeds",
+                "description": "Trigger synchronization of threat intelligence feeds. Updates the local cache with latest data from external sources.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "feed_name": {"type": "string", "description": "Specific feed to sync (e.g., 'tor_exits', 'feodo_c2')"},
+                        "sync_all": {"type": "boolean", "default": False, "description": "Sync all feeds"}
+                    }
                 },
                 "scope_required": "read_write"
             }

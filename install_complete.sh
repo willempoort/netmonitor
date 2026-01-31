@@ -313,7 +313,7 @@ prompt_config() {
 }
 
 install_system_packages() {
-    print_header "STAP 1/10: Systeem Packages Installeren"
+    print_header "STAP 1/12: Systeem Packages Installeren"
 
     apt update >> $LOG_FILE 2>&1
     print_success "Package list updated"
@@ -338,7 +338,7 @@ install_timescaledb() {
         return
     fi
 
-    print_header "STAP 2/10: TimescaleDB Installeren"
+    print_header "STAP 2/12: TimescaleDB Installeren"
 
     # Detect PostgreSQL version
     PG_VERSION=$(psql --version | grep -oP '\d+' | head -1)
@@ -364,7 +364,7 @@ setup_database() {
         return
     fi
 
-    print_header "STAP 3/10: Database Setup"
+    print_header "STAP 3/12: Database Setup"
 
     # Start PostgreSQL
     systemctl start postgresql
@@ -436,7 +436,7 @@ install_netmonitor() {
         return
     fi
 
-    print_header "STAP 4/10: NetMonitor Installeren"
+    print_header "STAP 4/12: NetMonitor Installeren"
 
     # Already in /opt/netmonitor (current directory)
     cd $INSTALL_DIR
@@ -465,7 +465,7 @@ configure_netmonitor() {
         return
     fi
 
-    print_header "STAP 5/10: NetMonitor Configureren"
+    print_header "STAP 5/12: NetMonitor Configureren"
 
     cd $INSTALL_DIR
 
@@ -602,7 +602,7 @@ init_database_schema() {
         return
     fi
 
-    print_header "STAP 6/10: Database Schema Initialiseren"
+    print_header "STAP 6/12: Database Schema Initialiseren"
 
     cd $INSTALL_DIR
     source venv/bin/activate
@@ -757,12 +757,69 @@ init_database_defaults() {
     fi
 }
 
+setup_threat_intel() {
+    if [[ ! $INSTALL_CORE =~ ^[Yy]$ ]]; then
+        return
+    fi
+
+    print_header "STAP 7/12: Threat Intelligence Setup"
+
+    cd $INSTALL_DIR
+    source venv/bin/activate
+
+    THREAT_INTEL_DIR="$INSTALL_DIR/mcp_server/threat_intel"
+
+    if [ ! -d "$THREAT_INTEL_DIR" ]; then
+        print_warning "Threat intel directory niet gevonden: $THREAT_INTEL_DIR"
+        return 0
+    fi
+
+    cd "$THREAT_INTEL_DIR"
+
+    # Initialize threat intel database schema
+    print_info "Threat intel database schema initialiseren..."
+    if [ -f "schema.sql" ]; then
+        PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -f schema.sql >> $LOG_FILE 2>&1
+        if [ $? -eq 0 ]; then
+            print_success "Threat intel schema geïnitialiseerd"
+        else
+            print_warning "Threat intel schema mogelijk al aanwezig (negeren als geen errors)"
+        fi
+    fi
+
+    # Load security knowledge base
+    print_info "Security knowledge base laden..."
+    if [ -f "load_knowledge_base.py" ]; then
+        python3 load_knowledge_base.py --reload >> $LOG_FILE 2>&1
+        if [ $? -eq 0 ]; then
+            print_success "Security knowledge base geladen"
+        else
+            print_warning "Fout bij laden knowledge base - check $LOG_FILE"
+        fi
+    fi
+
+    # Initial threat feed sync (optional, non-blocking)
+    print_info "Threat intel feeds synchroniseren..."
+    if [ -f "sync_service.py" ]; then
+        # Run sync with timeout to avoid blocking installation
+        timeout 60 python3 sync_service.py --sync-all >> $LOG_FILE 2>&1
+        if [ $? -eq 0 ]; then
+            print_success "Threat intel feeds gesynchroniseerd"
+        else
+            print_warning "Threat feed sync timeout/error - kan later handmatig: python3 sync_service.py --sync-all"
+        fi
+    fi
+
+    cd $INSTALL_DIR
+    print_success "Threat intelligence setup compleet"
+}
+
 download_threat_feeds() {
     if [[ ! $INSTALL_CORE =~ ^[Yy]$ ]]; then
         return
     fi
 
-    print_header "STAP 7/11: Threat Feeds Downloaden"
+    print_header "STAP 8/12: Threat Feeds Downloaden"
 
     cd $INSTALL_DIR
     source venv/bin/activate
@@ -776,7 +833,7 @@ setup_admin_user() {
         return
     fi
 
-    print_header "STAP 8/11: Admin User Setup"
+    print_header "STAP 9/12: Admin User Setup"
 
     cd $INSTALL_DIR
     source venv/bin/activate
@@ -797,7 +854,7 @@ setup_systemd_services() {
         return
     fi
 
-    print_header "STAP 9/11: Systemd Services Setup"
+    print_header "STAP 10/12: Systemd Services Setup"
 
     cd $INSTALL_DIR
 
@@ -845,7 +902,7 @@ setup_mcp_api() {
         return
     fi
 
-    print_header "STAP 10/11: MCP HTTP API Server Setup"
+    print_header "STAP 11/12: MCP HTTP API Server Setup"
 
     cd $INSTALL_DIR
     source venv/bin/activate
@@ -876,7 +933,7 @@ setup_nginx() {
         return
     fi
 
-    print_header "STAP 11/11: Nginx Reverse Proxy Setup"
+    print_header "STAP 12/12: Nginx Reverse Proxy Setup"
 
     cd $INSTALL_DIR
 
@@ -1072,6 +1129,8 @@ main() {
     init_database_schema || { print_error "Database schema initialisatie mislukt"; exit 1; }
 
     init_database_defaults || { print_error "Database defaults laden mislukt"; exit 1; }
+
+    setup_threat_intel || { print_warning "Threat intel setup had warnings"; }
 
     download_threat_feeds || { print_error "Threat feeds download mislukt"; exit 1; }
 

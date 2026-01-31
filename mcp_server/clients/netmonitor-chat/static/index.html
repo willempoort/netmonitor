@@ -70,6 +70,35 @@
             0%, 80%, 100% { opacity: 0; }
             40% { opacity: 1; }
         }
+
+        /* Status indicator */
+        .status-indicator {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            animation: pulse-bg 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-bg {
+            0%, 100% { opacity: 0.9; }
+            50% { opacity: 1; }
+        }
+
+        .status-spinner {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Phase-specific colors */
+        .phase-quick_match { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
+        .phase-tool_call { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+        .phase-formatting { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+        .phase-analyzing { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
+        .phase-llm_thinking { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); }
+        .phase-generating { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .phase-tool_selection { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
     </style>
 </head>
 <body class="bg-gray-100 h-screen flex flex-col">
@@ -390,8 +419,24 @@
                         </div>
                     </template>
 
-                    <!-- Typing Indicator -->
-                    <template x-if="isTyping">
+                    <!-- Status Indicator -->
+                    <template x-if="isTyping && currentStatus">
+                        <div class="flex justify-start">
+                            <div class="status-indicator rounded-lg px-4 py-3 text-white shadow-lg"
+                                 :class="'phase-' + currentPhase">
+                                <div class="flex items-center space-x-3">
+                                    <svg class="status-spinner w-5 h-5" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    <span class="text-sm font-medium" x-text="currentStatus"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Typing Indicator (fallback when no status) -->
+                    <template x-if="isTyping && !currentStatus">
                         <div class="flex justify-start">
                             <div class="message-assistant rounded-lg px-4 py-3">
                                 <div class="typing-indicator flex space-x-1">
@@ -447,6 +492,8 @@
                 debugMode: false,  // Show tool calls/results only when enabled
                 showTools: false,  // Tools section collapsed by default
                 showConfig: false,  // Configuration section collapsed by default
+                currentStatus: '',  // Current processing status message
+                currentPhase: '',   // Current processing phase (for styling)
 
                 // Settings
                 selectedModel: '',
@@ -765,7 +812,18 @@
                 // Handle WebSocket message
                 handleWebSocketMessage(data) {
                     switch (data.type) {
+                        case 'status':
+                            // Status update - show what's happening
+                            this.currentStatus = data.message;
+                            this.currentPhase = data.phase || 'processing';
+                            this.scrollToBottom();
+                            break;
+
                         case 'token':
+                            // Clear status when tokens start streaming
+                            this.currentStatus = '';
+                            this.currentPhase = '';
+
                             // Stream token
                             this.currentAssistantMessage += data.content;
 
@@ -803,9 +861,17 @@
                             this.scrollToBottom();
                             break;
 
+                        case 'tool_progress':
+                            // MCP tool progress notification
+                            console.log('[Tool Progress]', data.data);
+                            // Could show progress bar here in the future
+                            break;
+
                         case 'done':
                             // Response complete
                             this.isTyping = false;
+                            this.currentStatus = '';
+                            this.currentPhase = '';
                             if (this.ws) {
                                 this.ws.close();
                             }
@@ -815,6 +881,8 @@
                             // Error occurred
                             this.error = data.content;
                             this.isTyping = false;
+                            this.currentStatus = '';
+                            this.currentPhase = '';
                             if (this.ws) {
                                 this.ws.close();
                             }
@@ -838,6 +906,8 @@
                         this.messages = [];
                         this.error = null;
                         this.currentAssistantMessage = '';
+                        this.currentStatus = '';
+                        this.currentPhase = '';
                     }
                 }
             };
