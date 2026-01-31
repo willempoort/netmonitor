@@ -1203,6 +1203,8 @@ Roep tools ÉÉN VOOR ÉÉN aan. Geef pas een eindantwoord als je ALLE benodigde
             MAX_TOOL_ITERATIONS = 10  # Prevent infinite loops
             tool_iteration = 0
             called_tools: List[str] = []  # Track called tools to detect loops
+            force_final_report = False  # Flag to force LLM to generate final report
+            collected_tool_results: List[Dict[str, Any]] = []  # Track all tool results for final report
 
             while tool_iteration < MAX_TOOL_ITERATIONS:
                 tool_iteration += 1
@@ -1217,7 +1219,10 @@ Roep tools ÉÉN VOOR ÉÉN aan. Geef pas een eindantwoord als je ALLE benodigde
                 if tool_iteration > 1:
                     await send_status(f"Volgende stap bepalen... ({tool_iteration}/{MAX_TOOL_ITERATIONS})", "llm_thinking")
 
-                async for chunk in llm_client.chat(model, messages, stream=True, temperature=temperature, tools=use_tools):
+                # If forced to generate final report, disable tools
+                current_tools = None if force_final_report else use_tools
+
+                async for chunk in llm_client.chat(model, messages, stream=True, temperature=temperature, tools=current_tools):
                     if "error" in chunk:
                         await websocket.send_json({"type": "error", "content": chunk["error"]})
                         llm_error = True
@@ -1237,7 +1242,8 @@ Roep tools ÉÉN VOOR ÉÉN aan. Geef pas een eindantwoord als je ALLE benodigde
                             if not has_tool_call:
                                 if buffer_tokens:
                                     buffered_content += content
-                                elif not full_response.strip().startswith("{"):
+                                elif force_final_report or not full_response.strip().startswith("{"):
+                                    # Always stream tokens when forcing final report, even if response looks like JSON
                                     await websocket.send_json({"type": "token", "content": content})
 
                         # Accumulate tool calls
@@ -1300,9 +1306,15 @@ Roep tools ÉÉN VOOR ÉÉN aan. Geef pas een eindantwoord als je ALLE benodigde
                         if tool_signature in called_tools:
                             await websocket.send_json({
                                 "type": "token",
-                                "content": f"\n\n*Loop gedetecteerd: {tool_name} werd al aangeroepen.*\n\n"
+                                "content": f"\n\n*Loop gedetecteerd: {tool_name} werd al aangeroepen. Rapport wordt gegenereerd...*\n\n"
                             })
-                            continue
+                            # Force final report generation with collected data
+                            force_final_report = True
+                            if collected_tool_results:
+                                summary = "\n".join([f"- {r['tool']}: {json.dumps(r['result'], ensure_ascii=False)[:500]}" for r in collected_tool_results[-5:]])
+                                messages.append({"role": "assistant", "content": "[Alle benodigde data verzameld]"})
+                                messages.append({"role": "user", "content": f"STOP met tools aanroepen. Genereer NU een compleet rapport in het Nederlands met de volgende verzamelde data:\n{summary}\n\nGeef een duidelijke samenvatting en aanbevelingen."})
+                            break  # Break inner loop, outer loop will continue with report generation
                         called_tools.append(tool_signature)
 
                         await send_status(f"Tool uitvoeren: {tool_name} ({idx + 1}/{len(accumulated_tool_calls)})", "tool_call")
@@ -1332,6 +1344,9 @@ Roep tools ÉÉN VOOR ÉÉN aan. Geef pas een eindantwoord als je ALLE benodigde
 
                         await websocket.send_json({"type": "tool_result", "tool": tool_name, "result": final_result})
 
+                        # Track collected results for final report generation
+                        collected_tool_results.append({"tool": tool_name, "result": final_result})
+
                         # RAG Enrichment for threat-related tool results
                         enrichment_context = ""
                         threat_related = ('threat', 'risk', 'alert', 'detection', 'malware', 'ip')
@@ -1359,7 +1374,8 @@ Roep tools ÉÉN VOOR ÉÉN aan. Geef pas een eindantwoord als je ALLE benodigde
                     continue
 
                 # JSON fallback tool call (works on all iterations for JSON fallback mode)
-                if not has_tool_call and full_response.strip():
+                # Skip tool parsing if we're forcing final report generation
+                if not has_tool_call and full_response.strip() and not force_final_report:
                     response_stripped = full_response.strip()
                     tool_data = extract_tool_call_from_text(response_stripped)
 
@@ -1373,9 +1389,15 @@ Roep tools ÉÉN VOOR ÉÉN aan. Geef pas een eindantwoord als je ALLE benodigde
                             # Same tool with same args called again - likely stuck in loop
                             await websocket.send_json({
                                 "type": "token",
-                                "content": f"\n\n*Loop gedetecteerd: {tool_name} werd al aangeroepen met dezelfde parameters. Rapport wordt nu gegenereerd.*\n\n"
+                                "content": f"\n\n*Loop gedetecteerd: {tool_name} werd al aangeroepen. Rapport wordt gegenereerd...*\n\n"
                             })
-                            break
+                            # Force final report generation with collected data
+                            force_final_report = True
+                            if collected_tool_results:
+                                summary = "\n".join([f"- {r['tool']}: {json.dumps(r['result'], ensure_ascii=False)[:500]}" for r in collected_tool_results[-5:]])
+                                messages.append({"role": "assistant", "content": "[Alle benodigde data verzameld]"})
+                                messages.append({"role": "user", "content": f"STOP met tools aanroepen. Genereer NU een compleet rapport in het Nederlands met de volgende verzamelde data:\n{summary}\n\nGeef een duidelijke samenvatting en aanbevelingen. Antwoord in gewoon Nederlands, GEEN JSON."})
+                            continue  # Continue to next iteration which will generate report without tools
                         called_tools.append(tool_signature)
 
                         await send_status(f"Tool uitvoeren: {tool_name}", "tool_call")
@@ -1383,6 +1405,9 @@ Roep tools ÉÉN VOOR ÉÉN aan. Geef pas een eindantwoord als je ALLE benodigde
 
                         result = await mcp_client.call_tool(tool_name, tool_args)
                         await websocket.send_json({"type": "tool_result", "tool": tool_name, "result": result})
+
+                        # Track collected results for final report generation
+                        collected_tool_results.append({"tool": tool_name, "result": result})
 
                         # RAG Enrichment for JSON fallback path
                         enrichment_context = ""
