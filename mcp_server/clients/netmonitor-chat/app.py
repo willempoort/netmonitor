@@ -1314,8 +1314,8 @@ Regels:
                     # Continue loop to let LLM decide if more tools needed
                     continue
 
-                # JSON fallback tool call (first iteration only)
-                if tool_iteration == 1 and not has_tool_call and full_response.strip():
+                # JSON fallback tool call (works on all iterations for JSON fallback mode)
+                if not has_tool_call and full_response.strip():
                     response_stripped = full_response.strip()
                     tool_data = extract_tool_call_from_text(response_stripped)
 
@@ -1342,11 +1342,12 @@ Regels:
                         messages.append({"role": "assistant", "content": full_response})
                         messages.append({
                             "role": "user",
-                            "content": f"Tool {tool_name} returned: {result_with_context}. Geef een duidelijk Nederlands antwoord met aanbevelingen indien van toepassing. Geen JSON."
+                            "content": f"Tool {tool_name} resultaat: {result_with_context}\n\nAls je meer tools nodig hebt, roep ze aan met JSON: {{\"name\": \"tool_naam\", \"arguments\": {{...}}}}. Als je alle informatie hebt, geef dan een duidelijk Nederlands antwoord."
                         })
 
-                        # Continue loop for potential follow-up tools
-                        use_tools = None  # Disable native tools for JSON fallback follow-up
+                        # Continue loop for potential follow-up tools (keep JSON fallback active)
+                        use_tools = None  # Disable native tools, keep JSON fallback
+                        use_json_fallback = True
                         continue
                     elif response_stripped.startswith("{"):
                         await websocket.send_json({"type": "token", "content": full_response})
