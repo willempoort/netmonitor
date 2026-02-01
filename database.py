@@ -41,7 +41,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 17  # Increment this when schema changes
+        SCHEMA_VERSION = 18  # Increment this when schema changes
 
         if self._check_schema_version(SCHEMA_VERSION):
             self.logger.info(f"Database schema is up to date (v{SCHEMA_VERSION})")
@@ -670,6 +670,20 @@ class DatabaseManager:
             """)
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_top_talkers_direction ON top_talkers(direction);
+            """)
+
+            # Migration v18: Add indexes for alerts table query optimization
+            # These indexes dramatically improve dashboard threat_type filtering
+            # (e.g., TLS_WEAK_CIPHER_OFFERED queries: 438ms -> 0.5ms)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_alerts_threat_type ON alerts(threat_type);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_alerts_timestamp ON alerts(timestamp DESC);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_alerts_threat_type_timestamp
+                ON alerts(threat_type, timestamp DESC);
             """)
 
             conn.commit()
