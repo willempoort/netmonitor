@@ -789,6 +789,131 @@ def api_integration_test(integration_name):
         }), 500
 
 
+@app.route('/api/integrations/abuseipdb/stats')
+@login_required
+def api_abuseipdb_stats():
+    """Get AbuseIPDB statistics including cache usage and lookup history"""
+    try:
+        stats = {
+            'success': True,
+            'cache': {
+                'total_entries': 0,
+                'entries_with_score': 0,
+                'entries_last_24h': 0,
+                'entries_last_7d': 0
+            },
+            'scores': {
+                'critical': 0,  # 80-100
+                'high': 0,      # 50-79
+                'medium': 0,    # 20-49
+                'low': 0,       # 1-19
+                'clean': 0      # 0
+            },
+            'top_malicious': [],
+            'recent_lookups': [],
+            'api_stats': None
+        }
+
+        # Get database stats
+        if db:
+            conn = db._get_connection()
+            cursor = conn.cursor()
+
+            # Total entries and entries with AbuseIPDB score
+            cursor.execute("""
+                SELECT
+                    COUNT(*) as total,
+                    COUNT(abuseipdb_score) as with_score,
+                    COUNT(*) FILTER (WHERE last_updated > NOW() - INTERVAL '24 hours') as last_24h,
+                    COUNT(*) FILTER (WHERE last_updated > NOW() - INTERVAL '7 days') as last_7d
+                FROM threat_intel_ip_cache
+            """)
+            row = cursor.fetchone()
+            if row:
+                stats['cache']['total_entries'] = row[0]
+                stats['cache']['entries_with_score'] = row[1]
+                stats['cache']['entries_last_24h'] = row[2]
+                stats['cache']['entries_last_7d'] = row[3]
+
+            # Score distribution
+            cursor.execute("""
+                SELECT
+                    COUNT(*) FILTER (WHERE abuseipdb_score >= 80) as critical,
+                    COUNT(*) FILTER (WHERE abuseipdb_score >= 50 AND abuseipdb_score < 80) as high,
+                    COUNT(*) FILTER (WHERE abuseipdb_score >= 20 AND abuseipdb_score < 50) as medium,
+                    COUNT(*) FILTER (WHERE abuseipdb_score >= 1 AND abuseipdb_score < 20) as low,
+                    COUNT(*) FILTER (WHERE abuseipdb_score = 0) as clean
+                FROM threat_intel_ip_cache
+                WHERE abuseipdb_score IS NOT NULL
+            """)
+            row = cursor.fetchone()
+            if row:
+                stats['scores']['critical'] = row[0]
+                stats['scores']['high'] = row[1]
+                stats['scores']['medium'] = row[2]
+                stats['scores']['low'] = row[3]
+                stats['scores']['clean'] = row[4]
+
+            # Top malicious IPs
+            cursor.execute("""
+                SELECT ip_address::text, abuseipdb_score, abuseipdb_reports,
+                       threat_level, last_updated
+                FROM threat_intel_ip_cache
+                WHERE abuseipdb_score IS NOT NULL
+                ORDER BY abuseipdb_score DESC, abuseipdb_reports DESC
+                LIMIT 10
+            """)
+            stats['top_malicious'] = [
+                {
+                    'ip': row[0],
+                    'score': row[1],
+                    'reports': row[2],
+                    'threat_level': row[3],
+                    'last_updated': row[4].isoformat() if row[4] else None
+                }
+                for row in cursor.fetchall()
+            ]
+
+            # Recent lookups (entries with abuseipdb_score, ordered by last_updated)
+            cursor.execute("""
+                SELECT ip_address::text, abuseipdb_score, abuseipdb_reports,
+                       threat_level, last_updated
+                FROM threat_intel_ip_cache
+                WHERE abuseipdb_score IS NOT NULL
+                ORDER BY last_updated DESC
+                LIMIT 20
+            """)
+            stats['recent_lookups'] = [
+                {
+                    'ip': row[0],
+                    'score': row[1],
+                    'reports': row[2],
+                    'threat_level': row[3],
+                    'last_updated': row[4].isoformat() if row[4] else None
+                }
+                for row in cursor.fetchall()
+            ]
+
+            db._return_connection(conn)
+
+        # Try to get live API stats from running AbuseIPDB client
+        try:
+            # Access the monitor's abuseipdb client if available
+            import importlib
+            # This is a placeholder - in practice you'd need access to the running monitor
+            stats['api_stats'] = {
+                'note': 'Live API stats available when monitor is running'
+            }
+        except Exception:
+            pass
+
+        return jsonify(stats)
+
+    except Exception as e:
+        logger.error(f"Error getting AbuseIPDB stats: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/dashboard')
 @login_required
 def api_dashboard():

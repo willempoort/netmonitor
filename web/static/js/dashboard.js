@@ -2596,15 +2596,22 @@ function renderIntegrationCard(integration, type) {
         details = `<small class="text-light opacity-75">${integration.api_url}</small>`;
     }
 
+    // Check if this is AbuseIPDB - make it clickable for stats
+    const isAbuseIPDB = integration.name === 'abuseipdb';
+    const clickableClass = isAbuseIPDB ? 'cursor-pointer integration-clickable' : '';
+    const clickHandler = isAbuseIPDB ? 'onclick="showAbuseIPDBStats()"' : '';
+    const clickHint = isAbuseIPDB ? '<small class="text-info d-block"><i class="bi bi-bar-chart"></i> Click for statistics</small>' : '';
+
     return `
-        <div class="d-flex align-items-center justify-content-between mb-2 p-2 bg-dark rounded border border-secondary">
+        <div class="d-flex align-items-center justify-content-between mb-2 p-2 bg-dark rounded border border-secondary ${clickableClass}" ${clickHandler}>
             <div>
                 <strong class="text-white">${integration.display_name}</strong><br>
                 ${details}
+                ${clickHint}
             </div>
             <div class="text-end">
                 <i class="bi ${statusIcon}" title="${statusText}"></i>
-                <button class="btn btn-sm btn-outline-light ms-2" onclick="testIntegration('${integration.name}')" title="Test connection">
+                <button class="btn btn-sm btn-outline-light ms-2" onclick="event.stopPropagation(); testIntegration('${integration.name}')" title="Test connection">
                     <i class="bi bi-arrow-repeat"></i>
                 </button>
             </div>
@@ -2636,6 +2643,105 @@ window.testIntegration = function(name) {
             showToast(`${name}: ${error.message}`, 'danger');
         });
 };
+
+// AbuseIPDB Statistics Modal
+window.showAbuseIPDBStats = function() {
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('abuseipdbStatsModal'));
+    modal.show();
+
+    // Show loading, hide content
+    document.getElementById('abuseipdbLoading').style.display = 'block';
+    document.getElementById('abuseipdbContent').style.display = 'none';
+
+    // Fetch stats
+    fetch('/api/integrations/abuseipdb/stats')
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to load statistics');
+            }
+
+            // Update summary cards
+            document.getElementById('abuseipdbTotalEntries').textContent = data.cache.total_entries.toLocaleString();
+            document.getElementById('abuseipdbWithScore').textContent = data.cache.entries_with_score.toLocaleString();
+            document.getElementById('abuseipdbLast24h').textContent = data.cache.entries_last_24h.toLocaleString();
+            document.getElementById('abuseipdbLast7d').textContent = data.cache.entries_last_7d.toLocaleString();
+
+            // Update score distribution
+            document.getElementById('abuseipdbCritical').textContent = data.scores.critical.toLocaleString();
+            document.getElementById('abuseipdbHigh').textContent = data.scores.high.toLocaleString();
+            document.getElementById('abuseipdbMedium').textContent = data.scores.medium.toLocaleString();
+            document.getElementById('abuseipdbLow').textContent = data.scores.low.toLocaleString();
+            document.getElementById('abuseipdbClean').textContent = data.scores.clean.toLocaleString();
+
+            // Update top malicious IPs table
+            const topMaliciousBody = document.getElementById('abuseipdbTopMalicious');
+            if (data.top_malicious && data.top_malicious.length > 0) {
+                topMaliciousBody.innerHTML = data.top_malicious.map(ip => `
+                    <tr>
+                        <td><code>${ip.ip}</code></td>
+                        <td><span class="badge ${getScoreBadgeClass(ip.score)}">${ip.score}</span></td>
+                        <td>${ip.reports || 0}</td>
+                    </tr>
+                `).join('');
+            } else {
+                topMaliciousBody.innerHTML = '<tr><td colspan="3" class="text-muted">No malicious IPs found</td></tr>';
+            }
+
+            // Update recent lookups table
+            const recentLookupsBody = document.getElementById('abuseipdbRecentLookups');
+            if (data.recent_lookups && data.recent_lookups.length > 0) {
+                recentLookupsBody.innerHTML = data.recent_lookups.map(ip => `
+                    <tr>
+                        <td><code>${ip.ip}</code></td>
+                        <td><span class="badge ${getScoreBadgeClass(ip.score)}">${ip.score}</span></td>
+                        <td><small>${formatTimeAgo(ip.last_updated)}</small></td>
+                    </tr>
+                `).join('');
+            } else {
+                recentLookupsBody.innerHTML = '<tr><td colspan="3" class="text-muted">No recent lookups</td></tr>';
+            }
+
+            // Hide loading, show content
+            document.getElementById('abuseipdbLoading').style.display = 'none';
+            document.getElementById('abuseipdbContent').style.display = 'block';
+        })
+        .catch(error => {
+            console.error('Error loading AbuseIPDB stats:', error);
+            document.getElementById('abuseipdbLoading').innerHTML = `
+                <div class="text-danger">
+                    <i class="bi bi-exclamation-circle"></i> Failed to load statistics: ${error.message}
+                </div>
+            `;
+        });
+};
+
+// Helper function for AbuseIPDB score badge colors
+function getScoreBadgeClass(score) {
+    if (score >= 80) return 'bg-danger';
+    if (score >= 50) return 'bg-warning text-dark';
+    if (score >= 20) return 'bg-info text-dark';
+    if (score >= 1) return 'bg-secondary';
+    return 'bg-success';
+}
+
+// Helper function to format time ago
+function formatTimeAgo(isoDate) {
+    if (!isoDate) return 'Unknown';
+    const date = new Date(isoDate);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+}
 
 function showToast(message, type = 'info') {
     // Simple toast notification
