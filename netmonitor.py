@@ -129,11 +129,15 @@ class NetworkMonitor:
 
         # Initialiseer AbuseIPDB client (with database caching)
         self.abuseipdb = None
-        if self.config.get('abuseipdb', {}).get('enabled', False):
-            api_key = self.config['abuseipdb'].get('api_key', '')
+        # Check both top-level and integrations.threat_intel.abuseipdb paths
+        abuseipdb_config = self.config.get('abuseipdb', {})
+        if not abuseipdb_config.get('enabled'):
+            abuseipdb_config = self.config.get('integrations', {}).get('threat_intel', {}).get('abuseipdb', {})
+        if abuseipdb_config.get('enabled', False):
+            api_key = abuseipdb_config.get('api_key', '')
             if api_key:
                 try:
-                    rate_limit = self.config['abuseipdb'].get('rate_limit', 1000)
+                    rate_limit = abuseipdb_config.get('rate_limit', 1000)
                     # Pass database for persistent caching across restarts
                     self.abuseipdb = AbuseIPDBClient(api_key, rate_limit=rate_limit, db=self.db)
                     self.logger.info("AbuseIPDB client enabled with database caching")

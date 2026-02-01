@@ -1988,6 +1988,31 @@
                             </div>
                         </div>
 
+                        <!-- API Usage Stats -->
+                        <div class="row mb-4">
+                            <div class="col-12">
+                                <h6 class="text-muted mb-3"><i class="bi bi-graph-up"></i> API Usage</h6>
+                                <div class="d-flex justify-content-between gap-2">
+                                    <div class="flex-fill text-center p-2 bg-primary bg-opacity-25 rounded">
+                                        <h4 class="mb-0 text-primary" id="abuseipdbTodayAPICalls">-</h4>
+                                        <small>API Calls Today</small>
+                                    </div>
+                                    <div class="flex-fill text-center p-2 bg-success bg-opacity-25 rounded">
+                                        <h4 class="mb-0 text-success" id="abuseipdbTodayCacheHits">-</h4>
+                                        <small>Cache Hits Today</small>
+                                    </div>
+                                    <div class="flex-fill text-center p-2 bg-info bg-opacity-25 rounded">
+                                        <h4 class="mb-0 text-info" id="abuseipdbTotalAPICalls">-</h4>
+                                        <small>Total API Calls</small>
+                                    </div>
+                                    <div class="flex-fill text-center p-2 bg-secondary bg-opacity-50 rounded">
+                                        <h4 class="mb-0 text-light" id="abuseipdbTotalCacheHits">-</h4>
+                                        <small>Total Cache Hits</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Score Distribution -->
                         <div class="row mb-4">
                             <div class="col-12">
@@ -2448,7 +2473,7 @@
     </script>
 
     <!-- Custom JS - Load last with defer -->
-    <script src="{{ url_for('static', filename='js/dashboard.js') }}?v=4" defer></script>
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}?v=5" defer></script>
     <script src="{{ url_for('static', filename='js/config-management.js') }}?v=4" defer></script>
     <script src="{{ url_for('static', filename='js/device-classification.js') }}?v=10" defer></script>
 

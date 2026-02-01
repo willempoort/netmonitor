@@ -2675,6 +2675,16 @@ window.showAbuseIPDBStats = function() {
             document.getElementById('abuseipdbLow').textContent = data.scores.low.toLocaleString();
             document.getElementById('abuseipdbClean').textContent = data.scores.clean.toLocaleString();
 
+            // Update API usage stats
+            if (data.today) {
+                document.getElementById('abuseipdbTodayAPICalls').textContent = data.today.api_calls.toLocaleString();
+                document.getElementById('abuseipdbTodayCacheHits').textContent = data.today.cache_hits.toLocaleString();
+            }
+            if (data.api_stats) {
+                document.getElementById('abuseipdbTotalAPICalls').textContent = data.api_stats.total_api_calls.toLocaleString();
+                document.getElementById('abuseipdbTotalCacheHits').textContent = data.api_stats.total_cache_hits.toLocaleString();
+            }
+
             // Update top malicious IPs table
             const topMaliciousBody = document.getElementById('abuseipdbTopMalicious');
             if (data.top_malicious && data.top_malicious.length > 0) {

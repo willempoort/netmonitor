@@ -148,6 +148,39 @@ class AbuseIPDBClient:
         except Exception as e:
             self.logger.warning(f"Error saving to database cache: {e}")
 
+    def _track_api_call(self, is_cache_hit: bool = False):
+        """Track API call or cache hit in database for statistics"""
+        if not self.db:
+            return
+
+        try:
+            conn = self.db._get_connection()
+            cursor = conn.cursor()
+
+            if is_cache_hit:
+                cursor.execute("""
+                    INSERT INTO abuseipdb_api_stats (date, cache_hits, updated_at)
+                    VALUES (CURRENT_DATE, 1, NOW())
+                    ON CONFLICT (date) DO UPDATE SET
+                        cache_hits = abuseipdb_api_stats.cache_hits + 1,
+                        updated_at = NOW()
+                """)
+            else:
+                cursor.execute("""
+                    INSERT INTO abuseipdb_api_stats (date, api_calls, unique_ips_queried, updated_at)
+                    VALUES (CURRENT_DATE, 1, 1, NOW())
+                    ON CONFLICT (date) DO UPDATE SET
+                        api_calls = abuseipdb_api_stats.api_calls + 1,
+                        unique_ips_queried = abuseipdb_api_stats.unique_ips_queried + 1,
+                        updated_at = NOW()
+                """)
+
+            conn.commit()
+            self.db._return_connection(conn)
+
+        except Exception as e:
+            self.logger.debug(f"Error tracking API call: {e}")
+
     def check_ip(self, ip: str, max_age_days: int = 90) -> Optional[Dict]:
         """
         Check IP reputation via AbuseIPDB
@@ -172,6 +205,9 @@ class AbuseIPDBClient:
                 self.cache_hits += 1
                 if result.get('_from_db_cache'):
                     self.db_cache_hits += 1
+                # Track cache hit in database (only every 10th hit to reduce DB writes)
+                if self.cache_hits % 10 == 0:
+                    self._track_api_call(is_cache_hit=True)
                 self.logger.debug(f"Cache hit voor IP: {ip} (age: {cache_age:.0f}s)")
                 return result
 
@@ -208,6 +244,9 @@ class AbuseIPDBClient:
 
             # Also save to database cache for persistence across restarts
             self._save_to_db_cache(ip, result)
+
+            # Track query in database for statistics
+            self._track_api_call()
 
             # Track query
             self.query_history.append(time.time())

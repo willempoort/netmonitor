@@ -41,7 +41,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 18  # Increment this when schema changes
+        SCHEMA_VERSION = 19  # Increment this when schema changes
 
         if self._check_schema_version(SCHEMA_VERSION):
             self.logger.info(f"Database schema is up to date (v{SCHEMA_VERSION})")
@@ -684,6 +684,24 @@ class DatabaseManager:
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_alerts_threat_type_timestamp
                 ON alerts(threat_type, timestamp DESC);
+            """)
+
+            # Migration v19: Add AbuseIPDB API call tracking table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS abuseipdb_api_stats (
+                    id SERIAL PRIMARY KEY,
+                    date DATE NOT NULL DEFAULT CURRENT_DATE,
+                    api_calls INTEGER NOT NULL DEFAULT 0,
+                    cache_hits INTEGER NOT NULL DEFAULT 0,
+                    unique_ips_queried INTEGER NOT NULL DEFAULT 0,
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    UNIQUE(date)
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_abuseipdb_api_stats_date
+                ON abuseipdb_api_stats(date DESC);
             """)
 
             conn.commit()

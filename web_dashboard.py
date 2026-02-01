@@ -894,18 +894,56 @@ def api_abuseipdb_stats():
                 for row in cursor.fetchall()
             ]
 
-            db._return_connection(conn)
+            # Get API call statistics from abuseipdb_api_stats table
+            cursor.execute("""
+                SELECT
+                    COALESCE(SUM(api_calls), 0) as total_api_calls,
+                    COALESCE(SUM(cache_hits), 0) as total_cache_hits,
+                    COALESCE(SUM(unique_ips_queried), 0) as total_unique_ips
+                FROM abuseipdb_api_stats
+            """)
+            row = cursor.fetchone()
+            if row:
+                stats['api_stats'] = {
+                    'total_api_calls': row[0],
+                    'total_cache_hits': row[1],
+                    'total_unique_ips': row[2]
+                }
 
-        # Try to get live API stats from running AbuseIPDB client
-        try:
-            # Access the monitor's abuseipdb client if available
-            import importlib
-            # This is a placeholder - in practice you'd need access to the running monitor
-            stats['api_stats'] = {
-                'note': 'Live API stats available when monitor is running'
-            }
-        except Exception:
-            pass
+            # Get API calls per day (last 7 days)
+            cursor.execute("""
+                SELECT date, api_calls, cache_hits, unique_ips_queried
+                FROM abuseipdb_api_stats
+                WHERE date >= CURRENT_DATE - INTERVAL '7 days'
+                ORDER BY date DESC
+            """)
+            stats['api_daily'] = [
+                {
+                    'date': row[0].isoformat() if row[0] else None,
+                    'api_calls': row[1],
+                    'cache_hits': row[2],
+                    'unique_ips': row[3]
+                }
+                for row in cursor.fetchall()
+            ]
+
+            # Today's stats
+            cursor.execute("""
+                SELECT api_calls, cache_hits, unique_ips_queried
+                FROM abuseipdb_api_stats
+                WHERE date = CURRENT_DATE
+            """)
+            row = cursor.fetchone()
+            if row:
+                stats['today'] = {
+                    'api_calls': row[0],
+                    'cache_hits': row[1],
+                    'unique_ips': row[2]
+                }
+            else:
+                stats['today'] = {'api_calls': 0, 'cache_hits': 0, 'unique_ips': 0}
+
+            db._return_connection(conn)
 
         return jsonify(stats)
 
