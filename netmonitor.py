@@ -127,15 +127,16 @@ class NetworkMonitor:
         except Exception as e:
             self.logger.error(f"Fout bij initialiseren behavior detector: {e}")
 
-        # Initialiseer AbuseIPDB client
+        # Initialiseer AbuseIPDB client (with database caching)
         self.abuseipdb = None
         if self.config.get('abuseipdb', {}).get('enabled', False):
             api_key = self.config['abuseipdb'].get('api_key', '')
             if api_key:
                 try:
                     rate_limit = self.config['abuseipdb'].get('rate_limit', 1000)
-                    self.abuseipdb = AbuseIPDBClient(api_key, rate_limit=rate_limit)
-                    self.logger.info("AbuseIPDB client enabled")
+                    # Pass database for persistent caching across restarts
+                    self.abuseipdb = AbuseIPDBClient(api_key, rate_limit=rate_limit, db=self.db)
+                    self.logger.info("AbuseIPDB client enabled with database caching")
                 except Exception as e:
                     self.logger.error(f"Fout bij initialiseren AbuseIPDB client: {e}")
 
