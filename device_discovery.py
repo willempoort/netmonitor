@@ -274,6 +274,7 @@ class DeviceDiscovery:
         """Background worker for periodic tasks"""
         learning_counter = 0  # Counter for less frequent learning updates
         cleanup_counter = 0   # Counter for duplicate MAC cleanup
+        traffic_stats_counter = 0  # Counter for traffic stats cleanup
         while self._running:
             try:
                 # Flush stale DNS cache entries
@@ -294,6 +295,12 @@ class DeviceDiscovery:
                     self._cleanup_duplicate_macs()
                     cleanup_counter = 0
 
+                # Clean up traffic stats every 10 minutes (every 10th iteration)
+                traffic_stats_counter += 1
+                if traffic_stats_counter >= 10:
+                    self._cleanup_traffic_stats()
+                    traffic_stats_counter = 0
+
             except Exception as e:
                 self.logger.error(f"Error in background worker: {e}")
 
@@ -308,6 +315,42 @@ class DeviceDiscovery:
         ]
         for ip in expired:
             del self.dns_cache[ip]
+
+    def _cleanup_traffic_stats(self):
+        """
+        Cleanup traffic_stats to prevent memory leak.
+        - Remove entries not seen for over 1 hour
+        - Limit size of sets (ports, IPs) to prevent unbounded growth
+        """
+        now = datetime.now()
+        cleaned = 0
+        max_ports = 100  # Max ports to track per device
+        max_ips = 500    # Max IPs to track per device
+
+        for ip in list(self.traffic_stats.keys()):
+            stats = self.traffic_stats[ip]
+
+            # Remove entries not seen for over 1 hour
+            if stats['last_seen']:
+                age = (now - stats['last_seen']).total_seconds()
+                if age > 3600:  # 1 hour
+                    del self.traffic_stats[ip]
+                    cleaned += 1
+                    continue
+
+            # Limit set sizes to prevent memory leak
+            if len(stats['ports_seen']) > max_ports:
+                # Keep only the most recent ports (convert to list, slice, convert back)
+                stats['ports_seen'] = set(list(stats['ports_seen'])[-max_ports:])
+
+            if len(stats['outbound_ips']) > max_ips:
+                stats['outbound_ips'] = set(list(stats['outbound_ips'])[-max_ips:])
+
+            if len(stats['inbound_ips']) > max_ips:
+                stats['inbound_ips'] = set(list(stats['inbound_ips'])[-max_ips:])
+
+        if cleaned > 0:
+            self.logger.debug(f"Traffic stats cleanup: {cleaned} oude entries verwijderd, {len(self.traffic_stats)} over")
 
     def _flush_device_cache(self):
         """Persist cached device updates to database"""
