@@ -66,6 +66,28 @@ Alle sync intervals instelbaar via Performance tab:
 - **Heartbeat Interval** (default: 30s)
 - **Command Poll Interval** (default: 30s)
 
+### Integration Statistics
+
+#### AbuseIPDB Statistics Modal
+Klik op de **AbuseIPDB** kaart onder Threat Intelligence integraties om gedetailleerde statistieken te bekijken:
+
+- **Cache Summary**:
+  - Totaal gecachte IPs in database
+  - IPs met AbuseIPDB score
+  - Lookups in afgelopen 24 uur en 7 dagen
+
+- **Score Distribution**:
+  - Critical (80-100): Zeer gevaarlijke IPs
+  - High (50-79): Hoog risico IPs
+  - Medium (20-49): Matig risico
+  - Low (1-19): Laag risico
+  - Clean (0): Geen bekende abuse reports
+
+- **Top Malicious IPs**: Top 10 IPs gesorteerd op abuse score met aantal reports
+- **Recent Lookups**: Laatste 20 IP lookups met timestamps
+
+De AbuseIPDB cache wordt persistent opgeslagen in PostgreSQL voor 24 uur, wat API rate limits beschermt en snelle lookups mogelijk maakt na herstart.
+
 ## 🚀 Quick Start
 
 ### Standalone Dashboard Server
