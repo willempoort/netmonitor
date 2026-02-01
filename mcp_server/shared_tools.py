@@ -225,6 +225,189 @@ class NetMonitorTools:
                 'error': f'Error: {str(e)}'
             }
 
+    # lookup_ip_owner - Look up IP address ownership via Team Cymru DNS and ipinfo.io
+    async def lookup_ip_owner(self, params: Dict) -> Dict:
+        """
+        Look up IP address ownership information using Team Cymru DNS and optionally ipinfo.io.
+
+        Uses free services:
+        - Team Cymru DNS (ASN lookup, always available)
+        - ipinfo.io (additional details, optional API key for higher limits)
+        """
+        import socket
+        import struct
+
+        ip_address = params.get('ip_address') or params.get('ip')
+        if not ip_address:
+            return {'success': False, 'error': 'ip_address parameter is required'}
+
+        # Clean IP address (remove /32 suffix if present)
+        ip_address = ip_address.strip().replace('/32', '').split('/')[0]
+
+        # Validate IP format
+        try:
+            socket.inet_aton(ip_address)
+        except socket.error:
+            return {'success': False, 'error': f'Invalid IP address: {ip_address}'}
+
+        result = {
+            'success': True,
+            'ip_address': ip_address,
+            'asn': None,
+            'asn_name': None,
+            'organization': None,
+            'ip_range': None,
+            'country': None,
+            'registry': None,
+            'allocated': None,
+            'is_cloud_provider': False,
+            'cloud_provider': None
+        }
+
+        # Known cloud provider ASNs for quick detection
+        cloud_asns = {
+            8075: 'Microsoft Azure',
+            14618: 'Amazon AWS',
+            16509: 'Amazon AWS',
+            15169: 'Google Cloud',
+            396982: 'Google Cloud',
+            13335: 'Cloudflare',
+            20940: 'Akamai',
+            54113: 'Fastly',
+            16276: 'OVH',
+            24940: 'Hetzner',
+            14061: 'DigitalOcean',
+            63949: 'Linode/Akamai',
+            46844: 'Oracle Cloud',
+            36351: 'SoftLayer/IBM',
+            19551: 'Incapsula',
+            209242: 'Cloudflare',
+            132203: 'Tencent Cloud',
+            45090: 'Tencent Cloud',
+            37963: 'Alibaba Cloud',
+            45102: 'Alibaba Cloud',
+        }
+
+        # Step 1: Team Cymru DNS lookup (ASN)
+        try:
+            # Reverse the IP octets for the DNS query
+            octets = ip_address.split('.')
+            reversed_ip = '.'.join(reversed(octets))
+
+            # Query origin.asn.cymru.com for ASN info
+            origin_query = f"{reversed_ip}.origin.asn.cymru.com"
+            try:
+                origin_answer = socket.gethostbyname_ex(origin_query)
+                # This returns TXT-like data in TXT record format
+                # Actually, we need to do a TXT lookup
+            except:
+                pass
+
+            # Use DNS TXT query via subprocess for reliability
+            import subprocess
+
+            # Get ASN origin info
+            dig_result = await asyncio.to_thread(
+                subprocess.run,
+                ['dig', '+short', origin_query, 'TXT'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if dig_result.returncode == 0 and dig_result.stdout.strip():
+                # Parse: "8075 | 52.224.0.0/11 | US | arin | 2015-07-09"
+                txt = dig_result.stdout.strip().strip('"')
+                parts = [p.strip() for p in txt.split('|')]
+                if len(parts) >= 5:
+                    result['asn'] = int(parts[0]) if parts[0].isdigit() else None
+                    result['ip_range'] = parts[1]
+                    result['country'] = parts[2]
+                    result['registry'] = parts[3]
+                    result['allocated'] = parts[4]
+
+                    # Check if this is a cloud provider
+                    if result['asn'] in cloud_asns:
+                        result['is_cloud_provider'] = True
+                        result['cloud_provider'] = cloud_asns[result['asn']]
+
+            # Get ASN name
+            if result['asn']:
+                asn_query = f"AS{result['asn']}.asn.cymru.com"
+                asn_result = await asyncio.to_thread(
+                    subprocess.run,
+                    ['dig', '+short', asn_query, 'TXT'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+
+                if asn_result.returncode == 0 and asn_result.stdout.strip():
+                    # Parse: "8075 | US | arin | 2010-01-27 | MICROSOFT-CORP-MSN-AS-BLOCK, US"
+                    txt = asn_result.stdout.strip().strip('"')
+                    parts = [p.strip() for p in txt.split('|')]
+                    if len(parts) >= 5:
+                        result['asn_name'] = parts[4]
+                        result['organization'] = parts[4].split(',')[0].strip()
+
+        except Exception as e:
+            logger.warning(f"Team Cymru DNS lookup failed for {ip_address}: {e}")
+
+        # Step 2: Try ipinfo.io for additional details (has free tier: 50k/month)
+        ipinfo_token = os.environ.get('IPINFO_TOKEN')
+        try:
+            import aiohttp
+
+            url = f"https://ipinfo.io/{ip_address}/json"
+            headers = {}
+            if ipinfo_token:
+                headers['Authorization'] = f'Bearer {ipinfo_token}'
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers, timeout=5) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+
+                        # Only override if we didn't get data from Team Cymru
+                        if not result['organization'] and data.get('org'):
+                            # org format: "AS8075 Microsoft Corporation"
+                            org = data.get('org', '')
+                            if org.startswith('AS'):
+                                parts = org.split(' ', 1)
+                                if len(parts) > 1:
+                                    result['organization'] = parts[1]
+                                if not result['asn']:
+                                    try:
+                                        result['asn'] = int(parts[0][2:])
+                                    except:
+                                        pass
+
+                        if not result['country'] and data.get('country'):
+                            result['country'] = data.get('country')
+
+                        # Additional useful fields from ipinfo
+                        result['city'] = data.get('city')
+                        result['region'] = data.get('region')
+                        result['hostname'] = data.get('hostname')
+
+                        # Check company field for cloud detection
+                        if data.get('company', {}).get('type') == 'hosting':
+                            result['is_hosting'] = True
+
+        except Exception as e:
+            logger.debug(f"ipinfo.io lookup failed for {ip_address}: {e}")
+
+        # Determine provider type
+        if result['organization']:
+            org_lower = result['organization'].lower()
+            hosting_keywords = ['hosting', 'cloud', 'datacenter', 'data center', 'vps', 'server',
+                              'amazon', 'microsoft', 'google', 'digitalocean', 'linode', 'vultr',
+                              'ovh', 'hetzner', 'cloudflare', 'akamai', 'fastly']
+            if any(kw in org_lower for kw in hosting_keywords):
+                result['is_hosting'] = True
+
+        return result
+
     # analyze_ip
     async def analyze_ip(self, params: Dict) -> Dict:
         """Implement analyze_ip tool"""
@@ -3415,6 +3598,18 @@ TOOL_DEFINITIONS = [
                         "domain": {"type": "string", "description": "Domain name to resolve (e.g., google.com, poort.net)"}
                     },
                     "required": ["domain"]
+                },
+                "scope_required": "read_only"
+            },
+            {
+                "name": "lookup_ip_owner",
+                "description": "Look up IP address ownership information. Returns ASN, organization name, country, cloud provider detection (AWS, Azure, GCP, etc.), and IP range. Uses Team Cymru DNS (free) and ipinfo.io.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "ip_address": {"type": "string", "description": "IP address to look up (e.g., 52.236.189.96, 8.8.8.8)"}
+                    },
+                    "required": ["ip_address"]
                 },
                 "scope_required": "read_only"
             },
