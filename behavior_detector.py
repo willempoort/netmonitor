@@ -389,22 +389,49 @@ class BehaviorDetector:
     def cleanup_old_data(self):
         """Cleanup oude tracking data (call periodiek)"""
         current_time = time.time()
+        max_dest_ips = 500  # Max destination IPs to track per source
+        max_scanned_ips = 1000  # Max scanned IPs to track per source
 
-        # Cleanup outbound volume trackers (ouder dan 1 uur)
+        # Cleanup outbound volume trackers (ouder dan 30 minuten - was 1 uur)
+        outbound_cleaned = 0
         for ip in list(self.outbound_volume.keys()):
             tracker = self.outbound_volume[ip]
-            if current_time - tracker['last_reset'] > 3600:
+            if current_time - tracker['last_reset'] > 1800:  # 30 min
                 del self.outbound_volume[ip]
+                outbound_cleaned += 1
+            else:
+                # Limit dest_ips to prevent memory leak
+                if len(tracker['dest_ips']) > max_dest_ips:
+                    # Keep only top IPs by bytes
+                    sorted_ips = sorted(tracker['dest_ips'].items(), key=lambda x: x[1], reverse=True)
+                    tracker['dest_ips'] = defaultdict(int, dict(sorted_ips[:max_dest_ips]))
 
-        # Cleanup lateral movement trackers
+        # Cleanup lateral movement trackers (ouder dan 5 minuten - was 10 min)
+        lateral_cleaned = 0
         for ip in list(self.lateral_tracker.keys()):
             tracker = self.lateral_tracker[ip]
-            if tracker['last_seen'] and (current_time - tracker['last_seen']) > 600:
+            if tracker['last_seen'] and (current_time - tracker['last_seen']) > 300:  # 5 min
                 del self.lateral_tracker[ip]
+                lateral_cleaned += 1
+            else:
+                # Limit scanned_ips to prevent memory leak
+                if len(tracker['scanned_ips']) > max_scanned_ips:
+                    tracker['scanned_ips'] = set(list(tracker['scanned_ips'])[-max_scanned_ips:])
 
-        # Cleanup old beacons
+        # Cleanup old beacons (ouder dan 30 minuten - was 1 uur)
+        beacons_cleaned = 0
         for key in list(self.known_beacons.keys()):
-            if current_time - self.known_beacons[key] > 3600:
+            if current_time - self.known_beacons[key] > 1800:  # 30 min
                 del self.known_beacons[key]
+                beacons_cleaned += 1
 
-        self.logger.debug("Behavior tracking data opgeschoond")
+        # Cleanup empty connection tracker entries
+        conn_cleaned = 0
+        for ip in list(self.connection_tracker.keys()):
+            if not self.connection_tracker[ip]:  # Empty deque
+                del self.connection_tracker[ip]
+                conn_cleaned += 1
+
+        if outbound_cleaned + lateral_cleaned + beacons_cleaned + conn_cleaned > 0:
+            self.logger.debug(f"Behavior cleanup: outbound={outbound_cleaned}, lateral={lateral_cleaned}, "
+                            f"beacons={beacons_cleaned}, conn={conn_cleaned}")

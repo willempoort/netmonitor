@@ -163,9 +163,12 @@ class ThreatDetector:
         self.protocol_mismatch_tracker = defaultdict(lambda: deque(maxlen=50))
 
         # TLS metadata tracker - stores recent TLS handshake data
-        # Key: (src_ip, dst_ip, dst_port), Value: TLS metadata dict
-        self.tls_metadata_cache = defaultdict(dict)
+        # Key: (src_ip, dst_ip, dst_port), Value: TLS metadata dict with timestamp
+        # Limited to prevent memory leak - entries older than 5 minutes are cleaned
+        self.tls_metadata_cache = {}  # Changed from defaultdict to dict for better cleanup
         self.tls_metadata_history = deque(maxlen=1000)  # Recent TLS connections
+        self.TLS_CACHE_MAX_SIZE = 10000  # Maximum entries in TLS cache
+        self.TLS_CACHE_TTL = 300  # 5 minutes TTL for cache entries
 
         # Advanced threat detection trackers
         self.cryptomining_tracker = defaultdict(lambda: {
@@ -1439,9 +1442,19 @@ class ThreatDetector:
         src_ip = ip_layer.src
         dst_ip = ip_layer.dst
 
-        # Store metadata for MCP access
+        # Store metadata for MCP access (with timestamp for cleanup)
         conn_key = (src_ip, dst_ip, tls_metadata.get('dst_port'))
-        self.tls_metadata_cache[conn_key].update(tls_metadata)
+        tls_metadata['_cached_at'] = time.time()
+
+        # Limit cache size to prevent memory leak
+        if len(self.tls_metadata_cache) >= self.TLS_CACHE_MAX_SIZE:
+            # Remove oldest 10% of entries
+            sorted_keys = sorted(self.tls_metadata_cache.keys(),
+                                key=lambda k: self.tls_metadata_cache[k].get('_cached_at', 0))
+            for old_key in sorted_keys[:len(sorted_keys) // 10]:
+                del self.tls_metadata_cache[old_key]
+
+        self.tls_metadata_cache[conn_key] = tls_metadata
         self.tls_metadata_history.append(tls_metadata)
 
         # Check for known malicious JA3 fingerprint
@@ -3986,5 +3999,22 @@ class ThreatDetector:
             if tracker['first_seen'] and \
                (current_time - tracker['first_seen']) > 1800:
                 del self.credential_dumping_tracker[ip]
+
+        # Cleanup TLS metadata cache (entries older than TTL)
+        tls_cache_cleaned = 0
+        for conn_key in list(self.tls_metadata_cache.keys()):
+            cached_at = self.tls_metadata_cache[conn_key].get('_cached_at', 0)
+            if (current_time - cached_at) > self.TLS_CACHE_TTL:
+                del self.tls_metadata_cache[conn_key]
+                tls_cache_cleaned += 1
+        if tls_cache_cleaned > 0:
+            self.logger.debug(f"TLS cache: {tls_cache_cleaned} oude entries verwijderd, {len(self.tls_metadata_cache)} over")
+
+        # Cleanup connection tracker - remove empty entries
+        conn_tracker_cleaned = 0
+        for ip in list(self.connection_tracker.keys()):
+            if not self.connection_tracker[ip]:  # Empty deque
+                del self.connection_tracker[ip]
+                conn_tracker_cleaned += 1
 
         self.logger.debug("Oude tracking data opgeschoond")
