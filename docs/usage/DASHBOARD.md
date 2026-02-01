@@ -76,6 +76,12 @@ Klik op de **AbuseIPDB** kaart onder Threat Intelligence integraties om gedetail
   - IPs met AbuseIPDB score
   - Lookups in afgelopen 24 uur en 7 dagen
 
+- **API Usage**:
+  - API Calls Today: Aantal API calls naar AbuseIPDB vandaag
+  - Cache Hits Today: Aantal cache hits vandaag (bespaart API calls)
+  - Total API Calls: Totaal aantal API calls ooit gemaakt
+  - Total Cache Hits: Totaal aantal cache hits
+
 - **Score Distribution**:
   - Critical (80-100): Zeer gevaarlijke IPs
   - High (50-79): Hoog risico IPs

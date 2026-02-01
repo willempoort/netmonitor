@@ -206,9 +206,12 @@ De cache wordt opgeslagen in de `threat_intel_ip_cache` tabel met de volgende ve
 
 Klik op de **AbuseIPDB** integratie kaart in het dashboard om statistieken te bekijken:
 - **Cache Overzicht**: Totaal gecachte IPs, entries met score, lookups (24h/7d)
+- **API Usage**: API calls vandaag, cache hits vandaag, totaal API calls, totaal cache hits
 - **Score Distributie**: Verdeling over Critical/High/Medium/Low/Clean
 - **Top Malicious IPs**: Top 10 IPs met hoogste abuse scores
 - **Recent Lookups**: Laatste 20 IP lookups met timestamps
+
+De API call statistieken worden bijgehouden in de `abuseipdb_api_stats` tabel per dag. Dit helpt bij het monitoren van API usage en rate limit management.
 
 ---
 
