@@ -189,6 +189,27 @@ integrations:
       timeout: 30
 ```
 
+#### Persistent Database Caching
+
+AbuseIPDB lookups worden automatisch gecached in de PostgreSQL database voor 24 uur. Dit biedt:
+- **API Rate Limit Bescherming**: Herhaalde lookups voor dezelfde IPs gebruiken geen API quota
+- **Persistentie over Restarts**: Cache blijft behouden na herstart van NetMonitor
+- **Snellere Response**: Gecachte lookups zijn direct beschikbaar zonder API call
+
+De cache wordt opgeslagen in de `threat_intel_ip_cache` tabel met de volgende velden:
+- `abuseipdb_score`: Abuse confidence score (0-100)
+- `abuseipdb_reports`: Aantal abuse reports
+- `abuseipdb_last_reported`: Datum van laatste report
+- `is_tor_exit`, `is_vpn`, `is_proxy`, `is_datacenter`: Type classificatie
+
+#### Dashboard Statistieken
+
+Klik op de **AbuseIPDB** integratie kaart in het dashboard om statistieken te bekijken:
+- **Cache Overzicht**: Totaal gecachte IPs, entries met score, lookups (24h/7d)
+- **Score Distributie**: Verdeling over Critical/High/Medium/Low/Clean
+- **Top Malicious IPs**: Top 10 IPs met hoogste abuse scores
+- **Recent Lookups**: Laatste 20 IP lookups met timestamps
+
 ---
 
 ## Volledige Configuratie Voorbeeld

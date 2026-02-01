@@ -95,6 +95,28 @@ Algemene hulpmiddelen:
 - `web_search` - Internet zoeken via DuckDuckGo (of SearXNG)
 - `dns_lookup` - Domein naar IP resolutie
 - `get_top_talkers` - Top communicerende hosts met device context
+- `lookup_ip_owner` - IP eigenaar/ASN lookup via Team Cymru DNS (gratis, geen API key nodig)
+
+#### lookup_ip_owner Tool
+Lookup IP eigenaar informatie inclusief:
+- **ASN** (Autonomous System Number)
+- **Organization** (eigenaar van het IP range)
+- **IP Range** (CIDR block)
+- **Country** (land code)
+- **Cloud Provider Detection** (AWS, Azure, GCP, DigitalOcean, etc.)
+
+Voorbeeld output:
+```json
+{
+  "ip": "52.236.189.96",
+  "asn": "AS8075",
+  "organization": "MICROSOFT-CORP-MSN-AS-BLOCK",
+  "ip_range": "52.224.0.0/11",
+  "country": "US",
+  "is_cloud_provider": true,
+  "cloud_provider": "Microsoft Azure"
+}
+```
 
 **Volledige lijst:** `curl -H "Authorization: Bearer TOKEN" http://localhost:8000/mcp/tools`
 
