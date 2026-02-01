@@ -2676,9 +2676,16 @@ window.showAbuseIPDBStats = function() {
             document.getElementById('abuseipdbClean').textContent = data.scores.clean.toLocaleString();
 
             // Update API usage stats
+            const rateLimit = 1000; // Free tier limit
             if (data.today) {
                 document.getElementById('abuseipdbTodayAPICalls').textContent = data.today.api_calls.toLocaleString();
                 document.getElementById('abuseipdbTodayCacheHits').textContent = data.today.cache_hits.toLocaleString();
+                const remaining = Math.max(0, rateLimit - data.today.api_calls);
+                document.getElementById('abuseipdbRemainingCalls').textContent = remaining.toLocaleString();
+            } else {
+                document.getElementById('abuseipdbTodayAPICalls').textContent = '0';
+                document.getElementById('abuseipdbTodayCacheHits').textContent = '0';
+                document.getElementById('abuseipdbRemainingCalls').textContent = rateLimit.toLocaleString();
             }
             if (data.api_stats) {
                 document.getElementById('abuseipdbTotalAPICalls').textContent = data.api_stats.total_api_calls.toLocaleString();
