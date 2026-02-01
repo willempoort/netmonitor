@@ -1952,46 +1952,38 @@
                     </div>
                     <!-- Content -->
                     <div id="abuseipdbContent" style="display: none;">
-                        <!-- Summary Cards -->
+                        <!-- Summary Cards - AbuseIPDB specific only -->
                         <div class="row mb-4">
-                            <div class="col-md-3">
+                            <div class="col-md-4">
                                 <div class="card bg-secondary border-0">
                                     <div class="card-body text-center">
                                         <h3 class="mb-0" id="abuseipdbWithScore">-</h3>
-                                        <small class="text-light">AbuseIPDB Lookups</small>
+                                        <small class="text-light">Unique IPs Checked</small>
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-4">
                                 <div class="card bg-secondary border-0">
                                     <div class="card-body text-center">
-                                        <h3 class="mb-0" id="abuseipdbTotalEntries">-</h3>
-                                        <small class="text-light">Threat Intel Cache</small>
+                                        <h3 class="mb-0" id="abuseipdbTotalAPICalls">-</h3>
+                                        <small class="text-light">Total API Calls</small>
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-4">
                                 <div class="card bg-secondary border-0">
                                     <div class="card-body text-center">
-                                        <h3 class="mb-0" id="abuseipdbLast24h">-</h3>
-                                        <small class="text-light">Cache Updates (24h)</small>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="card bg-secondary border-0">
-                                    <div class="card-body text-center">
-                                        <h3 class="mb-0" id="abuseipdbLast7d">-</h3>
-                                        <small class="text-light">Cache Updates (7d)</small>
+                                        <h3 class="mb-0" id="abuseipdbTotalCacheHits">-</h3>
+                                        <small class="text-light">Cache Hits (saved API calls)</small>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- API Usage Stats -->
+                        <!-- Today's API Usage -->
                         <div class="row mb-4">
                             <div class="col-12">
-                                <h6 class="text-muted mb-3"><i class="bi bi-graph-up"></i> API Usage</h6>
+                                <h6 class="text-muted mb-3"><i class="bi bi-calendar-day"></i> Today's Usage (Rate Limit: 1000/day)</h6>
                                 <div class="d-flex justify-content-between gap-2">
                                     <div class="flex-fill text-center p-2 bg-primary bg-opacity-25 rounded">
                                         <h4 class="mb-0 text-primary" id="abuseipdbTodayAPICalls">-</h4>
@@ -2001,13 +1993,9 @@
                                         <h4 class="mb-0 text-success" id="abuseipdbTodayCacheHits">-</h4>
                                         <small>Cache Hits Today</small>
                                     </div>
-                                    <div class="flex-fill text-center p-2 bg-info bg-opacity-25 rounded">
-                                        <h4 class="mb-0 text-info" id="abuseipdbTotalAPICalls">-</h4>
-                                        <small>Total API Calls</small>
-                                    </div>
-                                    <div class="flex-fill text-center p-2 bg-secondary bg-opacity-50 rounded">
-                                        <h4 class="mb-0 text-light" id="abuseipdbTotalCacheHits">-</h4>
-                                        <small>Total Cache Hits</small>
+                                    <div class="flex-fill text-center p-2 bg-warning bg-opacity-25 rounded">
+                                        <h4 class="mb-0 text-warning" id="abuseipdbRemainingCalls">-</h4>
+                                        <small>Remaining Today</small>
                                     </div>
                                 </div>
                             </div>
@@ -2473,7 +2461,7 @@
     </script>
 
     <!-- Custom JS - Load last with defer -->
-    <script src="{{ url_for('static', filename='js/dashboard.js') }}?v=6" defer></script>
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}?v=7" defer></script>
     <script src="{{ url_for('static', filename='js/config-management.js') }}?v=4" defer></script>
     <script src="{{ url_for('static', filename='js/device-classification.js') }}?v=10" defer></script>
 
