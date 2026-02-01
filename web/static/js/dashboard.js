@@ -2662,11 +2662,8 @@ window.showAbuseIPDBStats = function() {
                 throw new Error(data.error || 'Failed to load statistics');
             }
 
-            // Update summary cards
-            document.getElementById('abuseipdbTotalEntries').textContent = data.cache.total_entries.toLocaleString();
+            // Update summary cards (unique IPs checked via AbuseIPDB)
             document.getElementById('abuseipdbWithScore').textContent = data.cache.entries_with_score.toLocaleString();
-            document.getElementById('abuseipdbLast24h').textContent = data.cache.entries_last_24h.toLocaleString();
-            document.getElementById('abuseipdbLast7d').textContent = data.cache.entries_last_7d.toLocaleString();
 
             // Update score distribution
             document.getElementById('abuseipdbCritical').textContent = data.scores.critical.toLocaleString();
