@@ -333,11 +333,15 @@ class KillChainDetector:
 
                 # Check for stage progression
                 if stage > prev_max_stage:
-                    generated_alerts.append(self._create_progression_alert(chain, event))
+                    progression_alert = self._create_progression_alert(chain, event)
+                    if progression_alert:  # Skip if None (no distinct source/destination)
+                        generated_alerts.append(progression_alert)
 
                 # Check for high-risk chain
                 if chain.risk_score >= 50 and len(chain.events) >= 5:
-                    generated_alerts.append(self._create_high_risk_alert(chain))
+                    high_risk_alert = self._create_high_risk_alert(chain)
+                    if high_risk_alert:  # Skip if None (no distinct source/destination)
+                        generated_alerts.append(high_risk_alert)
 
         else:
             # Check if we should start a new chain
@@ -356,7 +360,9 @@ class KillChainDetector:
 
                 # Check if this is an interesting chain
                 if len(chain.stages_observed) >= self.min_stages_for_chain:
-                    generated_alerts.append(self._create_new_chain_alert(chain))
+                    new_chain_alert = self._create_new_chain_alert(chain)
+                    if new_chain_alert:  # Skip if None (no distinct source/destination)
+                        generated_alerts.append(new_chain_alert)
 
         return generated_alerts
 
@@ -509,9 +515,15 @@ class KillChainDetector:
 
         return source_ip, destination_ip
 
-    def _create_new_chain_alert(self, chain: AttackChain) -> Dict:
-        """Create alert for new attack chain detection."""
+    def _create_new_chain_alert(self, chain: AttackChain) -> Optional[Dict]:
+        """Create alert for new attack chain detection. Returns None if no valid alert can be created."""
         source_ip, destination_ip = self._get_distinct_source_and_target(chain)
+
+        # Don't create alert if we can't determine distinct source and destination
+        if not source_ip or not destination_ip or source_ip == destination_ip:
+            self.logger.debug(f"Skipping chain alert for {chain.chain_id}: no distinct source/destination")
+            return None
+
         return {
             'type': 'ATTACK_CHAIN_DETECTED',
             'severity': 'HIGH' if chain.risk_score >= 30 else 'MEDIUM',
@@ -532,13 +544,23 @@ class KillChainDetector:
             }
         }
 
-    def _create_progression_alert(self, chain: AttackChain, new_event: AttackChainEvent) -> Dict:
-        """Create alert for attack chain progression."""
+    def _create_progression_alert(self, chain: AttackChain, new_event: AttackChainEvent) -> Optional[Dict]:
+        """Create alert for attack chain progression. Returns None if source == destination."""
+        source_ip = new_event.source_ip
+        destination_ip = new_event.destination_ip
+
+        # Don't create alert if source == destination
+        if not source_ip or not destination_ip or source_ip == destination_ip:
+            # Try to use chain-level IPs instead
+            source_ip, destination_ip = self._get_distinct_source_and_target(chain)
+            if not source_ip or not destination_ip or source_ip == destination_ip:
+                return None
+
         return {
             'type': 'ATTACK_CHAIN_PROGRESSION',
             'severity': 'HIGH' if new_event.stage >= AttackStage.LATERAL_MOVEMENT else 'MEDIUM',
-            'source_ip': new_event.source_ip,
-            'destination_ip': new_event.destination_ip,
+            'source_ip': source_ip,
+            'destination_ip': destination_ip,
             'description': f'Attack chain progressed to {new_event.stage.name}: {new_event.description}',
             'details': {
                 'chain_id': chain.chain_id,
@@ -550,9 +572,15 @@ class KillChainDetector:
             }
         }
 
-    def _create_high_risk_alert(self, chain: AttackChain) -> Dict:
-        """Create alert for high-risk attack chain."""
+    def _create_high_risk_alert(self, chain: AttackChain) -> Optional[Dict]:
+        """Create alert for high-risk attack chain. Returns None if no valid alert can be created."""
         source_ip, destination_ip = self._get_distinct_source_and_target(chain)
+
+        # Don't create alert if we can't determine distinct source and destination
+        if not source_ip or not destination_ip or source_ip == destination_ip:
+            self.logger.debug(f"Skipping high-risk alert for chain {chain.chain_id}: no distinct source/destination")
+            return None
+
         return {
             'type': 'HIGH_RISK_ATTACK_CHAIN',
             'severity': 'CRITICAL',
