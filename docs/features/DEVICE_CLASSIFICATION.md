@@ -76,8 +76,10 @@ De ML classifier herkent de volgende apparaattypes:
 | `printer` | Netwerkprinters | IPP (631), LPD (515), SMB |
 | `smart_speaker` | Smart speakers (Alexa, etc.) | Voice services, streaming |
 | `mobile` | Smartphones/tablets | WiFi, diverse apps |
-| `network_device` | Routers/switches | Management poorten, SNMP |
+| `network_device` | Routers/switches/firewalls | Management poorten, SNMP |
 | `unknown` | Onbekend | Onvoldoende data |
+
+**Let op:** VMware/Proxmox virtuele machines worden **niet** automatisch geclassificeerd. De admin moet handmatig het juiste template toewijzen (Web Server, File Server, Database Server, etc.) afhankelijk van de rol van de VM.
 
 ### Feature Extraction (28 features)
 
@@ -306,7 +308,7 @@ CREATE TABLE template_behaviors (
 CREATE TABLE service_providers (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
-    category VARCHAR(50) NOT NULL,  -- 'streaming', 'cdn', 'cloud', etc.
+    category VARCHAR(50) NOT NULL,  -- 'streaming', 'cdn', 'cloud', 'social', 'gaming', 'rmm', 'other'
     ip_ranges JSONB DEFAULT '[]',
     domains JSONB DEFAULT '[]',
     description TEXT,
@@ -314,6 +316,17 @@ CREATE TABLE service_providers (
     is_builtin BOOLEAN DEFAULT FALSE
 );
 ```
+
+**Categorieën:**
+| Category | Beschrijving | Voorbeelden |
+|----------|--------------|-------------|
+| `streaming` | Video/audio streaming diensten | Netflix, YouTube, Spotify, Disney+ |
+| `cdn` | Content Delivery Networks | Cloudflare, Akamai, CloudFront |
+| `cloud` | Cloud platforms | AWS, Azure, Google Cloud |
+| `social` | Social media platforms | Facebook, Twitter, Instagram |
+| `gaming` | Gaming platforms | Steam, Xbox Live, PlayStation Network |
+| `rmm` | Remote Monitoring & Management | Datto, ConnectWise, NinjaOne, TeamViewer |
+| `other` | Overige providers | Custom providers |
 
 ---
 
@@ -353,13 +366,37 @@ Grid view van alle device templates met:
 
 #### Service Providers Tab
 
-Tabel van streaming/CDN providers:
-- Netflix, Spotify, YouTube, etc. (built-in)
+Tabel van streaming/CDN/RMM providers:
+- Netflix, Spotify, YouTube, etc. (built-in streaming)
+- Cloudflare, Akamai, CloudFront (built-in CDN)
+- Datto, ConnectWise, NinjaOne, TeamViewer (built-in RMM)
 - Custom providers toevoegen
 
 **Gebruik:**
 - Traffic naar bekende providers wordt niet als verdacht gemarkeerd
 - Streaming devices kunnen hoge bandwidth hebben zonder alerts
+- RMM tools (Datto RMM, etc.) worden gefilterd als in `allowed_service_categories`
+
+#### Global Service Category Filtering (NEW)
+
+NetMonitor ondersteunt **globale filtering** van service provider categorieën via `config.yaml`:
+
+```yaml
+alerts:
+  allowed_service_categories:
+    - streaming    # Netflix, YouTube, etc.
+    - cdn          # Cloudflare, Akamai, etc.
+    - rmm          # Datto, ConnectWise, TeamViewer, etc.
+```
+
+**Werking:**
+- Traffic naar providers in deze categorieën genereert **geen alerts** (ongeacht device template)
+- Dit is **globaal** - geldt voor ALLE devices in het netwerk
+- Handig voor RMM tools die op vele devices geïnstalleerd zijn
+- Device-specifieke filtering via templates blijft ook beschikbaar
+
+**Beschikbare categorieën:**
+`streaming`, `cdn`, `cloud`, `social`, `gaming`, `rmm`, `other`
 
 #### Statistics Tab
 
@@ -684,11 +721,20 @@ De volgende templates worden automatisch aangemaakt:
 | Home Automation Hub | IoT | HTTP (8123), MQTT, **inbound van smart devices** |
 | NAS/File Server | Server | SMB (445), NFS, AFP, **inbound file access** |
 | Web Server | Server | HTTP (80), HTTPS (443), **inbound web requests** |
-| Database Server | Server | MySQL, PostgreSQL, MongoDB, **inbound queries** |
+| Database Server | Server | MySQL (3306), PostgreSQL (5432), MongoDB (27017), **inbound queries** |
+| File Server | Server | SMB (445), NFS (2049), **inbound file access** |
+| Print Server | Server | IPP (631), LPD (515), JetDirect (9100), **inbound print jobs** |
 | Workstation | Endpoint | Mixed traffic, web browsing |
 | Mobile Device | Endpoint | App traffic, sync services |
 | UniFi Controller | Server | 8443, 8080, STUN, **inbound van APs** |
 | UniFi Controller Client | Infrastructure | 8443, 8080, naar controller IP |
+
+**VMware/Proxmox VMs:**
+Virtuele machines worden niet automatisch aan een template toegewezen. Kies het juiste template op basis van de VM-functie:
+- **Web Server** - voor web applicaties
+- **Database Server** - voor database servers (MySQL, PostgreSQL, etc.)
+- **File Server** - voor file shares
+- **Print Server** - voor print servers
 
 ### Template Cloning
 
@@ -878,4 +924,4 @@ Use the add_template_behavior tool via Claude Code or other MCP clients
 
 ---
 
-**Last Updated:** December 2024
+**Last Updated:** February 2026

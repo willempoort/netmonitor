@@ -475,7 +475,14 @@ NetMonitor includes built-in templates that cannot be modified:
 psql -U netmonitor -d netmonitor -c "SELECT name, category FROM device_templates WHERE is_builtin = true;"
 ```
 
-Built-in templates include: IP Camera, Smart TV, Network Printer, Router/Firewall, DNS Server, Web Server, Workstation.
+Built-in templates include: IP Camera, Smart TV, Network Printer, Router/Firewall, DNS Server, Web Server, Database Server, File Server, Print Server, Workstation.
+
+**Let op VMware/Proxmox VMs:**
+Virtuele machines worden **niet** automatisch geclassificeerd. De admin moet handmatig het juiste template kiezen op basis van de VM-functie:
+- **Web Server** - voor web applicaties
+- **Database Server** - voor MySQL, PostgreSQL, MongoDB servers
+- **File Server** - voor file shares (SMB, NFS)
+- **Print Server** - voor print servers
 
 ### Template Management via CLI
 
@@ -504,9 +511,23 @@ VALUES (
 
 ### Service Provider Management
 
+Service providers zijn bekende diensten (streaming, CDN, RMM) waarvan verkeer gefilterd kan worden.
+
+**Beschikbare categorieën:**
+
+| Category | Beschrijving | Voorbeelden |
+|----------|--------------|-------------|
+| `streaming` | Video/audio streaming | Netflix, YouTube, Spotify |
+| `cdn` | Content Delivery Networks | Cloudflare, Akamai, CloudFront |
+| `cloud` | Cloud platforms | AWS, Azure, Google Cloud |
+| `social` | Social media | Facebook, Twitter, Instagram |
+| `gaming` | Gaming platforms | Steam, Xbox Live, PSN |
+| `rmm` | Remote Monitoring & Management | Datto, ConnectWise, NinjaOne, TeamViewer |
+| `other` | Custom providers | User-defined |
+
 **List built-in providers:**
 ```bash
-psql -U netmonitor -d netmonitor -c "SELECT name, category FROM service_providers WHERE is_builtin = true;"
+psql -U netmonitor -d netmonitor -c "SELECT name, category FROM service_providers WHERE is_builtin = true ORDER BY category, name;"
 ```
 
 **Add custom provider:**
@@ -521,6 +542,40 @@ VALUES (
     false
 );
 ```
+
+### Global Service Category Filtering (NEW)
+
+NetMonitor kan verkeer naar bepaalde service provider categorieën **globaal** filteren (zonder device templates).
+
+**Configuratie in config.yaml:**
+```yaml
+alerts:
+  max_per_minute: 100
+  # Global filtering - traffic naar deze categorieën genereert geen alerts
+  allowed_service_categories:
+    - streaming    # Netflix, YouTube, etc.
+    - cdn          # Cloudflare, Akamai, etc.
+    - rmm          # Datto, ConnectWise, TeamViewer, etc.
+```
+
+**Use case: RMM tooling**
+
+Veel organisaties gebruiken RMM tools (Datto RMM, ConnectWise, etc.) die op alle beheerde devices draaien. Zonder filtering genereren deze tools veel false positive alerts. Door `rmm` toe te voegen aan `allowed_service_categories`:
+- ✅ Geen alerts meer voor RMM verkeer
+- ✅ Geldt voor ALLE devices automatisch
+- ✅ Geen device templates configuratie nodig
+
+**Built-in RMM providers:**
+- Datto RMM
+- ConnectWise ScreenConnect
+- NinjaOne (NinjaRMM)
+- TeamViewer
+- AnyDesk
+- Microsoft Intune
+- Kaseya VSA
+- SolarWinds RMM
+- Pulseway
+- Atera
 
 ### Device Discovery Configuration
 
@@ -2497,5 +2552,5 @@ See [USER_MANUAL.md](USER_MANUAL.md) for daily usage guide.
 
 ---
 
-*Last updated: December 2025*
-*NetMonitor SOC v2.2 - Centralized Security Operations with NIS2 Compliance*
+*Last updated: February 2026*
+*NetMonitor SOC v2.3 - Centralized Security Operations with NIS2 Compliance*

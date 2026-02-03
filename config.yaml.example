@@ -85,9 +85,16 @@ logging:
   console: true
   syslog: false
 
-# Alert rate limiting
+# Alert rate limiting and filtering
 alerts:
   max_per_minute: 100
+  # Global service provider filtering - traffic to these categories is allowed for ALL devices
+  # This suppresses alerts for traffic to known service providers in these categories
+  # Available: streaming, cdn, cloud, social, gaming, rmm, other
+  # allowed_service_categories:
+  #   - streaming    # Netflix, YouTube, Spotify, etc.
+  #   - cdn          # Cloudflare, Akamai, CloudFront
+  #   - rmm          # Datto, ConnectWise, TeamViewer, NinjaOne, etc. - Uncomment for MSP environments
 
 # ============================================================================
 # DETECTION THRESHOLDS (Minimal - Most settings from defaults)
