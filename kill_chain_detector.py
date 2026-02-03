@@ -487,13 +487,36 @@ class KillChainDetector:
         # Normalize to 0-100
         return min(100.0, score)
 
+    def _get_distinct_source_and_target(self, chain: AttackChain) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Get distinct source and destination IPs for an alert.
+        Ensures source_ip != destination_ip when possible.
+        """
+        source_ip = list(chain.source_ips)[0] if chain.source_ips else None
+
+        # Try to find a target IP that's different from source
+        if chain.target_ips:
+            # Prefer a target that's not also a source
+            distinct_targets = chain.target_ips - chain.source_ips
+            if distinct_targets:
+                destination_ip = list(distinct_targets)[0]
+            else:
+                # All targets are also sources - pick one that's different from our chosen source
+                other_targets = [ip for ip in chain.target_ips if ip != source_ip]
+                destination_ip = other_targets[0] if other_targets else None
+        else:
+            destination_ip = None
+
+        return source_ip, destination_ip
+
     def _create_new_chain_alert(self, chain: AttackChain) -> Dict:
         """Create alert for new attack chain detection."""
+        source_ip, destination_ip = self._get_distinct_source_and_target(chain)
         return {
             'type': 'ATTACK_CHAIN_DETECTED',
             'severity': 'HIGH' if chain.risk_score >= 30 else 'MEDIUM',
-            'source_ip': list(chain.source_ips)[0] if chain.source_ips else None,
-            'destination_ip': list(chain.target_ips)[0] if chain.target_ips else None,
+            'source_ip': source_ip,
+            'destination_ip': destination_ip,
             'description': f'Multi-stage attack chain detected: {len(chain.events)} events across {len(chain.stages_observed)} stages',
             'details': {
                 'chain_id': chain.chain_id,
@@ -529,11 +552,12 @@ class KillChainDetector:
 
     def _create_high_risk_alert(self, chain: AttackChain) -> Dict:
         """Create alert for high-risk attack chain."""
+        source_ip, destination_ip = self._get_distinct_source_and_target(chain)
         return {
             'type': 'HIGH_RISK_ATTACK_CHAIN',
             'severity': 'CRITICAL',
-            'source_ip': list(chain.source_ips)[0] if chain.source_ips else None,
-            'destination_ip': list(chain.target_ips)[0] if chain.target_ips else None,
+            'source_ip': source_ip,
+            'destination_ip': destination_ip,
             'description': f'High-risk attack chain (score: {chain.risk_score:.0f}): {chain._get_progression()}',
             'details': {
                 'chain_id': chain.chain_id,
