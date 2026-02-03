@@ -211,6 +211,42 @@ thresholds:
 # Sensor override (nano-dmz-01): DNS tunnel threshold = 30 (stricter for DMZ)
 ```
 
+### Global Service Category Filtering (NEW)
+
+NetMonitor kan verkeer naar bepaalde service provider categorieën **globaal** filteren. Dit is handig voor:
+- **RMM tools** (Datto RMM, ConnectWise, NinjaOne) die op veel devices draaien
+- **Streaming services** (Netflix, YouTube) die veel bandwidth gebruiken
+- **CDN providers** (Cloudflare, Akamai) die overal voorkomen
+
+**Configuratie in config.yaml:**
+```yaml
+alerts:
+  max_per_minute: 100
+  # Global service provider filtering - traffic naar deze categorieën is toegestaan voor ALLE devices
+  allowed_service_categories:
+    - streaming    # Netflix, YouTube, Spotify, etc.
+    - cdn          # Cloudflare, Akamai, CloudFront
+    - rmm          # Datto, ConnectWise, TeamViewer, NinjaOne, etc.
+```
+
+**Beschikbare categorieën:**
+
+| Category | Beschrijving | Built-in Providers |
+|----------|--------------|-------------------|
+| `streaming` | Video/audio streaming | Netflix, YouTube, Spotify, Disney+, Amazon Video |
+| `cdn` | Content Delivery Networks | Cloudflare, Akamai, CloudFront, Fastly |
+| `cloud` | Cloud platforms | AWS, Azure, Google Cloud |
+| `social` | Social media | Facebook, Twitter, Instagram, LinkedIn |
+| `gaming` | Gaming platforms | Steam, Xbox Live, PlayStation Network |
+| `rmm` | Remote Monitoring & Management | Datto, ConnectWise, NinjaOne, TeamViewer, AnyDesk, Kaseya, SolarWinds, Pulseway, Atera, Microsoft Intune |
+| `other` | Custom providers | User-defined |
+
+**Voordelen:**
+- ✅ Geen false positives voor RMM tooling
+- ✅ Geen device templates nodig voor bekende services
+- ✅ Eenvoudig aan/uit te zetten per categorie
+- ✅ Combineert met device-specifieke filtering via templates
+
 ### Configuration API
 
 **Update global config:**
