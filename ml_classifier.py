@@ -323,8 +323,8 @@ class DeviceClassifier:
             'helmholz': 'network_device',  # Industrial ethernet
             'wilocity': 'network_device',  # Wireless networking
             # Servers / Virtualization
-            'vmware': 'server',  # VMs are typically servers or workstations
-            'proxmox': 'server',
+            # NOTE: VMware removed - VMs can be anything (web, file, db, print server)
+            # Let admin assign appropriate template manually
             'hewlett packard enterprise': 'server',  # HPE makes servers (not HP Inc.)
             # Industrial / IoT sensors
             'raspberry': 'iot_sensor',

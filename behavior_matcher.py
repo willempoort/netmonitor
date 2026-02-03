@@ -54,14 +54,21 @@ class BehaviorMatcher:
         self.stats = {
             'alerts_checked': 0,
             'alerts_suppressed': 0,
+            'alerts_suppressed_by_global_category': 0,
             'cache_hits': 0,
             'cache_misses': 0
         }
 
+        # Global allowed service categories (from config)
+        # Traffic to these categories is allowed for ALL devices
+        self._global_allowed_categories = set(
+            self.config.get('alerts', {}).get('allowed_service_categories', [])
+        )
+
         # Load initial data
         self._refresh_service_providers()
 
-        self.logger.info("BehaviorMatcher initialized")
+        self.logger.info(f"BehaviorMatcher initialized (global allowed categories: {self._global_allowed_categories})")
 
     def _refresh_service_providers(self):
         """Refresh the service provider IP ranges cache"""
@@ -236,6 +243,15 @@ class BehaviorMatcher:
         # Never suppress CRITICAL threats unless explicitly allowed by template
         if threat.get('severity') == 'CRITICAL' and not has_explicit_suppression:
             return False, None
+
+        # Global service category check - applies to ALL devices
+        # This allows globally allowing traffic to RMM tools, CDNs, etc.
+        if dst_ip and self._global_allowed_categories:
+            provider = self._check_ip_in_service_providers(dst_ip)
+            if provider and provider['category'] in self._global_allowed_categories:
+                self.stats['alerts_suppressed'] += 1
+                self.stats['alerts_suppressed_by_global_category'] += 1
+                return True, f"Global allowed category: {provider['name']} ({provider['category']})"
 
         # Check 1: Source device template (outbound behavior)
         # Does the source device's template allow SENDING this type of traffic?
@@ -634,5 +650,6 @@ class BehaviorMatcher:
                 if (self.stats['cache_hits'] + self.stats['cache_misses']) > 0 else 0, 2
             ),
             'cached_devices': len(self._device_cache),
-            'service_provider_ranges': len(self._service_provider_ranges)
+            'service_provider_ranges': len(self._service_provider_ranges),
+            'global_allowed_categories': list(self._global_allowed_categories)
         }

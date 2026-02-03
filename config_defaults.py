@@ -187,7 +187,16 @@ BEST_PRACTICE_CONFIG = {
         "batch_upload_interval": 60,    # Upload alerts every 60 seconds
         "immediate_upload_severities": ["CRITICAL", "HIGH"],  # Immediate upload for high-priority
         "buffer_size": 1000,            # Max alerts in buffer before forced upload
-        "retention_days": 30            # Keep alerts for 30 days
+        "retention_days": 30,           # Keep alerts for 30 days
+
+        # Global service provider filtering
+        # Traffic to/from these service categories is allowed for ALL devices
+        # Available categories: streaming, cdn, cloud, social, gaming, rmm, other
+        "allowed_service_categories": [
+            "streaming",    # Netflix, YouTube, etc.
+            "cdn",          # Cloudflare, Akamai, CloudFront
+            # "rmm",        # Uncomment to allow RMM tools (Datto, ConnectWise, TeamViewer, etc.)
+        ]
     },
 
     # Performance - Optimized for typical hardware
