@@ -275,6 +275,8 @@ class DeviceClassifier:
         }
 
         # Vendor to device type mapping for bootstrap training
+        # NOTE: Be specific! Generic vendors like HP, Dell make many device types.
+        # Only map vendors that almost exclusively make one type of device.
         self.vendor_hints = {
             # Cameras
             'hikvision': 'iot_camera',
@@ -285,35 +287,56 @@ class DeviceClassifier:
             'amcrest': 'iot_camera',
             # Smart speakers
             'sonos': 'smart_speaker',
-            'amazon': 'smart_speaker',  # Could also be other devices
-            'google': 'smart_speaker',  # Could also be other devices
-            # TVs/Streaming
+            # TVs/Streaming (only specific streaming device makers)
             'roku': 'smart_tv',
-            'samsung': 'smart_tv',  # Could be many things
-            'lg': 'smart_tv',
             'vizio': 'smart_tv',
-            'apple': 'smart_tv',  # Apple TV, but also other devices
             # NAS
             'synology': 'nas',
             'qnap': 'nas',
             'buffalo': 'nas',
             'asustor': 'nas',
-            # Printers
-            'hp': 'printer',  # Often printers
+            'seagate cloud': 'nas',
+            # Printers - only specific printer-only vendors
+            # NOTE: Removed 'hp' - HP Inc. makes laptops, servers, switches, not just printers
+            # NOTE: Removed 'canon' - Canon also makes cameras
             'epson': 'printer',
-            'canon': 'printer',
             'brother': 'printer',
             'lexmark': 'printer',
-            # Network devices
+            'zebra': 'printer',  # Zebra makes label/barcode printers
+            # Network devices / Routers / Firewalls / Switches
             'cisco': 'network_device',
             'netgear': 'network_device',
             'tp-link': 'network_device',
             'ubiquiti': 'network_device',
             'mikrotik': 'network_device',
-            # IoT sensors
+            'routerboard': 'network_device',  # MikroTik RouterBoard
+            'deciso': 'network_device',  # OPNsense/pfSense firewalls
+            'pfsense': 'network_device',
+            'opnsense': 'network_device',
+            'fortinet': 'network_device',
+            'juniper': 'network_device',
+            'aruba': 'network_device',
+            'allied telesis': 'network_device',
+            'moxa': 'network_device',  # Industrial network equipment
+            'hms industrial': 'network_device',  # Industrial gateways
+            'lantronix': 'network_device',  # Serial-to-ethernet
+            'helmholz': 'network_device',  # Industrial ethernet
+            'wilocity': 'network_device',  # Wireless networking
+            # Servers / Virtualization
+            'vmware': 'server',  # VMs are typically servers or workstations
+            'proxmox': 'server',
+            'hewlett packard enterprise': 'server',  # HPE makes servers (not HP Inc.)
+            # Industrial / IoT sensors
             'raspberry': 'iot_sensor',
             'espressif': 'iot_sensor',
             'philips hue': 'iot_sensor',
+            'siemens': 'iot_sensor',  # Industrial automation
+            'precia': 'iot_sensor',  # Weighing systems
+            'zenitel': 'iot_sensor',  # Intercom systems
+            # VoIP phones
+            'yealink': 'iot_sensor',  # VoIP phones (treated as IoT)
+            'grandstream': 'iot_sensor',
+            'tiptel': 'iot_sensor',
         }
 
         # Load existing model if available

@@ -675,15 +675,31 @@ class DatabaseManager:
             # Migration v18: Add indexes for alerts table query optimization
             # These indexes dramatically improve dashboard threat_type filtering
             # (e.g., TLS_WEAK_CIPHER_OFFERED queries: 438ms -> 0.5ms)
+            # Use DO blocks with exception handling to avoid race conditions with IF NOT EXISTS
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_alerts_threat_type ON alerts(threat_type);
+                DO $$
+                BEGIN
+                    CREATE INDEX idx_alerts_threat_type ON alerts(threat_type);
+                EXCEPTION WHEN duplicate_table THEN
+                    -- Index already exists, ignore
+                END $$;
             """)
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_alerts_timestamp ON alerts(timestamp DESC);
+                DO $$
+                BEGIN
+                    CREATE INDEX idx_alerts_timestamp ON alerts(timestamp DESC);
+                EXCEPTION WHEN duplicate_table THEN
+                    -- Index already exists, ignore
+                END $$;
             """)
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_alerts_threat_type_timestamp
-                ON alerts(threat_type, timestamp DESC);
+                DO $$
+                BEGIN
+                    CREATE INDEX idx_alerts_threat_type_timestamp
+                    ON alerts(threat_type, timestamp DESC);
+                EXCEPTION WHEN duplicate_table THEN
+                    -- Index already exists, ignore
+                END $$;
             """)
 
             # Migration v19: Add AbuseIPDB API call tracking table
