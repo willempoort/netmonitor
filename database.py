@@ -20,9 +20,16 @@ class DatabaseManager:
 
     def __init__(self, host='localhost', port=5432, database='netmonitor',
                  user='netmonitor', password='netmonitor',
-                 min_connections=2, max_connections=10):
+                 min_connections=2, max_connections=10, config=None):
         """Initialize database manager with connection pooling"""
         self.logger = logging.getLogger('NetMonitor.Database')
+        self.config = config  # Store config for retention policies
+
+        # Simple in-memory cache for dashboard data
+        self._dashboard_cache = None
+        self._dashboard_cache_time = None
+        self._dashboard_cache_ttl = 20  # Cache for 20 seconds
+        self._cache_lock = threading.Lock()
 
         # Connection pool for thread-safe database access
         try:
@@ -41,7 +48,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 19  # Increment this when schema changes
+        SCHEMA_VERSION = 20  # Increment this when schema changes (v20: performance indexes)
 
         if self._check_schema_version(SCHEMA_VERSION):
             self.logger.info(f"Database schema is up to date (v{SCHEMA_VERSION})")
@@ -112,6 +119,81 @@ class DatabaseManager:
     def _return_connection(self, conn):
         """Return connection to pool"""
         self.connection_pool.putconn(conn)
+
+    def _update_retention_policies(self, cursor):
+        """
+        Update TimescaleDB retention policies from config.yaml.
+        This ensures database policies always match configuration.
+        Warns if retention periods are below NIS2 minimum requirements.
+        """
+        # Get retention settings from config, with NIS2-compliant defaults
+        if self.config:
+            retention_config = self.config.get('data_retention', {})
+            alerts_days = retention_config.get('alerts_days', 365)
+            metrics_days = retention_config.get('metrics_days', 90)
+        else:
+            # Fallback to NIS2-compliant defaults if no config
+            alerts_days = 365
+            metrics_days = 90
+            self.logger.warning("No config provided, using NIS2-compliant defaults")
+
+        # NIS2 compliance check
+        NIS2_MINIMUM_ALERTS = 365  # 12 months minimum for security incidents
+        if alerts_days < NIS2_MINIMUM_ALERTS:
+            self.logger.warning(
+                f"⚠️  COMPLIANCE WARNING: Alert retention ({alerts_days} days) is below "
+                f"NIS2 minimum requirement ({NIS2_MINIMUM_ALERTS} days)"
+            )
+
+        self.logger.info(f"Configuring retention policies: alerts={alerts_days}d, metrics={metrics_days}d")
+
+        try:
+            # Remove existing policies to update them
+            cursor.execute("SELECT remove_retention_policy('alerts', if_exists => TRUE);")
+            cursor.execute("SELECT remove_retention_policy('traffic_metrics', if_exists => TRUE);")
+
+            # Add new policies with config values
+            cursor.execute(f"SELECT add_retention_policy('alerts', INTERVAL '{alerts_days} days');")
+            cursor.execute(f"SELECT add_retention_policy('traffic_metrics', INTERVAL '{metrics_days} days');")
+
+            self.logger.info("✓ Retention policies updated successfully")
+        except Exception as e:
+            # Policies might fail if hypertables not ready yet
+            self.logger.debug(f"Retention policy update note: {e}")
+
+    def get_retention_config(self) -> Dict:
+        """Get current retention configuration and NIS2 compliance status."""
+        if self.config:
+            retention_config = self.config.get('data_retention', {})
+            alerts_days = retention_config.get('alerts_days', 365)
+            metrics_days = retention_config.get('metrics_days', 90)
+            audit_days = retention_config.get('audit_logs_days', 730)
+        else:
+            alerts_days = 365
+            metrics_days = 90
+            audit_days = 730
+
+        # NIS2 compliance check
+        NIS2_ALERTS_MIN = 365
+        NIS2_AUDIT_MIN = 730
+
+        warnings = []
+        if alerts_days < NIS2_ALERTS_MIN:
+            warnings.append(f"Alert retention ({alerts_days} days) below NIS2 minimum ({NIS2_ALERTS_MIN} days)")
+        if audit_days < NIS2_AUDIT_MIN:
+            warnings.append(f"Audit retention ({audit_days} days) below NIS2 minimum ({NIS2_AUDIT_MIN} days)")
+
+        return {
+            'alerts_days': alerts_days,
+            'metrics_days': metrics_days,
+            'audit_days': audit_days,
+            'nis2_compliant': {
+                'alerts': alerts_days >= NIS2_ALERTS_MIN,
+                'audit': audit_days >= NIS2_AUDIT_MIN,
+                'overall': alerts_days >= NIS2_ALERTS_MIN and audit_days >= NIS2_AUDIT_MIN
+            },
+            'warnings': [w for w in warnings if w]
+        }
 
     def _init_database(self):
         """Initialize database schema"""
@@ -684,6 +766,44 @@ class DatabaseManager:
                     -- Index already exists, ignore
                 END $$;
             """)
+
+            # Migration v19: Add timestamp index for traffic_metrics
+            # Dramatically improves dashboard traffic history queries with large datasets
+            cursor.execute("""
+                DO $$
+                BEGIN
+                    CREATE INDEX idx_traffic_metrics_timestamp ON traffic_metrics(timestamp DESC);
+                EXCEPTION WHEN duplicate_table THEN
+                    -- Index already exists, ignore
+                END $$;
+            """)
+
+            # Migration v20: Add composite indexes for better query performance
+            # These indexes improve filtered queries with sensor_id and IP-based filtering
+            cursor.execute("""
+                DO $$
+                BEGIN
+                    CREATE INDEX idx_traffic_metrics_sensor_timestamp ON traffic_metrics(sensor_id, timestamp DESC);
+                EXCEPTION WHEN duplicate_table THEN
+                    -- Index already exists, ignore
+                END $$;
+            """)
+            cursor.execute("""
+                DO $$
+                BEGIN
+                    CREATE INDEX idx_alerts_source_ip_timestamp ON alerts(source_ip, timestamp DESC) WHERE source_ip IS NOT NULL;
+                EXCEPTION WHEN duplicate_table THEN
+                    -- Index already exists, ignore
+                END $$;
+            """)
+            cursor.execute("""
+                DO $$
+                BEGIN
+                    CREATE INDEX idx_alerts_dest_ip_timestamp ON alerts(destination_ip, timestamp DESC) WHERE destination_ip IS NOT NULL;
+                EXCEPTION WHEN duplicate_table THEN
+                    -- Index already exists, ignore
+                END $$;
+            """)
             cursor.execute("""
                 DO $$
                 BEGIN
@@ -898,36 +1018,46 @@ class DatabaseManager:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sensor_metrics_sensor_id ON sensor_metrics (sensor_id, timestamp DESC);")
 
             # Create continuous aggregate for alert statistics (pre-computed every hour)
-            cursor.execute("""
-                CREATE MATERIALIZED VIEW IF NOT EXISTS alert_stats_hourly
-                WITH (timescaledb.continuous) AS
-                SELECT
-                    time_bucket('1 hour', timestamp) AS bucket,
-                    severity,
-                    threat_type,
-                    COUNT(*) as count
-                FROM alerts
-                GROUP BY bucket, severity, threat_type
-                WITH NO DATA;
-            """)
+            # Note: Continuous aggregates require TimescaleDB commercial license
+            # Gracefully skip if not available (Apache license)
+            try:
+                cursor.execute("""
+                    CREATE MATERIALIZED VIEW IF NOT EXISTS alert_stats_hourly
+                    WITH (timescaledb.continuous) AS
+                    SELECT
+                        time_bucket('1 hour', timestamp) AS bucket,
+                        severity,
+                        threat_type,
+                        COUNT(*) as count
+                    FROM alerts
+                    GROUP BY bucket, severity, threat_type
+                    WITH NO DATA;
+                """)
+                self.logger.info("Created continuous aggregate: alert_stats_hourly")
+            except psycopg2.errors.FeatureNotSupported as e:
+                self.logger.info("Continuous aggregates not available (requires commercial TimescaleDB license), using standard indexes instead")
+                conn.rollback()
 
-            # Add refresh policy (auto-refresh every hour)
-            cursor.execute("""
-                SELECT add_continuous_aggregate_policy('alert_stats_hourly',
-                    start_offset => INTERVAL '3 hours',
-                    end_offset => INTERVAL '1 hour',
-                    schedule_interval => INTERVAL '1 hour',
-                    if_not_exists => TRUE
-                );
-            """)
+            # Note: We skip creating traffic_metrics continuous aggregate
+            # The query optimizations and indexes provide good performance without it
 
-            # Create retention policy (delete data older than 90 days)
-            cursor.execute("""
-                SELECT add_retention_policy('alerts', INTERVAL '90 days', if_not_exists => TRUE);
-            """)
-            cursor.execute("""
-                SELECT add_retention_policy('traffic_metrics', INTERVAL '90 days', if_not_exists => TRUE);
-            """)
+            # Add refresh policy (auto-refresh every hour) if continuous aggregate was created
+            try:
+                cursor.execute("""
+                    SELECT add_continuous_aggregate_policy('alert_stats_hourly',
+                        start_offset => INTERVAL '3 hours',
+                        end_offset => INTERVAL '1 hour',
+                        schedule_interval => INTERVAL '1 hour',
+                        if_not_exists => TRUE
+                    );
+                """)
+            except (psycopg2.errors.UndefinedTable, psycopg2.errors.UndefinedObject):
+                # Continuous aggregate doesn't exist (Apache license), skip policy
+                conn.rollback()
+
+            # Create retention policies from config.yaml
+            # This ensures database policies always match configuration
+            self._update_retention_policies(cursor)
 
             # Enable compression for old data (compress data older than 7 days)
             cursor.execute("""
@@ -1321,47 +1451,64 @@ class DatabaseManager:
             self._return_connection(conn)
 
     def get_alert_statistics(self, hours: int = 24) -> Dict:
-        """Get alert statistics using continuous aggregates for speed"""
+        """
+        Get alert statistics using optimized single-query approach.
+
+        Performance optimizations:
+        - Combines multiple aggregations into single query using CTEs
+        - Reduces database round-trips from 4 separate queries to 1
+        - Uses existing indexes (idx_alerts_timestamp, idx_alerts_threat_type, etc.)
+        - Dashboard caching layer prevents repeated execution
+        """
         conn = self._get_connection()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
 
             cutoff_time = datetime.now() - timedelta(hours=hours)
 
-            # Total alerts
-            cursor.execute('SELECT COUNT(*) as total FROM alerts WHERE timestamp > %s', (cutoff_time,))
-            total = cursor.fetchone()['total']
-
-            # By severity
+            # Single optimized query with CTEs - scans alerts table once
+            # Much faster than 4 separate queries, especially with large datasets
             cursor.execute('''
-                SELECT severity, COUNT(*) as count
-                FROM alerts
-                WHERE timestamp > %s
-                GROUP BY severity
+                WITH alert_data AS (
+                    SELECT
+                        severity,
+                        threat_type,
+                        source_ip::text as source_ip
+                    FROM alerts
+                    WHERE timestamp > %s
+                ),
+                severity_stats AS (
+                    SELECT severity, COUNT(*) as count
+                    FROM alert_data
+                    GROUP BY severity
+                ),
+                type_stats AS (
+                    SELECT threat_type, COUNT(*) as count
+                    FROM alert_data
+                    GROUP BY threat_type
+                    ORDER BY count DESC
+                    LIMIT 10
+                ),
+                source_stats AS (
+                    SELECT source_ip, COUNT(*) as count
+                    FROM alert_data
+                    WHERE source_ip IS NOT NULL
+                    GROUP BY source_ip
+                    ORDER BY count DESC
+                    LIMIT 10
+                )
+                SELECT
+                    (SELECT COUNT(*) FROM alert_data) as total,
+                    (SELECT jsonb_object_agg(severity, count) FROM severity_stats) as by_severity,
+                    (SELECT jsonb_object_agg(threat_type, count) FROM type_stats) as by_type,
+                    (SELECT jsonb_agg(jsonb_build_object('ip', source_ip, 'count', count)) FROM source_stats) as top_sources
             ''', (cutoff_time,))
-            by_severity = {row['severity']: row['count'] for row in cursor.fetchall()}
 
-            # By type
-            cursor.execute('''
-                SELECT threat_type, COUNT(*) as count
-                FROM alerts
-                WHERE timestamp > %s
-                GROUP BY threat_type
-                ORDER BY count DESC
-                LIMIT 10
-            ''', (cutoff_time,))
-            by_type = {row['threat_type']: row['count'] for row in cursor.fetchall()}
-
-            # Top source IPs
-            cursor.execute('''
-                SELECT source_ip::text as source_ip, COUNT(*) as count
-                FROM alerts
-                WHERE timestamp > %s AND source_ip IS NOT NULL
-                GROUP BY source_ip
-                ORDER BY count DESC
-                LIMIT 10
-            ''', (cutoff_time,))
-            top_sources = [{'ip': row['source_ip'], 'count': row['count']} for row in cursor.fetchall()]
+            result = cursor.fetchone()
+            total = int(result['total'] or 0)
+            by_severity = dict(result['by_severity'] or {})
+            by_type = dict(result['by_type'] or {})
+            top_sources = result['top_sources'] or []
 
             return {
                 'total': total,
@@ -1404,23 +1551,30 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
-    def get_traffic_history(self, hours: int = 24, limit: int = 100) -> List[Dict]:
-        """Get traffic history with bandwidth in Mbps and peak tracking"""
+    def get_traffic_history(self, hours: int = 24, limit: int = 100, sensor_id: str = None) -> List[Dict]:
+        """
+        Get traffic history with bandwidth in Mbps and peak tracking.
+
+        Performance optimizations:
+        - Indexed timestamp queries for fast filtering (idx_traffic_metrics_timestamp)
+        - Composite sensor+timestamp index for sensor-filtered queries
+        - time_bucket aggregation for 5-minute grouping
+        - Dashboard caching layer reduces database hits
+
+        Args:
+            hours: Number of hours to look back
+            limit: Maximum number of data points to return
+            sensor_id: Optional filter by specific sensor
+        """
         conn = self._get_connection()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
 
             cutoff_time = datetime.now() - timedelta(hours=hours)
 
-            # Use time_bucket for efficient aggregation
-            # Calculate average bandwidth (Mbps) over 5-minute buckets
-            # Formula: (total_bytes * 8 / 1000000) / 300 seconds = Mbps
-            # Also track MAX to show peak bandwidth within each bucket
-            # Note: Use total_bytes as fallback when inbound_bytes is 0 (mirror port scenarios)
-            # Peak calculation uses sensor-specific sample intervals:
-            #   - soc-server: 10 seconds (metrics_collector saves every 10s)
-            #   - sensors: 30 seconds (sensor_client sends every 30s by default)
-            cursor.execute('''
+            # Optimized query with time_bucket aggregation
+            # Uses idx_traffic_metrics_timestamp or idx_traffic_metrics_sensor_timestamp
+            query = '''
                 SELECT
                     time_bucket('5 minutes', timestamp) AS timestamp,
                     SUM(total_packets) as total_packets,
@@ -1430,35 +1584,28 @@ class DatabaseManager:
                     SUM(outbound_packets) as outbound_packets,
                     SUM(outbound_bytes) as outbound_bytes,
                     -- Average bandwidth in Mbps over 5-minute window (300 seconds)
-                    -- Use total_bytes if inbound is 0 (mirror port sees only one direction)
                     ROUND((GREATEST(SUM(inbound_bytes), SUM(total_bytes) - SUM(outbound_bytes)) * 8.0 / 1000000.0 / 300.0)::numeric, 2) as inbound_mbps,
                     ROUND((SUM(outbound_bytes) * 8.0 / 1000000.0 / 300.0)::numeric, 2) as outbound_mbps,
-                    -- Peak bandwidth: calculate Mbps per sample using sensor-specific interval
-                    ROUND(MAX(
-                        GREATEST(
-                            CASE
-                                WHEN sensor_id = 'soc-server' THEN inbound_bytes * 8.0 / 1000000.0 / 10.0
-                                ELSE inbound_bytes * 8.0 / 1000000.0 / 30.0
-                            END,
-                            CASE
-                                WHEN sensor_id = 'soc-server' THEN (total_bytes - outbound_bytes) * 8.0 / 1000000.0 / 10.0
-                                ELSE (total_bytes - outbound_bytes) * 8.0 / 1000000.0 / 30.0
-                            END
-                        )
-                    )::numeric, 2) as inbound_mbps_peak,
-                    ROUND(MAX(
-                        CASE
-                            WHEN sensor_id = 'soc-server' THEN outbound_bytes * 8.0 / 1000000.0 / 10.0
-                            ELSE outbound_bytes * 8.0 / 1000000.0 / 30.0
-                        END
-                    )::numeric, 2) as outbound_mbps_peak
+                    -- Peak bandwidth estimates (using 30 second sample interval)
+                    ROUND(MAX(inbound_bytes * 8.0 / 1000000.0 / 30.0)::numeric, 2) as inbound_mbps_peak,
+                    ROUND(MAX(outbound_bytes * 8.0 / 1000000.0 / 30.0)::numeric, 2) as outbound_mbps_peak
                 FROM traffic_metrics
                 WHERE timestamp > %s
+            '''
+            params = [cutoff_time]
+
+            if sensor_id:
+                query += ' AND sensor_id = %s'
+                params.append(sensor_id)
+
+            query += '''
                 GROUP BY time_bucket('5 minutes', timestamp)
                 ORDER BY timestamp DESC
                 LIMIT %s
-            ''', (cutoff_time, limit))
+            '''
+            params.append(limit)
 
+            cursor.execute(query, params)
             results = [dict(row) for row in cursor.fetchall()]
             results.reverse()  # Chronological order
             return results
@@ -1756,15 +1903,41 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
-    def get_dashboard_data(self) -> Dict:
-        """Get all data for dashboard in one call - optimized for performance"""
-        return {
+    def get_dashboard_data(self, use_cache: bool = True) -> Dict:
+        """
+        Get all data for dashboard in one call - optimized for performance.
+
+        Args:
+            use_cache: If True, returns cached data if fresh enough (default: True)
+
+        Returns:
+            Dictionary with dashboard data
+        """
+        # Check cache first if enabled
+        if use_cache:
+            with self._cache_lock:
+                if self._dashboard_cache and self._dashboard_cache_time:
+                    age = (datetime.now() - self._dashboard_cache_time).total_seconds()
+                    if age < self._dashboard_cache_ttl:
+                        self.logger.debug(f"Returning cached dashboard data (age: {age:.1f}s)")
+                        return self._dashboard_cache
+
+        # Fetch fresh data
+        data = {
             'recent_alerts': self.get_recent_alerts(limit=20, hours=24),
             'alert_stats': self.get_alert_statistics(hours=24),
             'traffic_history': self.get_traffic_history(hours=24, limit=100),
             'top_talkers': self.get_top_talkers(limit=10),
             'current_metrics': self.get_latest_system_stats()
         }
+
+        # Update cache
+        if use_cache:
+            with self._cache_lock:
+                self._dashboard_cache = data
+                self._dashboard_cache_time = datetime.now()
+
+        return data
 
     # ==================== Sensor Management Methods ====================
 
