@@ -1840,18 +1840,21 @@ class DatabaseManager:
                     unique_ips.add(alert['destination_ip'])
 
             # Try to get hostnames from top_talkers table
+            # Uses LATERAL JOIN to efficiently get latest hostname per IP
+            # (DISTINCT ON scans all matching rows; LATERAL+LIMIT 1 uses the index directly)
             ip_hostnames = {}
             if unique_ips:
-                placeholders = ','.join(['%s'] * len(unique_ips))
-                cursor.execute(f'''
-                    SELECT DISTINCT ON (ip_address)
-                        ip_address::text as ip,
-                        hostname
-                    FROM top_talkers
-                    WHERE ip_address IN ({placeholders})
-                    AND hostname IS NOT NULL
-                    ORDER BY ip_address, timestamp DESC
-                ''', tuple(unique_ips))
+                cursor.execute('''
+                    SELECT ip::text, t.hostname
+                    FROM unnest(%s::inet[]) AS ip
+                    CROSS JOIN LATERAL (
+                        SELECT hostname
+                        FROM top_talkers
+                        WHERE ip_address = ip AND hostname IS NOT NULL
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                    ) t
+                ''', (list(unique_ips),))
 
                 for row in cursor.fetchall():
                     if row['hostname'] and row['hostname'] != row['ip']:
