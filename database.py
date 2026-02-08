@@ -48,7 +48,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 20  # Increment this when schema changes (v20: performance indexes)
+        SCHEMA_VERSION = 21  # Increment this when schema changes (v21: whitelist source_ip/target_ip/port_filter)
 
         if self._check_schema_version(SCHEMA_VERSION):
             self.logger.info(f"Database schema is up to date (v{SCHEMA_VERSION})")
