@@ -813,7 +813,7 @@ class SensorClient:
         """Execute a sensor command"""
         command_id = command['id']
         command_type = command['command_type']
-        parameters = command.get('parameters', {})
+        parameters = command.get('parameters') or {}
 
         self.logger.info(f"Executing command: {command_type} (ID: {command_id})")
 

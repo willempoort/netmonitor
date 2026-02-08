@@ -2392,7 +2392,7 @@ class DatabaseManager:
                 INSERT INTO sensor_commands (sensor_id, command_type, parameters, status)
                 VALUES (%s, %s, %s, 'pending')
                 RETURNING id
-            ''', (sensor_id, command_type, json.dumps(parameters) if parameters else None))
+            ''', (sensor_id, command_type, json.dumps(parameters if parameters is not None else {})))
 
             command_id = cursor.fetchone()[0]
             conn.commit()
