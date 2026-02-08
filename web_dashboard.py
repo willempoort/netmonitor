@@ -3135,7 +3135,7 @@ def api_create_template_from_device():
 
         # If merging with existing template, copy its behaviors first
         if merge_with_template_id:
-            existing_template = db.get_device_template(merge_with_template_id)
+            existing_template = db.get_device_template_by_id(merge_with_template_id)
             if existing_template:
                 existing_behaviors = existing_template.get('behaviors', [])
                 logger.info(f"Merging with template {merge_with_template_id}: copying {len(existing_behaviors)} existing behaviors")
