@@ -444,12 +444,29 @@ class TestWhitelistManagement:
         mock_db_manager.add_whitelist_entry = Mock(return_value=1)
 
         entry_id = mock_db_manager.add_whitelist_entry(
-            ip_or_cidr='192.168.1.0/24',
-            reason='Internal network',
-            sensor_id='sensor-001'
+            ip_cidr='192.168.1.0/24',
+            description='Internal network',
+            scope='global',
+            direction='both'
         )
 
         assert entry_id == 1
+
+    def test_add_whitelist_entry_with_source_target(self, mock_db_manager):
+        """
+        Test: Whitelist entry met source_ip, target_ip en port_filter
+        Normal case: Granulaire whitelist regel
+        """
+        mock_db_manager.add_whitelist_entry = Mock(return_value=2)
+
+        entry_id = mock_db_manager.add_whitelist_entry(
+            source_ip='10.0.0.0/8',
+            target_ip='192.168.1.1',
+            port_filter='443',
+            description='HTTPS from internal to server'
+        )
+
+        assert entry_id == 2
 
     def test_remove_whitelist_entry(self, mock_db_manager):
         """
@@ -470,7 +487,7 @@ class TestWhitelistManagement:
         mock_db_manager.check_ip_whitelisted = Mock(return_value=True)
 
         is_whitelisted = mock_db_manager.check_ip_whitelisted(
-            ip='192.168.1.100',
+            ip_address='192.168.1.100',
             sensor_id='sensor-001'
         )
 
@@ -484,11 +501,33 @@ class TestWhitelistManagement:
         mock_db_manager.check_ip_whitelisted = Mock(return_value=False)
 
         is_whitelisted = mock_db_manager.check_ip_whitelisted(
-            ip='192.0.2.100',
+            ip_address='192.0.2.100',
             sensor_id='sensor-001'
         )
 
         assert is_whitelisted is False
+
+    def test_check_ip_whitelisted_combined(self, mock_db_manager):
+        """
+        Test: Check with combined source_ip, destination_ip, port
+        Normal case: Combined whitelist check
+        """
+        mock_db_manager.check_ip_whitelisted = Mock(return_value=True)
+
+        is_whitelisted = mock_db_manager.check_ip_whitelisted(
+            source_ip='10.0.0.50',
+            destination_ip='192.168.1.1',
+            port=443,
+            sensor_id='sensor-001'
+        )
+
+        assert is_whitelisted is True
+        mock_db_manager.check_ip_whitelisted.assert_called_once_with(
+            source_ip='10.0.0.50',
+            destination_ip='192.168.1.1',
+            port=443,
+            sensor_id='sensor-001'
+        )
 
     def test_get_whitelist_all(self, mock_db_manager):
         """
@@ -496,8 +535,8 @@ class TestWhitelistManagement:
         Normal case: Complete whitelist
         """
         mock_whitelist = [
-            {'id': 1, 'ip_or_cidr': '192.168.1.0/24', 'reason': 'Internal network'},
-            {'id': 2, 'ip_or_cidr': '10.0.0.1', 'reason': 'Gateway'}
+            {'id': 1, 'source_ip': '192.168.1.0/24', 'target_ip': None, 'port_filter': None, 'description': 'Internal network'},
+            {'id': 2, 'source_ip': '10.0.0.1', 'target_ip': '192.168.1.1', 'port_filter': '443', 'description': 'HTTPS'}
         ]
 
         mock_db_manager.get_whitelist = Mock(return_value=mock_whitelist)
@@ -513,7 +552,7 @@ class TestWhitelistManagement:
         Normal case: Sensor-specifieke whitelist
         """
         mock_whitelist = [
-            {'id': 1, 'ip_or_cidr': '192.168.1.0/24', 'sensor_id': 'sensor-001'}
+            {'id': 1, 'source_ip': '192.168.1.0/24', 'target_ip': None, 'sensor_id': 'sensor-001'}
         ]
 
         mock_db_manager.get_whitelist = Mock(return_value=mock_whitelist)
@@ -521,6 +560,81 @@ class TestWhitelistManagement:
         whitelist = mock_db_manager.get_whitelist(sensor_id='sensor-001')
 
         assert len(whitelist) == 1
+
+
+@pytest.mark.database
+class TestPortFilterParsing:
+    """Test port filter parsing and matching helpers"""
+
+    def test_parse_single_port(self):
+        """Test parsing a single port"""
+        from database import DatabaseManager
+        result = DatabaseManager._parse_port_filter("80")
+        assert result == [(80, 80)]
+
+    def test_parse_multiple_ports(self):
+        """Test parsing multiple comma-separated ports"""
+        from database import DatabaseManager
+        result = DatabaseManager._parse_port_filter("80,443,8080")
+        assert result == [(80, 80), (443, 443), (8080, 8080)]
+
+    def test_parse_port_range(self):
+        """Test parsing a port range"""
+        from database import DatabaseManager
+        result = DatabaseManager._parse_port_filter("8080-8090")
+        assert result == [(8080, 8090)]
+
+    def test_parse_mixed_ports_and_ranges(self):
+        """Test parsing a combination of ports and ranges"""
+        from database import DatabaseManager
+        result = DatabaseManager._parse_port_filter("80,443,8080-8090")
+        assert result == [(80, 80), (443, 443), (8080, 8090)]
+
+    def test_parse_empty_filter(self):
+        """Test parsing empty/None filter"""
+        from database import DatabaseManager
+        assert DatabaseManager._parse_port_filter(None) == []
+        assert DatabaseManager._parse_port_filter("") == []
+
+    def test_parse_invalid_port(self):
+        """Test parsing invalid port raises ValueError"""
+        from database import DatabaseManager
+        with pytest.raises(ValueError):
+            DatabaseManager._parse_port_filter("99999")
+
+    def test_port_matches_single(self):
+        """Test port matching against single port filter"""
+        from database import DatabaseManager
+        assert DatabaseManager._port_matches(80, "80") is True
+        assert DatabaseManager._port_matches(443, "80") is False
+
+    def test_port_matches_range(self):
+        """Test port matching against port range"""
+        from database import DatabaseManager
+        assert DatabaseManager._port_matches(8085, "8080-8090") is True
+        assert DatabaseManager._port_matches(8080, "8080-8090") is True
+        assert DatabaseManager._port_matches(8090, "8080-8090") is True
+        assert DatabaseManager._port_matches(9000, "8080-8090") is False
+
+    def test_port_matches_mixed(self):
+        """Test port matching against mixed filter"""
+        from database import DatabaseManager
+        assert DatabaseManager._port_matches(80, "80,443,8080-8090") is True
+        assert DatabaseManager._port_matches(443, "80,443,8080-8090") is True
+        assert DatabaseManager._port_matches(8085, "80,443,8080-8090") is True
+        assert DatabaseManager._port_matches(22, "80,443,8080-8090") is False
+
+    def test_port_matches_null_filter(self):
+        """Test that NULL filter matches all ports"""
+        from database import DatabaseManager
+        assert DatabaseManager._port_matches(80, None) is True
+        assert DatabaseManager._port_matches(443, "") is True
+
+    def test_port_matches_null_port(self):
+        """Test that NULL port does not match a filter with ports"""
+        from database import DatabaseManager
+        assert DatabaseManager._port_matches(None, "80") is False
+        assert DatabaseManager._port_matches(None, None) is True
 
 
 # ============================================================================

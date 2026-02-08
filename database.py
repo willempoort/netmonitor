@@ -330,11 +330,14 @@ class DatabaseManager:
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS ip_whitelists (
                     id SERIAL PRIMARY KEY,
-                    ip_cidr CIDR NOT NULL,
+                    ip_cidr CIDR,
                     description TEXT,
                     scope TEXT DEFAULT 'global',
                     sensor_id TEXT,
                     direction TEXT DEFAULT 'both',
+                    source_ip CIDR,
+                    target_ip CIDR,
+                    port_filter TEXT,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     created_by TEXT,
                     FOREIGN KEY (sensor_id) REFERENCES sensors(sensor_id) ON DELETE CASCADE,
@@ -354,6 +357,37 @@ class DatabaseManager:
                             CHECK (direction IN ('inbound', 'outbound', 'both'));
                     END IF;
                 END $$;
+            ''')
+
+            # Add source_ip, target_ip, port_filter columns (for extended whitelist filtering)
+            cursor.execute('''
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name = 'ip_whitelists' AND column_name = 'source_ip') THEN
+                        ALTER TABLE ip_whitelists ADD COLUMN source_ip CIDR;
+                        ALTER TABLE ip_whitelists ADD COLUMN target_ip CIDR;
+                        ALTER TABLE ip_whitelists ADD COLUMN port_filter TEXT;
+                    END IF;
+                END $$;
+            ''')
+
+            # Ensure ip_cidr is nullable (idempotent - safe to run every time)
+            cursor.execute('''
+                ALTER TABLE ip_whitelists ALTER COLUMN ip_cidr DROP NOT NULL;
+            ''')
+
+            # Migrate existing data: copy ip_cidr to source_ip/target_ip based on direction
+            # Safe to run every time due to WHERE IS NULL checks
+            cursor.execute('''
+                UPDATE ip_whitelists SET source_ip = ip_cidr
+                WHERE ip_cidr IS NOT NULL AND source_ip IS NULL
+                  AND direction IN ('outbound', 'both');
+            ''')
+            cursor.execute('''
+                UPDATE ip_whitelists SET target_ip = ip_cidr
+                WHERE ip_cidr IS NOT NULL AND target_ip IS NULL
+                  AND direction IN ('inbound', 'both');
             ''')
 
             # Index for faster whitelist lookups
@@ -2448,19 +2482,70 @@ class DatabaseManager:
 
     # ==================== Whitelist Management Methods ====================
 
-    def add_whitelist_entry(self, ip_cidr: str, description: str = None,
+    @staticmethod
+    def _parse_port_filter(port_filter: str) -> list:
+        """Parse port filter string into list of (start, end) tuples.
+
+        Supports: "80", "80,443", "8080-8090", "80,443,8080-8090"
+        Returns list of (start_port, end_port) tuples.
+        """
+        if not port_filter:
+            return []
+        result = []
+        for part in port_filter.split(','):
+            part = part.strip()
+            if '-' in part:
+                start, end = part.split('-', 1)
+                start, end = int(start.strip()), int(end.strip())
+                if not (0 <= start <= 65535 and 0 <= end <= 65535 and start <= end):
+                    raise ValueError(f"Invalid port range: {part}")
+                result.append((start, end))
+            else:
+                port = int(part)
+                if not (0 <= port <= 65535):
+                    raise ValueError(f"Invalid port: {port}")
+                result.append((port, port))
+        return result
+
+    @staticmethod
+    def _port_matches(port: int, port_filter: str) -> bool:
+        """Check if a port matches a port filter string.
+
+        Args:
+            port: Port number to check (None = no port info available)
+            port_filter: Filter string like "80,443,8080-8090" or None (matches all)
+
+        Returns:
+            True if port matches (or filter is None/empty)
+        """
+        if not port_filter:
+            return True  # No filter = match all ports
+        if port is None:
+            return False  # Filter specified but no port to check = no match
+        try:
+            ranges = DatabaseManager._parse_port_filter(port_filter)
+            return any(start <= port <= end for start, end in ranges)
+        except (ValueError, TypeError):
+            return True  # Invalid filter = match all (safe default)
+
+    def add_whitelist_entry(self, ip_cidr: str = None, description: str = None,
                           scope: str = 'global', sensor_id: str = None,
                           direction: str = 'both',
-                          created_by: str = 'system') -> Optional[int]:
+                          created_by: str = 'system',
+                          source_ip: str = None, target_ip: str = None,
+                          port_filter: str = None) -> Optional[int]:
         """Add IP/CIDR to whitelist
 
         Args:
-            ip_cidr: IP address or CIDR range to whitelist
+            ip_cidr: Legacy IP address or CIDR range (kept for backward compat)
             description: Human-readable description
             scope: 'global' or 'sensor'
             sensor_id: Required if scope is 'sensor'
-            direction: 'inbound', 'outbound', or 'both' (default)
+            direction: 'inbound', 'outbound', or 'both' (legacy, used with ip_cidr)
             created_by: User/system that created the entry
+            source_ip: Source IP/CIDR filter (NULL = all sources)
+            target_ip: Target/destination IP/CIDR filter (NULL = all destinations)
+            port_filter: Port filter string, e.g. "80,443,8080-8090" (NULL = all ports)
         """
         conn = self._get_connection()
         try:
@@ -2476,21 +2561,47 @@ class DatabaseManager:
                 self.logger.error(f"Invalid direction: {direction}. Must be 'inbound', 'outbound', or 'both'")
                 return None
 
+            # Validate port_filter if provided
+            if port_filter:
+                try:
+                    self._parse_port_filter(port_filter)
+                except ValueError as e:
+                    self.logger.error(f"Invalid port_filter: {e}")
+                    return None
+
+            # If new-style source_ip/target_ip not provided, derive from legacy ip_cidr+direction
+            if not source_ip and not target_ip and ip_cidr:
+                if direction in ('outbound', 'both'):
+                    source_ip = ip_cidr
+                if direction in ('inbound', 'both'):
+                    target_ip = ip_cidr
+
+            # Need at least ip_cidr or source_ip or target_ip
+            if not ip_cidr and not source_ip and not target_ip:
+                self.logger.error("At least ip_cidr, source_ip, or target_ip is required")
+                return None
+
+            # Ensure ip_cidr is always populated (backward compat + NOT NULL safety)
+            if not ip_cidr:
+                ip_cidr = source_ip or target_ip
+
             cursor.execute('''
-                INSERT INTO ip_whitelists (ip_cidr, description, scope, sensor_id, direction, created_by)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO ip_whitelists (ip_cidr, description, scope, sensor_id, direction, created_by,
+                                           source_ip, target_ip, port_filter)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
-            ''', (ip_cidr, description, scope, sensor_id, direction, created_by))
+            ''', (ip_cidr, description, scope, sensor_id, direction, created_by,
+                  source_ip, target_ip, port_filter))
 
             entry_id = cursor.fetchone()[0]
             conn.commit()
-            self.logger.info(f"Whitelist entry added: {ip_cidr} ({scope}, {direction})")
+            self.logger.info(f"Whitelist entry added: source={source_ip}, target={target_ip}, ports={port_filter} ({scope}, {direction})")
             return entry_id
 
         except Exception as e:
             conn.rollback()
             self.logger.error(f"Error adding whitelist entry: {e}")
-            return None
+            raise
         finally:
             self._return_connection(conn)
 
@@ -2516,10 +2627,14 @@ class DatabaseManager:
             cursor.execute(query, params)
             entries = [dict(row) for row in cursor.fetchall()]
 
-            # Convert CIDR to string
+            # Convert CIDR fields to strings
             for entry in entries:
                 if entry.get('ip_cidr'):
                     entry['ip_cidr'] = str(entry['ip_cidr'])
+                if entry.get('source_ip'):
+                    entry['source_ip'] = str(entry['source_ip'])
+                if entry.get('target_ip'):
+                    entry['target_ip'] = str(entry['target_ip'])
 
             return entries
 
@@ -2545,37 +2660,43 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
-    def check_ip_whitelisted(self, ip_address: str, sensor_id: str = None,
-                              direction: str = None) -> bool:
-        """Check if IP is whitelisted (for sensor or globally)
+    def check_ip_whitelisted(self, ip_address: str = None, sensor_id: str = None,
+                              direction: str = None,
+                              source_ip: str = None, destination_ip: str = None,
+                              port: int = None) -> bool:
+        """Check if traffic is whitelisted (for sensor or globally)
+
+        Supports both legacy single-IP mode and new combined src/dst/port mode.
 
         Args:
-            ip_address: IP address to check
+            ip_address: Legacy single IP to check (used with direction)
             sensor_id: Optional sensor ID for sensor-specific rules
-            direction: 'source', 'destination', or None (checks 'both' only)
-                       Also accepts legacy 'inbound'/'outbound' for backwards compatibility
+            direction: 'source', 'destination', or None (legacy mode)
+            source_ip: Source IP of the traffic (new mode)
+            destination_ip: Destination IP of the traffic (new mode)
+            port: Destination port of the traffic (new mode, optional)
 
         Returns:
-            True if IP matches a whitelist entry for the given direction
+            True if traffic matches a whitelist entry
         """
         conn = self._get_connection()
         try:
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
 
+            # New combined mode: check source_ip + destination_ip + port against
+            # source_ip/target_ip/port_filter columns
+            if source_ip or destination_ip:
+                return self._check_whitelisted_v2(cursor, source_ip, destination_ip, port, sensor_id)
+
+            # Legacy mode: single IP with direction
             # Build direction filter
-            # Support both new terminology (source/destination) and legacy (inbound/outbound)
-            # source = outbound (when IP is the source of traffic)
-            # destination = inbound (when IP is the destination of traffic)
             if direction == 'source':
-                # Match 'source' or legacy 'outbound' or 'both'
                 direction_filter = "AND (direction IN ('source', 'outbound', 'both'))"
                 direction_param = None
             elif direction == 'destination':
-                # Match 'destination' or legacy 'inbound' or 'both'
                 direction_filter = "AND (direction IN ('destination', 'inbound', 'both'))"
                 direction_param = None
             elif direction in ('inbound', 'outbound'):
-                # Legacy support
                 direction_filter = "AND (direction = %s OR direction = 'both')"
                 direction_param = direction
             else:
@@ -2587,14 +2708,14 @@ class DatabaseManager:
             if sensor_id:
                 if direction_param:
                     cursor.execute(f'''
-                        SELECT COUNT(*) FROM ip_whitelists
+                        SELECT COUNT(*) as cnt FROM ip_whitelists
                         WHERE ip_cidr >>= inet %s
                           AND (scope = 'global' OR (scope = 'sensor' AND sensor_id = %s))
                           {direction_filter}
                     ''', (ip_address, sensor_id, direction_param))
                 else:
                     cursor.execute(f'''
-                        SELECT COUNT(*) FROM ip_whitelists
+                        SELECT COUNT(*) as cnt FROM ip_whitelists
                         WHERE ip_cidr >>= inet %s
                           AND (scope = 'global' OR (scope = 'sensor' AND sensor_id = %s))
                           {direction_filter}
@@ -2602,18 +2723,19 @@ class DatabaseManager:
             else:
                 if direction_param:
                     cursor.execute(f'''
-                        SELECT COUNT(*) FROM ip_whitelists
+                        SELECT COUNT(*) as cnt FROM ip_whitelists
                         WHERE ip_cidr >>= inet %s AND scope = 'global'
                           {direction_filter}
                     ''', (ip_address, direction_param))
                 else:
                     cursor.execute(f'''
-                        SELECT COUNT(*) FROM ip_whitelists
+                        SELECT COUNT(*) as cnt FROM ip_whitelists
                         WHERE ip_cidr >>= inet %s AND scope = 'global'
                           {direction_filter}
                     ''', (ip_address,))
 
-            count = cursor.fetchone()[0]
+            row = cursor.fetchone()
+            count = row['cnt'] if row else 0
             return count > 0
 
         except Exception as e:
@@ -2621,6 +2743,85 @@ class DatabaseManager:
             return False
         finally:
             self._return_connection(conn)
+
+    def _check_whitelisted_v2(self, cursor, source_ip: str = None,
+                               destination_ip: str = None, port: int = None,
+                               sensor_id: str = None) -> bool:
+        """Combined whitelist check against source_ip/target_ip/port_filter columns.
+
+        A whitelist entry matches if ALL non-NULL fields match:
+        - source_ip IS NULL OR source_ip >>= source IP
+        - target_ip IS NULL OR target_ip >>= destination IP
+        - port_filter is checked in Python (NULL = match all)
+
+        Also checks legacy entries (ip_cidr set but source_ip/target_ip NULL).
+        """
+        # Build query that matches both new-style and legacy entries
+        # New-style: source_ip/target_ip columns
+        # Legacy fallback: ip_cidr with direction, where source_ip AND target_ip are both NULL
+        new_conditions = []
+        legacy_conditions = []
+        params = []
+
+        if source_ip:
+            new_conditions.append("(source_ip IS NULL OR source_ip >>= inet %s)")
+            params.append(source_ip)
+        else:
+            new_conditions.append("source_ip IS NULL")
+
+        if destination_ip:
+            new_conditions.append("(target_ip IS NULL OR target_ip >>= inet %s)")
+            params.append(destination_ip)
+        else:
+            new_conditions.append("target_ip IS NULL")
+
+        new_match = " AND ".join(new_conditions)
+
+        # Legacy fallback: entries where source_ip/target_ip not populated yet
+        legacy_parts = ["source_ip IS NULL", "target_ip IS NULL", "ip_cidr IS NOT NULL"]
+        if source_ip and destination_ip:
+            legacy_parts.append(
+                "((direction IN ('outbound', 'both') AND ip_cidr >>= inet %s) "
+                "OR (direction IN ('inbound', 'both') AND ip_cidr >>= inet %s))"
+            )
+            params.append(source_ip)
+            params.append(destination_ip)
+        elif source_ip:
+            legacy_parts.append("direction IN ('outbound', 'both') AND ip_cidr >>= inet %s")
+            params.append(source_ip)
+        elif destination_ip:
+            legacy_parts.append("direction IN ('inbound', 'both') AND ip_cidr >>= inet %s")
+            params.append(destination_ip)
+
+        legacy_match = " AND ".join(legacy_parts)
+
+        # Scope filter
+        scope_params = []
+        if sensor_id:
+            scope_filter = "(scope = 'global' OR (scope = 'sensor' AND sensor_id = %s))"
+            scope_params.append(sensor_id)
+        else:
+            scope_filter = "scope = 'global'"
+
+        all_params = params + scope_params
+        cursor.execute(f'''
+            SELECT port_filter FROM ip_whitelists
+            WHERE (({new_match}) OR ({legacy_match}))
+              AND {scope_filter}
+        ''', all_params)
+
+        rows = cursor.fetchall()
+        if not rows:
+            return False
+
+        # Check port filter in Python for matching entries
+        for row in rows:
+            pf = row.get('port_filter') if isinstance(row, dict) else row[0]
+            # _port_matches returns True when pf is None/empty (match all ports)
+            if self._port_matches(port, pf):
+                return True
+
+        return False
 
     # ==================== Configuration Management ====================
 

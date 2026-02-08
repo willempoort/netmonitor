@@ -1585,30 +1585,44 @@ def api_add_whitelist():
     """Add whitelist entry
 
     Request body:
-        ip_cidr: IP address or CIDR range (required)
+        ip_cidr: Legacy IP address or CIDR range (optional if source_ip/target_ip provided)
+        source_ip: Source IP/CIDR filter (optional, NULL = all sources)
+        target_ip: Target/destination IP/CIDR filter (optional, NULL = all destinations)
+        port_filter: Port filter string, e.g. "80,443,8080-8090" (optional)
         description: Human-readable description
         scope: 'global' or 'sensor'
         sensor_id: Required if scope is 'sensor'
-        direction: 'inbound', 'outbound', or 'both' (default: 'both')
+        direction: 'inbound', 'outbound', or 'both' (default: 'both', legacy)
         created_by: User/system identifier
     """
     try:
         data = request.get_json()
         ip_cidr = data.get('ip_cidr')
+        source_ip = data.get('source_ip')
+        target_ip = data.get('target_ip')
+        port_filter = data.get('port_filter')
         description = data.get('description', '')
         scope = data.get('scope', 'global')
         sensor_id = data.get('sensor_id')
         direction = data.get('direction', 'both')
         created_by = data.get('created_by', 'dashboard')
 
-        if not ip_cidr:
-            return jsonify({'success': False, 'error': 'ip_cidr required'}), 400
+        # Need at least one IP specification
+        if not ip_cidr and not source_ip and not target_ip:
+            return jsonify({'success': False, 'error': 'At least ip_cidr, source_ip, or target_ip is required'}), 400
+
+        # Validate port_filter format if provided
+        if port_filter:
+            try:
+                from database import DatabaseManager
+                DatabaseManager._parse_port_filter(port_filter)
+            except ValueError as e:
+                return jsonify({'success': False, 'error': f'Invalid port_filter: {e}'}), 400
 
         # Validate and normalize direction (support both old and new terminology)
-        # Map new terms to old for database storage
         direction_map = {
-            'source': 'outbound',      # source = traffic FROM this IP
-            'destination': 'inbound',   # destination = traffic TO this IP
+            'source': 'outbound',
+            'destination': 'inbound',
             'inbound': 'inbound',
             'outbound': 'outbound',
             'both': 'both'
@@ -1626,14 +1640,26 @@ def api_add_whitelist():
             scope=scope,
             sensor_id=sensor_id,
             direction=direction,
-            created_by=created_by
+            created_by=created_by,
+            source_ip=source_ip,
+            target_ip=target_ip,
+            port_filter=port_filter
         )
 
         if entry_id:
+            desc_parts = []
+            if source_ip:
+                desc_parts.append(f'src={source_ip}')
+            if target_ip:
+                desc_parts.append(f'dst={target_ip}')
+            if port_filter:
+                desc_parts.append(f'ports={port_filter}')
+            if ip_cidr and not source_ip and not target_ip:
+                desc_parts.append(f'{ip_cidr} ({direction})')
             return jsonify({
                 'success': True,
                 'entry_id': entry_id,
-                'message': f'Whitelist entry added: {ip_cidr} ({direction})'
+                'message': f'Whitelist entry added: {", ".join(desc_parts)}'
             })
         else:
             return jsonify({'success': False, 'error': 'Failed to add whitelist entry'}), 500
@@ -1663,13 +1689,36 @@ def api_check_whitelist(ip_address):
 
     Query parameters:
         sensor_id: Optional sensor ID for sensor-specific rules
-        direction: 'source', 'destination', or omit for 'both' only
+        direction: 'source', 'destination', or omit for 'both' only (legacy)
+        source_ip: Source IP for combined check (new mode)
+        destination_ip: Destination IP for combined check (new mode)
+        port: Destination port for combined check (new mode)
     """
     try:
         sensor_id = request.args.get('sensor_id')
         direction = request.args.get('direction')
+        source_ip = request.args.get('source_ip')
+        destination_ip = request.args.get('destination_ip')
+        port_str = request.args.get('port')
+        port = int(port_str) if port_str else None
 
-        # Validate direction if provided (support both old and new terminology)
+        # New combined mode
+        if source_ip or destination_ip:
+            is_whitelisted = db.check_ip_whitelisted(
+                source_ip=source_ip or ip_address,
+                destination_ip=destination_ip or ip_address,
+                port=port,
+                sensor_id=sensor_id
+            )
+            return jsonify({
+                'success': True,
+                'source_ip': source_ip or ip_address,
+                'destination_ip': destination_ip or ip_address,
+                'port': port,
+                'is_whitelisted': is_whitelisted
+            })
+
+        # Legacy mode
         valid_directions = ('source', 'destination', 'inbound', 'outbound', 'both')
         if direction and direction not in valid_directions:
             return jsonify({

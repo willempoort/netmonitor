@@ -2317,20 +2317,23 @@ document.getElementById('command-history-btn').addEventListener('click', functio
 // Store current whitelist entries for editing
 let whitelistEntries = [];
 
+function ipToNum(ipStr) {
+    if (!ipStr) return 0;
+    const ip = ipStr.split('/')[0];
+    return ip.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet), 0) >>> 0;
+}
+
 function loadWhitelist() {
     fetch('/api/whitelist')
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                // Sort entries by IP address (ascending)
+                // Sort entries by source_ip (ascending), then target_ip
                 const sortedEntries = data.entries.sort((a, b) => {
-                    // Extract IP from CIDR notation for comparison
-                    const ipA = a.ip_cidr.split('/')[0];
-                    const ipB = b.ip_cidr.split('/')[0];
-                    // Convert IP to numeric for proper sorting
-                    const numA = ipA.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet), 0) >>> 0;
-                    const numB = ipB.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet), 0) >>> 0;
-                    return numA - numB;
+                    const srcA = ipToNum(a.source_ip || a.ip_cidr);
+                    const srcB = ipToNum(b.source_ip || b.ip_cidr);
+                    if (srcA !== srcB) return srcA - srcB;
+                    return ipToNum(a.target_ip) - ipToNum(b.target_ip);
                 });
                 whitelistEntries = sortedEntries;
                 updateWhitelistTable(sortedEntries);
@@ -2340,26 +2343,12 @@ function loadWhitelist() {
         .catch(error => console.error('Error loading whitelist:', error));
 }
 
-function getDirectionBadge(direction) {
-    switch(direction) {
-        case 'source':
-        case 'outbound':  // legacy support
-            return '<span class="badge bg-warning text-dark">Source</span>';
-        case 'destination':
-        case 'inbound':  // legacy support
-            return '<span class="badge bg-success">Destination</span>';
-        case 'both':
-        default:
-            return '<span class="badge bg-secondary">Both</span>';
-    }
-}
-
 function updateWhitelistTable(entries) {
     const tbody = document.getElementById('whitelist-table');
     tbody.innerHTML = '';
 
     if (entries.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No whitelist entries</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No whitelist entries</td></tr>';
         return;
     }
 
@@ -2368,12 +2357,17 @@ function updateWhitelistTable(entries) {
         const scopeBadge = entry.scope === 'global'
             ? '<span class="badge bg-primary">Global</span>'
             : '<span class="badge bg-info">Sensor</span>';
-        const directionBadge = getDirectionBadge(entry.direction || 'both');
+
+        // Fall back to ip_cidr for legacy entries that haven't been migrated
+        const sourceIp = entry.source_ip || (entry.ip_cidr && entry.direction !== 'inbound' ? entry.ip_cidr : null) || '<span class="text-muted">all</span>';
+        const targetIp = entry.target_ip || (entry.ip_cidr && entry.direction !== 'outbound' ? entry.ip_cidr : null) || '<span class="text-muted">all</span>';
+        const portFilter = entry.port_filter || '<span class="text-muted">all</span>';
 
         row.innerHTML = `
-            <td><code>${entry.ip_cidr}</code></td>
+            <td><code>${sourceIp}</code></td>
+            <td><code>${targetIp}</code></td>
+            <td><code>${portFilter}</code></td>
             <td>${entry.description || '<span class="text-muted">-</span>'}</td>
-            <td>${directionBadge}</td>
             <td>${scopeBadge}</td>
             <td>${entry.sensor_id || '<span class="text-muted">-</span>'}</td>
             <td><small>${new Date(entry.created_at).toLocaleString()}</small></td>
@@ -2401,14 +2395,15 @@ let editingWhitelistId = null;
 
 // Add/Update whitelist entry
 document.getElementById('add-whitelist-btn').addEventListener('click', function() {
-    const ipCidr = document.getElementById('whitelist-ip').value;
+    const sourceIp = document.getElementById('whitelist-source-ip').value.trim();
+    const targetIp = document.getElementById('whitelist-target-ip').value.trim();
+    const portFilter = document.getElementById('whitelist-port-filter').value.trim();
     const description = document.getElementById('whitelist-description').value;
-    const direction = document.getElementById('whitelist-direction').value;
     const scope = document.getElementById('whitelist-scope').value;
     const sensorId = scope === 'sensor' ? document.getElementById('whitelist-sensor-select').value : null;
 
-    if (!ipCidr) {
-        alert('Please enter IP/CIDR');
+    if (!sourceIp && !targetIp) {
+        alert('Please enter at least a Source IP or Target IP');
         return;
     }
 
@@ -2417,13 +2412,29 @@ document.getElementById('add-whitelist-btn').addEventListener('click', function(
         return;
     }
 
+    // Validate port filter format
+    if (portFilter) {
+        const portPattern = /^(\d{1,5}(-\d{1,5})?,?\s*)+$/;
+        if (!portPattern.test(portFilter)) {
+            alert('Invalid port filter format. Use e.g. "80", "80,443", "8080-8090"');
+            return;
+        }
+    }
+
+    // Derive direction from source/target for backward compat
+    let direction = 'both';
+    if (sourceIp && !targetIp) direction = 'source';
+    else if (!sourceIp && targetIp) direction = 'destination';
+
     // If editing, delete old entry first then add new one
     const saveEntry = () => {
         fetch('/api/whitelist', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                ip_cidr: ipCidr,
+                source_ip: sourceIp || null,
+                target_ip: targetIp || null,
+                port_filter: portFilter || null,
                 description: description,
                 direction: direction,
                 scope: scope,
@@ -2433,7 +2444,6 @@ document.getElementById('add-whitelist-btn').addEventListener('click', function(
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                // Clear form and reset state
                 clearWhitelistForm();
                 loadWhitelist();
             } else {
@@ -2444,7 +2454,6 @@ document.getElementById('add-whitelist-btn').addEventListener('click', function(
     };
 
     if (editingWhitelistId) {
-        // Delete old entry first, then save new
         fetch(`/api/whitelist/${editingWhitelistId}`, { method: 'DELETE' })
             .then(() => saveEntry())
             .catch(error => alert('Error updating: ' + error.message));
@@ -2455,9 +2464,10 @@ document.getElementById('add-whitelist-btn').addEventListener('click', function(
 
 // Clear whitelist form
 function clearWhitelistForm() {
-    document.getElementById('whitelist-ip').value = '';
+    document.getElementById('whitelist-source-ip').value = '';
+    document.getElementById('whitelist-target-ip').value = '';
+    document.getElementById('whitelist-port-filter').value = '';
     document.getElementById('whitelist-description').value = '';
-    document.getElementById('whitelist-direction').value = 'both';
     document.getElementById('whitelist-scope').value = 'global';
     document.getElementById('whitelist-sensor-container').style.display = 'none';
     editingWhitelistId = null;
@@ -2472,14 +2482,13 @@ window.editWhitelistEntry = function(entryId) {
         return;
     }
 
-    // Populate form
-    document.getElementById('whitelist-ip').value = entry.ip_cidr;
+    // Populate form with new-style fields, falling back to legacy ip_cidr
+    const legacySrc = entry.ip_cidr && entry.direction !== 'inbound' ? entry.ip_cidr : '';
+    const legacyDst = entry.ip_cidr && entry.direction !== 'outbound' ? entry.ip_cidr : '';
+    document.getElementById('whitelist-source-ip').value = entry.source_ip || legacySrc;
+    document.getElementById('whitelist-target-ip').value = entry.target_ip || legacyDst;
+    document.getElementById('whitelist-port-filter').value = entry.port_filter || '';
     document.getElementById('whitelist-description').value = entry.description || '';
-    // Map legacy values to new terminology
-    let direction = entry.direction || 'both';
-    if (direction === 'inbound') direction = 'destination';
-    if (direction === 'outbound') direction = 'source';
-    document.getElementById('whitelist-direction').value = direction;
     document.getElementById('whitelist-scope').value = entry.scope;
 
     if (entry.scope === 'sensor') {
@@ -2494,7 +2503,7 @@ window.editWhitelistEntry = function(entryId) {
     document.getElementById('add-whitelist-btn').innerHTML = '<i class="bi bi-check-circle"></i> Update';
 
     // Scroll to form
-    document.getElementById('whitelist-ip').focus();
+    document.getElementById('whitelist-source-ip').focus();
 };
 
 // Delete whitelist entry

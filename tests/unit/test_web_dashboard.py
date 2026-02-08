@@ -207,15 +207,15 @@ class TestSensorManagement:
 class TestWhitelistManagement:
     """Test whitelist CRUD endpoints"""
 
-    def test_add_whitelist_entry(self, flask_app):
+    def test_add_whitelist_entry_legacy(self, flask_app):
         """
-        Test: POST /api/whitelist endpoint
-        Normal case: Whitelist entry toevoegen
+        Test: POST /api/whitelist endpoint (legacy ip_cidr)
+        Normal case: Whitelist entry toevoegen met ip_cidr
         """
         whitelist_data = {
-            'ip_or_cidr': '192.168.1.0/24',
-            'reason': 'Internal network',
-            'sensor_id': 'test-001'
+            'ip_cidr': '192.168.1.0/24',
+            'description': 'Internal network',
+            'direction': 'both'
         }
 
         response = flask_app.post(
@@ -224,7 +224,45 @@ class TestWhitelistManagement:
             content_type='application/json'
         )
 
-        assert response.status_code in [200, 201, 302, 401, 403, 404, 405]  # Accept various responses
+        assert response.status_code in [200, 201, 302, 401, 403, 404, 405]
+
+    def test_add_whitelist_entry_with_source_target(self, flask_app):
+        """
+        Test: POST /api/whitelist endpoint (source_ip/target_ip/port_filter)
+        Normal case: Whitelist entry met granulaire filtering
+        """
+        whitelist_data = {
+            'source_ip': '10.0.0.0/8',
+            'target_ip': '192.168.1.1',
+            'port_filter': '80,443',
+            'description': 'Internal to server HTTP/HTTPS'
+        }
+
+        response = flask_app.post(
+            '/api/whitelist',
+            data=json.dumps(whitelist_data),
+            content_type='application/json'
+        )
+
+        assert response.status_code in [200, 201, 302, 401, 403, 404, 405]
+
+    def test_add_whitelist_entry_missing_ip(self, flask_app):
+        """
+        Test: POST /api/whitelist without any IP fields
+        Error case: No ip_cidr, source_ip, or target_ip provided
+        """
+        whitelist_data = {
+            'description': 'Missing IP',
+            'port_filter': '80'
+        }
+
+        response = flask_app.post(
+            '/api/whitelist',
+            data=json.dumps(whitelist_data),
+            content_type='application/json'
+        )
+
+        assert response.status_code in [400, 302, 401, 403, 404, 405]
 
     def test_delete_whitelist_entry(self, flask_app):
         """
@@ -233,7 +271,7 @@ class TestWhitelistManagement:
         """
         response = flask_app.delete('/api/whitelist/123')
 
-        assert response.status_code in [200, 204, 302, 401, 403, 404]  # Accept various responses
+        assert response.status_code in [200, 204, 302, 401, 403, 404]
 
 
 # ============================================================================
@@ -330,9 +368,9 @@ class TestDataValidation:
         Error case: Malformed IP/CIDR
         """
         whitelist_data = {
-            'ip_or_cidr': 'invalid-cidr',
-            'reason': 'Test',
-            'sensor_id': 'test-001'
+            'ip_cidr': 'invalid-cidr',
+            'description': 'Test',
+            'scope': 'global'
         }
 
         response = flask_app.post(

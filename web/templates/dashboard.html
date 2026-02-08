@@ -397,26 +397,26 @@
                             <!-- Add Whitelist Form -->
                             <div class="row g-3 mb-3">
                                 <div class="col-md-2">
-                                    <label for="whitelist-ip" class="form-label">IP / CIDR</label>
-                                    <input type="text" class="form-control bg-dark text-light border-secondary" id="whitelist-ip" placeholder="192.168.1.0/24">
+                                    <label for="whitelist-source-ip" class="form-label">Source IP / CIDR</label>
+                                    <input type="text" class="form-control bg-dark text-light border-secondary" id="whitelist-source-ip" placeholder="10.0.0.0/8">
+                                </div>
+                                <div class="col-md-2">
+                                    <label for="whitelist-target-ip" class="form-label">Target IP / CIDR</label>
+                                    <input type="text" class="form-control bg-dark text-light border-secondary" id="whitelist-target-ip" placeholder="192.168.1.1">
+                                </div>
+                                <div class="col-md-2">
+                                    <label for="whitelist-port-filter" class="form-label">Port(s)</label>
+                                    <input type="text" class="form-control bg-dark text-light border-secondary" id="whitelist-port-filter" placeholder="80,443,8080-8090">
                                 </div>
                                 <div class="col-md-2">
                                     <label for="whitelist-description" class="form-label">Description</label>
                                     <input type="text" class="form-control bg-dark text-light border-secondary" id="whitelist-description" placeholder="Internal network">
                                 </div>
-                                <div class="col-md-2">
-                                    <label for="whitelist-direction" class="form-label">Direction</label>
-                                    <select class="form-select bg-dark text-light border-secondary" id="whitelist-direction">
-                                        <option value="both">Both</option>
-                                        <option value="source">Source (FROM this IP)</option>
-                                        <option value="destination">Destination (TO this IP)</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-2">
+                                <div class="col-md-1">
                                     <label for="whitelist-scope" class="form-label">Scope</label>
                                     <select class="form-select bg-dark text-light border-secondary" id="whitelist-scope">
                                         <option value="global">Global</option>
-                                        <option value="sensor">Sensor-Specific</option>
+                                        <option value="sensor">Sensor</option>
                                     </select>
                                 </div>
                                 <div class="col-md-2" id="whitelist-sensor-container" style="display: none;">
@@ -425,20 +425,24 @@
                                         <option value="">-- Select Sensor --</option>
                                     </select>
                                 </div>
-                                <div class="col-md-2 d-flex align-items-end">
+                                <div class="col-md-1 d-flex align-items-end">
                                     <button class="btn btn-success w-100" id="add-whitelist-btn">
                                         <i class="bi bi-plus-circle"></i> Add
                                     </button>
                                 </div>
                             </div>
+                            <!-- Hidden legacy field for backward compat -->
+                            <input type="hidden" id="whitelist-ip" value="">
+                            <input type="hidden" id="whitelist-direction" value="both">
                             <!-- Whitelist Table -->
                             <div class="table-responsive">
                                 <table class="table table-dark table-sm table-hover mb-0">
                                     <thead>
                                         <tr>
-                                            <th>IP / CIDR</th>
+                                            <th>Source IP</th>
+                                            <th>Target IP</th>
+                                            <th>Port(s)</th>
                                             <th>Description</th>
-                                            <th>Direction</th>
                                             <th>Scope</th>
                                             <th>Sensor</th>
                                             <th>Created</th>
@@ -447,7 +451,7 @@
                                     </thead>
                                     <tbody id="whitelist-table">
                                         <tr>
-                                            <td colspan="7" class="text-center text-muted">Loading whitelist...</td>
+                                            <td colspan="8" class="text-center text-muted">Loading whitelist...</td>
                                         </tr>
                                     </tbody>
                                 </table>
