@@ -359,36 +359,7 @@ class DatabaseManager:
                 END $$;
             ''')
 
-            # Add source_ip, target_ip, port_filter columns (for extended whitelist filtering)
-            cursor.execute('''
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                                   WHERE table_name = 'ip_whitelists' AND column_name = 'source_ip') THEN
-                        ALTER TABLE ip_whitelists ADD COLUMN source_ip CIDR;
-                        ALTER TABLE ip_whitelists ADD COLUMN target_ip CIDR;
-                        ALTER TABLE ip_whitelists ADD COLUMN port_filter TEXT;
-                    END IF;
-                END $$;
-            ''')
-
-            # Ensure ip_cidr is nullable (idempotent - safe to run every time)
-            cursor.execute('''
-                ALTER TABLE ip_whitelists ALTER COLUMN ip_cidr DROP NOT NULL;
-            ''')
-
-            # Migrate existing data: copy ip_cidr to source_ip/target_ip based on direction
-            # Safe to run every time due to WHERE IS NULL checks
-            cursor.execute('''
-                UPDATE ip_whitelists SET source_ip = ip_cidr
-                WHERE ip_cidr IS NOT NULL AND source_ip IS NULL
-                  AND direction IN ('outbound', 'both');
-            ''')
-            cursor.execute('''
-                UPDATE ip_whitelists SET target_ip = ip_cidr
-                WHERE ip_cidr IS NOT NULL AND target_ip IS NULL
-                  AND direction IN ('inbound', 'both');
-            ''')
+            # Note: source_ip/target_ip/port_filter migration moved to post-commit section below
 
             # Index for faster whitelist lookups
             cursor.execute('''
@@ -672,6 +643,40 @@ class DatabaseManager:
 
             conn.commit()
             self.logger.info("Database schema created")
+
+            # Migration: Add source_ip, target_ip, port_filter columns for extended whitelist filtering
+            # Runs in its own transaction after main schema commit to avoid rollback from unrelated failures
+            cursor.execute('''
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name = 'ip_whitelists' AND column_name = 'source_ip') THEN
+                        ALTER TABLE ip_whitelists ADD COLUMN source_ip CIDR;
+                        ALTER TABLE ip_whitelists ADD COLUMN target_ip CIDR;
+                        ALTER TABLE ip_whitelists ADD COLUMN port_filter TEXT;
+                    END IF;
+                END $$;
+            ''')
+
+            # Ensure ip_cidr is nullable (idempotent - safe to run every time)
+            cursor.execute('''
+                ALTER TABLE ip_whitelists ALTER COLUMN ip_cidr DROP NOT NULL;
+            ''')
+
+            # Migrate existing data: copy ip_cidr to source_ip/target_ip based on direction
+            # Safe to run every time due to WHERE IS NULL checks
+            cursor.execute('''
+                UPDATE ip_whitelists SET source_ip = ip_cidr
+                WHERE ip_cidr IS NOT NULL AND source_ip IS NULL
+                  AND direction IN ('outbound', 'both');
+            ''')
+            cursor.execute('''
+                UPDATE ip_whitelists SET target_ip = ip_cidr
+                WHERE ip_cidr IS NOT NULL AND target_ip IS NULL
+                  AND direction IN ('inbound', 'both');
+            ''')
+            conn.commit()
+            self.logger.info("Whitelist extended columns migration completed")
 
             # Migration: Add hostname column if it doesn't exist (for existing databases)
             cursor.execute("""
