@@ -338,8 +338,13 @@ class BehaviorMatcher:
                 elif packet.haslayer(UDP):
                     dst_port = dst_port or packet[UDP].dport
 
+            # Only suppress connection/traffic threats on allowed ports, not attacks
             if dst_port in allowed_ports:
-                return True, f"Inbound port {dst_port} is allowed"
+                if threat_type in ('PORT_SCAN', 'CONNECTION_FLOOD', 'UNUSUAL_PACKET_SIZE',
+                                   'HTTP_NON_STANDARD_PORT', 'SSH_NON_STANDARD_PORT',
+                                   'DNS_NON_STANDARD_PORT', 'FTP_NON_STANDARD_PORT',
+                                   'BEACONING', 'HIGH_INBOUND_VOLUME'):
+                    return True, f"Inbound port {dst_port} is allowed"
 
         # Source subnet matching (allow connections from specific subnets)
         elif behavior_type == 'allowed_sources':
@@ -402,18 +407,21 @@ class BehaviorMatcher:
         elif behavior_type == 'connection_behavior':
             # Server expects high connection rate
             if params.get('high_connection_rate') or params.get('accepts_connections'):
-                if threat_type in ('CONNECTION_FLOOD', 'PORT_SCAN', 'HIGH_RISK_ATTACK_CHAIN'):
+                if threat_type in ('CONNECTION_FLOOD', 'PORT_SCAN', 'HIGH_RISK_ATTACK_CHAIN',
+                                   'UNUSUAL_PACKET_SIZE', 'HTTP_EXCESSIVE_POSTS'):
                     return True, "High connection rate is expected for this server"
 
             # API server behavior
             if params.get('api_server'):
-                if threat_type in ('HIGH_RISK_ATTACK_CHAIN', 'CONNECTION_FLOOD'):
+                if threat_type in ('HIGH_RISK_ATTACK_CHAIN', 'CONNECTION_FLOOD',
+                                   'UNUSUAL_PACKET_SIZE', 'HTTP_EXCESSIVE_POSTS',
+                                   'API_ABUSE_RATE_LIMIT', 'API_ABUSE_ENDPOINT'):
                     return True, "API server expects many connections"
 
         # Traffic pattern matching
         elif behavior_type == 'traffic_pattern':
             if params.get('high_bandwidth') or params.get('receives_streams'):
-                if threat_type in ('HIGH_INBOUND_VOLUME', 'UNUSUAL_PACKET_SIZE'):
+                if threat_type in ('HIGH_INBOUND_VOLUME', 'UNUSUAL_PACKET_SIZE', 'BANDWIDTH_SATURATION'):
                     return True, "High inbound bandwidth is expected"
 
         # Explicit alert type suppression (for management interfaces, etc.)
@@ -537,7 +545,7 @@ class BehaviorMatcher:
             # High bandwidth devices (NAS, Smart TV streaming)
             if params.get('high_bandwidth') or params.get('streaming'):
                 # Suppress high volume alerts for streaming devices
-                if threat_type in ('HIGH_OUTBOUND_VOLUME', 'UNUSUAL_PACKET_SIZE'):
+                if threat_type in ('HIGH_OUTBOUND_VOLUME', 'UNUSUAL_PACKET_SIZE', 'BANDWIDTH_SATURATION'):
                     return True, "High bandwidth traffic is expected"
 
             # Continuous streams (cameras)
@@ -549,8 +557,14 @@ class BehaviorMatcher:
         elif behavior_type == 'connection_behavior':
             # High connection rate servers
             if params.get('high_connection_rate') or params.get('accepts_connections'):
-                if threat_type in ('CONNECTION_FLOOD', 'PORT_SCAN', 'HIGH_RISK_ATTACK_CHAIN'):
+                if threat_type in ('CONNECTION_FLOOD', 'PORT_SCAN', 'HIGH_RISK_ATTACK_CHAIN',
+                                   'UNUSUAL_PACKET_SIZE', 'HTTP_EXCESSIVE_POSTS'):
                     return True, "High connection rate is expected for servers"
+
+            # API server behavior
+            if params.get('api_server'):
+                if threat_type in ('HTTP_EXCESSIVE_POSTS', 'API_ABUSE_RATE_LIMIT', 'API_ABUSE_ENDPOINT'):
+                    return True, "API server expects many requests"
 
             # Low frequency IoT devices
             if params.get('low_frequency') and params.get('periodic'):
