@@ -477,6 +477,23 @@ class DeviceDiscovery:
             pass
         return False
 
+    def _is_broadcast_or_multicast(self, ip_str: str) -> bool:
+        """Check if IP is a broadcast or multicast address (not a real device)."""
+        try:
+            ip = ipaddress.ip_address(ip_str)
+            if ip.is_multicast or ip.is_unspecified:
+                return True
+            # 255.255.255.255
+            if ip == ipaddress.ip_address('255.255.255.255'):
+                return True
+            # Subnet broadcast: check against internal networks
+            for network in self.internal_networks:
+                if ip in network and ip == network.broadcast_address:
+                    return True
+        except ValueError:
+            pass
+        return False
+
     def get_vendor_from_mac(self, mac_address: str) -> Optional[str]:
         """
         Get vendor name from MAC address using OUI lookup.
@@ -588,6 +605,8 @@ class DeviceDiscovery:
             return None
         if sender_mac.lower() == 'ff:ff:ff:ff:ff:ff':
             return None
+        if self._is_broadcast_or_multicast(sender_ip):
+            return None
 
         # Skip if not internal IP
         if not self._is_internal_ip(sender_ip):
@@ -610,15 +629,15 @@ class DeviceDiscovery:
 
         device_info = None
 
-        # Track source device (if internal)
-        if self._is_internal_ip(src_ip):
+        # Track source device (if internal, skip broadcast/multicast)
+        if self._is_internal_ip(src_ip) and not self._is_broadcast_or_multicast(src_ip):
             device_info = self._register_device(src_ip, mac_address)
             self._update_traffic_stats(src_ip, packet, direction='outbound', dst_ip=dst_ip)
 
-        # Track destination device (if internal)
+        # Track destination device (if internal, skip broadcast/multicast)
         # This ensures devices like Access Points, servers, and IoT devices
         # that receive traffic but don't send much get their last_seen updated
-        if self._is_internal_ip(dst_ip):
+        if self._is_internal_ip(dst_ip) and not self._is_broadcast_or_multicast(dst_ip):
             # Get destination MAC from Ethernet layer if available
             dst_mac = None
             if Ether in packet:

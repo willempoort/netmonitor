@@ -2950,8 +2950,22 @@ async function triggerDataCleanup() {
     }
 }
 
-function showRetentionSettings() {
-    alert('Retention settings are configured in config.yaml\n\nCurrent settings:\n- Alerts: 365 days (NIS-2 minimum)\n- Metrics: 90 days\n- Audit logs: 730 days (NIS-2 minimum)\n\nTo change these values, edit the data_retention section in config.yaml and restart the SOC server.');
+async function showRetentionSettings() {
+    try {
+        const response = await fetch('/api/data-retention/config');
+        const result = await response.json();
+        if (result.success) {
+            const d = result.data;
+            const warnings = d.warnings && d.warnings.length > 0
+                ? '\n\n⚠️ Warnings:\n' + d.warnings.map(w => '- ' + w).join('\n')
+                : '';
+            alert(`Retention settings (config.yaml):\n\n- Alerts: ${d.alerts_days} days${d.nis2_compliant?.alerts ? ' ✓ NIS-2' : ' ⚠️ below NIS-2'}\n- Metrics: ${d.metrics_days} days\n- Audit logs: ${d.audit_days} days${d.nis2_compliant?.audit ? ' ✓ NIS-2' : ' ⚠️ below NIS-2'}${warnings}\n\nEdit data_retention in config.yaml and restart to change.`);
+        } else {
+            alert('Could not load retention settings: ' + result.error);
+        }
+    } catch (error) {
+        alert('Error loading retention settings: ' + error.message);
+    }
 }
 
 function formatNumber(num) {

@@ -130,11 +130,11 @@ class DatabaseManager:
         if self.config:
             retention_config = self.config.get('data_retention', {})
             alerts_days = retention_config.get('alerts_days', 365)
-            metrics_days = retention_config.get('metrics_days', 90)
+            metrics_days = retention_config.get('metrics_days', 30)
         else:
             # Fallback to NIS2-compliant defaults if no config
             alerts_days = 365
-            metrics_days = 90
+            metrics_days = 30
             self.logger.warning("No config provided, using NIS2-compliant defaults")
 
         # NIS2 compliance check
@@ -166,11 +166,11 @@ class DatabaseManager:
         if self.config:
             retention_config = self.config.get('data_retention', {})
             alerts_days = retention_config.get('alerts_days', 365)
-            metrics_days = retention_config.get('metrics_days', 90)
+            metrics_days = retention_config.get('metrics_days', 30)
             audit_days = retention_config.get('audit_logs_days', 730)
         else:
             alerts_days = 365
-            metrics_days = 90
+            metrics_days = 30
             audit_days = 730
 
         # NIS2 compliance check

@@ -2399,10 +2399,7 @@ def api_disk_usage():
                     'size_bytes': pcap_size_bytes,
                     'file_count': pcap_file_count
                 },
-                'retention': {
-                    'alerts_days': 365,
-                    'metrics_days': 90
-                }
+                'retention': db.get_retention_config()
             }
         })
 
@@ -2676,12 +2673,36 @@ def api_data_retention_cleanup():
         conn.commit()
         db._return_connection(conn)
 
+        # Cleanup old PCAP files (recursive through all subdirectories)
+        import os
+        import time as _time
+        pcap_deleted = 0
+        pcap_root = '/var/log/netmonitor/pcap'
+        pcap_cutoff = _time.time() - (metrics_days * 86400)
+        if os.path.exists(pcap_root):
+            try:
+                for dirpath, _dirnames, filenames in os.walk(pcap_root):
+                    for fname in filenames:
+                        if not fname.endswith('.pcap'):
+                            continue
+                        fpath = os.path.join(dirpath, fname)
+                        if os.path.getmtime(fpath) < pcap_cutoff:
+                            os.remove(fpath)
+                            pcap_deleted += 1
+            except Exception as e:
+                logger.warning(f"Error cleaning PCAPs in {pcap_root}: {e}")
+        deleted['pcap_files'] = pcap_deleted
+
+        # Invalidate PCAP stats cache after cleanup
+        global pcap_stats_cache_time
+        pcap_stats_cache_time = None
+
         total_deleted = sum(deleted.values())
-        logger.info(f"Manual data retention cleanup: {total_deleted} records deleted")
+        logger.info(f"Manual data retention cleanup: {total_deleted} records/files deleted (incl. {pcap_deleted} PCAPs)")
 
         return jsonify({
             'success': True,
-            'message': f'Cleanup complete: {total_deleted} record(s) deleted',
+            'message': f'Cleanup complete: {total_deleted} record(s)/file(s) deleted',
             'data': {
                 'deleted': deleted,
                 'total': total_deleted
