@@ -6,12 +6,14 @@ Load/Reload Builtin Templates and Service Providers
 This ensures default data is available even if database was kept during install
 """
 
+import os
 import sys
 from pathlib import Path
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from dotenv import load_dotenv
 from config_loader import load_config
 from database import DatabaseManager
 
@@ -19,17 +21,21 @@ from database import DatabaseManager
 def load_builtin_data(config_file='config.yaml'):
     """Load builtin device templates and service providers"""
 
+    # Load .env file for DB_PASSWORD etc.
+    load_dotenv(Path(__file__).parent.parent / '.env')
+
     # Load config
     config = load_config(config_file)
 
-    # Connect to database
+    # Connect to database (config.yaml -> .env -> default)
     db_config = config.get('database', {}).get('postgresql', {})
+    db_password = db_config.get('password') or os.environ.get('DB_PASSWORD', 'netmonitor')
     db = DatabaseManager(
-        host=db_config.get('host', 'localhost'),
-        port=db_config.get('port', 5432),
-        database=db_config.get('database', 'netmonitor'),
-        user=db_config.get('user', 'netmonitor'),
-        password=db_config.get('password', 'netmonitor')
+        host=db_config.get('host') or os.environ.get('DB_HOST', 'localhost'),
+        port=db_config.get('port') or int(os.environ.get('DB_PORT', '5432')),
+        database=db_config.get('database') or os.environ.get('DB_NAME', 'netmonitor'),
+        user=db_config.get('user') or os.environ.get('DB_USER', 'netmonitor'),
+        password=db_password
     )
 
     print("Checking builtin data...")
