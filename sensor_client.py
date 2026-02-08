@@ -476,6 +476,9 @@ class SensorClient:
         else:
             self.logger.debug("PCAP export disabled on sensor")
 
+        # Auto-whitelist SOC server IP to prevent sensor detecting its own API traffic
+        self._whitelist_soc_server()
+
         # Fetch and cache server whitelist
         self._update_whitelist()
 
@@ -598,6 +601,38 @@ class SensorClient:
             else:
                 count += 1
         return count
+
+    def _whitelist_soc_server(self):
+        """Auto-whitelist the SOC server IP to prevent detecting our own API traffic as brute force"""
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(self.server_url)
+            soc_host = parsed.hostname
+            if soc_host:
+                import ipaddress
+                # Resolve hostname to IP if needed
+                try:
+                    ip = ipaddress.ip_address(soc_host)
+                    soc_ip = str(ip)
+                except ValueError:
+                    # Hostname, resolve it
+                    import socket
+                    soc_ip = socket.gethostbyname(soc_host)
+
+                # Add SOC server IP and own sensor IP to config whitelist
+                config_wl = self.config.get('whitelist', [])
+                for ip_str in [soc_ip, soc_ip + '/32']:
+                    if ip_str not in config_wl:
+                        config_wl.append(soc_ip + '/32')
+                        break
+                self.config['whitelist'] = config_wl
+
+                # Update detector's in-memory whitelist
+                self.detector.config['whitelist'] = config_wl
+                self.detector.config_whitelist = self.detector._parse_ip_list(config_wl)
+                self.logger.info(f"Auto-whitelisted SOC server: {soc_ip}")
+        except Exception as e:
+            self.logger.warning(f"Could not auto-whitelist SOC server: {e}")
 
     def _update_whitelist(self):
         """Fetch whitelist from SOC server and merge with local config"""
