@@ -414,29 +414,41 @@ INFO -   Updated categories: port_scan, connection_flood
 
 **Dashboard → Whitelist Management**
 
-Add trusted IP ranges:
+Add granular whitelist rules using source IP, target IP, and port filtering:
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| **Source IP/CIDR** | Match traffic originating from this IP/range | `192.168.1.0/24`, `10.0.0.0/8` |
+| **Target IP/CIDR** | Match traffic destined for this IP/range | `203.0.113.50`, `224.0.0.0/4` |
+| **Port(s)** | Match specific destination ports | `80`, `80,443`, `8080-8090` |
+
+Leave a field empty to match **all** values for that dimension (e.g., empty port = all ports).
+
+At least one of Source IP or Target IP is required.
+
+**Examples:**
+
 ```
-192.168.1.0/24  - Office network
-10.0.0.0/8      - Internal networks
-203.0.113.50    - Trusted external server
+Source IP: 192.168.1.0/24   Target IP: (empty)           Port(s): (empty)
+Description: Office network - all outbound traffic whitelisted
+
+Source IP: (empty)           Target IP: 224.0.0.0/4      Port(s): (empty)
+Description: Multicast traffic (mDNS, SSDP)
+
+Source IP: 10.0.0.0/8       Target IP: 192.168.1.1       Port(s): 80,443
+Description: Internal network to webserver HTTP/HTTPS only
+
+Source IP: 203.0.113.50     Target IP: 203.0.113.50      Port(s): (empty)
+Description: Trusted external server (both directions)
 ```
 
-Whitelisted IPs/ranges won't trigger alerts.
+**Port Filter Syntax:**
+- Single port: `443`
+- Multiple ports: `80,443,8080`
+- Port range: `8080-8090`
+- Combined: `80,443,8080-8090`
 
-**Direction Setting:**
-
-Each whitelist entry has a direction that determines when the rule applies:
-
-| Direction | Description | Example Use Case |
-|-----------|-------------|------------------|
-| **Source** | Whitelist when IP is the **source** of traffic | Trusted scanner, monitoring system |
-| **Destination** | Whitelist when IP is the **destination** of traffic | Multicast (224.0.0.0/4), trusted servers |
-| **Both** | Whitelist in either direction | General trusted IP (default) |
-
-Examples:
-- `192.168.1.50` with `source`: No alerts when this IP connects to other systems
-- `224.0.0.0/4` with `destination`: No alerts for multicast traffic (mDNS, SSDP)
-- `203.0.113.50` with `both`: No alerts in either direction
+Whitelisted traffic won't trigger alerts. Legacy entries (single IP/CIDR + direction) remain supported and are automatically matched.
 
 ---
 
@@ -1061,11 +1073,12 @@ The MCP server provides 37 specialized tools organized into categories:
 
 **get_whitelist_entries:**
 - List all whitelist entries
-- Returns: IP ranges and descriptions
+- Returns: IP ranges, source/target IPs, port filters, and descriptions
 
 **add_whitelist_entry:**
-- Add IP/range to whitelist
-- Parameters: ip_range, description
+- Add whitelist entry with granular filtering
+- Parameters: description (required), source_ip, target_ip, port_filter, ip_cidr (legacy), scope, sensor_id
+- At least one of source_ip or target_ip is required (or legacy ip_cidr)
 - Returns: Confirmation
 
 **remove_whitelist_entry:**
@@ -1074,8 +1087,8 @@ The MCP server provides 37 specialized tools organized into categories:
 - Returns: Confirmation
 
 **check_ip_whitelisted:**
-- Check if IP is whitelisted
-- Parameters: ip_address
+- Check if IP is whitelisted (supports combined source/destination/port check)
+- Parameters: ip_address, source_ip, destination_ip, port
 - Returns: Boolean and matching entry
 
 #### 6. AI-Powered Analysis Tools (read_only)
@@ -1194,13 +1207,28 @@ curl -X POST http://localhost:8000/mcp/tools/execute \
 **Example 4: Add Whitelist Entry**
 
 ```bash
+# Granular rule: internal network to webserver on HTTP/HTTPS only
 curl -X POST http://localhost:8000/mcp/tools/execute \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
     "tool_name": "add_whitelist_entry",
     "parameters": {
-      "ip_range": "203.0.113.0/24",
+      "source_ip": "10.0.0.0/8",
+      "target_ip": "192.168.1.1",
+      "port_filter": "80,443",
+      "description": "Internal to webserver HTTP/HTTPS"
+    }
+  }'
+
+# Simple rule: whitelist all traffic from trusted network
+curl -X POST http://localhost:8000/mcp/tools/execute \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tool_name": "add_whitelist_entry",
+    "parameters": {
+      "source_ip": "203.0.113.0/24",
       "description": "Trusted partner network"
     }
   }'

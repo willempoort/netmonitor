@@ -463,7 +463,7 @@ class ThreatDetector:
         return False
 
     def _is_whitelisted(self, ip_str, direction: str = None):
-        """Check if IP is whitelisted (config OR database)
+        """Check if IP is whitelisted (config OR database) - legacy single-IP mode
 
         Args:
             ip_str: IP address to check
@@ -498,6 +498,38 @@ class ThreatDetector:
         """Check if destination IP is whitelisted (traffic TO this IP)"""
         return self._is_whitelisted(dst_ip, direction='destination')
 
+    def _is_whitelisted_v2(self, src_ip: str, dst_ip: str, dst_port: int = None) -> bool:
+        """Combined whitelist check with source IP, destination IP, and port.
+
+        First checks config whitelist (either IP), then database with combined matching.
+        """
+        # Fast config whitelist check (no port/direction support)
+        if self._is_in_list(src_ip, self.config_whitelist):
+            self.logger.debug(f"Source IP {src_ip} whitelisted via config")
+            return True
+        if self._is_in_list(dst_ip, self.config_whitelist):
+            self.logger.debug(f"Destination IP {dst_ip} whitelisted via config")
+            return True
+
+        # Database combined check
+        if self.db_manager:
+            try:
+                if self.db_manager.check_ip_whitelisted(
+                    source_ip=src_ip,
+                    destination_ip=dst_ip,
+                    port=dst_port,
+                    sensor_id=self.sensor_id
+                ):
+                    self.logger.debug(
+                        f"Traffic whitelisted via database: {src_ip} -> {dst_ip}:{dst_port} "
+                        f"(sensor_id={self.sensor_id})"
+                    )
+                    return True
+            except Exception as e:
+                self.logger.warning(f"Error checking database whitelist: {e}")
+
+        return False
+
     def analyze_packet(self, packet):
         """
         Analyseer een packet en detecteer threats
@@ -512,13 +544,16 @@ class ThreatDetector:
         src_ip = ip_layer.src
         dst_ip = ip_layer.dst
 
-        # Skip whitelisted IPs based on direction setting
-        # Source whitelist: Skip if source IP is whitelisted with direction='source' or 'both'
-        # Destination whitelist: Skip if destination IP is whitelisted with direction='destination' or 'both'
-        # This enables whitelisting multicast addresses (224.0.0.0/4), trusted servers, etc.
-        if self._is_src_whitelisted(src_ip):
-            return threats
-        if self._is_dst_whitelisted(dst_ip):
+        # Extract destination port for whitelist port filtering
+        dst_port = None
+        if packet.haslayer(TCP):
+            dst_port = packet[TCP].dport
+        elif packet.haslayer(UDP):
+            dst_port = packet[UDP].dport
+
+        # Combined whitelist check: source IP + destination IP + port
+        # Matches against source_ip/target_ip/port_filter columns in database
+        if self._is_whitelisted_v2(src_ip, dst_ip, dst_port):
             return threats
 
         # Check blacklist (static config)

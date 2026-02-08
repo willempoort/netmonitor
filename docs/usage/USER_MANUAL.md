@@ -509,34 +509,57 @@ Prevent false positives from:
 
 **Whitelist Tab → Add Entry**
 
-**Single IP:**
+Each whitelist rule can specify a **source IP**, **target IP**, and **port(s)**. Leave a field empty to match all values for that dimension. At least one of Source IP or Target IP is required.
+
+**Whitelist all traffic from an IP:**
 ```
-IP/CIDR: 192.168.1.50
-Description: Admin workstation
-Scope: Global
+Source IP/CIDR: 192.168.1.50
+Target IP/CIDR: (empty)
+Port(s):        (empty)
+Description:    Admin workstation
+Scope:          Global
 ```
 
-**IP Range (CIDR):**
+**Whitelist an internal network:**
 ```
-IP/CIDR: 10.0.0.0/8
-Description: Internal network
-Scope: Global
+Source IP/CIDR: 10.0.0.0/8
+Target IP/CIDR: (empty)
+Port(s):        (empty)
+Description:    Internal network
+Scope:          Global
+```
+
+**Whitelist specific traffic (source + target + ports):**
+```
+Source IP/CIDR: 10.0.0.0/8
+Target IP/CIDR: 192.168.1.1
+Port(s):        80,443
+Description:    Internal to webserver HTTP/HTTPS only
+Scope:          Global
 ```
 
 **Per-Sensor Whitelist:**
 ```
-IP/CIDR: 203.0.113.100
-Description: External backup server
-Scope: Sensor-specific
-Sensor: office-vlan10-01
+Source IP/CIDR: (empty)
+Target IP/CIDR: 203.0.113.100
+Port(s):        (empty)
+Description:    External backup server
+Scope:          Sensor-specific
+Sensor:         office-vlan10-01
 ```
+
+**Port Filter Syntax:**
+- Single port: `443`
+- Multiple ports: `80,443,8080`
+- Port range: `8080-8090`
+- Combined: `80,443,8080-8090`
 
 ### Managing Whitelist
 
 **View Entries:**
 - Global whitelist (applies to all)
 - Sensor-specific entries
-- Shows IP, description, scope
+- Shows Source IP, Target IP, Port(s), description, scope
 
 **Remove Entry:**
 - Click delete button

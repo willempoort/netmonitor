@@ -263,6 +263,49 @@ class TestWhitelistBlacklist:
         # Error moet gelogd zijn
         assert 'Error checking database whitelist' in caplog.text
 
+    def test_is_whitelisted_v2_config(self, base_config):
+        """
+        Test: Combined whitelist check falls back to config whitelist
+        Normal case: Source or dest IP in config whitelist
+        """
+        base_config['whitelist'] = ['192.168.1.100']
+        detector = ThreatDetector(base_config)
+
+        # Source IP whitelisted via config
+        assert detector._is_whitelisted_v2('192.168.1.100', '10.0.0.50', 80) is True
+        # Destination IP whitelisted via config
+        assert detector._is_whitelisted_v2('10.0.0.50', '192.168.1.100', 443) is True
+        # Neither whitelisted
+        assert detector._is_whitelisted_v2('10.0.0.50', '172.16.0.1', 80) is False
+
+    def test_is_whitelisted_v2_database(self, base_config, mock_db_manager):
+        """
+        Test: Combined whitelist check with database (source + dest + port)
+        Normal case: Database combined check
+        """
+        mock_db_manager.check_ip_whitelisted = Mock(return_value=True)
+
+        detector = ThreatDetector(base_config, db_manager=mock_db_manager, sensor_id='test-sensor')
+
+        assert detector._is_whitelisted_v2('10.0.0.50', '192.168.1.1', 443) is True
+        mock_db_manager.check_ip_whitelisted.assert_called_once_with(
+            source_ip='10.0.0.50',
+            destination_ip='192.168.1.1',
+            port=443,
+            sensor_id='test-sensor'
+        )
+
+    def test_is_whitelisted_v2_database_no_match(self, base_config, mock_db_manager):
+        """
+        Test: Combined whitelist check with no match
+        Normal case: Database returns False
+        """
+        mock_db_manager.check_ip_whitelisted = Mock(return_value=False)
+
+        detector = ThreatDetector(base_config, db_manager=mock_db_manager, sensor_id='test-sensor')
+
+        assert detector._is_whitelisted_v2('10.0.0.50', '192.168.1.1', 80) is False
+
     def test_blacklist_detection(self, base_config):
         """
         Test: Blacklisted IP detectie
