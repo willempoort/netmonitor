@@ -394,30 +394,52 @@ class ThreatDetector:
         self.config_whitelist = self._parse_ip_list(whitelist_raw)
         self.blacklist = self._parse_ip_list(blacklist_raw)
 
-        # Parse modern protocol ranges (streaming services, CDN providers)
-        modern_protocols = config.get('thresholds', {}).get('modern_protocols', {})
+        # Service provider IP ranges cache (streaming, CDN, etc.) — loaded from database
+        self._service_provider_ranges = []  # [(network, category_str), ...]
+        self._provider_cache_timestamp = 0
+        self._provider_cache_ttl = 300  # 5 minuten
 
-        # Defensieve check: zorg dat het lijsten zijn
-        streaming_list = modern_protocols.get('streaming_services', [])
-        cdn_list = modern_protocols.get('cdn_providers', [])
-
-        if not isinstance(streaming_list, list):
-            self.logger.warning(f"streaming_services is not a list (got {type(streaming_list).__name__}), using empty list")
-            streaming_list = []
-
-        if not isinstance(cdn_list, list):
-            self.logger.warning(f"cdn_providers is not a list (got {type(cdn_list).__name__}), using empty list")
-            cdn_list = []
-
-        self.streaming_services = self._parse_ip_list(streaming_list)
-        self.cdn_providers = self._parse_ip_list(cdn_list)
+        # Initial load van service providers
+        self._refresh_service_provider_cache()
 
         # Initialize content analyzer if available
         self.content_analyzer = ContentAnalyzer() if ContentAnalyzer else None
 
         self.logger.info("Threat Detector geïnitialiseerd")
-        self.logger.info(f"Streaming services whitelist: {len(self.streaming_services)} ranges")
-        self.logger.info(f"CDN providers whitelist: {len(self.cdn_providers)} ranges")
+        self.logger.info(f"Service provider ranges: {len(self._service_provider_ranges)} ranges (from database)")
+
+    def _refresh_service_provider_cache(self):
+        """Ververs de service provider IP ranges cache vanuit de database"""
+        if not self.db_manager:
+            return
+
+        try:
+            providers = self.db_manager.get_service_providers()
+            ranges = []
+
+            for provider in providers:
+                category = provider.get('category', 'other')
+                ip_ranges = provider.get('ip_ranges', [])
+                if isinstance(ip_ranges, str):
+                    import json as _json
+                    try:
+                        ip_ranges = _json.loads(ip_ranges)
+                    except (ValueError, TypeError):
+                        ip_ranges = []
+
+                for ip_range in ip_ranges:
+                    try:
+                        network = ipaddress.ip_network(ip_range, strict=False)
+                        ranges.append((network, category))
+                    except ValueError:
+                        continue
+
+            self._service_provider_ranges = ranges
+            self._provider_cache_timestamp = time.time()
+            self.logger.debug(f"Service provider cache refreshed: {len(ranges)} ranges")
+
+        except Exception as e:
+            self.logger.error(f"Error refreshing service provider cache: {e}")
 
     def _get_threshold(self, *keys, default=None):
         """
@@ -1232,31 +1254,27 @@ class ThreatDetector:
 
         return None
 
-    def _is_streaming_or_cdn(self, ip_address):
+    def _is_streaming_or_cdn(self, ip_addr):
         """
-        Check if IP belongs to known streaming service or CDN provider
+        Check if IP belongs to known streaming service or CDN provider (via database)
 
         Args:
-            ip_address: IP address to check
+            ip_addr: IP address to check
 
         Returns:
             tuple: (is_match, service_type) where service_type is 'streaming', 'cdn', or None
         """
-        # Check streaming services
-        for ip_network in self.streaming_services:
-            try:
-                if ipaddress.ip_address(ip_address) in ip_network:
-                    return (True, 'streaming')
-            except:
-                pass
+        # Refresh cache als TTL verlopen is
+        if time.time() - self._provider_cache_timestamp > self._provider_cache_ttl:
+            self._refresh_service_provider_cache()
 
-        # Check CDN providers
-        for ip_network in self.cdn_providers:
-            try:
-                if ipaddress.ip_address(ip_address) in ip_network:
-                    return (True, 'cdn')
-            except:
-                pass
+        try:
+            addr = ipaddress.ip_address(ip_addr)
+            for network, category in self._service_provider_ranges:
+                if addr in network:
+                    return (True, category)
+        except (ValueError, TypeError):
+            pass
 
         return (False, None)
 

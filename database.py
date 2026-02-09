@@ -561,7 +561,7 @@ class DatabaseManager:
                     updated_at TIMESTAMPTZ DEFAULT NOW(),
                     created_by VARCHAR(50),
                     CONSTRAINT valid_category CHECK (category IN (
-                        'streaming', 'cdn', 'cloud', 'social', 'gaming', 'other'
+                        'streaming', 'cdn', 'cloud', 'social', 'gaming', 'rmm', 'other'
                     )),
                     CONSTRAINT unique_provider_name UNIQUE (name, category)
                 );
