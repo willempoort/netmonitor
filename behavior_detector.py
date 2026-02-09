@@ -173,6 +173,11 @@ class BehaviorDetector:
         elif packet.haslayer(UDP):
             dst_port = packet[UDP].dport
 
+        # Skip uitgesloten poorten (bijv. NTP) die inherent periodiek zijn
+        excluded_ports = self._get_threshold('beaconing', 'excluded_ports', default=[])
+        if dst_port and dst_port in excluded_ports:
+            return None
+
         # Track connection
         connections = self.connection_tracker[src_ip]
         connections.append((current_time, dst_ip, dst_port))

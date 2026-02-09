@@ -503,6 +503,16 @@ function updateTrafficChart(history) {
 
 // ==================== Alerts ====================
 
+function getAlertPort(alert) {
+    if (!alert || !alert.metadata) return null;
+    try {
+        const meta = typeof alert.metadata === 'string' ? JSON.parse(alert.metadata) : alert.metadata;
+        return meta.destination_port || meta.dst_port || null;
+    } catch (e) {
+        return null;
+    }
+}
+
 function groupAlerts(alerts) {
     /**
      * Group consecutive similar alerts by threat_type and source_ip
@@ -575,6 +585,8 @@ function addGroupedAlertToFeed(group) {
     const countBadge = group.count > 1 ?
         `<span class="badge bg-warning text-dark ms-2">${group.count}x</span>` : '';
 
+    const port = getAlertPort(group.alerts[0]);
+
     let metaInfo = '';
     if (group.source_ip) {
         metaInfo += `<i class="bi bi-arrow-right-circle"></i> ${group.source_ip}`;
@@ -582,6 +594,7 @@ function addGroupedAlertToFeed(group) {
     }
     if (group.destination_ip) {
         metaInfo += ` → ${group.destination_ip}`;
+        if (port) metaInfo += `:${port}`;
         if (group.destination_hostname) metaInfo += ` <small class="text-muted">(${group.destination_hostname})</small>`;
     }
 
@@ -632,12 +645,17 @@ function addAlertToFeed(alert, prepend = false) {
 
     const timestamp = new Date(alert.timestamp).toLocaleString('nl-NL');
 
+    const port = getAlertPort(alert);
+
     let metaInfo = '';
     if (alert.source_ip) {
         metaInfo += `<i class="bi bi-arrow-right-circle"></i> ${alert.source_ip}`;
+        if (alert.source_hostname) metaInfo += ` <small class="text-muted">(${alert.source_hostname})</small>`;
     }
     if (alert.destination_ip) {
         metaInfo += ` → ${alert.destination_ip}`;
+        if (port) metaInfo += `:${port}`;
+        if (alert.destination_hostname) metaInfo += ` <small class="text-muted">(${alert.destination_hostname})</small>`;
     }
 
     alertDiv.innerHTML = `
@@ -687,6 +705,29 @@ function showAlertDetails(group) {
     if (group.count === 1) {
         // Single alert - show full details
         const alert = group.alerts[0];
+        const port = getAlertPort(alert);
+
+        let metadataHTML = '';
+        if (alert.metadata) {
+            try {
+                const meta = typeof alert.metadata === 'string' ? JSON.parse(alert.metadata) : alert.metadata;
+                const rows = Object.entries(meta)
+                    .map(([k, v]) => `<tr><td class="text-muted pe-3"><strong>${k}</strong></td><td>${v}</td></tr>`)
+                    .join('');
+                metadataHTML = `
+                <div class="alert-detail-section">
+                    <h6><i class="bi bi-code-square"></i> Additional Information</h6>
+                    <table class="table table-sm table-dark mb-0">${rows}</table>
+                </div>`;
+            } catch (e) {
+                metadataHTML = `
+                <div class="alert-detail-section">
+                    <h6><i class="bi bi-code-square"></i> Additional Information</h6>
+                    <pre class="bg-secondary p-2 rounded"><code>${alert.metadata}</code></pre>
+                </div>`;
+            }
+        }
+
         detailsHTML = `
             <div class="alert-detail-section">
                 <h6><i class="bi bi-clock"></i> Timestamp</h6>
@@ -708,7 +749,7 @@ function showAlertDetails(group) {
             ${alert.destination_ip ? `
             <div class="alert-detail-section">
                 <h6><i class="bi bi-hdd-network-fill"></i> Destination IP</h6>
-                <p><code>${alert.destination_ip}</code>${alert.destination_hostname ? ` <small class="text-muted">(${alert.destination_hostname})</small>` : ''}</p>
+                <p><code>${alert.destination_ip}${port ? ':' + port : ''}</code>${alert.destination_hostname ? ` <small class="text-muted">(${alert.destination_hostname})</small>` : ''}</p>
             </div>
             ` : ''}
 
@@ -717,15 +758,12 @@ function showAlertDetails(group) {
                 <p>${alert.description}</p>
             </div>
 
-            ${alert.metadata ? `
-            <div class="alert-detail-section">
-                <h6><i class="bi bi-code-square"></i> Additional Information</h6>
-                <pre class="bg-secondary p-2 rounded"><code>${alert.metadata}</code></pre>
-            </div>
-            ` : ''}
+            ${metadataHTML}
         `;
     } else {
         // Multiple alerts - show summary and list
+        const groupPort = getAlertPort(group.alerts[0]);
+
         detailsHTML = `
             <div class="alert-detail-section">
                 <h6><i class="bi bi-calendar-range"></i> Time Range</h6>
@@ -745,7 +783,7 @@ function showAlertDetails(group) {
             ${group.destination_ip ? `
             <div class="alert-detail-section">
                 <h6><i class="bi bi-hdd-network-fill"></i> Destination IP</h6>
-                <p><code>${group.destination_ip}</code>${group.destination_hostname ? ` <small class="text-muted">(${group.destination_hostname})</small>` : ''}</p>
+                <p><code>${group.destination_ip}${groupPort ? ':' + groupPort : ''}</code>${group.destination_hostname ? ` <small class="text-muted">(${group.destination_hostname})</small>` : ''}</p>
             </div>
             ` : ''}
 
@@ -755,10 +793,12 @@ function showAlertDetails(group) {
         `;
 
         group.alerts.forEach((alert, index) => {
+            const alertPort = getAlertPort(alert);
+            const portInfo = alertPort ? ` <span class="badge bg-info text-dark">:${alertPort}</span>` : '';
             detailsHTML += `
                 <div class="list-group-item bg-secondary text-light mb-2">
                     <div class="d-flex justify-content-between">
-                        <strong>#${index + 1}</strong>
+                        <strong>#${index + 1}${portInfo}</strong>
                         <small>${new Date(alert.timestamp).toLocaleString('nl-NL')}</small>
                     </div>
                     <p class="mb-1 mt-2">${alert.description}</p>
