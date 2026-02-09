@@ -784,16 +784,18 @@ Behavior Rules definiëren wat "normaal" gedrag is voor een apparaattype. Verkee
 
 #### Rule Types
 
-| Type | Beschrijving | Voorbeeld Waarde |
-|------|--------------|------------------|
-| **allowed_ports** | Toegestane poorten | `443` of `5060-5090` of `80,443,8080` |
-| **allowed_protocols** | Toegestane protocollen | `TCP`, `UDP`, `ICMP` |
-| **bandwidth_limit** | Maximum bandbreedte | `100` (MB per uur) |
-| **connection_behavior** | Connectie gedrag | `50` (max connecties) |
-| **expected_destinations** | Verwachte bestemmingen | `8.8.8.8` of `*.google.com` |
-| **time_restrictions** | Tijdsbeperkingen | `08:00-18:00` |
-| **dns_behavior** | DNS gedrag | `*.netflix.com` |
-| **traffic_pattern** | Verkeerspatroon | `bidirectional` |
+| Type | Beschrijving | Richting | Voorbeeld Waarde |
+|------|--------------|----------|------------------|
+| **allowed_ports** | Toegestane poorten | Inbound/Outbound/Beide | `443` of `5060-5090` of `80,443,8080` |
+| **allowed_protocols** | Toegestane protocollen | Beide | `TCP`, `UDP`, `ICMP` |
+| **allowed_sources** | Toegestane bronnen (voor servers) | Inbound | `192.168.1.0/24` |
+| **expected_destinations** | Verwachte bestemmingen | Outbound | `8.8.8.8` of `*.google.com` |
+| **bandwidth_limit** | Maximum bandbreedte | Beide | `100` (MB per uur) |
+| **connection_behavior** | Connectie gedrag | Inbound | `50` (max connecties) |
+| **traffic_pattern** | Verkeerspatroon | Beide | `bidirectional` |
+| **time_restrictions** | Tijdsbeperkingen | Beide | `08:00-18:00` |
+| **dns_behavior** | DNS gedrag | Beide | `*.netflix.com` |
+| **suppress_alert_types** | Suppress specifieke alert types | Beide | `HTTP_SENSITIVE_DATA` |
 
 #### Rule Actions
 
@@ -803,7 +805,65 @@ Behavior Rules definiëren wat "normaal" gedrag is voor een apparaattype. Verkee
 | **Suppress** | Alerts worden volledig verborgen |
 | **Alert** | Altijd een alert genereren (voor monitoring) |
 
-**Belangrijk:** CRITICAL en C2/Threat alerts worden **NOOIT** onderdrukt, ongeacht de rules.
+**Belangrijk:** C2/Threat feed alerts (zoals `C2_COMMUNICATION`, `BLACKLISTED_IP`) worden **NOOIT** onderdrukt, ongeacht de rules. CRITICAL alerts worden standaard niet onderdrukt, tenzij u expliciet `suppress_alert_types` gebruikt (zie hieronder).
+
+#### Direction (Richting)
+
+De **Direction** bepaalt wanneer een rule wordt toegepast ten opzichte van het apparaat:
+
+| Richting | Betekenis | Wanneer gebruikt |
+|----------|-----------|------------------|
+| **Inbound** | Verkeer **naar** het apparaat toe (apparaat is destination) | Server die verbindingen ontvangt |
+| **Outbound** | Verkeer **van** het apparaat af (apparaat is source) | Client die verbindingen maakt |
+| **Beide** (leeg) | Ongeacht richting | Algemene regels |
+
+**Voorbeeld:** Een webserver ontvangt verbindingen op poort 443. Dit is *inbound* verkeer. Diezelfde server maakt verbindingen naar een database — dat is *outbound* verkeer.
+
+#### Suppress Alert Types
+
+Met `suppress_alert_types` kunt u specifieke alert types onderdrukken voor een apparaat. Dit is nauwkeuriger dan een IP whitelist omdat alleen de genoemde alert types worden onderdrukt — andere detecties (brute force, port scans, etc.) blijven actief.
+
+**Wanneer gebruiken:**
+- UniFi controllers die configuratie-data sturen die op gevoelige data lijkt
+- Apparaten met bekende false positives voor specifieke detectieregels
+- Situaties waar een IP whitelist te breed zou zijn
+
+**Verschil met IP Whitelist:**
+
+| Aspect | IP Whitelist | suppress_alert_types |
+|--------|--------------|----------------------|
+| Scope | Alle alerts voor dat IP | Alleen genoemde alert types |
+| Brute Force detectie | Onderdrukt (gemist!) | Blijft actief |
+| C2 detectie | Onderdrukt (gemist!) | Blijft actief |
+| Port scan detectie | Onderdrukt (gemist!) | Blijft actief |
+| CRITICAL alerts | Afhankelijk van instelling | Kan specifiek worden onderdrukt |
+
+**Toevoegen via Dashboard:**
+1. Open de template van het apparaat
+2. Klik "Add Rule"
+3. Selecteer type: **suppress_alert_types**
+4. Voer de alert type(s) in: bijv. `HTTP_SENSITIVE_DATA`
+5. Klik "Add"
+
+#### Bidirectionele Template Checking
+
+Alert suppression controleert **zowel source als destination** devices:
+
+1. **Source device template** → Mag dit apparaat dit verkeer verzenden?
+2. **Destination device template** → Mag dit apparaat dit verkeer ontvangen?
+
+Dit betekent dat een rule op één van beide apparaten voldoende is om een alert te onderdrukken. Een NAS met `allowed_ports: 445 (inbound)` voorkomt alerts wanneer clients via SMB verbinden.
+
+#### Template Klonen (Clone)
+
+U kunt een bestaande template klonen om snel een variant te maken:
+
+1. Open de template die u wilt klonen
+2. Klik de **Clone** knop (naast Edit/Delete)
+3. Geef de kloon een nieuwe naam
+4. Pas de rules aan naar behoefte
+
+**Tip:** Dit werkt ook met Built-in templates. Omdat Built-in templates niet bewerkt kunnen worden, is klonen de manier om een aangepaste versie te maken.
 
 #### Behavior Rule Toevoegen
 
@@ -1005,6 +1065,25 @@ Top 10 fabrikanten in uw netwerk, gebaseerd op MAC-adres OUI lookup.
 9. Pas aan indien nodig
 10. ✅ Template is klaar voor gebruik
 
+#### Voorbeeld 5: UniFi Controller met Suppress Rules
+
+**Situatie:** Uw UniFi Controller stuurt configuratie-data naar access points. De DLP-detectie markeert dit als "sensitive data" (HTTP_SENSITIVE_DATA), maar het is legitiem management verkeer. U wilt deze specifieke alerts onderdrukken zonder andere detecties uit te schakelen.
+
+**Stappen:**
+1. Ga naar Templates tab
+2. Klik "Create Template"
+3. Naam: "UniFi Controller", Category: "Network"
+4. Klik "Create"
+5. Open de nieuwe template
+6. Klik "Add Rule" en voeg de volgende rules toe:
+   - Type: `allowed_ports`, Value: `8443,8080,8843`, Direction: Inbound, Desc: "UniFi management poorten"
+   - Type: `suppress_alert_types`, Value: `HTTP_SENSITIVE_DATA,HTTP_HIGH_ENTROPY_PAYLOAD`, Desc: "Management traffic false positives"
+   - Type: `allowed_sources`, Value: `internal`, Desc: "Alleen interne apparaten"
+7. Ga naar Devices tab
+8. Zoek uw UniFi Controller (op IP of MAC)
+9. Wijs de "UniFi Controller" template toe
+10. ✅ Management verkeer genereert geen false positive alerts meer, maar brute force en port scan detectie blijven actief
+
 ---
 
 ### Tips en Best Practices
@@ -1022,7 +1101,7 @@ Top 10 fabrikanten in uw netwerk, gebaseerd op MAC-adres OUI lookup.
 - **Classificeer niet te ruim** - Een template met "alle poorten allowed" is zinloos
 - **Negeer unclassified apparaten niet** - Deze genereren de meeste false positives
 - **Wijzig geen Built-in templates** - Maak een custom template als je andere rules nodig hebt
-- **Suppress geen CRITICAL alerts** - Deze worden sowieso niet onderdrukt
+- **Suppress CRITICAL alerts alleen met `suppress_alert_types`** - Gebruik hiervoor nooit een IP whitelist (die onderdrukt álle alerts). Met `suppress_alert_types` kunt u wel specifieke CRITICAL alerts onderdrukken terwijl andere detecties actief blijven
 
 ---
 
