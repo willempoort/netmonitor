@@ -37,7 +37,8 @@ BEST_PRACTICE_CONFIG = {
         "beaconing": {
             "enabled": True,
             "min_connections": 5,       # Minimum connections to detect pattern
-            "max_jitter_percent": 20    # Max timing jitter in beacon intervals
+            "max_jitter_percent": 20,   # Max timing jitter in beacon intervals
+            "excluded_ports": [123]     # Ports to exclude (e.g. NTP is inherently periodic)
         },
         "outbound_volume": {
             "enabled": True,
@@ -760,6 +761,7 @@ PARAMETER_DESCRIPTIONS = {
     "thresholds.beaconing.enabled": "Enable C2 beaconing detection",
     "thresholds.beaconing.min_connections": "Minimum connections to establish beaconing pattern",
     "thresholds.beaconing.max_jitter_percent": "Maximum jitter percentage in beacon intervals",
+    "thresholds.beaconing.excluded_ports": "Ports to exclude from beaconing detection (e.g. 123 for NTP)",
 
     "thresholds.outbound_volume.enabled": "Enable data exfiltration detection",
     "thresholds.outbound_volume.threshold_mb": "MB uploaded that triggers exfiltration alert",
