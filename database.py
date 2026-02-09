@@ -1466,22 +1466,60 @@ class DatabaseManager:
 
             cursor.execute('''
                 SELECT
-                    id,
-                    timestamp,
-                    severity,
-                    threat_type,
-                    source_ip::text as source_ip,
-                    destination_ip::text as destination_ip,
-                    description,
-                    metadata,
-                    acknowledged
-                FROM alerts
-                WHERE timestamp > %s
-                ORDER BY timestamp DESC
+                    a.id,
+                    a.timestamp,
+                    a.severity,
+                    a.threat_type,
+                    a.source_ip::text as source_ip,
+                    a.destination_ip::text as destination_ip,
+                    a.description,
+                    a.metadata,
+                    a.acknowledged,
+                    src_tt.hostname as source_hostname,
+                    dst_tt.hostname as destination_hostname
+                FROM alerts a
+                LEFT JOIN LATERAL (
+                    SELECT hostname FROM top_talkers
+                    WHERE ip_address = a.source_ip AND hostname IS NOT NULL
+                    ORDER BY timestamp DESC LIMIT 1
+                ) src_tt ON true
+                LEFT JOIN LATERAL (
+                    SELECT hostname FROM top_talkers
+                    WHERE ip_address = a.destination_ip AND hostname IS NOT NULL
+                    ORDER BY timestamp DESC LIMIT 1
+                ) dst_tt ON true
+                WHERE a.timestamp > %s
+                ORDER BY a.timestamp DESC
                 LIMIT %s
             ''', (cutoff_time, limit))
 
-            return [dict(row) for row in cursor.fetchall()]
+            alerts = [dict(row) for row in cursor.fetchall()]
+
+            # Fallback: resolve missing hostnames from devices table
+            missing_ips = set()
+            for alert in alerts:
+                if alert['source_ip'] and not alert.get('source_hostname'):
+                    missing_ips.add(alert['source_ip'])
+                if alert['destination_ip'] and not alert.get('destination_hostname'):
+                    missing_ips.add(alert['destination_ip'])
+
+            if missing_ips:
+                cursor.execute('''
+                    SELECT DISTINCT ON (ip_address) ip_address::text, hostname
+                    FROM devices
+                    WHERE ip_address = ANY(%s::inet[])
+                      AND hostname IS NOT NULL
+                    ORDER BY ip_address, last_seen DESC
+                ''', (list(missing_ips),))
+                device_hostnames = {row['ip_address']: row['hostname'] for row in cursor.fetchall()}
+
+                for alert in alerts:
+                    if alert['source_ip'] and not alert.get('source_hostname'):
+                        alert['source_hostname'] = device_hostnames.get(alert['source_ip'])
+                    if alert['destination_ip'] and not alert.get('destination_hostname'):
+                        alert['destination_hostname'] = device_hostnames.get(alert['destination_ip'])
+
+            return alerts
 
         except Exception as e:
             self.logger.error(f"Error getting recent alerts: {e}")

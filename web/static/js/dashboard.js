@@ -522,6 +522,8 @@ function groupAlerts(alerts) {
                 threat_type: alert.threat_type,
                 source_ip: alert.source_ip,
                 destination_ip: alert.destination_ip,
+                source_hostname: alert.source_hostname,
+                destination_hostname: alert.destination_hostname,
                 severity: alert.severity,
                 count: 1,
                 first_seen: alert.timestamp,
@@ -576,9 +578,11 @@ function addGroupedAlertToFeed(group) {
     let metaInfo = '';
     if (group.source_ip) {
         metaInfo += `<i class="bi bi-arrow-right-circle"></i> ${group.source_ip}`;
+        if (group.source_hostname) metaInfo += ` <small class="text-muted">(${group.source_hostname})</small>`;
     }
     if (group.destination_ip) {
         metaInfo += ` → ${group.destination_ip}`;
+        if (group.destination_hostname) metaInfo += ` <small class="text-muted">(${group.destination_hostname})</small>`;
     }
 
     // Use first alert's description
@@ -611,6 +615,8 @@ function addAlertToFeed(alert, prepend = false) {
         threat_type: alert.threat_type,
         source_ip: alert.source_ip,
         destination_ip: alert.destination_ip,
+        source_hostname: alert.source_hostname,
+        destination_hostname: alert.destination_hostname,
         severity: alert.severity,
         count: 1,
         last_seen: alert.timestamp,
@@ -695,14 +701,14 @@ function showAlertDetails(group) {
             ${alert.source_ip ? `
             <div class="alert-detail-section">
                 <h6><i class="bi bi-hdd-network"></i> Source IP</h6>
-                <p>${alert.source_ip}</p>
+                <p><code>${alert.source_ip}</code>${alert.source_hostname ? ` <small class="text-muted">(${alert.source_hostname})</small>` : ''}</p>
             </div>
             ` : ''}
 
             ${alert.destination_ip ? `
             <div class="alert-detail-section">
                 <h6><i class="bi bi-hdd-network-fill"></i> Destination IP</h6>
-                <p>${alert.destination_ip}</p>
+                <p><code>${alert.destination_ip}</code>${alert.destination_hostname ? ` <small class="text-muted">(${alert.destination_hostname})</small>` : ''}</p>
             </div>
             ` : ''}
 
@@ -732,14 +738,14 @@ function showAlertDetails(group) {
             ${group.source_ip ? `
             <div class="alert-detail-section">
                 <h6><i class="bi bi-hdd-network"></i> Source IP</h6>
-                <p>${group.source_ip}</p>
+                <p><code>${group.source_ip}</code>${group.source_hostname ? ` <small class="text-muted">(${group.source_hostname})</small>` : ''}</p>
             </div>
             ` : ''}
 
             ${group.destination_ip ? `
             <div class="alert-detail-section">
                 <h6><i class="bi bi-hdd-network-fill"></i> Destination IP</h6>
-                <p>${group.destination_ip}</p>
+                <p><code>${group.destination_ip}</code>${group.destination_hostname ? ` <small class="text-muted">(${group.destination_hostname})</small>` : ''}</p>
             </div>
             ` : ''}
 
