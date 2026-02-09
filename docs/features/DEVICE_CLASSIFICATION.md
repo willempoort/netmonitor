@@ -566,6 +566,8 @@ Dit betekent dat bijvoorbeeld:
 
 ### Behavior Types
 
+> **📖 Complete JSON Parameters Referentie:** Voor een uitgebreide beschrijving van alle behavior types met volledige JSON schemas, SQL INSERT voorbeelden, en Dashboard-naar-JSON mapping, zie de [Admin Manual: Behavior Rules JSON Parameters Referentie](../usage/ADMIN_MANUAL.md#behavior-rules--complete-json-parameters-referentie).
+
 Templates kunnen de volgende behavior types definiëren:
 
 | Type | Parameters | Richting | Beschrijving |
@@ -578,6 +580,8 @@ Templates kunnen de volgende behavior types definiëren:
 | `connection_behavior` | `accepts_connections: true`, `api_server: true` | Inbound | Server connectie gedrag |
 | `bandwidth_limit` | `max_mbps: 100` | Beide | Bandwidth limiet |
 | `suppress_alert_types` | `alert_types: [HTTP_SENSITIVE_DATA]` | Beide | **NEW v2.8** - Suppress specifieke alert types (ook CRITICAL) |
+| `time_restrictions` | `start: "08:00"`, `end: "18:00"`, `days: [mon, tue, ...]` | Beide | Tijdsgebonden rules |
+| `dns_behavior` | `allowed_domains: [*.netflix.com]` | Beide | Verwachte DNS patronen |
 
 #### expected_destinations Parameters
 

@@ -521,6 +521,401 @@ VALUES (
 );
 ```
 
+### Behavior Rules — Complete JSON Parameters Referentie
+
+Deze sectie beschrijft alle behavior types met hun volledige JSON parameters schema en SQL INSERT voorbeelden.
+
+#### Overzichtstabel Alle Behavior Types
+
+| # | Behavior Type | Parameters | Richting | Effect |
+|---|---------------|------------|----------|--------|
+| 1 | `allowed_ports` | `ports`, `direction` | Inbound/Outbound/Beide | Poorten als normaal markeren |
+| 2 | `allowed_protocols` | `protocols` | Beide | Protocollen als normaal markeren |
+| 3 | `allowed_sources` | `subnets`, `internal` | Inbound | Toegestane bronnen voor servers |
+| 4 | `expected_destinations` | `allowed_ips`, `internal_only`, `categories` | Outbound | Verwachte bestemmingen |
+| 5 | `bandwidth_limit` | `max_mbps` | Beide | Bandbreedte limiet (MB/uur) |
+| 6 | `connection_behavior` | `accepts_connections`, `api_server`, `max_connections` | Inbound | Server connectie gedrag |
+| 7 | `traffic_pattern` | `high_bandwidth`, `bidirectional` | Beide | Verwacht verkeerspatroon |
+| 8 | `suppress_alert_types` | `alert_types` | Beide | Specifieke alert types onderdrukken |
+| 9 | `time_restrictions` | `start`, `end`, `days` | Beide | Tijdsgebonden rules |
+| 10 | `dns_behavior` | `allowed_domains` | Beide | Verwachte DNS patronen |
+
+#### Direction Parameter
+
+De `direction` parameter bepaalt wanneer een rule wordt geëvalueerd:
+
+| Waarde | SQL/JSON Waarde | Betekenis |
+|--------|-----------------|-----------|
+| Inbound | `"inbound"` | Device is **destination** (ontvangt verkeer) |
+| Outbound | `"outbound"` | Device is **source** (verstuurt verkeer) |
+| Beide | `null` of afwezig | Ongeacht richting |
+
+**Dashboard Value → JSON Mapping:**
+
+In het dashboard selecteert de gebruiker een leesbare waarde. In de database wordt dit als JSON opgeslagen:
+
+| Dashboard Veld | Dashboard Waarde | JSON Parameter | JSON Waarde |
+|----------------|------------------|----------------|-------------|
+| Type | "Allowed Ports" | `behavior_type` | `"allowed_ports"` |
+| Value | "443,8080" | `parameters.ports` | `[443, 8080]` |
+| Direction | "Inbound" | `parameters.direction` | `"inbound"` |
+| Action | "Allow" | `action` | `"allow"` |
+| Description | vrije tekst | `description` | string |
+
+> **Let op:** Het dashboard stuurt de `Value` als string. De backend converteert dit naar het juiste JSON-type (array, boolean, integer) op basis van het behavior type.
+
+---
+
+#### 1. `allowed_ports`
+
+Definieert welke poorten als normaal verkeer worden beschouwd.
+
+**Parameters:**
+
+| Parameter | Type | Verplicht | Beschrijving |
+|-----------|------|-----------|--------------|
+| `ports` | `int[]` | Ja | Lijst van toegestane poorten |
+| `direction` | `string` | Nee | `"inbound"`, `"outbound"`, of afwezig voor beide |
+
+**SQL INSERT:**
+```sql
+INSERT INTO template_behaviors (template_id, behavior_type, parameters, action, description)
+VALUES (
+    (SELECT id FROM device_templates WHERE name = 'My Template'),
+    'allowed_ports',
+    '{"ports": [443, 8080, 8443], "direction": "inbound"}',
+    'allow',
+    'HTTPS en management poorten'
+);
+```
+
+---
+
+#### 2. `allowed_protocols`
+
+Definieert welke protocollen als normaal worden beschouwd.
+
+**Parameters:**
+
+| Parameter | Type | Verplicht | Beschrijving |
+|-----------|------|-----------|--------------|
+| `protocols` | `string[]` | Ja | Lijst van toegestane protocollen (`"TCP"`, `"UDP"`, `"ICMP"`) |
+
+**SQL INSERT:**
+```sql
+INSERT INTO template_behaviors (template_id, behavior_type, parameters, action, description)
+VALUES (
+    (SELECT id FROM device_templates WHERE name = 'My Template'),
+    'allowed_protocols',
+    '{"protocols": ["TCP", "UDP"]}',
+    'allow',
+    'Standaard netwerk protocollen'
+);
+```
+
+---
+
+#### 3. `allowed_sources`
+
+Definieert welke bronnen verbinding mogen maken met dit apparaat (voor servers).
+
+**Parameters:**
+
+| Parameter | Type | Verplicht | Beschrijving |
+|-----------|------|-----------|--------------|
+| `subnets` | `string[]` | Nee | Specifieke IP-adressen of CIDRs die mogen connecten |
+| `internal` | `boolean` | Nee | `true` = alleen interne netwerken (10.x, 172.16.x, 192.168.x) |
+
+> Minstens één van `subnets` of `internal` moet opgegeven worden.
+
+**SQL INSERT:**
+```sql
+INSERT INTO template_behaviors (template_id, behavior_type, parameters, action, description)
+VALUES (
+    (SELECT id FROM device_templates WHERE name = 'My Template'),
+    'allowed_sources',
+    '{"subnets": ["192.168.1.0/24", "10.0.0.0/8"], "internal": true}',
+    'allow',
+    'Alleen interne netwerken mogen connecten'
+);
+```
+
+---
+
+#### 4. `expected_destinations`
+
+Definieert waarheen het apparaat verkeer mag sturen.
+
+**Parameters:**
+
+| Parameter | Type | Verplicht | Beschrijving |
+|-----------|------|-----------|--------------|
+| `allowed_ips` | `string[]` | Nee | Expliciete IP-adressen of CIDRs |
+| `internal_only` | `boolean` | Nee | `true` = alleen interne netwerken toegestaan |
+| `categories` | `string[]` | Nee | Toegestane service provider categorieën (bijv. `["streaming", "cdn"]`) |
+
+> Minstens één parameter moet opgegeven worden.
+
+**SQL INSERT:**
+```sql
+INSERT INTO template_behaviors (template_id, behavior_type, parameters, action, description)
+VALUES (
+    (SELECT id FROM device_templates WHERE name = 'My Template'),
+    'expected_destinations',
+    '{"allowed_ips": ["192.168.1.100"], "internal_only": false}',
+    'allow',
+    'Alleen verkeer naar controller toegestaan'
+);
+```
+
+---
+
+#### 5. `bandwidth_limit`
+
+Stelt een maximale bandbreedte in. Overschrijding genereert een alert.
+
+**Parameters:**
+
+| Parameter | Type | Verplicht | Beschrijving |
+|-----------|------|-----------|--------------|
+| `max_mbps` | `int` | Ja | Maximum bandbreedte in MB per uur |
+
+**SQL INSERT:**
+```sql
+INSERT INTO template_behaviors (template_id, behavior_type, parameters, action, description)
+VALUES (
+    (SELECT id FROM device_templates WHERE name = 'My Template'),
+    'bandwidth_limit',
+    '{"max_mbps": 500}',
+    'alert',
+    'Maximaal 500 MB per uur'
+);
+```
+
+---
+
+#### 6. `connection_behavior`
+
+Definieert connectiegedrag voor servers/apparaten die verbindingen accepteren.
+
+**Parameters:**
+
+| Parameter | Type | Verplicht | Beschrijving |
+|-----------|------|-----------|--------------|
+| `accepts_connections` | `boolean` | Nee | `true` = apparaat accepteert inkomende verbindingen |
+| `api_server` | `boolean` | Nee | `true` = apparaat is een API server |
+| `max_connections` | `int` | Nee | Maximum gelijktijdige verbindingen |
+
+**SQL INSERT:**
+```sql
+INSERT INTO template_behaviors (template_id, behavior_type, parameters, action, description)
+VALUES (
+    (SELECT id FROM device_templates WHERE name = 'My Template'),
+    'connection_behavior',
+    '{"accepts_connections": true, "api_server": true, "max_connections": 100}',
+    'allow',
+    'Server accepteert inkomende API verbindingen'
+);
+```
+
+---
+
+#### 7. `traffic_pattern`
+
+Definieert het verwachte verkeerspatroon van het apparaat.
+
+**Parameters:**
+
+| Parameter | Type | Verplicht | Beschrijving |
+|-----------|------|-----------|--------------|
+| `high_bandwidth` | `boolean` | Nee | `true` = apparaat gebruikt veel bandbreedte (bijv. camera's, NAS) |
+| `bidirectional` | `boolean` | Nee | `true` = verkeer gaat beide kanten op (bijv. file sharing) |
+
+**SQL INSERT:**
+```sql
+INSERT INTO template_behaviors (template_id, behavior_type, parameters, action, description)
+VALUES (
+    (SELECT id FROM device_templates WHERE name = 'My Template'),
+    'traffic_pattern',
+    '{"high_bandwidth": true, "bidirectional": true}',
+    'allow',
+    'NAS met bidirectioneel high-bandwidth verkeer'
+);
+```
+
+---
+
+#### 8. `suppress_alert_types`
+
+Onderdrukt specifieke alert types. Nauwkeuriger dan een IP whitelist — andere detecties blijven actief.
+
+**Parameters:**
+
+| Parameter | Type | Verplicht | Beschrijving |
+|-----------|------|-----------|--------------|
+| `alert_types` | `string[]` | Ja | Alert types om te onderdrukken |
+
+**Beschikbare alert types (veelgebruikt):**
+
+| Alert Type | Beschrijving |
+|------------|--------------|
+| `HTTP_SENSITIVE_DATA` | DLP detectie van gevoelige data in HTTP verkeer |
+| `HTTP_HIGH_ENTROPY_PAYLOAD` | Hoge entropy in HTTP payloads (lijkt op encryptie/obfuscatie) |
+| `UNUSUAL_PORT` | Ongebruikelijke poort voor dit protocol |
+| `HIGH_BANDWIDTH` | Ongewoon hoog bandbreedtegebruik |
+| `MANY_CONNECTIONS` | Ongewoon veel verbindingen |
+
+> **Let op:** Threat feed matches (`C2_COMMUNICATION`, `BLACKLISTED_IP`) worden **nooit** gesupprimeerd, ook niet via `suppress_alert_types`.
+
+**SQL INSERT:**
+```sql
+INSERT INTO template_behaviors (template_id, behavior_type, parameters, action, description)
+VALUES (
+    (SELECT id FROM device_templates WHERE name = 'My Template'),
+    'suppress_alert_types',
+    '{"alert_types": ["HTTP_SENSITIVE_DATA", "HTTP_HIGH_ENTROPY_PAYLOAD"]}',
+    'allow',
+    'UniFi management traffic false positives'
+);
+```
+
+**suppress_alert_types vs IP Whitelist:**
+
+| Aspect | IP Whitelist | suppress_alert_types |
+|--------|--------------|----------------------|
+| Scope | Alle alerts voor dat IP | Alleen genoemde alert types |
+| HTTP_SENSITIVE_DATA | ✅ Onderdrukt | ✅ Onderdrukt |
+| Brute Force | ❌ Onderdrukt (gemist!) | ✅ Gedetecteerd |
+| C2 Communication | ❌ Onderdrukt (gemist!) | ✅ Gedetecteerd |
+| Port Scans | ❌ Onderdrukt (gemist!) | ✅ Gedetecteerd |
+| CRITICAL alerts | Afhankelijk van instelling | Kan specifiek worden onderdrukt |
+| Granulariteit | Hele IP-adres | Per alert type |
+
+---
+
+#### 9. `time_restrictions`
+
+Beperkt wanneer een rule actief is (tijdsgebonden).
+
+**Parameters:**
+
+| Parameter | Type | Verplicht | Beschrijving |
+|-----------|------|-----------|--------------|
+| `start` | `string` | Ja | Starttijd in `HH:MM` formaat |
+| `end` | `string` | Ja | Eindtijd in `HH:MM` formaat |
+| `days` | `string[]` | Nee | Dagen waarop de regel geldt (bijv. `["mon", "tue", "wed", "thu", "fri"]`) |
+
+**SQL INSERT:**
+```sql
+INSERT INTO template_behaviors (template_id, behavior_type, parameters, action, description)
+VALUES (
+    (SELECT id FROM device_templates WHERE name = 'My Template'),
+    'time_restrictions',
+    '{"start": "08:00", "end": "18:00", "days": ["mon", "tue", "wed", "thu", "fri"]}',
+    'allow',
+    'Alleen tijdens kantooruren actief'
+);
+```
+
+---
+
+#### 10. `dns_behavior`
+
+Definieert verwachte DNS patronen voor het apparaat.
+
+**Parameters:**
+
+| Parameter | Type | Verplicht | Beschrijving |
+|-----------|------|-----------|--------------|
+| `allowed_domains` | `string[]` | Ja | Verwachte domeinen (wildcards met `*` toegestaan) |
+
+**SQL INSERT:**
+```sql
+INSERT INTO template_behaviors (template_id, behavior_type, parameters, action, description)
+VALUES (
+    (SELECT id FROM device_templates WHERE name = 'My Template'),
+    'dns_behavior',
+    '{"allowed_domains": ["*.netflix.com", "*.nflxvideo.net", "*.nflxso.net"]}',
+    'allow',
+    'Netflix DNS verzoeken verwacht'
+);
+```
+
+---
+
+#### Volledig Template Voorbeeld: UniFi Controller
+
+Een compleet voorbeeld met 3 behavior rules via SQL:
+
+```sql
+-- Stap 1: Template aanmaken
+INSERT INTO device_templates (name, category, description, is_builtin)
+VALUES ('UniFi Controller', 'network', 'Ubiquiti UniFi Network Controller/Application', false)
+RETURNING id;
+
+-- Stap 2: Behavior rules toevoegen (gebruik het ID uit stap 1)
+-- Rule 1: Management poorten (inbound)
+INSERT INTO template_behaviors (template_id, behavior_type, parameters, action, description)
+VALUES (
+    (SELECT id FROM device_templates WHERE name = 'UniFi Controller'),
+    'allowed_ports',
+    '{"ports": [8443, 8080, 8843, 6789, 27117], "direction": "inbound"}',
+    'allow',
+    'UniFi management en inform poorten'
+);
+
+-- Rule 2: Suppress false positive DLP alerts
+INSERT INTO template_behaviors (template_id, behavior_type, parameters, action, description)
+VALUES (
+    (SELECT id FROM device_templates WHERE name = 'UniFi Controller'),
+    'suppress_alert_types',
+    '{"alert_types": ["HTTP_SENSITIVE_DATA", "HTTP_HIGH_ENTROPY_PAYLOAD"]}',
+    'allow',
+    'Management traffic bevat configuratie data die lijkt op sensitive data'
+);
+
+-- Rule 3: Alleen interne bronnen
+INSERT INTO template_behaviors (template_id, behavior_type, parameters, action, description)
+VALUES (
+    (SELECT id FROM device_templates WHERE name = 'UniFi Controller'),
+    'allowed_sources',
+    '{"internal": true}',
+    'allow',
+    'Alleen interne apparaten mogen connecten'
+);
+```
+
+**Hetzelfde template als JSON (voor API/MCP):**
+```json
+{
+  "name": "UniFi Controller",
+  "category": "network",
+  "description": "Ubiquiti UniFi Network Controller/Application",
+  "behaviors": [
+    {
+      "behavior_type": "allowed_ports",
+      "parameters": {"ports": [8443, 8080, 8843, 6789, 27117], "direction": "inbound"},
+      "action": "allow",
+      "description": "UniFi management en inform poorten"
+    },
+    {
+      "behavior_type": "suppress_alert_types",
+      "parameters": {"alert_types": ["HTTP_SENSITIVE_DATA", "HTTP_HIGH_ENTROPY_PAYLOAD"]},
+      "action": "allow",
+      "description": "Management traffic false positives"
+    },
+    {
+      "behavior_type": "allowed_sources",
+      "parameters": {"internal": true},
+      "action": "allow",
+      "description": "Alleen interne apparaten mogen connecten"
+    }
+  ]
+}
+```
+
+---
+
 ### Service Provider Management
 
 Service providers zijn bekende diensten (streaming, CDN, RMM) waarvan verkeer gefilterd kan worden.
