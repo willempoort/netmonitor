@@ -275,6 +275,7 @@ class DeviceDiscovery:
         learning_counter = 0  # Counter for less frequent learning updates
         cleanup_counter = 0   # Counter for duplicate MAC cleanup
         traffic_stats_counter = 0  # Counter for traffic stats cleanup
+        device_cache_counter = 0  # Counter for device cache cleanup
         while self._running:
             try:
                 # Flush stale DNS cache entries
@@ -300,6 +301,12 @@ class DeviceDiscovery:
                 if traffic_stats_counter >= 10:
                     self._cleanup_traffic_stats()
                     traffic_stats_counter = 0
+
+                # Clean up device cache every 30 minutes (every 30th iteration)
+                device_cache_counter += 1
+                if device_cache_counter >= 30:
+                    self._cleanup_device_cache()
+                    device_cache_counter = 0
 
             except Exception as e:
                 self.logger.error(f"Error in background worker: {e}")
@@ -351,6 +358,52 @@ class DeviceDiscovery:
 
         if cleaned > 0:
             self.logger.debug(f"Traffic stats cleanup: {cleaned} oude entries verwijderd, {len(self.traffic_stats)} over")
+
+    def _cleanup_device_cache(self):
+        """
+        Cleanup device_cache, mac_to_cache_key en last_db_update om geheugenlek te voorkomen.
+        Verwijdert entries die >24 uur niet gezien zijn en beperkt max grootte tot 5000.
+        """
+        now = datetime.now()
+        max_age = timedelta(hours=24)
+        max_size = 5000
+        removed = 0
+
+        with self.cache_lock:
+            # Verwijder entries die >24 uur niet gezien zijn
+            stale_keys = []
+            for key, device_info in list(self.device_cache.items()):
+                last_seen = device_info.get('last_seen')
+                if last_seen and (now - last_seen) > max_age:
+                    stale_keys.append(key)
+
+            for key in stale_keys:
+                device_info = self.device_cache.pop(key, None)
+                self.last_db_update.pop(key, None)
+                # Verwijder bijbehorende MAC mapping
+                if device_info:
+                    mac = device_info.get('mac_address')
+                    if mac and self.mac_to_cache_key.get(mac) == key:
+                        del self.mac_to_cache_key[mac]
+                removed += 1
+
+            # Als cache nog steeds te groot is, verwijder oudste entries
+            if len(self.device_cache) > max_size:
+                sorted_entries = sorted(
+                    self.device_cache.items(),
+                    key=lambda x: x[1].get('last_seen') or datetime.min
+                )
+                excess = len(self.device_cache) - max_size
+                for key, device_info in sorted_entries[:excess]:
+                    self.device_cache.pop(key, None)
+                    self.last_db_update.pop(key, None)
+                    mac = device_info.get('mac_address')
+                    if mac and self.mac_to_cache_key.get(mac) == key:
+                        del self.mac_to_cache_key[mac]
+                    removed += 1
+
+        if removed > 0:
+            self.logger.info(f"Device cache cleanup: {removed} oude entries verwijderd, {len(self.device_cache)} over")
 
     def _flush_device_cache(self):
         """Persist cached device updates to database"""

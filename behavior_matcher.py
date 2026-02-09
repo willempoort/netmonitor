@@ -45,6 +45,8 @@ class BehaviorMatcher:
 
         # Track when cache entries were last updated
         self._cache_timestamps: Dict[str, datetime] = {}
+        self._last_cache_cleanup = time.time()
+        self._max_cache_size = 1000
 
         # Service provider IP ranges cache
         self._service_provider_ranges: List[Tuple] = []  # (network, provider_info)
@@ -124,6 +126,10 @@ class BehaviorMatcher:
 
             self.stats['cache_misses'] += 1
 
+        # Periodieke cache cleanup (max elke 60 seconden)
+        if time.time() - self._last_cache_cleanup > 60:
+            self._cleanup_cache()
+
         # Fetch from database
         if not self.db:
             return None
@@ -150,6 +156,37 @@ class BehaviorMatcher:
         except Exception as e:
             self.logger.error(f"Error getting device template for {ip_address}: {e}")
             return None
+
+    def _cleanup_cache(self):
+        """Verwijder verlopen en overtollige cache entries om geheugenlek te voorkomen."""
+        now = datetime.now()
+        removed = 0
+
+        with self._cache_lock:
+            # Verwijder verlopen entries (ouder dan TTL)
+            expired = [
+                ip for ip, ts in self._cache_timestamps.items()
+                if (now - ts).total_seconds() >= self._cache_ttl
+            ]
+            for ip in expired:
+                self._device_cache.pop(ip, None)
+                self._cache_timestamps.pop(ip, None)
+                removed += 1
+
+            # Als cache nog steeds te groot is, verwijder oudste entries
+            if len(self._device_cache) > self._max_cache_size:
+                sorted_entries = sorted(
+                    self._cache_timestamps.items(), key=lambda x: x[1]
+                )
+                excess = len(self._device_cache) - self._max_cache_size
+                for ip, _ in sorted_entries[:excess]:
+                    self._device_cache.pop(ip, None)
+                    self._cache_timestamps.pop(ip, None)
+                    removed += 1
+
+        self._last_cache_cleanup = time.time()
+        if removed > 0:
+            self.logger.debug(f"Cache cleanup: {removed} entries verwijderd, {len(self._device_cache)} over")
 
     def _check_ip_in_service_providers(self, ip_str: str) -> Optional[Dict]:
         """Check if IP belongs to a service provider"""

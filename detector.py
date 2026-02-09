@@ -4052,4 +4052,19 @@ class ThreatDetector:
                 del self.connection_tracker[ip]
                 conn_tracker_cleaned += 1
 
+        # Cleanup ontbrekende deque-based trackers - verwijder lege deques
+        for tracker_name in ('dns_tracker', 'icmp_tracker', 'http_tracker', 'protocol_mismatch_tracker'):
+            tracker = getattr(self, tracker_name, None)
+            if tracker is not None:
+                empty_keys = [ip for ip in list(tracker.keys()) if not tracker[ip]]
+                for ip in empty_keys:
+                    del tracker[ip]
+
+        # Cleanup smart_home_tracker - verwijder entries met verlopen window_start
+        for ip in list(self.smart_home_tracker.keys()):
+            tracker = self.smart_home_tracker[ip]
+            if tracker['window_start'] and \
+               (current_time - tracker['window_start']) > 300:  # 5 min
+                del self.smart_home_tracker[ip]
+
         self.logger.debug("Oude tracking data opgeschoond")
