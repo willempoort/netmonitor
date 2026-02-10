@@ -1450,11 +1450,13 @@ BELANGRIJK: Gebruik ALTIJD de juiste tool - verwijs de gebruiker NOOIT naar exte
                         if enrichment_context:
                             result_with_context += f"\n\n{enrichment_context}"
 
-                        # Add tool result to conversation for LLM context
-                        messages.append({"role": "assistant", "content": f"[Tool {tool_name} aangeroepen]"})
+                        # Add tool call + result to conversation for LLM context
+                        # Show the actual JSON that was used, so the model learns the correct pattern
+                        tool_call_json = json.dumps({"name": tool_name, "arguments": tool_args}, ensure_ascii=False)
+                        messages.append({"role": "assistant", "content": tool_call_json})
                         messages.append({
                             "role": "user",
-                            "content": f"Resultaat van {tool_name}: {result_with_context}\n\nAls de originele vraag nog niet volledig beantwoord is, roep dan de volgende tool aan met ALLEEN JSON. Geef pas een eindantwoord (in Nederlands, geen JSON) als je ALLE benodigde informatie hebt verzameld."
+                            "content": f"Resultaat van {tool_name}: {result_with_context}\n\nAls de originele vraag nog niet volledig beantwoord is, roep dan de VOLGENDE tool aan met ALLEEN een JSON object zoals hierboven. Geef pas een eindantwoord (in Nederlands, geen JSON) als je ALLE benodigde informatie hebt verzameld."
                         })
 
                         # Continue loop - keep current tool mode (don't switch modes mid-conversation)
