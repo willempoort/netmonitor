@@ -1236,7 +1236,9 @@ BELANGRIJK: Gebruik ALTIJD de juiste tool - verwijs de gebruiker NOOIT naar exte
                 full_response = ""
                 has_tool_call = False
                 accumulated_tool_calls: Dict[int, Dict[str, Any]] = {}
-                buffer_tokens = bool(use_tools) and tool_iteration == 1
+                # Buffer tokens on first iteration for native mode (to detect initial tool calls),
+                # and on ALL iterations for JSON fallback mode (tool calls are always embedded in text)
+                buffer_tokens = (bool(use_tools) and tool_iteration == 1) or use_json_fallback
                 buffered_content = ""
                 first_token_sent = False
                 llm_error = False
@@ -1395,6 +1397,10 @@ BELANGRIJK: Gebruik ALTIJD de juiste tool - verwijs de gebruiker NOOIT naar exte
                             tool_message["name"] = tool_name
                         messages.append(tool_message)
 
+                    # Nudge LLM to continue with more tool calls if the user's question isn't fully answered
+                    if len(accumulated_tool_calls) > 0 and tool_iteration < MAX_TOOL_ITERATIONS - 1:
+                        messages.append({"role": "system", "content": "Als de originele vraag nog niet volledig beantwoord is, roep dan direct de volgende tool aan. Geef pas een eindantwoord als je ALLE benodigde informatie hebt."})
+
                     # Continue loop to let LLM decide if more tools needed
                     continue
 
@@ -1448,7 +1454,7 @@ BELANGRIJK: Gebruik ALTIJD de juiste tool - verwijs de gebruiker NOOIT naar exte
                         messages.append({"role": "assistant", "content": f"[Tool {tool_name} aangeroepen]"})
                         messages.append({
                             "role": "user",
-                            "content": f"Resultaat van {tool_name}: {result_with_context}"
+                            "content": f"Resultaat van {tool_name}: {result_with_context}\n\nAls de originele vraag nog niet volledig beantwoord is, roep dan de volgende tool aan met ALLEEN JSON. Geef pas een eindantwoord (in Nederlands, geen JSON) als je ALLE benodigde informatie hebt verzameld."
                         })
 
                         # Continue loop - keep current tool mode (don't switch modes mid-conversation)
