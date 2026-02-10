@@ -514,7 +514,7 @@
                 selectedMcpConfig: '',  // Selected config name (empty = custom)
                 mcpServerUrl: 'https://soc.poort.net/mcp',
                 mcpAuthToken: '',
-                systemPrompt: 'Je bent een security expert die helpt met NetMonitor. Gebruik de beschikbare tools om actuele informatie op te halen. Je hebt toegang tot web_search om informatie van het internet op te halen en dns_lookup om domeinnamen naar IP-adressen te vertalen. Geef altijd duidelijke, Nederlandse antwoorden.',
+                systemPrompt: 'Je bent een security expert die helpt met NetMonitor. Gebruik ALTIJD de beschikbare tools om informatie op te halen - verwijs gebruikers NOOIT naar externe websites. Belangrijkste tools: lookup_ip_owner voor IP eigenaar/organisatie opzoeken (bij vragen als \"van wie is dit IP?\"), web_search voor internet zoeken (type moet text of news zijn, NIET web), dns_lookup voor domeinnaam→IP vertaling, analyze_ip voor dreigingsanalyse. Geef altijd duidelijke, Nederlandse antwoorden.',
                 forceToolsLMStudio: false,  // Force function calling for LM Studio (experimental)
 
                 // WebSocket

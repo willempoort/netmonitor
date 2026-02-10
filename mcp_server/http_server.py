@@ -394,11 +394,11 @@ class MCPHTTPServer:
         tools = [
             {
                 "name": "analyze_ip",
-                "description": "Analyze a specific IP address to get detailed threat intelligence",
+                "description": "Analyze a specific IP address against the NetMonitor alert database for threat intelligence. Shows alert count, threat types, severity, and risk level for this IP in your network.",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "ip_address": {"type": "string", "description": "IP address to analyze"},
+                        "ip_address": {"type": "string", "description": "IP address to analyze for threats in the network"},
                         "hours": {"type": "number", "description": "Lookback period in hours", "default": 24}
                     },
                     "required": ["ip_address"]
