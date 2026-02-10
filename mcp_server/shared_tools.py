@@ -3597,13 +3597,13 @@ class NetMonitorTools:
 TOOL_DEFINITIONS = [
             {
                 "name": "web_search",
-                "description": "Search the internet for information. Use this to find current information about security threats, CVEs, malware, best practices, or any other topic. Returns web search results with titles, URLs and snippets.",
+                "description": "Search the internet for general information. Use this to find current information about security threats, CVEs, malware, best practices, or any other topic. Returns web search results with titles, URLs and snippets. NOTE: Do NOT use this for IP address ownership lookups - use lookup_ip_owner instead. The 'type' parameter must be 'text' or 'news' (NOT 'web').",
                 "input_schema": {
                     "type": "object",
                     "properties": {
                         "query": {"type": "string", "description": "Search query (e.g., 'CVE-2024-1234 exploit', 'ransomware mitigation best practices')"},
                         "max_results": {"type": "number", "description": "Maximum number of results to return", "default": 5},
-                        "type": {"type": "string", "enum": ["text", "news"], "description": "Type of search: text (general) or news", "default": "text"}
+                        "type": {"type": "string", "enum": ["text", "news"], "description": "Type of search: 'text' for general web search or 'news' for news articles. Default is 'text'. Do NOT use 'web' - that is not valid.", "default": "text"}
                     },
                     "required": ["query"]
                 },
@@ -3611,11 +3611,11 @@ TOOL_DEFINITIONS = [
             },
             {
                 "name": "dns_lookup",
-                "description": "Resolve a domain name (hostname) to IP address(es). Use this to find the IP of a website or server.",
+                "description": "Resolve a domain name (hostname) to IP address(es). Use this ONLY to convert a domain name to an IP address (forward DNS). Do NOT use this for IP ownership lookups - use lookup_ip_owner for that.",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "domain": {"type": "string", "description": "Domain name to resolve (e.g., google.com, poort.net)"}
+                        "domain": {"type": "string", "description": "Domain name to resolve (e.g., google.com, poort.net). Must be a hostname, NOT an IP address."}
                     },
                     "required": ["domain"]
                 },
@@ -3623,11 +3623,11 @@ TOOL_DEFINITIONS = [
             },
             {
                 "name": "lookup_ip_owner",
-                "description": "Look up IP address ownership information. Returns ASN, organization name, country, cloud provider detection (AWS, Azure, GCP, etc.), and IP range. Uses Team Cymru DNS (free) and ipinfo.io.",
+                "description": "Look up who owns an IP address (WHOIS/ownership). ALWAYS use this tool when asked 'van wie is dit IP?', 'who owns this IP?', or when you need to identify the organization, ISP, or company behind an IP address. Returns ASN, organization name, country, city, hostname, cloud provider detection (AWS, Azure, GCP, etc.), and IP range. This is the primary tool for IP identification.",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "ip_address": {"type": "string", "description": "IP address to look up (e.g., 52.236.189.96, 8.8.8.8)"}
+                        "ip_address": {"type": "string", "description": "IP address to look up (e.g., 52.236.189.96, 8.8.8.8). Accepts IPv4 or IPv6. Strip /32 or other CIDR notation - just provide the IP."}
                     },
                     "required": ["ip_address"]
                 },
@@ -3635,11 +3635,11 @@ TOOL_DEFINITIONS = [
             },
             {
                 "name": "analyze_ip",
-                "description": "Analyze a specific IP address to get detailed threat intelligence",
+                "description": "Analyze a specific IP address against the NetMonitor alert database for threat intelligence. Shows alert count, threat types, severity, and risk level for this IP in your network. Use this AFTER lookup_ip_owner if you also want to check threat history.",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "ip_address": {"type": "string", "description": "IP address to analyze"},
+                        "ip_address": {"type": "string", "description": "IP address to analyze for threats in the network"},
                         "hours": {"type": "number", "description": "Lookback period in hours", "default": 24}
                     },
                     "required": ["ip_address"]

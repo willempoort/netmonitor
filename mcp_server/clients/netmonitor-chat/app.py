@@ -637,9 +637,22 @@ BESCHIKBARE TOOLS:
 
 BELANGRIJKE TOOL PARAMETERS:
 - web_search VEREIST query: {{"name": "web_search", "arguments": {{"query": "zoekterm hier"}}}}
+  LET OP: type moet 'text' of 'news' zijn (NIET 'web')
 - dns_lookup VEREIST domain: {{"name": "dns_lookup", "arguments": {{"domain": "example.com"}}}}
+  LET OP: Alleen voor domeinnaam→IP vertaling. NIET voor IP eigenaar opzoeken.
+- lookup_ip_owner VEREIST ip_address: {{"name": "lookup_ip_owner", "arguments": {{"ip_address": "8.8.8.8"}}}}
+  Gebruik dit als iemand vraagt "van wie is dit IP?" of "wie zit er achter dit IP?"
+  Strip /32 of andere CIDR notatie - geef alleen het IP-adres.
+- analyze_ip VEREIST ip_address: {{"name": "analyze_ip", "arguments": {{"ip_address": "8.8.8.8"}}}}
+  Gebruik dit om dreigingshistorie van een IP in het netwerk te bekijken.
 - get_top_talkers: hours=168 voor week, hours=24 voor dag
 - get_sensor_status: geen arguments nodig {{}}
+
+WELKE TOOL WANNEER:
+- "Van wie is IP X?" / "Wie is eigenaar van IP?" → lookup_ip_owner
+- "Zoek informatie over X" / "Wat is CVE-X?" → web_search
+- "Wat is het IP van example.com?" → dns_lookup
+- "Is IP X verdacht?" / "Threat analyse van IP X" → analyze_ip
 
 HOE TOOLS TE GEBRUIKEN:
 1. Antwoord met ALLEEN JSON (geen tekst ervoor of erna):
@@ -658,7 +671,7 @@ Stap 3: {{"name": "get_threat_detections", "arguments": {{"hours": 24}}}}
 Stap 4: {{"name": "web_search", "arguments": {{"query": "network security recommendations"}}}}
 Stap 5: Nederlands rapport met alle data (GEEN JSON)
 
-BELANGRIJK: Start DIRECT met JSON, geen tekst ervoor."""
+BELANGRIJK: Start DIRECT met een tool-aanroep (JSON), geen tekst ervoor. Gebruik ALTIJD de juiste tool - stel niet voor dat de gebruiker zelf naar websites gaat."""
 
 
 def filter_relevant_tools(user_message: str, all_tools: List[Dict[str, Any]], max_tools: int = 10) -> List[Dict[str, Any]]:
@@ -672,17 +685,20 @@ def filter_relevant_tools(user_message: str, all_tools: List[Dict[str, Any]], ma
         'threat': (['threat', 'detection', 'alert', 'malware', 'attack', 'bedreig', 'dreig'],
                    ['threat', 'detection', 'alert', 'malware', 'attack']),
         'ip':     (['ip', 'address', 'adres'], ['ip', 'address', 'addr']),
+        'ip_owner': (['eigenaar', 'owner', 'whois', 'wie', 'achter', 'organisatie', 'isp', 'provider'],
+                     ['lookup_ip_owner', 'owner', 'ownership', 'asn', 'organization']),
         'sensor': (['sensor', 'sensors'], ['sensor', 'zeek', 'suricata']),
         'log':    (['log', 'logs'], ['log', 'syslog', 'event']),
         'network':(['network', 'netwerk', 'traffic', 'verkeer'], ['network', 'traffic', 'flow', 'connection']),
         'toptalker': (['top', 'talker', 'talkers', 'meeste', 'grootste', 'bandwidth', 'volume'],
                       ['traffic', 'stats', 'top', 'bandwidth', 'volume', 'bytes']),
-        'dns':    (['dns', 'domain'], ['dns', 'domain', 'query']),
+        'dns':    (['dns', 'domain', 'domein'], ['dns', 'domain', 'query']),
         'file':   (['file', 'bestand'], ['file', 'hash', 'executable']),
         'user':   (['user', 'gebruiker', 'account'], ['user', 'account', 'authentication', 'auth']),
         'port':   (['port', 'poort', 'service'], ['port', 'service', 'scan']),
         'status': (['status', 'actieve', 'active', 'running'], ['status', 'state', 'active', 'running']),
-        'show':   (['toon', 'laat', 'zie', 'show', 'list', 'geef'], ['get', 'list', 'show', 'fetch'])
+        'show':   (['toon', 'laat', 'zie', 'show', 'list', 'geef'], ['get', 'list', 'show', 'fetch']),
+        'search': (['zoek', 'search', 'opzoeken', 'vind', 'find', 'google'], ['web_search', 'search'])
     }
 
     scored_tools = []
@@ -1182,18 +1198,27 @@ Regels:
 Je bent een security assistent voor NetMonitor met toegang tot {len(ollama_tools)} tools.
 
 BELANGRIJKE TOOL PARAMETERS:
-- web_search(query="zoekterm") - VEREIST een query parameter, bijv: query="network security best practices"
-- dns_lookup(domain="example.com") - VEREIST een domain parameter
+- lookup_ip_owner(ip_address="8.8.8.8") - Gebruik voor "van wie is dit IP?", eigenaar/organisatie opzoeken. Strip /32 CIDR notatie.
+- analyze_ip(ip_address="8.8.8.8") - Gebruik voor dreigingsanalyse van een IP in het netwerk
+- web_search(query="zoekterm") - Zoek op internet. Type moet 'text' of 'news' zijn (NIET 'web')
+- dns_lookup(domain="example.com") - ALLEEN voor domeinnaam→IP vertaling. NIET voor IP eigenaar.
 - get_top_talkers(hours=168, limit=10) - hours=168 voor een week, hours=24 voor een dag
 - get_threat_detections(hours=24, limit=20) - recente bedreigingen
 - get_sensor_status() - geen parameters nodig
+
+WELKE TOOL WANNEER:
+- "Van wie is IP X?" / "Wie zit achter IP X?" → lookup_ip_owner(ip_address="X")
+- "Zoek informatie over X" / "Wat is CVE-X?" → web_search(query="X")
+- "Wat is het IP van example.com?" → dns_lookup(domain="example.com")
+- "Is IP X verdacht?" → analyze_ip(ip_address="X")
 
 WORKFLOW VOOR RAPPORTAGES:
 1. EERST netwerk data ophalen: get_sensor_status, get_top_talkers, get_threat_detections
 2. DAARNA internet zoeken voor aanbevelingen: web_search(query="relevante zoekterm")
 3. TENSLOTTE een compleet rapport schrijven met alle verzamelde informatie
 
-Roep tools ÉÉN VOOR ÉÉN aan. Geef pas een eindantwoord als je ALLE benodigde data hebt."""
+Roep tools ÉÉN VOOR ÉÉN aan. Geef pas een eindantwoord als je ALLE benodigde data hebt.
+BELANGRIJK: Gebruik ALTIJD de juiste tool - verwijs de gebruiker NOOIT naar externe websites om zelf informatie op te zoeken."""
                 messages.append({"role": "system", "content": native_tool_prompt})
             elif system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
