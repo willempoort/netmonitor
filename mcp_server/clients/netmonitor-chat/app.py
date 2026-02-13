@@ -658,6 +658,8 @@ WANNEER WEL/NIET TOOLS GEBRUIKEN:
 - Gebruik een tool als de gebruiker NIEUWE data nodig heeft (actuele status, statistieken, lookups)
 - Gebruik GEEN tool als de vraag conversationeel is, een mening vraagt, of een follow-up is op eerder getoonde data
 - Bij twijfel: beantwoord gewoon in het Nederlands zonder tool
+- Doe GEEN automatische extra lookups (lookup_ip_owner, analyze_ip) op IPs uit resultaten tenzij de gebruiker daar specifiek om vraagt
+- Bij "toon meldingen/alerts" vragen: geef de meldingen weer, doe GEEN extra IP-analyses
 
 HOE TOOLS TE GEBRUIKEN:
 1. Als je een tool nodig hebt, antwoord met ALLEEN JSON (geen tekst ervoor of erna):
@@ -1335,6 +1337,8 @@ WANNEER WEL/NIET TOOLS GEBRUIKEN:
 - Gebruik een tool als de gebruiker NIEUWE data nodig heeft (actuele status, statistieken, lookups)
 - Gebruik GEEN tool als de vraag conversationeel is, een mening vraagt, of een follow-up is op eerder getoonde data
 - Bij twijfel: beantwoord gewoon in het Nederlands zonder tool
+- Doe GEEN automatische extra lookups (lookup_ip_owner, analyze_ip) op IPs uit resultaten tenzij de gebruiker daar specifiek om vraagt
+- Bij "toon meldingen/alerts" vragen: geef de meldingen weer, doe GEEN extra IP-analyses
 
 Roep tools ÉÉN VOOR ÉÉN aan. Geef pas een eindantwoord als je ALLE benodigde data hebt.
 BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Verwijs de gebruiker NOOIT naar externe websites. Maar als de vraag geen nieuwe data vereist, geef gewoon een direct antwoord."""
@@ -1516,9 +1520,9 @@ BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Verwijs de gebr
                             tool_message["name"] = tool_name
                         messages.append(tool_message)
 
-                    # Nudge LLM to continue with more tool calls if the user's question isn't fully answered
+                    # Nudge LLM to continue only for multi-step tasks (e.g. reports)
                     if len(accumulated_tool_calls) > 0 and tool_iteration < MAX_TOOL_ITERATIONS - 1:
-                        messages.append({"role": "system", "content": "Als de originele vraag nog niet volledig beantwoord is, roep dan direct de volgende tool aan. Geef pas een eindantwoord als je ALLE benodigde informatie hebt."})
+                        messages.append({"role": "system", "content": "Als de originele vraag volledig beantwoord kan worden met de verzamelde data, geef dan NU een eindantwoord in het Nederlands. Roep alleen een volgende tool aan als de vraag expliciet om meer informatie vraagt (bijv. een rapport). Doe GEEN extra lookups (lookup_ip_owner, analyze_ip) tenzij de gebruiker daar specifiek om vraagt."})
 
                     # Continue loop to let LLM decide if more tools needed
                     continue
@@ -1575,7 +1579,7 @@ BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Verwijs de gebr
                         messages.append({"role": "assistant", "content": tool_call_json})
                         messages.append({
                             "role": "user",
-                            "content": f"Resultaat van {tool_name}: {result_with_context}\n\nAls de originele vraag nog niet volledig beantwoord is, roep dan de VOLGENDE tool aan met ALLEEN een JSON object zoals hierboven. Geef pas een eindantwoord (in Nederlands, geen JSON) als je ALLE benodigde informatie hebt verzameld."
+                            "content": f"Resultaat van {tool_name}: {result_with_context}\n\nAls de originele vraag beantwoord kan worden met deze data, geef dan NU een eindantwoord in het Nederlands (geen JSON). Roep alleen een volgende tool aan als de vraag expliciet om meer informatie vraagt. Doe GEEN extra lookups (lookup_ip_owner, analyze_ip) tenzij de gebruiker daar specifiek om vraagt."
                         })
 
                         # Continue loop - keep current tool mode (don't switch modes mid-conversation)
