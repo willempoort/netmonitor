@@ -412,7 +412,7 @@ class NetMonitorTools:
     async def analyze_ip(self, params: Dict) -> Dict:
         """Implement analyze_ip tool"""
         import socket
-        from geoip_helper import get_country_for_ip, is_private_ip
+        from geoip_helper import get_country_for_ip, is_local_ip
 
         ip_address = params.get('ip_address')
         hours = params.get('hours', 24)
@@ -423,8 +423,8 @@ class NetMonitorTools:
         # Get geolocation
         country = get_country_for_ip(ip_address)
 
-        # Determine if internal
-        internal = not is_private_ip(ip_address)  # is_private_ip returns True for RFC1918 IPs NOT in configured internal_networks
+        # Determine if internal (in configured local/internal networks)
+        internal = is_local_ip(ip_address)
 
         # Try hostname resolution
         hostname = None

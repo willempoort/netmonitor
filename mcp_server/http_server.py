@@ -1295,7 +1295,7 @@ class MCPHTTPServer:
     async def _tool_analyze_ip(self, params: Dict) -> Dict:
         """Implement analyze_ip tool"""
         import socket
-        from geoip_helper import get_country_for_ip, is_private_ip
+        from geoip_helper import get_country_for_ip, is_local_ip
 
         ip_address = params.get('ip_address')
         hours = params.get('hours', 24)
@@ -1306,8 +1306,8 @@ class MCPHTTPServer:
         # Get geolocation
         country = get_country_for_ip(ip_address)
 
-        # Determine if internal
-        internal = is_private_ip(ip_address)
+        # Determine if internal (in configured local/internal networks)
+        internal = is_local_ip(ip_address)
 
         # Try hostname resolution
         hostname = None
