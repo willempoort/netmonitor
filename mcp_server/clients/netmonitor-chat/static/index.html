@@ -478,11 +478,17 @@
                                :disabled="isTyping || !selectedModel"
                                placeholder="Type een vraag..."
                                class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed">
-                        <button type="submit"
-                                :disabled="isTyping || !inputMessage.trim() || !selectedModel"
+                        <button x-show="!isTyping"
+                                type="submit"
+                                :disabled="!inputMessage.trim() || !selectedModel"
                                 class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium px-6 py-3 rounded-lg transition-colors">
-                            <span x-show="!isTyping">Verstuur</span>
-                            <span x-show="isTyping">...</span>
+                            Verstuur
+                        </button>
+                        <button x-show="isTyping"
+                                type="button"
+                                @click="stopGenerating()"
+                                class="bg-red-500 hover:bg-red-600 text-white font-medium px-6 py-3 rounded-lg transition-colors">
+                            Stop
                         </button>
                     </form>
                     <p class="text-xs text-gray-500 mt-2" x-show="!selectedModel">
@@ -920,6 +926,17 @@
                             container.scrollTop = container.scrollHeight;
                         }
                     });
+                },
+
+                // Stop generating
+                stopGenerating() {
+                    if (this.ws) {
+                        this.ws.close();
+                        this.ws = null;
+                    }
+                    this.isTyping = false;
+                    this.currentStatus = '';
+                    this.currentPhase = '';
                 },
 
                 // Clear chat
