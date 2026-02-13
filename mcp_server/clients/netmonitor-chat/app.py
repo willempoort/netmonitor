@@ -654,8 +654,13 @@ WELKE TOOL WANNEER:
 - "Wat is het IP van example.com?" → dns_lookup
 - "Is IP X verdacht?" / "Threat analyse van IP X" → analyze_ip
 
+WANNEER WEL/NIET TOOLS GEBRUIKEN:
+- Gebruik een tool als de gebruiker NIEUWE data nodig heeft (actuele status, statistieken, lookups)
+- Gebruik GEEN tool als de vraag conversationeel is, een mening vraagt, of een follow-up is op eerder getoonde data
+- Bij twijfel: beantwoord gewoon in het Nederlands zonder tool
+
 HOE TOOLS TE GEBRUIKEN:
-1. Antwoord met ALLEEN JSON (geen tekst ervoor of erna):
+1. Als je een tool nodig hebt, antwoord met ALLEEN JSON (geen tekst ervoor of erna):
    {{"name": "tool_naam", "arguments": {{"param": "waarde"}}}}
 
 2. Na het resultaat kun je:
@@ -664,6 +669,8 @@ HOE TOOLS TE GEBRUIKEN:
 
 3. Roep tools ÉÉN VOOR ÉÉN aan.
 
+4. Als GEEN tool nodig is, antwoord direct in het Nederlands (geen JSON).
+
 WORKFLOW VOOR RAPPORTAGES:
 Stap 1: {{"name": "get_sensor_status", "arguments": {{}}}}
 Stap 2: {{"name": "get_top_talkers", "arguments": {{"hours": 168, "limit": 10}}}}
@@ -671,7 +678,7 @@ Stap 3: {{"name": "get_threat_detections", "arguments": {{"hours": 24}}}}
 Stap 4: {{"name": "web_search", "arguments": {{"query": "network security recommendations"}}}}
 Stap 5: Nederlands rapport met alle data (GEEN JSON)
 
-BELANGRIJK: Start DIRECT met een tool-aanroep (JSON), geen tekst ervoor. Gebruik ALTIJD de juiste tool - stel niet voor dat de gebruiker zelf naar websites gaat."""
+BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Stel niet voor dat de gebruiker zelf naar websites gaat. Maar als de vraag geen nieuwe data vereist, geef gewoon een direct antwoord in het Nederlands."""
 
 
 def filter_relevant_tools(user_message: str, all_tools: List[Dict[str, Any]], max_tools: int = 10) -> List[Dict[str, Any]]:
@@ -1016,6 +1023,83 @@ async def get_health():
 
 
 # ------------------------------------------------------------
+# Conversational Follow-up Detection
+# ------------------------------------------------------------
+
+# Patterns that indicate the user needs NEW data (should use tools)
+_DATA_REQUEST_PATTERNS = [
+    r'(toon|show|geef|laat.*zien|list|haal.*op|fetch|get)',
+    r'(hoeveel|aantal|count|how many)',
+    r'(wat is de|what is the).*(status|staat)',
+    r'(analyseer|analyze|check|controleer|scan)',
+    r'(zoek|search|find|vind)',
+    r'(vergelijk|compare)',
+    r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b',  # IP address = likely needs lookup
+]
+
+_DATA_REQUEST_RE = [re.compile(p, re.IGNORECASE) for p in _DATA_REQUEST_PATTERNS]
+
+
+def _is_conversational_followup(message: str, history: List[Dict[str, Any]]) -> bool:
+    """
+    Detect if a message is a conversational follow-up that doesn't need tools.
+
+    Returns True for messages like:
+    - "dat is niet veel toch?" / "is dat normaal?"
+    - "bedankt" / "dankjewel" / "thanks"
+    - "kun je dat uitleggen?" / "wat bedoel je?"
+    - "21% van 16GB is toch niet veel?"
+
+    Returns False for messages that likely need new data:
+    - "toon de sensoren" / "geef me de top talkers"
+    - "analyseer 10.0.0.1"
+    """
+    if not history:
+        return False  # First message always goes through tool path
+
+    msg_lower = message.lower().strip()
+
+    # Short messages without data-request keywords are likely conversational
+    # Check if any data-request pattern matches
+    for pattern in _DATA_REQUEST_RE:
+        if pattern.search(msg_lower):
+            return False  # Likely needs a tool
+
+    # Additional heuristic: very short messages are usually follow-ups
+    word_count = len(msg_lower.split())
+    if word_count <= 3:
+        return True
+
+    # Messages with question words about previous context
+    conversational_indicators = [
+        r'(is dat|dat is).*(normaal|veel|weinig|goed|slecht|ok)',
+        r'(toch|niet waar|klopt dat)',
+        r'(bedankt|dankjewel|thanks|dank je|top|prima|ok\b|oke)',
+        r'(waarom|why|hoezo|wat bedoel|kun je.*uitleg|leg.*uit)',
+        r'(ja\b|nee\b|yes\b|no\b|klopt|inderdaad|precies)',
+        r'(wat betekent|wat houdt.*in)',
+        r'(moet ik|should i|wat raad je)',
+        r'(en nu|wat nu|next step)',
+    ]
+
+    for pattern in conversational_indicators:
+        if re.search(pattern, msg_lower, re.IGNORECASE):
+            return True
+
+    # If no strong signal either way and there's history, lean conversational
+    # for short-ish messages (< 10 words) without technical terms
+    technical_terms = ['sensor', 'threat', 'alert', 'device', 'traffic', 'bandwidth',
+                       'log', 'pcap', 'dns', 'tls', 'kerberos', 'whitelist', 'risk',
+                       'port', 'scan', 'malware', 'brute', 'attack', 'firewall']
+    has_technical = any(term in msg_lower for term in technical_terms)
+
+    if word_count < 10 and not has_technical:
+        return True
+
+    return False
+
+
+# ------------------------------------------------------------
 # WebSocket Chat with Hybrid Processing
 # ------------------------------------------------------------
 
@@ -1152,6 +1236,36 @@ Regels:
                 continue  # Wait for next message
 
             # ============================================================
+            # CONVERSATIONAL CHECK: Skip tools for follow-up questions
+            # ============================================================
+            is_conversational = _is_conversational_followup(message, history)
+            print(f"[WebSocket] Conversational: {is_conversational}, History: {len(history)} msgs")
+
+            if is_conversational and history:
+                await send_status("Antwoord formuleren...", "formatting")
+
+                conv_messages: List[Dict[str, Any]] = []
+                if system_prompt:
+                    conv_messages.append({"role": "system", "content": system_prompt})
+                conv_messages.extend(history + [{"role": "user", "content": message}])
+
+                async for chunk in llm_client.chat(model, conv_messages, stream=True, temperature=temperature, tools=None):
+                    if "error" in chunk:
+                        await websocket.send_json({"type": "error", "content": chunk["error"]})
+                        break
+                    if "message" in chunk:
+                        content = chunk["message"].get("content", "")
+                        if content:
+                            await websocket.send_json({"type": "token", "content": content})
+                    if chunk.get("done"):
+                        break
+
+                await websocket.send_json({"type": "done"})
+                await llm_client.close()
+                await mcp_client.close()
+                continue  # Wait for next message
+
+            # ============================================================
             # SLOW PATH: Full LLM with tools
             # ============================================================
             await send_status("Vraag analyseren...", "analyzing")
@@ -1217,8 +1331,13 @@ WORKFLOW VOOR RAPPORTAGES:
 2. DAARNA internet zoeken voor aanbevelingen: web_search(query="relevante zoekterm")
 3. TENSLOTTE een compleet rapport schrijven met alle verzamelde informatie
 
+WANNEER WEL/NIET TOOLS GEBRUIKEN:
+- Gebruik een tool als de gebruiker NIEUWE data nodig heeft (actuele status, statistieken, lookups)
+- Gebruik GEEN tool als de vraag conversationeel is, een mening vraagt, of een follow-up is op eerder getoonde data
+- Bij twijfel: beantwoord gewoon in het Nederlands zonder tool
+
 Roep tools ÉÉN VOOR ÉÉN aan. Geef pas een eindantwoord als je ALLE benodigde data hebt.
-BELANGRIJK: Gebruik ALTIJD de juiste tool - verwijs de gebruiker NOOIT naar externe websites om zelf informatie op te zoeken."""
+BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Verwijs de gebruiker NOOIT naar externe websites. Maar als de vraag geen nieuwe data vereist, geef gewoon een direct antwoord."""
                 messages.append({"role": "system", "content": native_tool_prompt})
             elif system_prompt:
                 messages.append({"role": "system", "content": system_prompt})

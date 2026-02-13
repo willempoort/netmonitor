@@ -291,9 +291,21 @@
 
                         <!-- Apply Button -->
                         <button @click="applyConfig()"
-                                class="w-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium py-2 px-3 rounded transition-colors">
-                            ✓ Configuratie Toepassen
+                                :disabled="applyingConfig"
+                                :class="applyingConfig ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'"
+                                class="w-full text-white text-sm font-medium py-2 px-3 rounded transition-colors flex items-center justify-center gap-2">
+                            <svg x-show="applyingConfig" class="status-spinner w-4 h-4" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span x-text="applyingConfig ? 'Toepassen...' : '✓ Configuratie Toepassen'"></span>
                         </button>
+                        <p x-show="configSuccess"
+                           x-transition:enter="transition ease-out duration-200"
+                           x-transition:leave="transition ease-in duration-300"
+                           class="text-xs text-green-600 mt-1 font-medium text-center">
+                            ✓ Configuratie toegepast
+                        </p>
                     </div>
                 </div>
 
@@ -516,6 +528,8 @@
                 mcpAuthToken: '',
                 systemPrompt: 'Je bent een security expert die helpt met NetMonitor. Gebruik ALTIJD de beschikbare tools om informatie op te halen - verwijs gebruikers NOOIT naar externe websites. Belangrijkste tools: lookup_ip_owner voor IP eigenaar/organisatie opzoeken (bij vragen als \"van wie is dit IP?\"), web_search voor internet zoeken (type moet text of news zijn, NIET web), dns_lookup voor domeinnaam→IP vertaling, analyze_ip voor dreigingsanalyse. Geef altijd duidelijke, Nederlandse antwoorden.',
                 forceToolsLMStudio: false,  // Force function calling for LM Studio (experimental)
+                applyingConfig: false,  // Loading state for config apply button
+                configSuccess: false,  // Brief success feedback after apply
 
                 // WebSocket
                 ws: null,
@@ -643,12 +657,20 @@
 
                 // Apply configuration
                 async applyConfig() {
+                    if (this.applyingConfig) return;
+                    this.applyingConfig = true;
                     this.error = null;
-                    // Reload models and tools with new configuration
-                    await this.loadModels();
-                    await this.loadTools();
-                    await this.checkHealth();
-                    alert('Configuratie toegepast! Modellen en tools zijn opnieuw geladen.');
+                    try {
+                        await this.loadModels();
+                        await this.loadTools();
+                        await this.checkHealth();
+                        this.configSuccess = true;
+                        setTimeout(() => { this.configSuccess = false; }, 3000);
+                    } catch (err) {
+                        this.error = 'Configuratie toepassen mislukt: ' + err.message;
+                    } finally {
+                        this.applyingConfig = false;
+                    }
                 },
 
                 // Load available models
