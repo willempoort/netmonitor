@@ -62,6 +62,8 @@ _geoip_reader = None
 _api_cache: Dict[str, tuple] = {}  # ip -> (country, timestamp)
 _cache_lock = threading.Lock()
 _CACHE_TTL = 3600 * 24  # 24 hours cache
+_CACHE_MAX_SIZE = 5000  # Max entries om geheugengroei te voorkomen
+_last_cache_cleanup = 0.0
 _API_RATE_LIMIT = 45  # ip-api.com allows 45 requests/minute for free
 _api_calls_this_minute = 0
 _api_minute_start = 0
@@ -188,11 +190,25 @@ def _lookup_ip_api(ip_str: str) -> Optional[str]:
     if not REQUESTS_AVAILABLE:
         return None
 
-    # Check cache first
+    # Check cache first en periodiek opschonen
+    global _last_cache_cleanup
+    current_time = time.time()
     with _cache_lock:
+        # Cleanup elke 10 minuten
+        if current_time - _last_cache_cleanup > 600:
+            _last_cache_cleanup = current_time
+            expired = [k for k, (_, ts) in _api_cache.items() if current_time - ts > _CACHE_TTL]
+            for k in expired:
+                del _api_cache[k]
+            # Begrens op max size als nog te groot
+            if len(_api_cache) > _CACHE_MAX_SIZE:
+                sorted_keys = sorted(_api_cache, key=lambda k: _api_cache[k][1])
+                for k in sorted_keys[:len(_api_cache) - _CACHE_MAX_SIZE]:
+                    del _api_cache[k]
+
         if ip_str in _api_cache:
             country, timestamp = _api_cache[ip_str]
-            if time.time() - timestamp < _CACHE_TTL:
+            if current_time - timestamp < _CACHE_TTL:
                 return country
 
     # Rate limiting
