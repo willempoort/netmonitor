@@ -328,59 +328,6 @@
             </div>
         </div>
 
-        <!-- Sensor Command Center Row -->
-        <div class="row mb-3">
-            <div class="col-12">
-                <div class="card bg-secondary">
-                    <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#commandsCollapse">
-                        <h5 class="mb-0">
-                            <i class="bi bi-terminal"></i> Sensor Command Center
-                        </h5>
-                        <i class="bi bi-chevron-down"></i>
-                    </div>
-                    <div class="collapse" id="commandsCollapse">
-                        <div class="card-body">
-                            <div class="row g-3">
-                                <div class="col-md-4">
-                                    <label for="command-sensor-select" class="form-label">Select Sensor</label>
-                                    <select class="form-select bg-dark text-light border-secondary" id="command-sensor-select">
-                                        <option value="">-- Select Sensor --</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-4">
-                                    <label for="command-type-select" class="form-label">Command</label>
-                                    <select class="form-select bg-dark text-light border-secondary" id="command-type-select">
-                                        <option value="">-- Select Command --</option>
-                                        <option value="get_status">Get Status</option>
-                                        <option value="flush_buffer">Flush Alert Buffer</option>
-                                        <option value="change_interval">Change Batch Interval</option>
-                                        <option value="restart">Restart Sensor</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-4" id="command-params-container" style="display: none;">
-                                    <label for="command-params" class="form-label">Parameters (JSON)</label>
-                                    <input type="text" class="form-control bg-dark text-light border-secondary" id="command-params" placeholder='{"interval": 60}'>
-                                </div>
-                            </div>
-                            <div class="row mt-3">
-                                <div class="col-12">
-                                    <button class="btn btn-primary" id="send-command-btn">
-                                        <i class="bi bi-send"></i> Send Command
-                                    </button>
-                                    <button class="btn btn-secondary ms-2" id="command-history-btn">
-                                        <i class="bi bi-clock-history"></i> View History
-                                    </button>
-                                </div>
-                            </div>
-                            <div id="command-result" class="mt-3" style="display: none;">
-                                <div class="alert" role="alert"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- IP Whitelist Management Row -->
         <div class="row mb-3">
             <div class="col-12">
