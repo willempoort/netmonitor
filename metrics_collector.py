@@ -9,7 +9,7 @@ import time
 import logging
 import psutil
 import socket
-from collections import defaultdict
+from collections import defaultdict, deque
 from datetime import datetime
 from typing import Dict, List
 import ipaddress
@@ -52,8 +52,8 @@ class MetricsCollector:
         self.alert_count = 0
         self.last_alert_reset = time.time()
 
-        # Packet rate tracking
-        self.packet_timestamps = []
+        # Packet rate tracking (deque met max 60s aan timestamps bij ~100 pps)
+        self.packet_timestamps = deque(maxlen=6000)
         self.last_metrics_save = time.time()
         self.metrics_save_interval = 10  # 10 seconds - was 60, now much faster for dashboard
         self.first_packet_seen = False  # Track if we've seen any packets yet
@@ -153,9 +153,10 @@ class MetricsCollector:
             current_time = time.time()
             self.packet_timestamps.append(current_time)
 
-            # Keep only last 60 seconds of timestamps
+            # Verwijder timestamps ouder dan 60 seconden (deque is al begrensd op maxlen)
             cutoff = current_time - 60
-            self.packet_timestamps = [ts for ts in self.packet_timestamps if ts > cutoff]
+            while self.packet_timestamps and self.packet_timestamps[0] < cutoff:
+                self.packet_timestamps.popleft()
 
             # Force save on first packet for immediate dashboard feedback
             if not self.first_packet_seen:

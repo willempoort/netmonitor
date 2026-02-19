@@ -43,6 +43,8 @@ class AbuseIPDBClient:
         self.cache = {}  # ip -> (result, timestamp)
         self.cache_ttl = 3600  # 1 uur voor in-memory cache
         self.db_cache_ttl = 86400  # 24 uur voor database cache
+        self.cache_max_size = 10000  # Max entries in memory cache
+        self.last_cache_cleanup = time.time()
 
         # Stats
         self.queries_today = 0
@@ -271,9 +273,37 @@ class AbuseIPDBClient:
             self.logger.error(f"AbuseIPDB unexpected error: {e}")
             return None
 
+    def _cleanup_cache(self):
+        """Verwijder verlopen entries uit in-memory cache om geheugengroei te voorkomen"""
+        current_time = time.time()
+        # Cleanup elke 5 minuten
+        if current_time - self.last_cache_cleanup < 300:
+            return
+
+        self.last_cache_cleanup = current_time
+        expired = [
+            ip for ip, (result, timestamp) in self.cache.items()
+            if current_time - timestamp > (self.db_cache_ttl if result.get('_from_db_cache') else self.cache_ttl)
+        ]
+        for ip in expired:
+            del self.cache[ip]
+
+        # Als cache nog steeds te groot is, verwijder oudste entries
+        if len(self.cache) > self.cache_max_size:
+            sorted_entries = sorted(self.cache.items(), key=lambda x: x[1][1])
+            to_remove = len(self.cache) - self.cache_max_size
+            for ip, _ in sorted_entries[:to_remove]:
+                del self.cache[ip]
+
+        if expired:
+            self.logger.debug(f"Cache cleanup: {len(expired)} verlopen entries verwijderd, {len(self.cache)} entries over")
+
     def _check_rate_limit(self) -> bool:
         """Check of we binnen rate limit zijn"""
         current_time = time.time()
+
+        # Periodieke cache cleanup
+        self._cleanup_cache()
 
         # Reset dagelijkse counter
         if current_time > self.daily_reset_time:

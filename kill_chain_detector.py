@@ -253,8 +253,8 @@ class KillChainDetector:
         # Recent alerts for correlation
         self.recent_alerts: deque = deque(maxlen=5000)
 
-        # Kill chain alerts generated
-        self.chain_alerts: List[Dict] = []
+        # Kill chain alerts generated (begrensd om geheugengroei te voorkomen)
+        self.chain_alerts: deque = deque(maxlen=5000)
 
         self.logger.info("KillChainDetector initialized for multi-stage attack correlation")
 
