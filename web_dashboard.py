@@ -67,6 +67,13 @@ login_manager.session_protection = 'basic'  # Changed from 'strong' to prevent p
 
 INACTIVITY_TIMEOUT = 900  # 15 minuten
 
+# Auto-refresh endpoints tellen niet als gebruikersactiviteit
+_AUTO_REFRESH_PATHS = frozenset([
+    '/api/dashboard', '/api/sensors', '/api/sensors/',
+    '/api/whitelist', '/api/integrations/status', '/api/disk-usage',
+    '/api/auth/session-status',
+])
+
 @app.before_request
 def check_session_timeout():
     """Log gebruiker uit na 15 minuten inactiviteit"""
@@ -79,7 +86,25 @@ def check_session_timeout():
             if request.path.startswith('/api/'):
                 return jsonify({'success': False, 'error': 'Session expired due to inactivity'}), 401
             return redirect(url_for('login_page'))
-        session['last_active'] = now
+        # Alleen echte gebruikersacties resetten de timer
+        if request.path not in _AUTO_REFRESH_PATHS:
+            session['last_active'] = now
+
+@app.route('/api/auth/session-status')
+def api_session_status():
+    """Geeft resterende sessietijd terug voor countdown timer"""
+    if not current_user.is_authenticated:
+        return jsonify({'authenticated': False, 'remaining': 0})
+    last_active = session.get('last_active', time.time())
+    remaining = max(0, int(INACTIVITY_TIMEOUT - (time.time() - last_active)))
+    return jsonify({'authenticated': True, 'remaining': remaining})
+
+@app.route('/api/auth/extend-session', methods=['POST'])
+@login_required
+def api_extend_session():
+    """Reset de inactiviteit timer (door gebruiker aangeroepen vanuit countdown banner)"""
+    session['last_active'] = time.time()
+    return jsonify({'success': True, 'remaining': INACTIVITY_TIMEOUT})
 
 # Initialize SocketIO with eventlet for production
 socketio = SocketIO(

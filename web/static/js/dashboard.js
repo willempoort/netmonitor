@@ -152,7 +152,84 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Auto-refresh data every 30 seconds
     setInterval(loadDashboardData, 30000);
+
+    // Session inactivity countdown
+    initSessionTimeoutWarning();
 });
+
+// ==================== Session Timeout Warning ====================
+
+function initSessionTimeoutWarning() {
+    // Maak waarschuwingsbanner aan (vast aan bovenkant pagina)
+    const banner = document.createElement('div');
+    banner.id = 'session-timeout-banner';
+    banner.style.cssText = 'display:none; position:fixed; top:0; left:0; right:0; z-index:9999; background:#dc3545; color:white; padding:12px 20px; text-align:center; font-size:14px; box-shadow:0 2px 8px rgba(0,0,0,0.3);';
+    banner.innerHTML = `
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+        <span>Sessie verloopt over <strong id="timeout-countdown">--</strong> wegens inactiviteit.</span>
+        <button class="btn btn-sm btn-light ms-3" id="session-extend-btn">Sessie verlengen</button>
+    `;
+    document.body.prepend(banner);
+
+    let countdownInterval = null;
+
+    document.getElementById('session-extend-btn').addEventListener('click', () => {
+        fetch('/api/auth/extend-session', { method: 'POST' })
+            .then(() => {
+                banner.style.display = 'none';
+                if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                }
+            })
+            .catch(e => console.error('[SESSION] Error extending session:', e));
+    });
+
+    setInterval(async () => {
+        try {
+            const resp = await fetch('/api/auth/session-status');
+            const data = await resp.json();
+
+            if (!data.authenticated) {
+                window.location.href = '/login';
+                return;
+            }
+
+            if (data.remaining <= 120) {
+                // Toon waarschuwing en start countdown
+                banner.style.display = 'block';
+                if (!countdownInterval) {
+                    let remaining = data.remaining;
+                    document.getElementById('timeout-countdown').textContent = formatCountdown(remaining);
+                    countdownInterval = setInterval(() => {
+                        remaining--;
+                        document.getElementById('timeout-countdown').textContent = formatCountdown(remaining);
+                        if (remaining <= 0) {
+                            clearInterval(countdownInterval);
+                            window.location.href = '/login';
+                        }
+                    }, 1000);
+                }
+            } else {
+                banner.style.display = 'none';
+                if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                }
+            }
+        } catch (e) {
+            console.error('[SESSION] Error checking session status:', e);
+        }
+    }, 10000);
+}
+
+function formatCountdown(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return m > 0 ? `${m}:${s.toString().padStart(2, '0')}` : `${s}s`;
+}
+
+// ==================== Loading ====================
 
 function updateLoadingMessage(message, hint = null) {
     const msgEl = document.getElementById('loading-message');
