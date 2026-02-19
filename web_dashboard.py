@@ -8,6 +8,7 @@ Real-time security monitoring dashboard
 
 import os
 import sys
+import time
 import logging
 import threading
 import hashlib
@@ -48,7 +49,7 @@ app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'dev-key-CHANGE-ME
 app.config['SESSION_COOKIE_NAME'] = 'netmonitor_session'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 60 minutes (increased from 30)
+app.config['PERMANENT_SESSION_LIFETIME'] = 900  # 15 minuten inactiviteit timeout
 app.config['SESSION_REFRESH_EACH_REQUEST'] = True  # Refresh session on each request
 # app.config['SESSION_COOKIE_SECURE'] = True  # Enable in production with HTTPS
 
@@ -63,6 +64,22 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login_page'
 login_manager.session_protection = 'basic'  # Changed from 'strong' to prevent premature session invalidation
+
+INACTIVITY_TIMEOUT = 900  # 15 minuten
+
+@app.before_request
+def check_session_timeout():
+    """Log gebruiker uit na 15 minuten inactiviteit"""
+    if current_user.is_authenticated:
+        last_active = session.get('last_active')
+        now = time.time()
+        if last_active and (now - last_active) > INACTIVITY_TIMEOUT:
+            logout_user()
+            session.clear()
+            if request.path.startswith('/api/'):
+                return jsonify({'success': False, 'error': 'Session expired due to inactivity'}), 401
+            return redirect(url_for('login_page'))
+        session['last_active'] = now
 
 # Initialize SocketIO with eventlet for production
 socketio = SocketIO(
@@ -358,7 +375,8 @@ def api_login():
             return jsonify({'success': True, 'require_2fa': True})
         else:
             # No 2FA - log in directly
-            login_user(user, remember=True)  # Remember user to keep session alive
+            login_user(user, remember=False)
+            session.permanent = True
             logger.info(f"User logged in: {username}")
             return jsonify({'success': True, 'user': user.to_dict()})
 
@@ -397,7 +415,8 @@ def api_verify_2fa():
             user_agent=request.headers.get('User-Agent'),
             is_backup_code=use_backup
         ):
-            login_user(user, remember=True)  # Remember user to keep session alive
+            login_user(user, remember=False)
+            session.permanent = True
             session.pop('pending_2fa_user_id', None)
             logger.info(f"User logged in with 2FA: {user.username}")
             return jsonify({'success': True, 'user': user.to_dict()})
