@@ -731,6 +731,13 @@ class ThreatDetector:
         src_ip = ip_layer.src
         dst_port = tcp_layer.dport
 
+        # Ephemeral ports (>32767) negeren: dit zijn client source ports,
+        # geen service-poorten. Een echte port scan richt zich op bekende
+        # service-poorten (22, 80, 443, etc.), niet op hoge random poorten.
+        # Dit voorkomt false positives bij NAT/SPAN verkeer.
+        if dst_port > 32767:
+            return None
+
         # Track poorten per source IP
         tracker = self.port_scan_tracker[src_ip]
         current_time = time.time()
