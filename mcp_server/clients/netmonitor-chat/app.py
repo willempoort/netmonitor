@@ -822,13 +822,15 @@ class LMStudioClient:
         messages: List[Dict[str, Any]],
         stream: bool = True,
         temperature: float = 0.7,
-        tools: Optional[List[Dict[str, Any]]] = None
+        tools: Optional[List[Dict[str, Any]]] = None,
+        max_tokens: int = 2000
     ) -> AsyncGenerator[Dict[str, Any], None]:
         payload: Dict[str, Any] = {
             "model": model,
             "messages": messages,
             "stream": stream,
-            "temperature": temperature
+            "temperature": temperature,
+            "max_tokens": max_tokens
         }
         if tools:
             payload["tools"] = tools
@@ -1231,7 +1233,7 @@ Regels:
                     {"role": "user", "content": format_prompt}
                 ]
 
-                async for chunk in llm_client.chat(model, format_messages, stream=True, temperature=temperature, tools=None):
+                async for chunk in llm_client.chat(model, format_messages, stream=True, temperature=temperature, tools=None, max_tokens=1500):
                     if "error" in chunk:
                         await websocket.send_json({"type": "error", "content": chunk["error"]})
                         break
@@ -1261,7 +1263,7 @@ Regels:
                     conv_messages.append({"role": "system", "content": system_prompt})
                 conv_messages.extend(history + [{"role": "user", "content": message}])
 
-                async for chunk in llm_client.chat(model, conv_messages, stream=True, temperature=temperature, tools=None):
+                async for chunk in llm_client.chat(model, conv_messages, stream=True, temperature=temperature, tools=None, max_tokens=1500):
                     if "error" in chunk:
                         await websocket.send_json({"type": "error", "content": chunk["error"]})
                         break
@@ -1375,6 +1377,7 @@ BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Verwijs de gebr
                 buffered_content = ""
                 first_token_sent = False
                 llm_error = False
+                repetition_detected = False
 
                 if tool_iteration > 1:
                     await send_status(f"Volgende stap bepalen... ({tool_iteration}/{MAX_TOOL_ITERATIONS})", "llm_thinking")
@@ -1394,6 +1397,15 @@ BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Verwijs de gebr
 
                         if content:
                             full_response += content
+
+                            # Repetitie detectie: stop als dezelfde ~80-char blok 3x voorkomt
+                            if len(full_response) > 400 and not repetition_detected:
+                                check = full_response[-300:]
+                                mid = check[:80]
+                                if check.count(mid) >= 3:
+                                    repetition_detected = True
+                                    print(f"[WebSocket] Repetition detected, stopping LLM generation")
+                                    break
 
                             if not first_token_sent and not has_tool_call:
                                 await send_status("Antwoord genereren...", "generating")
