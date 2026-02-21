@@ -1303,6 +1303,8 @@ Regels:
                 ]
 
                 think_filter = ThinkTagFilter()
+                format_response = ""
+                format_repetition = False
                 async for chunk in llm_client.chat(model, format_messages, stream=True, temperature=temperature, tools=None, max_tokens=max_tokens):
                     if "error" in chunk:
                         await websocket.send_json({"type": "error", "content": chunk["error"]})
@@ -1310,6 +1312,13 @@ Regels:
                     if "message" in chunk:
                         content = chunk["message"].get("content", "")
                         if content:
+                            format_response += content
+                            if len(format_response) > 600 and not format_repetition:
+                                tail = format_response[-200:]
+                                if format_response[:-200].find(tail) != -1:
+                                    format_repetition = True
+                                    print(f"[WebSocket] Format repetition detected, stopping")
+                                    break
                             filtered = think_filter.feed(content)
                             if filtered:
                                 await websocket.send_json({"type": "token", "content": filtered})
@@ -1339,6 +1348,8 @@ Regels:
                 conv_messages.extend(history + [{"role": "user", "content": message}])
 
                 think_filter = ThinkTagFilter()
+                conv_response = ""
+                conv_repetition = False
                 async for chunk in llm_client.chat(model, conv_messages, stream=True, temperature=temperature, tools=None, max_tokens=max_tokens):
                     if "error" in chunk:
                         await websocket.send_json({"type": "error", "content": chunk["error"]})
@@ -1346,6 +1357,13 @@ Regels:
                     if "message" in chunk:
                         content = chunk["message"].get("content", "")
                         if content:
+                            conv_response += content
+                            if len(conv_response) > 600 and not conv_repetition:
+                                tail = conv_response[-200:]
+                                if conv_response[:-200].find(tail) != -1:
+                                    conv_repetition = True
+                                    print(f"[WebSocket] Conv repetition detected, stopping")
+                                    break
                             filtered = think_filter.feed(content)
                             if filtered:
                                 await websocket.send_json({"type": "token", "content": filtered})
@@ -1480,11 +1498,10 @@ BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Verwijs de gebr
                         if content:
                             full_response += content
 
-                            # Repetitie detectie: stop als dezelfde ~80-char blok 3x voorkomt
-                            if len(full_response) > 400 and not repetition_detected:
-                                check = full_response[-300:]
-                                mid = check[:80]
-                                if check.count(mid) >= 3:
+                            # Repetitie detectie: stop als de laatste 200 chars eerder in response voorkomen
+                            if len(full_response) > 600 and not repetition_detected:
+                                tail = full_response[-200:]
+                                if full_response[:-200].find(tail) != -1:
                                     repetition_detected = True
                                     print(f"[WebSocket] Repetition detected, stopping LLM generation")
                                     break
