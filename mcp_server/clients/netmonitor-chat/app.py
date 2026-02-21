@@ -184,8 +184,8 @@ QUICK_INTENTS: List[Tuple[str, str, Dict[str, Any], str]] = [
     # determined by the LLM based on context. Quick intents can't provide this.
     # The LLM will call web_search with appropriate query when needed.
 
-    # DNS lookup
-    (r"(wat.*is|geef|vind).*(ip|ip-adres|ip.*address).*(van|voor|of)",
+    # DNS lookup - alleen voor domeinnaam->IP vertaling, NIET voor IP-gerelateerde vragen
+    (r"(wat.*is|geef|vind).*(ip|ip-adres|ip.*address).*(van|voor|of).*(domein|domain|hostname|website|\.com|\.nl|\.org|\.net)",
      "dns_lookup", {}, "DNS lookup uitvoeren"),
     (r"(dns|resolve|lookup).*(domain|domein|hostname)",
      "dns_lookup", {}, "DNS lookup uitvoeren"),
@@ -1201,7 +1201,15 @@ async def websocket_chat(websocket: WebSocket):
                 # Format response with LLM (no tools = fast)
                 await send_status("Antwoord formuleren...", "formatting")
 
-                format_prompt = f"""De gebruiker vroeg: "{message}"
+                # Als tool mislukte, geef andere instructie
+                if final_result and not final_result.get("success"):
+                    format_prompt = f"""De gebruiker vroeg: "{message}"
+
+De tool {tool_name} kon geen data ophalen (fout: {final_result.get('error', 'onbekend')}).
+Leg kort uit dat je die specifieke data niet kon ophalen en welk type tool daarvoor nodig zou zijn.
+Geef een direct antwoord in het Nederlands. Geen JSON, geen code blocks."""
+                else:
+                    format_prompt = f"""De gebruiker vroeg: "{message}"
 
 De tool {tool_name} gaf dit resultaat:
 {json.dumps(final_result, indent=2, default=str)[:4000]}
@@ -1211,10 +1219,12 @@ Geef een duidelijk en beknopt Nederlands antwoord gebaseerd op deze data.
 Regels:
 - Gebruik opsommingstekens voor lijsten
 - Geen JSON in je antwoord
+- Geen markdown code blocks (geen ```)
 - Voeg GEEN opmerkingen toe over ontbrekende of afgebroken data
 - Geef alleen een samenvatting van wat er WEL in de data staat
 - Als er security context/aanbevelingen zijn, neem deze mee in je antwoord
-- Eindig niet met waarschuwingen of disclaimers"""
+- Eindig niet met waarschuwingen of disclaimers
+- Geef je antwoord DIRECT, zonder inleiding of herhaling"""
 
                 format_messages = [
                     {"role": "system", "content": system_prompt or "Je bent een security expert die duidelijke Nederlandse antwoorden geeft."},
