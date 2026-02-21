@@ -1118,6 +1118,18 @@ class NetworkMonitor:
                     except Exception as e:
                         self.logger.error(f"Error saving SOC server metrics: {e}")
 
+                # Cleanup oude detector tracking data (voorkomt memory leak)
+                if hasattr(self, 'detector') and hasattr(self.detector, 'cleanup_old_data'):
+                    try:
+                        self.detector.cleanup_old_data()
+                    except Exception as e:
+                        self.logger.warning(f"Error cleaning up detector data: {e}")
+                if hasattr(self, 'behavior_detector') and hasattr(self.behavior_detector, 'cleanup_old_data'):
+                    try:
+                        self.behavior_detector.cleanup_old_data()
+                    except Exception as e:
+                        self.logger.warning(f"Error cleaning up behavior_detector data: {e}")
+
         metrics_save_thread = threading.Thread(target=save_sensor_metrics_periodically, daemon=True, name="MetricsSave")
         metrics_save_thread.start()
 

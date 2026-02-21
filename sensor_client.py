@@ -1136,6 +1136,11 @@ class SensorClient:
                     self.detector.cleanup_old_data()
                 except Exception as e:
                     self.logger.warning(f"Error cleaning up detector data: {e}")
+            if hasattr(self, 'behavior_detector') and hasattr(self.behavior_detector, 'cleanup_old_data'):
+                try:
+                    self.behavior_detector.cleanup_old_data()
+                except Exception as e:
+                    self.logger.warning(f"Error cleaning up behavior_detector data: {e}")
 
             uptime = int(time.time() - self.start_time)
 

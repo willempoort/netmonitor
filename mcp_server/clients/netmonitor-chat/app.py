@@ -1511,7 +1511,7 @@ BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Verwijs de gebr
                         }
                         messages.append({"role": "assistant", "content": "", "tool_calls": [complete_tool_call]})
 
-                        tool_content = json.dumps(final_result) if final_result else "{}"
+                        tool_content = (json.dumps(final_result) if final_result else "{}")[:3000]
                         if enrichment_context:
                             tool_content += f"\n\n{enrichment_context}"
                         tool_message: Dict[str, Any] = {"role": "tool", "content": tool_content}
@@ -1569,7 +1569,7 @@ BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Verwijs de gebr
                         if any(kw in tool_name.lower() for kw in threat_related) and result:
                             enrichment_context = await enrich_with_threat_intel(mcp_client, result, send_status)
 
-                        result_with_context = json.dumps(result)
+                        result_with_context = json.dumps(result)[:3000]
                         if enrichment_context:
                             result_with_context += f"\n\n{enrichment_context}"
 
