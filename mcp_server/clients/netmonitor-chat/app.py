@@ -1135,6 +1135,7 @@ async def websocket_chat(websocket: WebSocket):
             message = data.get("message", "")
             history = data.get("history", [])
             temperature = data.get("temperature", 0.3)
+            max_tokens = int(data.get("max_tokens", 2000))
             system_prompt = data.get("system_prompt", "")
 
             llm_provider = data.get("llm_provider", "ollama")
@@ -1233,7 +1234,7 @@ Regels:
                     {"role": "user", "content": format_prompt}
                 ]
 
-                async for chunk in llm_client.chat(model, format_messages, stream=True, temperature=temperature, tools=None, max_tokens=1500):
+                async for chunk in llm_client.chat(model, format_messages, stream=True, temperature=temperature, tools=None, max_tokens=max_tokens):
                     if "error" in chunk:
                         await websocket.send_json({"type": "error", "content": chunk["error"]})
                         break
@@ -1263,7 +1264,7 @@ Regels:
                     conv_messages.append({"role": "system", "content": system_prompt})
                 conv_messages.extend(history + [{"role": "user", "content": message}])
 
-                async for chunk in llm_client.chat(model, conv_messages, stream=True, temperature=temperature, tools=None, max_tokens=1500):
+                async for chunk in llm_client.chat(model, conv_messages, stream=True, temperature=temperature, tools=None, max_tokens=max_tokens):
                     if "error" in chunk:
                         await websocket.send_json({"type": "error", "content": chunk["error"]})
                         break
@@ -1385,7 +1386,7 @@ BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Verwijs de gebr
                 # If forced to generate final report, disable tools
                 current_tools = None if force_final_report else use_tools
 
-                async for chunk in llm_client.chat(model, messages, stream=True, temperature=temperature, tools=current_tools):
+                async for chunk in llm_client.chat(model, messages, stream=True, temperature=temperature, tools=current_tools, max_tokens=max_tokens):
                     if "error" in chunk:
                         await websocket.send_json({"type": "error", "content": chunk["error"]})
                         llm_error = True

@@ -184,6 +184,22 @@
                     </p>
                 </div>
 
+                <!-- Max Tokens -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Max Tokens: <span x-text="maxTokens"></span>
+                    </label>
+                    <input type="number"
+                           x-model.number="maxTokens"
+                           min="256"
+                           max="8192"
+                           step="256"
+                           class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
+                    <p class="text-xs text-gray-500 mt-1">
+                        500-1000 = kort, 2000 = normaal, 4096+ = lang antwoord
+                    </p>
+                </div>
+
                 <!-- Server Configuration -->
                 <div class="mb-6 border-t pt-4">
                     <button @click="showConfig = !showConfig"
@@ -534,6 +550,7 @@
                 mcpAuthToken: '',
                 systemPrompt: 'Je bent een security expert die helpt met NetMonitor. Gebruik ALTIJD de beschikbare tools om informatie op te halen - verwijs gebruikers NOOIT naar externe websites. Belangrijkste tools: lookup_ip_owner voor IP eigenaar/organisatie opzoeken (bij vragen als \"van wie is dit IP?\"), web_search voor internet zoeken (type moet text of news zijn, NIET web), dns_lookup voor domeinnaam→IP vertaling, analyze_ip voor dreigingsanalyse. Geef altijd duidelijke, Nederlandse antwoorden.',
                 forceToolsLMStudio: false,  // Force function calling for LM Studio (experimental)
+                maxTokens: 2000,  // Maximum tokens for LLM response
                 applyingConfig: false,  // Loading state for config apply button
                 configSuccess: false,  // Brief success feedback after apply
 
@@ -552,6 +569,7 @@
                     const savedMcpToken = localStorage.getItem('netmonitor-chat-mcp-token');
                     const savedSystemPrompt = localStorage.getItem('netmonitor-chat-system-prompt');
                     const savedForceTools = localStorage.getItem('netmonitor-chat-force-tools-lmstudio');
+                    const savedMaxTokens = localStorage.getItem('netmonitor-chat-max-tokens');
 
                     if (savedLlmProvider) this.llmProvider = savedLlmProvider;
                     if (savedOllamaUrl) this.ollamaUrl = savedOllamaUrl;
@@ -561,6 +579,7 @@
                     if (savedMcpToken) this.mcpAuthToken = savedMcpToken;
                     if (savedSystemPrompt) this.systemPrompt = savedSystemPrompt;
                     if (savedForceTools !== null) this.forceToolsLMStudio = savedForceTools === 'true';
+                    if (savedMaxTokens !== null) this.maxTokens = parseInt(savedMaxTokens) || 2000;
 
                     // Load MCP configurations from server
                     await this.loadMcpConfigs();
@@ -618,6 +637,7 @@
                     this.$watch('mcpAuthToken', (value) => localStorage.setItem('netmonitor-chat-mcp-token', value));
                     this.$watch('systemPrompt', (value) => localStorage.setItem('netmonitor-chat-system-prompt', value));
                     this.$watch('forceToolsLMStudio', (value) => localStorage.setItem('netmonitor-chat-force-tools-lmstudio', value));
+                    this.$watch('maxTokens', (value) => localStorage.setItem('netmonitor-chat-max-tokens', value));
                 },
 
                 // Load available MCP configurations
@@ -811,6 +831,7 @@
                             message: userMessage,
                             history: history,
                             temperature: this.temperature,
+                            max_tokens: this.maxTokens,
                             llm_provider: this.llmProvider,
                             llm_url: llmUrl,
                             mcp_url: mcpUrl,
