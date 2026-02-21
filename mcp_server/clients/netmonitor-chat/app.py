@@ -184,6 +184,14 @@ QUICK_INTENTS: List[Tuple[str, str, Dict[str, Any], str]] = [
     # determined by the LLM based on context. Quick intents can't provide this.
     # The LLM will call web_search with appropriate query when needed.
 
+    # Device communication partners - welke IPs communiceert een apparaat mee
+    (r"(welke|vind|geef|toon|show).*(ip|ip.adres|adressen).*(communic|praat|contact|verbind|talk).*(met|with|van|naar)",
+     "get_device_learned_behavior", {}, "communicatie partners ophalen"),
+    (r"(communic|praat|contact|verbind|talk).*(welke|met.*welke|which).*(ip|adressen|apparaat)",
+     "get_device_learned_behavior", {}, "communicatie partners ophalen"),
+    (r"(ip.adressen|ip.adres|adressen).*(waarmee|met wie|with which).*(communic|praat|verbind)",
+     "get_device_learned_behavior", {}, "communicatie partners ophalen"),
+
     # DNS lookup - alleen voor domeinnaam->IP vertaling, NIET voor IP-gerelateerde vragen
     (r"(wat.*is|geef|vind).*(ip|ip-adres|ip.*address).*(van|voor|of).*(domein|domain|hostname|website|\.com|\.nl|\.org|\.net)",
      "dns_lookup", {}, "DNS lookup uitvoeren"),

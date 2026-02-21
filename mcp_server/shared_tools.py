@@ -3847,7 +3847,7 @@ TOOL_DEFINITIONS = [
             },
             {
                 "name": "get_device_traffic_stats",
-                "description": "Get traffic statistics for a specific device by IP (ports, protocols, bytes, communication partners)",
+                "description": "Get traffic volume statistics for a specific device by IP (total bytes/packets sent and received, per direction). Does NOT show which IPs the device communicates with - use get_device_learned_behavior for that.",
                 "input_schema": {
                     "type": "object",
                     "properties": {
@@ -3949,7 +3949,7 @@ TOOL_DEFINITIONS = [
             },
             {
                 "name": "get_device_learned_behavior",
-                "description": "Get the learned behavior profile for a device including typical ports, protocols, destinations, and traffic patterns",
+                "description": "Get the learned behavior profile for a device including the list of IP addresses it communicates with (typical_destinations), typical ports, protocols, and traffic patterns. Use this to answer questions like 'which IPs does this device talk to?' or 'what does this device communicate with?'",
                 "input_schema": {
                     "type": "object",
                     "properties": {
