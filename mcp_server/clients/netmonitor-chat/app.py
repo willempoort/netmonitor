@@ -238,6 +238,14 @@ def quick_intent_match(message: str) -> Optional[Tuple[str, Dict[str, Any], str]
                 if ip_match:
                     args['ip'] = ip_match.group(1)
 
+            # Try to extract IP address for device-specific tools
+            if tool_name in ("get_device_learned_behavior", "get_device_traffic_stats",
+                             "get_device_by_ip", "get_asset_risk", "get_device_learning_status",
+                             "get_device_classification_hints") and 'ip_address' not in args:
+                ip_match = re.search(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', message)
+                if ip_match:
+                    args['ip_address'] = ip_match.group(1)
+
             print(f"[QuickMatch] Matched '{message}' -> {tool_name}({args})")
             return (tool_name, args, description)
 
