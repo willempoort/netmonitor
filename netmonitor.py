@@ -1091,8 +1091,55 @@ class NetworkMonitor:
         # Start periodic metrics save to database (for SOC server sensor)
         def save_sensor_metrics_periodically():
             """Save SOC server metrics to database every 60 seconds"""
+            _mem_log_counter = 0
             while self.running:
                 threading.Event().wait(60)  # Wait 60 seconds
+                _mem_log_counter += 1
+
+                # Elke 5 minuten: log geheugengebruik per tracker (voor diagnose memory leaks)
+                if _mem_log_counter >= 5:
+                    _mem_log_counter = 0
+                    try:
+                        import psutil, os as _os
+                        proc = psutil.Process(_os.getpid())
+                        rss_mb = proc.memory_info().rss / 1024 / 1024
+                        lines = [f"=== Memory stats: {rss_mb:.0f} MB RSS ==="]
+
+                        if hasattr(self, 'detector') and self.detector:
+                            d = self.detector
+                            lines.append(f"  detector trackers (keys):")
+                            for attr in ['connection_tracker', 'port_scan_tracker',
+                                         'dns_tracker', 'icmp_tracker', 'http_tracker',
+                                         'protocol_mismatch_tracker', 'brute_force_tracker',
+                                         'smtp_ftp_tracker', 'dns_query_tracker',
+                                         'api_abuse_tracker', 'tls_metadata_cache',
+                                         'syn_flood_tracker', 'data_exfil_tracker',
+                                         'lateral_movement_tracker']:
+                                tracker = getattr(d, attr, None)
+                                if tracker is not None:
+                                    lines.append(f"    {attr}: {len(tracker)}")
+
+                        if hasattr(self, 'behavior_detector') and self.behavior_detector:
+                            bd = self.behavior_detector
+                            for attr in dir(bd):
+                                if attr.endswith('_tracker') or attr.endswith('_profiles'):
+                                    obj = getattr(bd, attr, None)
+                                    if hasattr(obj, '__len__') and len(obj) > 0:
+                                        lines.append(f"  behavior.{attr}: {len(obj)}")
+
+                        if hasattr(self, 'device_discovery') and self.device_discovery:
+                            dd = self.device_discovery
+                            if hasattr(dd, 'traffic_stats'):
+                                lines.append(f"  device_discovery.traffic_stats: {len(dd.traffic_stats)}")
+                            if hasattr(dd, 'device_cache'):
+                                lines.append(f"  device_discovery.device_cache: {len(dd.device_cache)}")
+                            if hasattr(dd, 'dns_cache'):
+                                lines.append(f"  device_discovery.dns_cache: {len(dd.dns_cache)}")
+
+                        self.logger.info("\n".join(lines))
+                    except Exception as e:
+                        self.logger.warning(f"Memory stats logging fout: {e}")
+
                 if self.running and self.metrics and self.db and self.sensor_id:
                     try:
                         # Get current metrics
