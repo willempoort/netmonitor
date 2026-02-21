@@ -763,6 +763,58 @@ def filter_relevant_tools(user_message: str, all_tools: List[Dict[str, Any]], ma
 
 
 # ------------------------------------------------------------
+# Think Tag Filter (strips <think>...</think> reasoning blocks)
+# ------------------------------------------------------------
+
+class ThinkTagFilter:
+    """Strips <think>...</think> blocks from streamed LLM output token by token."""
+
+    def __init__(self):
+        self.in_think = False
+        self.pending = ""  # Buffer for partial tag detection
+
+    def feed(self, text: str) -> str:
+        """Returns text to send to client (think blocks removed)."""
+        result = ""
+        self.pending += text
+
+        while self.pending:
+            if self.in_think:
+                end_idx = self.pending.find("</think>")
+                if end_idx != -1:
+                    self.in_think = False
+                    self.pending = self.pending[end_idx + len("</think>"):]
+                    # Skip leading newline after closing tag
+                    if self.pending.startswith("\n"):
+                        self.pending = self.pending[1:]
+                else:
+                    if len(self.pending) > 8:
+                        self.pending = self.pending[-8:]
+                    break
+            else:
+                start_idx = self.pending.find("<think>")
+                if start_idx != -1:
+                    result += self.pending[:start_idx]
+                    self.in_think = True
+                    self.pending = self.pending[start_idx + len("<think>"):]
+                else:
+                    if len(self.pending) > 7:
+                        result += self.pending[:-7]
+                        self.pending = self.pending[-7:]
+                    break
+
+        return result
+
+    def flush(self) -> str:
+        """Return any remaining buffered content at end of stream."""
+        if not self.in_think:
+            result = self.pending
+            self.pending = ""
+            return result
+        return ""
+
+
+# ------------------------------------------------------------
 # LLM Clients
 # ------------------------------------------------------------
 
@@ -1250,6 +1302,7 @@ Regels:
                     {"role": "user", "content": format_prompt}
                 ]
 
+                think_filter = ThinkTagFilter()
                 async for chunk in llm_client.chat(model, format_messages, stream=True, temperature=temperature, tools=None, max_tokens=max_tokens):
                     if "error" in chunk:
                         await websocket.send_json({"type": "error", "content": chunk["error"]})
@@ -1257,8 +1310,13 @@ Regels:
                     if "message" in chunk:
                         content = chunk["message"].get("content", "")
                         if content:
-                            await websocket.send_json({"type": "token", "content": content})
+                            filtered = think_filter.feed(content)
+                            if filtered:
+                                await websocket.send_json({"type": "token", "content": filtered})
                     if chunk.get("done"):
+                        remainder = think_filter.flush()
+                        if remainder:
+                            await websocket.send_json({"type": "token", "content": remainder})
                         break
 
                 await websocket.send_json({"type": "done"})
@@ -1280,6 +1338,7 @@ Regels:
                     conv_messages.append({"role": "system", "content": system_prompt})
                 conv_messages.extend(history + [{"role": "user", "content": message}])
 
+                think_filter = ThinkTagFilter()
                 async for chunk in llm_client.chat(model, conv_messages, stream=True, temperature=temperature, tools=None, max_tokens=max_tokens):
                     if "error" in chunk:
                         await websocket.send_json({"type": "error", "content": chunk["error"]})
@@ -1287,8 +1346,13 @@ Regels:
                     if "message" in chunk:
                         content = chunk["message"].get("content", "")
                         if content:
-                            await websocket.send_json({"type": "token", "content": content})
+                            filtered = think_filter.feed(content)
+                            if filtered:
+                                await websocket.send_json({"type": "token", "content": filtered})
                     if chunk.get("done"):
+                        remainder = think_filter.flush()
+                        if remainder:
+                            await websocket.send_json({"type": "token", "content": remainder})
                         break
 
                 await websocket.send_json({"type": "done"})
@@ -1395,6 +1459,7 @@ BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Verwijs de gebr
                 first_token_sent = False
                 llm_error = False
                 repetition_detected = False
+                think_filter = ThinkTagFilter()
 
                 if tool_iteration > 1:
                     await send_status(f"Volgende stap bepalen... ({tool_iteration}/{MAX_TOOL_ITERATIONS})", "llm_thinking")
@@ -1429,11 +1494,12 @@ BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Verwijs de gebr
                                 first_token_sent = True
 
                             if not has_tool_call:
+                                filtered = think_filter.feed(content)
                                 if buffer_tokens:
-                                    buffered_content += content
-                                elif force_final_report or not full_response.strip().startswith("{"):
+                                    buffered_content += filtered
+                                elif filtered and (force_final_report or not full_response.strip().startswith("{")):
                                     # Always stream tokens when forcing final report, even if response looks like JSON
-                                    await websocket.send_json({"type": "token", "content": content})
+                                    await websocket.send_json({"type": "token", "content": filtered})
 
                         # Accumulate tool calls
                         tool_calls = msg.get("tool_calls")
@@ -1467,6 +1533,13 @@ BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Verwijs de gebr
                                         accumulated_tool_calls[idx]["function"]["arguments"] += func_chunk["arguments"]
 
                     if chunk.get("done"):
+                        # Flush any remaining buffered think filter content
+                        remainder = think_filter.flush()
+                        if remainder and not has_tool_call:
+                            if buffer_tokens:
+                                buffered_content += remainder
+                            elif force_final_report or not full_response.strip().startswith("{"):
+                                await websocket.send_json({"type": "token", "content": remainder})
                         break
 
                 # Handle errors
