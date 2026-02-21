@@ -287,26 +287,26 @@ class DeviceDiscovery:
                 # Save learned behavior every 5 minutes (every 5th iteration)
                 learning_counter += 1
                 if learning_counter >= 5:
+                    learning_counter = 0  # Reset vóór aanroep
                     self._save_all_learned_behavior()
-                    learning_counter = 0
 
                 # Clean up duplicate MAC addresses every 30 minutes (every 30th iteration)
                 cleanup_counter += 1
                 if cleanup_counter >= 30:
+                    cleanup_counter = 0  # Reset vóór aanroep zodat een crash niet cascadeert
                     self._cleanup_duplicate_macs()
-                    cleanup_counter = 0
 
                 # Clean up traffic stats every 10 minutes (every 10th iteration)
                 traffic_stats_counter += 1
                 if traffic_stats_counter >= 10:
+                    traffic_stats_counter = 0  # Reset vóór aanroep
                     self._cleanup_traffic_stats()
-                    traffic_stats_counter = 0
 
                 # Clean up device cache every 30 minutes (every 30th iteration)
                 device_cache_counter += 1
                 if device_cache_counter >= 30:
+                    device_cache_counter = 0  # Reset vóór aanroep
                     self._cleanup_device_cache()
-                    device_cache_counter = 0
 
             except Exception as e:
                 self.logger.error(f"Error in background worker: {e}")
@@ -474,6 +474,9 @@ class DeviceDiscovery:
             except Exception as e:
                 self.logger.error(f"Error saving learned behavior for {ip_address}: {e}")
 
+        if saved_count > 0:
+            self.logger.info(f"Saved learned behavior for {saved_count} devices")
+
     def _cleanup_duplicate_macs(self):
         """
         Clean up duplicate device entries with the same MAC address.
@@ -488,9 +491,6 @@ class DeviceDiscovery:
                 self.logger.info(f"Cleaned up {deactivated} duplicate MAC address entries")
         except Exception as e:
             self.logger.error(f"Error cleaning up duplicate MACs: {e}")
-
-        if saved_count > 0:
-            self.logger.info(f"Saved learned behavior for {saved_count} devices")
 
     def update_missing_vendors(self) -> int:
         """
