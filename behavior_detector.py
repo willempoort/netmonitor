@@ -430,10 +430,13 @@ class BehaviorDetector:
                 del self.known_beacons[key]
                 beacons_cleaned += 1
 
-        # Cleanup empty connection tracker entries
+        # Cleanup inactive connection tracker entries (maxlen=1000 deques zijn nooit leeg
+        # voor actieve IPs, dus controleer op laatste timestamp i.p.v. lege deque)
+        conn_cutoff = current_time - 300  # 5 minuten inactief
         conn_cleaned = 0
         for ip in list(self.connection_tracker.keys()):
-            if not self.connection_tracker[ip]:  # Empty deque
+            deq = self.connection_tracker[ip]
+            if not deq or deq[-1][0] < conn_cutoff:
                 del self.connection_tracker[ip]
                 conn_cleaned += 1
 

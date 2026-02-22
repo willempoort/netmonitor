@@ -48,7 +48,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 21  # Increment this when schema changes (v21: whitelist source_ip/target_ip/port_filter)
+        SCHEMA_VERSION = 22  # Increment this when schema changes (v22: top_talkers outbound/inbound byte columns)
 
         if self._check_schema_version(SCHEMA_VERSION):
             self.logger.info(f"Database schema is up to date (v{SCHEMA_VERSION})")
@@ -879,6 +879,20 @@ class DatabaseManager:
                 ON abuseipdb_api_stats(date DESC);
             """)
 
+            # Migration v21: Add per-direction byte columns to top_talkers
+            cursor.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'top_talkers' AND column_name = 'outbound_byte_count'
+                    ) THEN
+                        ALTER TABLE top_talkers ADD COLUMN outbound_byte_count BIGINT DEFAULT 0;
+                        ALTER TABLE top_talkers ADD COLUMN inbound_byte_count BIGINT DEFAULT 0;
+                    END IF;
+                END $$;
+            """)
+
             conn.commit()
 
         except Exception as e:
@@ -1704,17 +1718,21 @@ class DatabaseManager:
                 (
                     sensor_id,
                     talker['ip'],
-                    talker.get('hostname'),  # Include hostname
+                    talker.get('hostname'),
                     talker.get('packets', 0),
                     talker.get('bytes', 0),
-                    talker.get('direction', 'unknown')
+                    talker.get('direction', 'unknown'),
+                    int(talker.get('outbound_mb', 0) * 1024 * 1024),
+                    int(talker.get('inbound_mb', 0) * 1024 * 1024),
                 )
                 for talker in talkers
             ]
 
             cursor.executemany('''
-                INSERT INTO top_talkers (sensor_id, ip_address, hostname, packet_count, byte_count, direction)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO top_talkers
+                    (sensor_id, ip_address, hostname, packet_count, byte_count, direction,
+                     outbound_byte_count, inbound_byte_count)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ''', values)
 
             conn.commit()
@@ -1741,10 +1759,12 @@ class DatabaseManager:
                     SUM(packet_count) as packets,
                     SUM(byte_count) as bytes,
                     ROUND((SUM(byte_count) * 8.0 / 1000000.0 / %s / 60.0)::numeric, 2) as mbps,
-                    direction
+                    ROUND((SUM(outbound_byte_count) / 1048576.0)::numeric, 2) as outbound_mb,
+                    ROUND((SUM(inbound_byte_count) / 1048576.0)::numeric, 2) as inbound_mb,
+                    MAX(direction) as direction
                 FROM top_talkers
                 WHERE timestamp > NOW() - INTERVAL '%s minutes'
-                GROUP BY ip_address, direction
+                GROUP BY ip_address
                 ORDER BY bytes DESC
                 LIMIT %s
             ''', (minutes, minutes, limit))

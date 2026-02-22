@@ -1113,19 +1113,40 @@ class NetworkMonitor:
                                          'protocol_mismatch_tracker', 'brute_force_tracker',
                                          'smtp_ftp_tracker', 'dns_query_tracker',
                                          'api_abuse_tracker', 'tls_metadata_cache',
-                                         'syn_flood_tracker', 'data_exfil_tracker',
-                                         'lateral_movement_tracker']:
+                                         'syn_flood_tracker', 'udp_flood_tracker',
+                                         'http_flood_tracker', 'slowloris_tracker',
+                                         'amplification_tracker', 'connection_exhaustion_tracker',
+                                         'bandwidth_saturation_tracker', 'cryptomining_tracker',
+                                         'sqli_tracker', 'xss_tracker',
+                                         'command_injection_tracker', 'path_traversal_tracker',
+                                         'smb_encryption_tracker', 'crypto_extension_tracker',
+                                         'ransom_note_tracker', 'shadow_copy_tracker',
+                                         'iot_botnet_tracker', 'upnp_exploit_tracker',
+                                         'mqtt_abuse_tracker', 'smart_home_tracker',
+                                         'modbus_tracker', 'dnp3_tracker', 'iec104_tracker',
+                                         'docker_escape_tracker', 'k8s_exploit_tracker',
+                                         'fragmentation_tracker', 'tunneling_tracker',
+                                         'polymorphic_tracker', 'lateral_movement_tracker',
+                                         'data_exfil_tracker', 'privilege_escalation_tracker',
+                                         'persistence_tracker', 'credential_dumping_tracker']:
                                 tracker = getattr(d, attr, None)
-                                if tracker is not None:
+                                if tracker is not None and len(tracker) > 0:
                                     lines.append(f"    {attr}: {len(tracker)}")
 
                         if hasattr(self, 'behavior_detector') and self.behavior_detector:
                             bd = self.behavior_detector
-                            for attr in dir(bd):
-                                if attr.endswith('_tracker') or attr.endswith('_profiles'):
-                                    obj = getattr(bd, attr, None)
-                                    if hasattr(obj, '__len__') and len(obj) > 0:
-                                        lines.append(f"  behavior.{attr}: {len(obj)}")
+                            for attr in ['connection_tracker', 'outbound_volume',
+                                         'lateral_tracker', 'known_beacons']:
+                                obj = getattr(bd, attr, None)
+                                if obj is not None and len(obj) > 0:
+                                    lines.append(f"  behavior.{attr}: {len(obj)}")
+
+                        if hasattr(self, 'pcap_exporter') and self.pcap_exporter:
+                            pe = self.pcap_exporter
+                            if hasattr(pe, 'flow_buffers'):
+                                lines.append(f"  pcap_exporter.flow_buffers: {len(pe.flow_buffers)}")
+                            if hasattr(pe, 'packet_buffer'):
+                                lines.append(f"  pcap_exporter.packet_buffer: {len(pe.packet_buffer)}")
 
                         if hasattr(self, 'device_discovery') and self.device_discovery:
                             dd = self.device_discovery

@@ -1463,13 +1463,8 @@ function updateTopTalkers(talkers) {
     talkers.forEach(talker => {
         const row = document.createElement('tr');
 
-        const bytes = talker.bytes || 0;
-        const mb = (bytes / (1024 * 1024)).toFixed(2);
-
-        const direction = talker.direction || 'unknown';
-        const directionBadge = direction === 'outbound' ?
-            '<span class="badge badge-direction outbound">OUT</span>' :
-            '<span class="badge badge-direction inbound">IN</span>';
+        const inMb = (talker.inbound_mb || 0).toFixed(2);
+        const outMb = (talker.outbound_mb || 0).toFixed(2);
 
         // Support both 'ip' and 'ip_address' for backwards compatibility
         const ipAddress = talker.ip || talker.ip_address || 'unknown';
@@ -1480,8 +1475,8 @@ function updateTopTalkers(talkers) {
                 ${talker.hostname && talker.hostname !== ipAddress ?
                   `<br><small class="text-muted">${talker.hostname}</small>` : ''}
             </td>
-            <td>${mb} MB</td>
-            <td>${directionBadge}</td>
+            <td class="text-end text-info"><small>${inMb} MB</small></td>
+            <td class="text-end text-warning"><small>${outMb} MB</small></td>
         `;
 
         tbody.appendChild(row);

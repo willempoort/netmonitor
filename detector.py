@@ -4082,12 +4082,22 @@ class ThreatDetector:
 
         # Cleanup deque-based trackers - verwijder inactieve IPs (niet alleen lege deques)
         # Met maxlen zijn deze nooit leeg voor actieve IPs → sleutels stapelen op
+        # Let op: dns_tracker slaat floats op, icmp_tracker/http_tracker slaan dicts op
         deque_cutoff = current_time - 300  # 5 minuten inactief
         for tracker_name in ('dns_tracker', 'icmp_tracker', 'http_tracker', 'protocol_mismatch_tracker'):
             tracker = getattr(self, tracker_name, None)
             if tracker is not None:
-                stale_keys = [ip for ip in list(tracker.keys())
-                              if not tracker[ip] or tracker[ip][-1] < deque_cutoff]
+                stale_keys = []
+                for ip in list(tracker.keys()):
+                    deq = tracker[ip]
+                    if not deq:
+                        stale_keys.append(ip)
+                    else:
+                        last = deq[-1]
+                        # dns_tracker stores floats; icmp/http_tracker store dicts with 'time'
+                        ts = last['time'] if isinstance(last, dict) else last
+                        if ts < deque_cutoff:
+                            stale_keys.append(ip)
                 for ip in stale_keys:
                     del tracker[ip]
 

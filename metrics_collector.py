@@ -45,6 +45,8 @@ class MetricsCollector:
         self.ip_stats = defaultdict(lambda: {
             'packets': 0,
             'bytes': 0,
+            'outbound_bytes': 0,
+            'inbound_bytes': 0,
             'direction': 'unknown'
         })
 
@@ -128,15 +130,15 @@ class MetricsCollector:
                 self.outbound_bytes += packet_size
                 self.ip_stats[src_ip]['packets'] += 1
                 self.ip_stats[src_ip]['bytes'] += packet_size
-                self.ip_stats[src_ip]['direction'] = 'outbound'
+                self.ip_stats[src_ip]['outbound_bytes'] += packet_size
 
             elif not src_internal and dst_internal:
-                # Inbound
+                # Inbound (ACKs, responses) - getrackt op het interne doel-IP
                 self.inbound_packets += 1
                 self.inbound_bytes += packet_size
                 self.ip_stats[dst_ip]['packets'] += 1
                 self.ip_stats[dst_ip]['bytes'] += packet_size
-                self.ip_stats[dst_ip]['direction'] = 'inbound'
+                self.ip_stats[dst_ip]['inbound_bytes'] += packet_size
 
             elif src_internal and dst_internal:
                 # Internal-to-internal traffic
@@ -238,13 +240,27 @@ class MetricsCollector:
             except:
                 hostname = ip
 
+            # Bepaal dominante richting op basis van byte-verhouding
+            out_b = stats['outbound_bytes']
+            in_b = stats['inbound_bytes']
+            if out_b == 0 and in_b == 0:
+                direction = stats['direction']  # internal traffic
+            elif out_b > in_b * 3:
+                direction = 'outbound'
+            elif in_b > out_b * 3:
+                direction = 'inbound'
+            else:
+                direction = 'bidirectional'
+
             result.append({
                 'ip': ip,
                 'hostname': hostname,
                 'packets': stats['packets'],
                 'bytes': stats['bytes'],
                 'mb': round(stats['bytes'] / (1024 * 1024), 2),
-                'direction': stats['direction']
+                'outbound_mb': round(stats['outbound_bytes'] / (1024 * 1024), 2),
+                'inbound_mb': round(stats['inbound_bytes'] / (1024 * 1024), 2),
+                'direction': direction
             })
 
         return result

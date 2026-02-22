@@ -58,7 +58,11 @@ class PCAPExporter:
 
         # Flow tracking for selective export
         self.flow_buffers: Dict[str, deque] = {}
+        self.flow_last_seen: Dict[str, float] = {}  # last packet time per flow (cleanup)
         self.flow_buffer_size = pcap_config.get('flow_buffer_size', 500)
+        self.max_flow_buffers = pcap_config.get('max_flow_buffers', 5000)  # cap unbounded growth
+        self.flow_ttl = 300  # remove flows inactive for 5 minutes
+        self._last_flow_cleanup = time.time()
 
         # Retention settings
         self.max_captures = pcap_config.get('max_captures', 100)
@@ -91,18 +95,26 @@ class PCAPExporter:
             })
             self.stats['packets_buffered'] += 1
 
-            # Track by flow for selective export
-            if packet.haslayer(IP):
+            # Track by flow - alleen als er actieve post-alert captures zijn die packets nodig hebben.
+            # capture_alert() wordt altijd aangeroepen met immediate=True, dus pending_captures
+            # is normaal altijd leeg. Flow buffers vullen is dan zinloos en kost veel RAM.
+            if packet.haslayer(IP) and self.pending_captures:
                 flow_key = self._get_flow_key(packet)
+                now = time.time()
                 if flow_key not in self.flow_buffers:
                     self.flow_buffers[flow_key] = deque(maxlen=self.flow_buffer_size)
                 self.flow_buffers[flow_key].append({
                     'packet': packet,
-                    'timestamp': time.time(),
+                    'timestamp': now,
                 })
+                self.flow_last_seen[flow_key] = now
 
         # Check for pending post-alert captures
         self._process_pending_captures()
+
+        # Periodically clean up stale flow buffers (prevent unbounded growth)
+        if time.time() - self._last_flow_cleanup > 60:
+            self._cleanup_flow_buffers()
 
     def capture_alert(self, alert: Dict, packet: Packet = None, immediate: bool = False) -> Optional[str]:
         """
@@ -395,6 +407,31 @@ class PCAPExporter:
             port_info = f'_udp_{ports[0]}_{ports[1]}'
 
         return f'{src_ip}_{dst_ip}{port_info}'
+
+    def _cleanup_flow_buffers(self):
+        """Remove stale flow buffers to prevent unbounded memory growth."""
+        now = time.time()
+        self._last_flow_cleanup = now
+        cutoff = now - self.flow_ttl
+
+        with self.buffer_lock:
+            stale = [k for k, t in self.flow_last_seen.items() if t < cutoff]
+            for k in stale:
+                self.flow_buffers.pop(k, None)
+                self.flow_last_seen.pop(k, None)
+
+            # Also cap total flows if still too many (burst of unique ephemeral ports)
+            if len(self.flow_buffers) > self.max_flow_buffers:
+                sorted_flows = sorted(self.flow_last_seen.items(), key=lambda x: x[1])
+                excess = len(self.flow_buffers) - self.max_flow_buffers
+                for k, _ in sorted_flows[:excess]:
+                    self.flow_buffers.pop(k, None)
+                    self.flow_last_seen.pop(k, None)
+
+        if stale:
+            self.logger.debug(
+                f"Flow cleanup: removed {len(stale)} stale flows, {len(self.flow_buffers)} active"
+            )
 
     def _cleanup_old_captures(self):
         """Remove old PCAP files based on retention settings."""
