@@ -43,8 +43,8 @@ class PCAPExporter:
         pcap_config = self.config.get('thresholds', {}).get('pcap_export', {})
         if not pcap_config:
             pcap_config = self.config.get('pcap_export', {})
-        self.output_dir = Path(output_dir or pcap_config.get('output_dir', '/var/log/netmonitor/pcap'))
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.base_dir = Path(output_dir or pcap_config.get('output_dir', '/var/log/netmonitor/pcap'))
+        self.base_dir.mkdir(parents=True, exist_ok=True)
 
         # Ring buffer configuration
         self.buffer_size = pcap_config.get('buffer_size', 10000)  # packets
@@ -79,7 +79,7 @@ class PCAPExporter:
         # Post-alert capture state
         self.pending_captures: List[Dict] = []
 
-        self.logger.info(f"PCAPExporter initialized: buffer={self.buffer_size}, output={self.output_dir}")
+        self.logger.info(f"PCAPExporter initialized: buffer={self.buffer_size}, output={self.base_dir}")
 
     def add_packet(self, packet: Packet):
         """
@@ -138,7 +138,7 @@ class PCAPExporter:
             dst_ip = alert.get('destination_ip', 'unknown').replace('.', '_')
 
             filename = f"alert_{alert_type}_{src_ip}_to_{dst_ip}_{timestamp}.pcap"
-            filepath = self.output_dir / filename
+            filepath = self._get_time_dir() / filename
 
             # Get packets from buffer
             with self.buffer_lock:
@@ -233,7 +233,7 @@ class PCAPExporter:
                 filename_parts.append(f'port{dst_port}')
             filename_parts.append(timestamp)
             filename = '_'.join(filename_parts) + '.pcap'
-            filepath = self.output_dir / filename
+            filepath = self._get_time_dir() / filename
 
             matching_packets = []
 
@@ -304,7 +304,7 @@ class PCAPExporter:
         try:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f'{name}_{timestamp}.pcap'
-            filepath = self.output_dir / filename
+            filepath = self._get_time_dir() / filename
 
             matching_packets = []
 
@@ -332,13 +332,15 @@ class PCAPExporter:
             return None
 
     def list_captures(self) -> List[Dict[str, Any]]:
-        """List all saved PCAP files with metadata."""
+        """List all saved PCAP files with metadata (recursief door tijd-directories)."""
         captures = []
         try:
-            for pcap_file in self.output_dir.glob('*.pcap'):
+            for pcap_file in self.base_dir.rglob('*.pcap'):
                 stat = pcap_file.stat()
+                # Relatief pad als identifier: bijv. "2026/03/28/14/alert_...pcap"
+                rel_path = pcap_file.relative_to(self.base_dir)
                 captures.append({
-                    'filename': pcap_file.name,
+                    'filename': str(rel_path),
                     'path': str(pcap_file),
                     'size_bytes': stat.st_size,
                     'created': datetime.fromtimestamp(stat.st_ctime).isoformat(),
@@ -353,15 +355,14 @@ class PCAPExporter:
     def get_capture(self, filename: str) -> Optional[bytes]:
         """
         Get PCAP file contents for download.
-
-        Returns raw bytes of the PCAP file.
+        filename kan een relatief pad zijn: bijv. "2026/03/28/14/alert_...pcap"
         """
         try:
-            filepath = self.output_dir / filename
-            if not filepath.exists():
+            filepath = (self.base_dir / filename).resolve()
+            if not str(filepath).startswith(str(self.base_dir.resolve())):
+                # Security: voorkom path traversal
                 return None
-            if not filepath.is_relative_to(self.output_dir):
-                # Security: prevent path traversal
+            if not filepath.exists():
                 return None
             return filepath.read_bytes()
         except Exception as e:
@@ -371,17 +372,32 @@ class PCAPExporter:
     def delete_capture(self, filename: str) -> bool:
         """Delete a PCAP file."""
         try:
-            filepath = self.output_dir / filename
+            filepath = (self.base_dir / filename).resolve()
+            if not str(filepath).startswith(str(self.base_dir.resolve())):
+                return False
             if not filepath.exists():
                 return False
-            if not filepath.is_relative_to(self.output_dir):
-                return False
             filepath.unlink()
+            # Verwijder lege parent directories (uur/dag/maand/jaar)
+            for parent in filepath.parents:
+                if parent == self.base_dir:
+                    break
+                if parent.is_dir() and not any(parent.iterdir()):
+                    parent.rmdir()
+                else:
+                    break
             self.logger.info(f"Deleted capture: {filename}")
             return True
         except Exception as e:
             self.logger.error(f"Error deleting capture: {e}")
             return False
+
+    def _get_time_dir(self) -> Path:
+        """Geeft de huidige tijd-gebaseerde directory: base/jaar/maand/dag/uur"""
+        now = datetime.now()
+        time_dir = self.base_dir / f"{now.year}" / f"{now.month:02d}" / f"{now.day:02d}" / f"{now.hour:02d}"
+        time_dir.mkdir(parents=True, exist_ok=True)
+        return time_dir
 
     def _get_flow_key(self, packet: Packet) -> str:
         """Generate a unique key for a network flow."""
@@ -434,25 +450,23 @@ class PCAPExporter:
             )
 
     def _cleanup_old_captures(self):
-        """Remove old PCAP files based on retention settings."""
+        """Verwijder PCAP files ouder dan max_age_hours en ruim lege directories op."""
         try:
-            captures = list(self.output_dir.glob('*.pcap'))
-
-            # Sort by modification time
-            captures.sort(key=lambda x: x.stat().st_mtime)
-
-            # Remove by count
-            while len(captures) > self.max_captures:
-                old_capture = captures.pop(0)
-                old_capture.unlink()
-                self.logger.debug(f"Removed old capture (count limit): {old_capture.name}")
-
-            # Remove by age
             cutoff_time = time.time() - (self.max_age_hours * 3600)
-            for capture in captures:
-                if capture.stat().st_mtime < cutoff_time:
-                    capture.unlink()
-                    self.logger.debug(f"Removed old capture (age limit): {capture.name}")
+            removed = 0
+
+            for pcap_file in self.base_dir.rglob('*.pcap'):
+                if pcap_file.stat().st_mtime < cutoff_time:
+                    pcap_file.unlink()
+                    removed += 1
+
+            # Verwijder lege directories (van diep naar ondiep)
+            for d in sorted(self.base_dir.rglob('*'), key=lambda p: len(p.parts), reverse=True):
+                if d.is_dir() and d != self.base_dir and not any(d.iterdir()):
+                    d.rmdir()
+
+            if removed:
+                self.logger.debug(f"Cleanup: {removed} oude PCAP files verwijderd (ouder dan {self.max_age_hours}u)")
 
         except Exception as e:
             self.logger.error(f"Error cleaning up captures: {e}")
@@ -464,7 +478,7 @@ class PCAPExporter:
         stats['buffer_capacity'] = self.buffer_size
         stats['active_flows'] = len(self.flow_buffers)
         stats['pending_captures'] = len(self.pending_captures)
-        stats['saved_captures'] = len(list(self.output_dir.glob('*.pcap')))
+        stats['saved_captures'] = sum(1 for _ in self.base_dir.rglob('*.pcap'))
         return stats
 
     def get_buffer_summary(self) -> Dict[str, Any]:

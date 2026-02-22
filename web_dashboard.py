@@ -1399,8 +1399,10 @@ def api_submit_sensor_alerts(sensor_id):
         except Exception as e:
             logger.warning(f"Could not initialize BehaviorMatcher for sensor alerts: {e}")
 
-        # Ensure PCAP directory exists for sensor captures
-        pcap_dir = Path('/var/log/netmonitor/pcap/sensors')
+        # Ensure PCAP directory exists voor sensor captures (jaar/maand/dag/uur per sensor)
+        _now = datetime.now()
+        pcap_dir = (Path('/var/log/netmonitor/pcap/sensors') / sensor_id
+                    / f"{_now.year}" / f"{_now.month:02d}" / f"{_now.day:02d}" / f"{_now.hour:02d}")
         pcap_dir.mkdir(parents=True, exist_ok=True)
 
         # Process alerts
