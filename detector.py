@@ -1456,12 +1456,18 @@ class ThreatDetector:
                     })
 
         # Check for FTP on non-standard ports
+        # Let op: '220 ' en 'USER '/'PASS ' komen ook voor in SMTP/POP3/IMAP.
+        # Sluit mail-poorten uit om false positives op mailservers te voorkomen.
         if packet.haslayer(Raw):
             try:
                 payload = packet[Raw].load
                 # FTP commands (USER, PASS, etc.)
                 if any(payload.startswith(cmd) for cmd in [b'USER ', b'PASS ', b'220 ', b'331 ']):
-                    if dst_port not in {20, 21} and src_port not in {20, 21}:
+                    # Exclude known mail protocol ports (SMTP/POP3/IMAP) where these
+                    # commands also appear legitimately
+                    mail_ports = {25, 110, 143, 465, 587, 993, 995, 2525}
+                    if (dst_port not in {20, 21} and src_port not in {20, 21}
+                            and src_port not in mail_ports and dst_port not in mail_ports):
                         threats.append({
                             'type': 'FTP_NON_STANDARD_PORT',
                             'severity': 'MEDIUM',
