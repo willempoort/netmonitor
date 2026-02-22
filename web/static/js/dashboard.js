@@ -1463,8 +1463,8 @@ function updateTopTalkers(talkers) {
     talkers.forEach(talker => {
         const row = document.createElement('tr');
 
-        const inMb = (talker.inbound_mb || 0).toFixed(2);
-        const outMb = (talker.outbound_mb || 0).toFixed(2);
+        const inMb = parseFloat(talker.inbound_mb || 0).toFixed(2);
+        const outMb = parseFloat(talker.outbound_mb || 0).toFixed(2);
 
         // Support both 'ip' and 'ip_address' for backwards compatibility
         const ipAddress = talker.ip || talker.ip_address || 'unknown';

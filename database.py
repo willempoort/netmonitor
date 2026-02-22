@@ -1771,7 +1771,13 @@ class DatabaseManager:
 
             results = cursor.fetchall()
             self.logger.debug(f"get_top_talkers returned {len(results)} results for last {minutes} minutes")
-            return [dict(row) for row in results]
+            rows = []
+            for row in results:
+                r = dict(row)
+                r['outbound_mb'] = float(r.get('outbound_mb') or 0)
+                r['inbound_mb'] = float(r.get('inbound_mb') or 0)
+                rows.append(r)
+            return rows
 
         except Exception as e:
             self.logger.error(f"Error getting top talkers: {e}", exc_info=True)

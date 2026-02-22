@@ -143,12 +143,15 @@ class MetricsCollector:
             elif src_internal and dst_internal:
                 # Internal-to-internal traffic
                 # Track both source and destination for top talkers
+                # src stuurt (outbound), dst ontvangt (inbound)
                 self.ip_stats[src_ip]['packets'] += 1
                 self.ip_stats[src_ip]['bytes'] += packet_size
+                self.ip_stats[src_ip]['outbound_bytes'] += packet_size
                 self.ip_stats[src_ip]['direction'] = 'internal'
 
                 self.ip_stats[dst_ip]['packets'] += 1
                 self.ip_stats[dst_ip]['bytes'] += packet_size
+                self.ip_stats[dst_ip]['inbound_bytes'] += packet_size
                 self.ip_stats[dst_ip]['direction'] = 'internal'
 
             # Track packet rate
