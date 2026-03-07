@@ -10,6 +10,7 @@ from psycopg2 import pool, errors
 from psycopg2.extras import RealDictCursor
 import logging
 import json
+import subprocess
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 import threading
@@ -24,6 +25,15 @@ class DatabaseManager:
         """Initialize database manager with connection pooling"""
         self.logger = logging.getLogger('NetMonitor.Database')
         self.config = config  # Store config for retention policies
+
+        # Store connection params for auto-recovery (TimescaleDB version updates)
+        self._db_name = database
+        self._db_host = host
+        self._db_port = port
+        self._db_user = user
+        self._db_password = password
+        self._db_min_conn = min_connections
+        self._db_max_conn = max_connections
 
         # Simple in-memory cache for dashboard data
         self._dashboard_cache = None
@@ -50,24 +60,81 @@ class DatabaseManager:
         # Check schema version - skip heavy init if already up to date
         SCHEMA_VERSION = 22  # Increment this when schema changes (v22: top_talkers outbound/inbound byte columns)
 
-        if self._check_schema_version(SCHEMA_VERSION):
-            self.logger.info(f"Database schema is up to date (v{SCHEMA_VERSION})")
-        else:
-            # Initialize database schema
-            self._init_database()
+        # Schema initialisatie met automatisch herstel bij TimescaleDB versie-mismatch na apt upgrade
+        for _attempt in range(2):
+            try:
+                if self._check_schema_version(SCHEMA_VERSION):
+                    self.logger.info(f"Database schema is up to date (v{SCHEMA_VERSION})")
+                else:
+                    # Initialize database schema
+                    self._init_database()
 
-            # Initialize MCP API schema (for token authentication)
-            self._init_mcp_schema()
+                    # Initialize MCP API schema (for token authentication)
+                    self._init_mcp_schema()
 
-            # Create hypertables and continuous aggregates
-            self._setup_timescaledb()
+                    # Create hypertables and continuous aggregates
+                    self._setup_timescaledb()
 
-            # Initialize builtin data (templates, service providers)
-            self._init_builtin_data()
+                    # Initialize builtin data (templates, service providers)
+                    self._init_builtin_data()
 
-            # Update schema version
-            self._set_schema_version(SCHEMA_VERSION)
-            self.logger.info(f"Database schema updated to v{SCHEMA_VERSION}")
+                    # Update schema version
+                    self._set_schema_version(SCHEMA_VERSION)
+                    self.logger.info(f"Database schema updated to v{SCHEMA_VERSION}")
+                break  # Succes - stop retry loop
+
+            except Exception as e:
+                err_str = str(e).lower()
+                is_timescale_error = 'timescaledb' in err_str and any(
+                    kw in err_str for kw in ['version mismatch', 'could not access', 'no such file']
+                )
+                if _attempt == 0 and is_timescale_error:
+                    self.logger.warning(f"TimescaleDB versie-mismatch na apt upgrade: {e}")
+                    if self._auto_update_timescaledb():
+                        # Hermaak de connection pool na de extensie-update
+                        try:
+                            self.connection_pool.closeall()
+                        except Exception:
+                            pass
+                        self.connection_pool = psycopg2.pool.ThreadedConnectionPool(
+                            min_connections, max_connections,
+                            host=host, port=port, database=database,
+                            user=user, password=password
+                        )
+                        continue  # Probeer schema-init opnieuw
+                raise  # Niet-TimescaleDB fout of tweede poging mislukt
+
+    def _auto_update_timescaledb(self) -> bool:
+        """
+        Update de TimescaleDB extensie automatisch na een apt upgrade.
+
+        Na een 'apt upgrade timescaledb' is de nieuwe .so beschikbaar maar de
+        pg_extension tabel heeft nog de oude versie. Dit veroorzaakt een versie-mismatch
+        bij het verbinden. Deze methode draait 'ALTER EXTENSION timescaledb UPDATE'
+        via de postgres OS-gebruiker (werkt omdat netmonitor als root draait).
+        """
+        self.logger.info(f"TimescaleDB auto-update uitvoeren op database '{self._db_name}'...")
+        try:
+            result = subprocess.run(
+                ['su', '-s', '/bin/sh', '-c',
+                 f'psql -d {self._db_name} -c "ALTER EXTENSION timescaledb UPDATE;"',
+                 'postgres'],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            if result.returncode == 0:
+                self.logger.info("TimescaleDB extensie succesvol geüpdated naar nieuwste versie")
+                return True
+            else:
+                self.logger.error(f"TimescaleDB auto-update mislukt (exit {result.returncode}): {result.stderr.strip()}")
+                return False
+        except subprocess.TimeoutExpired:
+            self.logger.error("TimescaleDB auto-update timeout na 30 seconden")
+            return False
+        except Exception as e:
+            self.logger.error(f"Fout bij TimescaleDB auto-update: {e}")
+            return False
 
     def _check_schema_version(self, required_version: int) -> bool:
         """Check if database schema is at the required version"""
