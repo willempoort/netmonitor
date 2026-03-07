@@ -835,8 +835,8 @@ function renderThreatFeedStats(stats) {
         </div>
 
         <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="mb-0"><i class="bi bi-rss"></i> Feeds (${stats.feeds_loaded} geladen)</h6>
-            <button class="btn btn-sm btn-outline-primary" id="update-feeds-btn" onclick="triggerFeedUpdate()">
+            <h6 class="mb-0 text-info"><i class="bi bi-rss"></i> Feeds (${stats.feeds_loaded} geladen)</h6>
+            <button class="btn btn-sm btn-outline-info text-info" id="update-feeds-btn" onclick="triggerFeedUpdate()">
                 <i class="bi bi-arrow-clockwise"></i> Nu bijwerken
             </button>
         </div>
