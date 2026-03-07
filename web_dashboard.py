@@ -4896,22 +4896,62 @@ def api_internal_ml_classify_all():
 
 # ==================== Threat Feeds APIs ====================
 
+# Cache voor gunicorn-modus: voorkomt dat CSV-bestanden bij elke request worden herlezen
+_threat_feed_cache = {'stats': None, 'expires': 0}
+_threat_feed_lock = threading.Lock()
+
+
+def _get_threat_feed_manager():
+    """
+    Geeft de actieve ThreatFeedManager terug.
+    In embedded modus: via app.monitor (dezelfde instantie als netmonitor).
+    In gunicorn modus: eigen instantie die uit de cache-directory leest.
+    """
+    # Embedded modus: gebruik de lopende netmonitor-instantie
+    if hasattr(app, 'monitor') and app.monitor and \
+            hasattr(app.monitor, 'threat_feeds') and app.monitor.threat_feeds:
+        return app.monitor.threat_feeds, None
+
+    # Gunicorn modus: controleer of feeds überhaupt ingeschakeld zijn in config
+    feeds_config = config.get('threat_feeds', {}) if config else {}
+    if not feeds_config.get('enabled', False):
+        return None, None
+
+    # Maak een eigen instantie die leest uit de gedeelde cache-directory
+    try:
+        from threat_feeds import ThreatFeedManager
+        cache_dir = feeds_config.get('cache_dir', '/var/cache/netmonitor/feeds')
+        mgr = ThreatFeedManager(cache_dir=cache_dir)
+        feeds_to_use = feeds_config.get('feeds', ['feodotracker', 'urlhaus', 'threatfox'])
+        mgr.load_feeds(feeds_to_use)
+        return mgr, feeds_to_use
+    except Exception as e:
+        logger.error(f"Fout bij aanmaken ThreatFeedManager: {e}")
+        return None, None
+
+
 @app.route('/api/threat-feeds/stats')
 @login_required
 def api_threat_feeds_stats():
     """Geeft statistieken van geladen threat intelligence feeds."""
+    import time as _time
     try:
-        if not (hasattr(app, 'monitor') and app.monitor and
-                hasattr(app.monitor, 'threat_feeds') and app.monitor.threat_feeds):
-            return jsonify({
-                'success': True,
-                'enabled': False,
-                'stats': {}
-            })
+        feeds_config = config.get('threat_feeds', {}) if config else {}
+        if not feeds_config.get('enabled', False):
+            return jsonify({'success': True, 'stats': {'enabled': False}})
 
-        feeds = app.monitor.threat_feeds
+        # Gebruik gecachede stats in gunicorn-modus (60 seconden geldig)
+        now = _time.time()
+        if not (hasattr(app, 'monitor') and app.monitor):
+            with _threat_feed_lock:
+                if _threat_feed_cache['stats'] and now < _threat_feed_cache['expires']:
+                    return jsonify({'success': True, 'stats': _threat_feed_cache['stats']})
+
+        feeds, _ = _get_threat_feed_manager()
+        if not feeds:
+            return jsonify({'success': True, 'stats': {'enabled': False}})
+
         raw = feeds.get_stats()
-
         stats = {
             'enabled': True,
             'malicious_ips': raw.get('malicious_ips', 0),
@@ -4921,6 +4961,12 @@ def api_threat_feeds_stats():
             'feeds_loaded': raw.get('feeds_loaded', 0),
             'last_update': raw.get('last_update', {}),
         }
+
+        if not (hasattr(app, 'monitor') and app.monitor):
+            with _threat_feed_lock:
+                _threat_feed_cache['stats'] = stats
+                _threat_feed_cache['expires'] = now + 60
+
         return jsonify({'success': True, 'stats': stats})
 
     except Exception as e:
@@ -4933,16 +4979,25 @@ def api_threat_feeds_stats():
 def api_threat_feeds_update():
     """Forceert een directe update van alle threat intelligence feeds."""
     try:
-        if not (hasattr(app, 'monitor') and app.monitor and
-                hasattr(app.monitor, 'threat_feeds') and app.monitor.threat_feeds):
-            return jsonify({'success': False, 'error': 'Threat feeds niet beschikbaar (uitgeschakeld in config)'}), 400
+        feeds_config = config.get('threat_feeds', {}) if config else {}
+        if not feeds_config.get('enabled', False):
+            return jsonify({'success': False, 'error': 'Threat feeds zijn uitgeschakeld in config.yaml'}), 400
 
-        feeds = app.monitor.threat_feeds
-        config = app.monitor.config
-        feeds_to_use = config.get('threat_feeds', {}).get('feeds', ['feodotracker', 'urlhaus', 'threatfox'])
-        results = feeds.load_feeds(feeds_to_use)
+        feeds, feeds_to_use = _get_threat_feed_manager()
+        if not feeds:
+            return jsonify({'success': False, 'error': 'Kon geen ThreatFeedManager aanmaken'}), 500
+
+        if feeds_to_use is None:
+            feeds_to_use = feeds_config.get('feeds', ['feodotracker', 'urlhaus', 'threatfox'])
+
         feeds.update_all_feeds(force=True)
+        results = feeds.load_feeds(feeds_to_use)
         raw = feeds.get_stats()
+
+        # Invalideer cache zodat stats-tab direct ververst
+        with _threat_feed_lock:
+            _threat_feed_cache['stats'] = None
+            _threat_feed_cache['expires'] = 0
 
         return jsonify({
             'success': True,
