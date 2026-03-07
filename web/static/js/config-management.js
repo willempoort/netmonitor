@@ -68,11 +68,13 @@ function setupConfigEventListeners() {
         resetConfigToDefaults();
     });
 
-    // Tab change event - lazy load content
+    // Tab change event - lazy load threat feeds tab
     document.querySelectorAll('#configTabs button[data-bs-toggle="tab"]').forEach(tab => {
         tab.addEventListener('shown.bs.tab', function(e) {
             const targetId = e.target.getAttribute('data-bs-target');
-            console.log('[CONFIG] Tab changed to:', targetId);
+            if (targetId === '#threat-feeds-pane') {
+                loadThreatFeedStats();
+            }
         });
     });
 }
@@ -763,6 +765,107 @@ function populateConfigSensorSelects() {
                     select.appendChild(option);
                 });
             }
+        });
+}
+
+// ==================== Threat Feeds ====================
+
+function loadThreatFeedStats() {
+    const content = document.getElementById('threat-feeds-content');
+    content.innerHTML = '<div class="text-center text-muted p-4"><div class="spinner-border spinner-border-sm"></div> Laden...</div>';
+
+    fetch('/api/threat-feeds/stats')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                renderThreatFeedStats(data.stats);
+            } else {
+                content.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            }
+        })
+        .catch(e => {
+            content.innerHTML = `<div class="alert alert-danger">Fout: ${e.message}</div>`;
+        });
+}
+
+function renderThreatFeedStats(stats) {
+    const content = document.getElementById('threat-feeds-content');
+
+    if (!stats.enabled) {
+        content.innerHTML = `
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i>
+                Threat feeds zijn uitgeschakeld. Schakel in via <code>threat_feeds.enabled: true</code> in config.yaml.
+            </div>`;
+        return;
+    }
+
+    const lastUpdates = stats.last_update || {};
+    const feedRows = Object.entries(lastUpdates).map(([name, ts]) => {
+        const date = new Date(ts).toLocaleString('nl-NL');
+        return `<tr><td>${name}</td><td><span class="badge bg-success">Actief</span></td><td class="text-muted small">${date}</td></tr>`;
+    }).join('') || '<tr><td colspan="3" class="text-muted">Nog geen feeds geladen</td></tr>';
+
+    content.innerHTML = `
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-md-3">
+                <div class="card bg-dark text-center p-3">
+                    <div class="fs-3 fw-bold text-danger">${stats.malicious_ips.toLocaleString()}</div>
+                    <div class="small text-muted">Malicious IPs</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card bg-dark text-center p-3">
+                    <div class="fs-3 fw-bold text-warning">${stats.malicious_domains.toLocaleString()}</div>
+                    <div class="small text-muted">Malicious Domeinen</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card bg-dark text-center p-3">
+                    <div class="fs-3 fw-bold text-info">${stats.malicious_urls.toLocaleString()}</div>
+                    <div class="small text-muted">Malicious URLs</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card bg-dark text-center p-3">
+                    <div class="fs-3 fw-bold text-secondary">${stats.c2_servers.toLocaleString()}</div>
+                    <div class="small text-muted">C2 Servers</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0"><i class="bi bi-rss"></i> Feeds (${stats.feeds_loaded} geladen)</h6>
+            <button class="btn btn-sm btn-outline-primary" id="update-feeds-btn" onclick="triggerFeedUpdate()">
+                <i class="bi bi-arrow-clockwise"></i> Nu bijwerken
+            </button>
+        </div>
+        <table class="table table-sm table-dark">
+            <thead><tr><th>Feed</th><th>Status</th><th>Laatste update</th></tr></thead>
+            <tbody>${feedRows}</tbody>
+        </table>`;
+}
+
+function triggerFeedUpdate() {
+    const btn = document.getElementById('update-feeds-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Bezig...';
+
+    fetch('/api/threat-feeds/update', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                loadThreatFeedStats();
+            } else {
+                alert('Fout bij bijwerken: ' + data.error);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Nu bijwerken';
+            }
+        })
+        .catch(e => {
+            alert('Fout: ' + e.message);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Nu bijwerken';
         });
 }
 

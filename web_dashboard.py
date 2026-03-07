@@ -4894,6 +4894,73 @@ def api_internal_ml_classify_all():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ==================== Threat Feeds APIs ====================
+
+@app.route('/api/threat-feeds/stats')
+@login_required
+def api_threat_feeds_stats():
+    """Geeft statistieken van geladen threat intelligence feeds."""
+    try:
+        if not (hasattr(app, 'monitor') and app.monitor and
+                hasattr(app.monitor, 'threat_feeds') and app.monitor.threat_feeds):
+            return jsonify({
+                'success': True,
+                'enabled': False,
+                'stats': {}
+            })
+
+        feeds = app.monitor.threat_feeds
+        raw = feeds.get_stats()
+
+        stats = {
+            'enabled': True,
+            'malicious_ips': raw.get('malicious_ips', 0),
+            'malicious_domains': raw.get('malicious_domains', 0),
+            'malicious_urls': raw.get('malicious_urls', 0),
+            'c2_servers': raw.get('c2_servers', 0),
+            'feeds_loaded': raw.get('feeds_loaded', 0),
+            'last_update': raw.get('last_update', {}),
+        }
+        return jsonify({'success': True, 'stats': stats})
+
+    except Exception as e:
+        logger.error(f"Error getting threat feed stats: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/threat-feeds/update', methods=['POST'])
+@require_role('admin', 'operator')
+def api_threat_feeds_update():
+    """Forceert een directe update van alle threat intelligence feeds."""
+    try:
+        if not (hasattr(app, 'monitor') and app.monitor and
+                hasattr(app.monitor, 'threat_feeds') and app.monitor.threat_feeds):
+            return jsonify({'success': False, 'error': 'Threat feeds niet beschikbaar (uitgeschakeld in config)'}), 400
+
+        feeds = app.monitor.threat_feeds
+        config = app.monitor.config
+        feeds_to_use = config.get('threat_feeds', {}).get('feeds', ['feodotracker', 'urlhaus', 'threatfox'])
+        results = feeds.load_feeds(feeds_to_use)
+        feeds.update_all_feeds(force=True)
+        raw = feeds.get_stats()
+
+        return jsonify({
+            'success': True,
+            'message': 'Threat feeds bijgewerkt',
+            'results': results,
+            'stats': {
+                'malicious_ips': raw.get('malicious_ips', 0),
+                'malicious_domains': raw.get('malicious_domains', 0),
+                'malicious_urls': raw.get('malicious_urls', 0),
+                'c2_servers': raw.get('c2_servers', 0),
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error updating threat feeds: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ==================== WebSocket Events ====================
 
 @socketio.on('connect')

@@ -421,9 +421,6 @@
                             </h5>
                         </div>
                         <div class="d-flex align-items-center gap-2">
-                            <a href="/threat-detection" class="btn btn-sm btn-outline-danger" title="Advanced Threat Detection">
-                                <i class="bi bi-shield-exclamation"></i> Threat Detection
-                            </a>
                             <i class="bi bi-chevron-down" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#configCollapse"></i>
                         </div>
                     </div>
@@ -508,6 +505,11 @@
                                     </button>
                                 </li>
                                 <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="threat-feeds-tab" data-bs-toggle="tab" data-bs-target="#threat-feeds-pane" type="button" role="tab">
+                                        <i class="bi bi-rss"></i> Threat Feeds
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
                                     <button class="nav-link" id="alerts-config-tab" data-bs-toggle="tab" data-bs-target="#alerts-config-pane" type="button" role="tab">
                                         <i class="bi bi-bell"></i> Alerts
                                     </button>
@@ -582,6 +584,13 @@
                                 <div class="tab-pane fade" id="advanced-threats-pane" role="tabpanel">
                                     <div id="advanced-threats-content" class="config-category-content">
                                         <div class="text-center text-muted p-4">Loading advanced threat settings...</div>
+                                    </div>
+                                </div>
+
+                                <!-- Threat Feeds Tab -->
+                                <div class="tab-pane fade" id="threat-feeds-pane" role="tabpanel">
+                                    <div id="threat-feeds-content" class="config-category-content">
+                                        <div class="text-center text-muted p-4">Loading threat feeds...</div>
                                     </div>
                                 </div>
 
@@ -2413,7 +2422,7 @@
 
     <!-- Custom JS - Load last with defer -->
     <script src="{{ url_for('static', filename='js/dashboard.js') }}?v=8" defer></script>
-    <script src="{{ url_for('static', filename='js/config-management.js') }}?v=4" defer></script>
+    <script src="{{ url_for('static', filename='js/config-management.js') }}?v=5" defer></script>
     <script src="{{ url_for('static', filename='js/device-classification.js') }}?v=10" defer></script>
 
     <!-- Hide loading overlay when DOM is ready -->
