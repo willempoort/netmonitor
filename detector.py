@@ -130,6 +130,14 @@ class ThreatDetector:
             except Exception as e:
                 self.logger.warning(f"Could not initialize EncryptedTrafficAnalyzer: {e}")
 
+        # Precompute internal networks for directional brute force detection
+        self._internal_networks = []
+        for net_str in config.get('internal_networks', ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']):
+            try:
+                self._internal_networks.append(ipaddress.ip_network(net_str, strict=False))
+            except ValueError:
+                self.logger.warning(f"Ongeldige internal_network waarde: {net_str}")
+
         # Tracking data structures
         self.port_scan_tracker = defaultdict(lambda: {
             'ports': set(),
@@ -1325,8 +1333,8 @@ class ThreatDetector:
         if dst_port not in auth_ports:
             return None
 
-        # Only track SYN packets (connection attempts)
-        if not (tcp_layer.flags & 0x02):  # SYN flag
+        # Only track pure SYN packets (connection attempts), niet SYN-ACK
+        if not (tcp_layer.flags & 0x02) or (tcp_layer.flags & 0x10):  # SYN maar niet ACK
             return None
 
         brute_force_config = self.config['thresholds'].get('brute_force', {})
@@ -1345,6 +1353,17 @@ class ThreatDetector:
                    (service_type == 'cdn' and exclude_cdn):
                     self.logger.debug(f"Brute force detection skipped for {dst_ip} ({service_type} service)")
                     return None
+
+        # Alleen inbound aanvallen detecteren (externe aanvaller → intern doelwit)
+        # Uitgaand verkeer van lokale servers naar externe poorten is geen brute force
+        if self._internal_networks:
+            try:
+                dst_addr = ipaddress.ip_address(dst_ip)
+                if not any(dst_addr in net for net in self._internal_networks):
+                    # Destination is extern: lokale server maakt outbound verbinding, overslaan
+                    return None
+            except ValueError:
+                pass
 
         attempts_threshold = brute_force_config.get('attempts_threshold', 5)
         time_window = brute_force_config.get('time_window', 300)
