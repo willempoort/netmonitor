@@ -4952,14 +4952,27 @@ def api_threat_feeds_stats():
             return jsonify({'success': True, 'stats': {'enabled': False}})
 
         raw = feeds.get_stats()
+
+        # last_update wordt alleen gezet bij download, niet bij laden uit cache.
+        # Gebruik bestandstijden als fallback.
+        last_update = raw.get('last_update', {})
+        if not last_update:
+            import os as _os
+            cache_dir = feeds_config.get('cache_dir', '/var/cache/netmonitor/feeds')
+            for fname in _os.listdir(cache_dir):
+                if fname.endswith('.csv'):
+                    feed_name = fname[:-4]
+                    mtime = _os.path.getmtime(_os.path.join(cache_dir, fname))
+                    last_update[feed_name] = datetime.fromtimestamp(mtime).isoformat()
+
         stats = {
             'enabled': True,
             'malicious_ips': raw.get('malicious_ips', 0),
             'malicious_domains': raw.get('malicious_domains', 0),
             'malicious_urls': raw.get('malicious_urls', 0),
             'c2_servers': raw.get('c2_servers', 0),
-            'feeds_loaded': raw.get('feeds_loaded', 0),
-            'last_update': raw.get('last_update', {}),
+            'feeds_loaded': len(last_update),
+            'last_update': last_update,
         }
 
         if not (hasattr(app, 'monitor') and app.monitor):
