@@ -809,27 +809,27 @@ function renderThreatFeedStats(stats) {
     content.innerHTML = `
         <div class="row g-3 mb-4">
             <div class="col-6 col-md-3">
-                <div class="card bg-dark text-center p-3">
+                <div class="card bg-secondary text-white text-center p-3">
                     <div class="fs-3 fw-bold text-danger">${stats.malicious_ips.toLocaleString()}</div>
-                    <div class="small text-muted">Malicious IPs</div>
+                    <div class="small">Malicious IPs</div>
                 </div>
             </div>
             <div class="col-6 col-md-3">
-                <div class="card bg-dark text-center p-3">
+                <div class="card bg-secondary text-white text-center p-3">
                     <div class="fs-3 fw-bold text-warning">${stats.malicious_domains.toLocaleString()}</div>
-                    <div class="small text-muted">Malicious Domeinen</div>
+                    <div class="small">Malicious Domeinen</div>
                 </div>
             </div>
             <div class="col-6 col-md-3">
-                <div class="card bg-dark text-center p-3">
+                <div class="card bg-secondary text-white text-center p-3">
                     <div class="fs-3 fw-bold text-info">${stats.malicious_urls.toLocaleString()}</div>
-                    <div class="small text-muted">Malicious URLs</div>
+                    <div class="small">Malicious URLs</div>
                 </div>
             </div>
             <div class="col-6 col-md-3">
-                <div class="card bg-dark text-center p-3">
-                    <div class="fs-3 fw-bold text-secondary">${stats.c2_servers.toLocaleString()}</div>
-                    <div class="small text-muted">C2 Servers</div>
+                <div class="card bg-secondary text-white text-center p-3">
+                    <div class="fs-3 fw-bold text-light">${stats.c2_servers.toLocaleString()}</div>
+                    <div class="small">C2 Servers</div>
                 </div>
             </div>
         </div>
