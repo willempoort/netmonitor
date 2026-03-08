@@ -25,6 +25,7 @@ import logging
 import time
 import json
 import hashlib
+import ipaddress
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set, Tuple, Any
@@ -493,22 +494,43 @@ class KillChainDetector:
         # Normalize to 0-100
         return min(100.0, score)
 
+    @staticmethod
+    def _is_private_ip(ip: str) -> bool:
+        """Geeft True als het IP-adres een privé/intern adres is."""
+        try:
+            return ipaddress.ip_address(ip).is_private
+        except ValueError:
+            return False
+
     def _get_distinct_source_and_target(self, chain: AttackChain) -> Tuple[Optional[str], Optional[str]]:
         """
         Get distinct source and destination IPs for an alert.
+        Prefers external IP as source (attacker) and internal IP as destination (victim).
         Ensures source_ip != destination_ip when possible.
         """
-        source_ip = list(chain.source_ips)[0] if chain.source_ips else None
+        # Voorkeur: extern IP als source (aanvaller), intern IP als destination (slachtoffer)
+        external_sources = sorted(ip for ip in chain.source_ips if not self._is_private_ip(ip))
+        internal_targets = sorted(ip for ip in chain.target_ips if self._is_private_ip(ip))
 
-        # Try to find a target IP that's different from source
+        if external_sources and internal_targets:
+            return external_sources[0], internal_targets[0]
+
+        # Fallback: elk extern IP als source, intern als target (ook als niet in source_ips)
+        all_ips = chain.source_ips | chain.target_ips
+        external_ips = sorted(ip for ip in all_ips if not self._is_private_ip(ip))
+        internal_ips = sorted(ip for ip in all_ips if self._is_private_ip(ip))
+
+        if external_ips and internal_ips:
+            return external_ips[0], internal_ips[0]
+
+        # Laatste fallback: kies een willekeurig distinct paar (bijv. bij intern-intern verkeer)
+        source_ip = sorted(chain.source_ips)[0] if chain.source_ips else None
         if chain.target_ips:
-            # Prefer a target that's not also a source
-            distinct_targets = chain.target_ips - chain.source_ips
+            distinct_targets = sorted(chain.target_ips - chain.source_ips)
             if distinct_targets:
-                destination_ip = list(distinct_targets)[0]
+                destination_ip = distinct_targets[0]
             else:
-                # All targets are also sources - pick one that's different from our chosen source
-                other_targets = [ip for ip in chain.target_ips if ip != source_ip]
+                other_targets = sorted(ip for ip in chain.target_ips if ip != source_ip)
                 destination_ip = other_targets[0] if other_targets else None
         else:
             destination_ip = None
