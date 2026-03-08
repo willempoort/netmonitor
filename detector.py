@@ -1131,8 +1131,11 @@ class ThreatDetector:
                             'source_ip': src_ip,
                             'destination_ip': ip_layer.dst,
                             'description': f'Gevoelige data in HTTP verkeer: {", ".join([f["type"] for f in analysis["dlp_findings"]])}',
-                            'findings': [f['type'] for f in analysis['dlp_findings']],
-                            'payload_size': len(payload)
+                            'metadata': {
+                                'destination_port': dst_port,
+                                'findings': [f['type'] for f in analysis['dlp_findings']],
+                                'payload_size': len(payload)
+                            }
                         })
 
                     # Check for high entropy (encrypted/compressed data in plaintext HTTP)
@@ -1143,8 +1146,11 @@ class ThreatDetector:
                             'source_ip': src_ip,
                             'destination_ip': ip_layer.dst,
                             'description': f'Mogelijk versleutelde data in onversleuteld HTTP: entropie {analysis["entropy"]:.2f}',
-                            'entropy': analysis['entropy'],
-                            'payload_size': len(payload)
+                            'metadata': {
+                                'destination_port': dst_port,
+                                'entropy': analysis['entropy'],
+                                'payload_size': len(payload)
+                            }
                         })
 
             except Exception as e:
