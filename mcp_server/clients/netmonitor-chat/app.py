@@ -1014,6 +1014,9 @@ app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), na
 async def root():
     return FileResponse(Path(__file__).parent / "static" / "index.html")
 
+@app.get("/favicon.ico")
+async def favicon():
+    return FileResponse(Path(__file__).parent / "static" / "favicon.ico")
 
 @app.get("/api/mcp-configs")
 async def get_mcp_configs():
