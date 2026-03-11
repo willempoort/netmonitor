@@ -1971,25 +1971,31 @@ class DatabaseManager:
                     unique_ips.add(alert['destination_ip'])
 
             # Try to get hostnames from top_talkers table
-            # Uses LATERAL JOIN to efficiently get latest hostname per IP
-            # (DISTINCT ON scans all matching rows; LATERAL+LIMIT 1 uses the index directly)
+            # Use time filter to limit partition scanning (avoids scanning all 1500+ partitions)
             ip_hostnames = {}
             if unique_ips:
-                cursor.execute('''
-                    SELECT ip::text, t.hostname
-                    FROM unnest(%s::inet[]) AS ip
-                    CROSS JOIN LATERAL (
-                        SELECT hostname
-                        FROM top_talkers
-                        WHERE ip_address = ip AND hostname IS NOT NULL
-                        ORDER BY timestamp DESC
-                        LIMIT 1
-                    ) t
-                ''', (list(unique_ips),))
+                try:
+                    cursor.execute("SAVEPOINT before_hostname")
+                    cursor.execute('''
+                        SELECT ip::text, t.hostname
+                        FROM unnest(%s::inet[]) AS ip
+                        CROSS JOIN LATERAL (
+                            SELECT hostname
+                            FROM top_talkers
+                            WHERE ip_address = ip AND hostname IS NOT NULL
+                              AND timestamp > NOW() - INTERVAL '7 days'
+                            ORDER BY timestamp DESC
+                            LIMIT 1
+                        ) t
+                    ''', (list(unique_ips),))
 
-                for row in cursor.fetchall():
-                    if row['hostname'] and row['hostname'] != row['ip']:
-                        ip_hostnames[row['ip']] = row['hostname']
+                    for row in cursor.fetchall():
+                        if row['hostname'] and row['hostname'] != row['ip']:
+                            ip_hostnames[row['ip']] = row['hostname']
+                    cursor.execute("RELEASE SAVEPOINT before_hostname")
+                except Exception as e:
+                    self.logger.warning(f"Hostname lookup failed, continuing without hostnames: {e}")
+                    cursor.execute("ROLLBACK TO SAVEPOINT before_hostname")
 
             # Parse metadata for additional details
             for alert in alerts:
