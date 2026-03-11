@@ -64,13 +64,13 @@ def main():
         conn = db._get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT schema_version, last_updated FROM netmonitor_meta LIMIT 1")
+        cursor.execute("SELECT version, updated_at FROM schema_version WHERE component = 'netmonitor' LIMIT 1")
         row = cursor.fetchone()
 
         if row:
-            version, last_updated = row
+            version, updated_at = row
             print(f"📊 Current Schema Version: {version}")
-            print(f"📅 Last Updated: {last_updated}")
+            print(f"📅 Last Updated: {updated_at}")
         else:
             print("❌ No schema version found")
 
