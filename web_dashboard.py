@@ -67,6 +67,13 @@ login_manager.session_protection = 'basic'  # Changed from 'strong' to prevent p
 
 INACTIVITY_TIMEOUT = 900  # 15 minuten
 
+# Deduplicatie cache voor kill-chain alerts van sensoren
+# Key: (threat_type, source_ip, dest_ip, description) → last_seen timestamp
+# Voorkomt dat identieke aanvalsketens honderden keren per minuut opgeslagen worden
+_CHAIN_ALERT_DEDUP: dict = {}
+_CHAIN_ALERT_DEDUP_TTL = 300  # 5 minuten: zelfde alert binnen dit venster → weggegooid
+_CHAIN_ALERT_TYPES = frozenset(['HIGH_RISK_ATTACK_CHAIN', 'KILL_CHAIN_PROGRESSION', 'NEW_ATTACK_CHAIN'])
+
 # Auto-refresh endpoints tellen niet als gebruikersactiviteit
 _AUTO_REFRESH_PATHS = frozenset([
     '/api/dashboard', '/api/sensors', '/api/sensors/',
@@ -1471,6 +1478,24 @@ def api_submit_sensor_alerts(sensor_id):
                 suppressed_count += 1
                 logger.debug(f"Suppressed sensor alert from {alert.get('source_ip')}: {suppression_reason}")
                 continue  # Skip this alert, don't insert
+
+            # Dedupliceer kill-chain alerts: identieke melding binnen 5 min wordt weggegooid.
+            # Sensoren met read-only FS kunnen niet worden bijgewerkt; dedup hier als fallback.
+            threat_type = alert.get('threat_type', 'UNKNOWN')
+            if threat_type in _CHAIN_ALERT_TYPES:
+                _now_ts = time.time()
+                dedup_key = (threat_type, alert.get('source_ip'), alert.get('destination_ip'), alert.get('description', ''))
+                last_seen = _CHAIN_ALERT_DEDUP.get(dedup_key, 0)
+                if _now_ts - last_seen < _CHAIN_ALERT_DEDUP_TTL:
+                    suppressed_count += 1
+                    continue  # Duplicate binnen TTL-venster, overslaan
+                _CHAIN_ALERT_DEDUP[dedup_key] = _now_ts
+                # Ruim verlopen entries op om geheugengroei te voorkomen (elke ~1000 inserts)
+                if len(_CHAIN_ALERT_DEDUP) > 10000:
+                    cutoff = _now_ts - _CHAIN_ALERT_DEDUP_TTL
+                    expired = [k for k, v in _CHAIN_ALERT_DEDUP.items() if v < cutoff]
+                    for k in expired:
+                        del _CHAIN_ALERT_DEDUP[k]
 
             success = db.insert_alert_from_sensor(
                 sensor_id=sensor_id,
