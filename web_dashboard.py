@@ -1480,22 +1480,19 @@ def api_submit_sensor_alerts(sensor_id):
                 continue  # Skip this alert, don't insert
 
             # Dedupliceer kill-chain alerts: identieke melding binnen 5 min wordt weggegooid.
-            # Sensoren met read-only FS kunnen niet worden bijgewerkt; dedup hier als fallback.
+            # Sensoren met read-only FS kunnen niet worden bijgewerkt; dedup via DB als fallback.
+            # Werkt cross-worker (gunicorn multi-process) omdat we de DB als bron van waarheid gebruiken.
             threat_type = alert.get('threat_type', 'UNKNOWN')
             if threat_type in _CHAIN_ALERT_TYPES:
-                _now_ts = time.time()
-                dedup_key = (threat_type, alert.get('source_ip'), alert.get('destination_ip'), alert.get('description', ''))
-                last_seen = _CHAIN_ALERT_DEDUP.get(dedup_key, 0)
-                if _now_ts - last_seen < _CHAIN_ALERT_DEDUP_TTL:
+                if db.chain_alert_exists(
+                    threat_type=threat_type,
+                    source_ip=alert.get('source_ip'),
+                    destination_ip=alert.get('destination_ip'),
+                    description=alert.get('description', ''),
+                    within_seconds=_CHAIN_ALERT_DEDUP_TTL
+                ):
                     suppressed_count += 1
                     continue  # Duplicate binnen TTL-venster, overslaan
-                _CHAIN_ALERT_DEDUP[dedup_key] = _now_ts
-                # Ruim verlopen entries op om geheugengroei te voorkomen (elke ~1000 inserts)
-                if len(_CHAIN_ALERT_DEDUP) > 10000:
-                    cutoff = _now_ts - _CHAIN_ALERT_DEDUP_TTL
-                    expired = [k for k, v in _CHAIN_ALERT_DEDUP.items() if v < cutoff]
-                    for k in expired:
-                        del _CHAIN_ALERT_DEDUP[k]
 
             success = db.insert_alert_from_sensor(
                 sensor_id=sensor_id,
