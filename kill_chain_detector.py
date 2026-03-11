@@ -160,6 +160,7 @@ class AttackChain:
     risk_score: float
     is_active: bool
     ttps: Set[str]  # MITRE ATT&CK techniques
+    last_alerted_stages: frozenset = field(default_factory=frozenset)  # stages at last HIGH_RISK alert
 
     def to_dict(self) -> Dict:
         """Convert to serializable dictionary."""
@@ -338,11 +339,15 @@ class KillChainDetector:
                     if progression_alert:  # Skip if None (no distinct source/destination)
                         generated_alerts.append(progression_alert)
 
-                # Check for high-risk chain
-                if chain.risk_score >= 50 and len(chain.events) >= 5:
+                # Check for high-risk chain — only alert when stages change
+                # (prevents flooding: one alert per stage progression, not per event)
+                current_stages = frozenset(chain.stages_observed)
+                if (chain.risk_score >= 50 and len(chain.events) >= 5
+                        and current_stages != chain.last_alerted_stages):
                     high_risk_alert = self._create_high_risk_alert(chain)
                     if high_risk_alert:  # Skip if None (no distinct source/destination)
                         generated_alerts.append(high_risk_alert)
+                        chain.last_alerted_stages = current_stages
 
         else:
             # Check if we should start a new chain
