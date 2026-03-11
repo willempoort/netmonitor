@@ -1916,6 +1916,33 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
+    def chain_alert_exists(self, threat_type: str, source_ip: str, destination_ip: str,
+                           description: str, within_seconds: int = 300) -> bool:
+        """Check if an identical attack-chain alert was already stored recently.
+
+        Used to deduplicate HIGH_RISK_ATTACK_CHAIN floods from sensors.
+        Uses the existing idx_alerts_threat_type_timestamp index for speed.
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cutoff = datetime.now() - timedelta(seconds=within_seconds)
+            cursor.execute('''
+                SELECT 1 FROM alerts
+                WHERE threat_type = %s
+                  AND source_ip = %s::inet
+                  AND (destination_ip = %s::inet OR (destination_ip IS NULL AND %s IS NULL))
+                  AND description = %s
+                  AND timestamp > %s
+                LIMIT 1
+            ''', (threat_type, source_ip, destination_ip, destination_ip, description, cutoff))
+            return cursor.fetchone() is not None
+        except Exception as e:
+            self.logger.warning(f"chain_alert_exists check failed: {e}")
+            return False  # Bij twijfel: laat de alert door
+        finally:
+            self._return_connection(conn)
+
     def acknowledge_alert(self, alert_id: int) -> bool:
         """Mark alert as acknowledged"""
         conn = self._get_connection()
