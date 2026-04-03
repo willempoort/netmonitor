@@ -2121,38 +2121,17 @@ def api_kiosk_metrics():
                 'data_age_days': 0
             }
 
-        # Get PCAP storage info
-        try:
-            import os
-            pcap_dir = '/var/log/netmonitor/pcap'
-            if os.path.exists(pcap_dir):
-                pcap_files = []
-                pcap_size_bytes = 0
-                for root, dirs, files in os.walk(pcap_dir):
-                    for file in files:
-                        if file.endswith('.pcap'):
-                            file_path = os.path.join(root, file)
-                            pcap_size_bytes += os.path.getsize(file_path)
-                            pcap_files.append(file)
+        # Get PCAP storage info - gebruik module-level cache (30 min TTL, background refresh)
+        with pcap_stats_cache_lock:
+            cached_size = pcap_stats_cache.get('size_bytes', 0) if pcap_stats_cache else 0
+            cached_count = pcap_stats_cache.get('file_count', 0) if pcap_stats_cache else 0
 
-                pcap_size_mb = pcap_size_bytes / (1024 * 1024)
-                pcap_size_gb = pcap_size_bytes / (1024 * 1024 * 1024)
-
-                pcap_info = {
-                    'pcap_file_count': len(pcap_files),
-                    'pcap_size_human': f"{pcap_size_mb:.0f} MB" if pcap_size_mb < 1024 else f"{pcap_size_gb:.1f} GB"
-                }
-            else:
-                pcap_info = {
-                    'pcap_file_count': 0,
-                    'pcap_size_human': '0 MB'
-                }
-        except Exception as e:
-            logger.error(f"Error getting PCAP info: {e}")
-            pcap_info = {
-                'pcap_file_count': 0,
-                'pcap_size_human': '0 MB'
-            }
+        pcap_size_mb = cached_size / (1024 * 1024)
+        pcap_size_gb = cached_size / (1024 * 1024 * 1024)
+        pcap_info = {
+            'pcap_file_count': cached_count,
+            'pcap_size_human': f"{pcap_size_mb:.0f} MB" if pcap_size_mb < 1024 else f"{pcap_size_gb:.1f} GB"
+        }
 
         # Get critical/high alerts (last hour)
         alerts = db.get_recent_alerts(limit=20, hours=1)
@@ -2161,13 +2140,13 @@ def api_kiosk_metrics():
         # Get alert statistics for threat breakdown
         stats = db.get_alert_statistics(hours=24)
 
-        # Sensor health counts
-        sensor_health = {
-            'total': len(sensors),
-            'online': len([s for s in sensors if s['computed_status'] == 'online']),
-            'warning': len([s for s in sensors if s['computed_status'] == 'warning']),
-            'offline': len([s for s in sensors if s['computed_status'] == 'offline'])
-        }
+        # Sensor health counts - single pass
+        status_counts = {'online': 0, 'warning': 0, 'offline': 0}
+        for s in sensors:
+            status = s.get('computed_status')
+            if status in status_counts:
+                status_counts[status] += 1
+        sensor_health = {'total': len(sensors), **status_counts}
 
         # Merge all metrics
         metrics_dict = {
@@ -2814,45 +2793,38 @@ def api_get_duplicate_devices():
     Returns groups of devices with the same MAC address.
     """
     try:
-        # Get all active devices
-        devices = db.get_devices(include_inactive=False)
+        # SQL-query retourneert alleen duplicaat-devices, gesorteerd op mac + last_seen DESC
+        rows = db.get_duplicate_devices()
 
-        # Group by MAC address
+        # Groepeer in Python — resultaat is al klein (alleen MAC's met >1 entry)
         mac_groups = {}
-        for device in devices:
-            mac = device.get('mac_address')
-            if mac:  # Only consider devices with MAC addresses
-                if mac not in mac_groups:
-                    mac_groups[mac] = []
-                mac_groups[mac].append(device)
+        for row in rows:
+            mac = row['mac_address']
+            mac_groups.setdefault(mac, []).append(row)
 
-        # Find duplicates (MAC with multiple IPs)
         duplicates = []
         for mac, devices_list in mac_groups.items():
-            if len(devices_list) > 1:
-                # Sort by last_seen descending (most recent first)
-                devices_list.sort(key=lambda d: d.get('last_seen', ''), reverse=True)
-
-                # Determine if this looks like a DHCP issue
-                ips = [d.get('ip_address', '').split('/')[0] for d in devices_list]
-                is_dhcp_range = any('10.100.0.' in ip and 26 <= int(ip.split('.')[-1]) <= 59
-                                   for ip in ips if ip and '.' in ip and ip.split('.')[-1].isdigit())
-
-                duplicates.append({
-                    'mac_address': mac,
-                    'vendor': devices_list[0].get('vendor', 'Unknown'),
-                    'hostname': devices_list[0].get('hostname', '-'),
-                    'device_count': len(devices_list),
-                    'devices': [{
-                        'ip_address': d.get('ip_address'),
-                        'hostname': d.get('hostname'),
-                        'last_seen': d.get('last_seen'),
-                        'template_name': d.get('template_name'),
-                        'is_most_recent': i == 0
-                    } for i, d in enumerate(devices_list)],
-                    'is_dhcp_issue': is_dhcp_range,
-                    'recommendation': _get_duplicate_recommendation(devices_list, is_dhcp_range)
-                })
+            ips = [d.get('ip_address', '').split('/')[0] for d in devices_list]
+            is_dhcp_range = any(
+                '10.100.0.' in ip and ip.split('.')[-1].isdigit()
+                and 26 <= int(ip.split('.')[-1]) <= 59
+                for ip in ips if ip and '.' in ip
+            )
+            duplicates.append({
+                'mac_address': mac,
+                'vendor': devices_list[0].get('vendor', 'Unknown'),
+                'hostname': devices_list[0].get('hostname', '-'),
+                'device_count': len(devices_list),
+                'devices': [{
+                    'ip_address': d.get('ip_address'),
+                    'hostname': d.get('hostname'),
+                    'last_seen': d.get('last_seen'),
+                    'template_name': d.get('template_name'),
+                    'is_most_recent': i == 0
+                } for i, d in enumerate(devices_list)],
+                'is_dhcp_issue': is_dhcp_range,
+                'recommendation': _get_duplicate_recommendation(devices_list, is_dhcp_range)
+            })
 
         return jsonify({
             'success': True,
@@ -3841,33 +3813,38 @@ def api_get_sensor_pcap_list():
         offset = request.args.get('offset', default=0, type=int)
         limit = min(limit, 500)  # Cap at 500 to prevent excessive memory use
 
-        # Quick optimization: collect files with mtime first, sort by that
-        # This avoids full stat() calls when we only need the most recent files
+        # Gebruik os.scandir() i.p.v. pathlib.glob() + stat() — scandir buffert dirent info
+        # heapq.nlargest vermijdt volledige sort voor eerste pagina (meest gebruikt)
+        import heapq
         file_list = []
-        for pcap_file in pcap_dir.glob('*.pcap'):
-            stat = pcap_file.stat()
-            file_list.append((pcap_file, stat.st_ctime, stat))
-
-        # Sort by creation time (newest first) using the cached stat
-        file_list.sort(key=lambda x: x[1], reverse=True)
+        with os.scandir(str(pcap_dir)) as it:
+            for entry in it:
+                if entry.name.endswith('.pcap') and entry.is_file(follow_symlinks=False):
+                    try:
+                        st = entry.stat()
+                        file_list.append((entry.name, st.st_ctime, st.st_size, st.st_mtime))
+                    except OSError:
+                        pass
 
         total = len(file_list)
 
-        # Apply pagination
-        paginated_files = file_list[offset:offset + limit]
+        # Voor offset=0 vermijdt nlargest een volledige O(n log n) sort
+        if offset == 0:
+            paginated = heapq.nlargest(limit, file_list, key=lambda x: x[1])
+        else:
+            file_list.sort(key=lambda x: x[1], reverse=True)
+            paginated = file_list[offset:offset + limit]
 
         captures = []
-        for pcap_file, _, stat in paginated_files:
-            # Parse filename: sensor_alerttype_srcip_timestamp.pcap
-            parts = pcap_file.stem.split('_')
-            sensor_id = parts[0] if len(parts) > 0 else 'unknown'
-
+        for name, ctime, size, mtime in paginated:
+            parts = name.rsplit('.', 1)[0].split('_')
+            sensor_id = parts[0] if parts else 'unknown'
             captures.append({
-                'filename': pcap_file.name,
+                'filename': name,
                 'sensor_id': sensor_id,
-                'size_bytes': stat.st_size,
-                'created': datetime.fromtimestamp(stat.st_ctime).isoformat(),
-                'modified': datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                'size_bytes': size,
+                'created': datetime.fromtimestamp(ctime).isoformat(),
+                'modified': datetime.fromtimestamp(mtime).isoformat(),
             })
 
         return jsonify({
