@@ -21,7 +21,7 @@ class DatabaseManager:
 
     def __init__(self, host='localhost', port=5432, database='netmonitor',
                  user='netmonitor', password='netmonitor',
-                 min_connections=2, max_connections=10, config=None):
+                 min_connections=2, max_connections=20, config=None):
         """Initialize database manager with connection pooling"""
         self.logger = logging.getLogger('NetMonitor.Database')
         self.config = config  # Store config for retention policies
@@ -1841,8 +1841,9 @@ class DatabaseManager:
             rows = []
             for row in results:
                 r = dict(row)
-                r['outbound_mb'] = float(r.get('outbound_mb') or 0)
-                r['inbound_mb'] = float(r.get('inbound_mb') or 0)
+                # Decimal→float voor JSON-serialisatie (ROUND() geeft numeric terug)
+                r['outbound_mb'] = float(r['outbound_mb'] or 0)
+                r['inbound_mb'] = float(r['inbound_mb'] or 0)
                 rows.append(r)
             return rows
 
@@ -2412,70 +2413,54 @@ class DatabaseManager:
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-            # Get latest metrics from all sensors (last 2 minutes)
+            # Haal per sensor de laatste 2 records op via window-functie (i.p.v. alle rows)
             cursor.execute('''
-                SELECT
-                    sensor_id,
-                    packets_captured,
-                    alerts_sent,
-                    bandwidth_mbps,
-                    timestamp
-                FROM sensor_metrics
-                WHERE timestamp > NOW() - INTERVAL '2 minutes'
-                ORDER BY timestamp DESC
+                SELECT sensor_id, packets_captured, bandwidth_mbps, timestamp, rn
+                FROM (
+                    SELECT
+                        sensor_id,
+                        packets_captured,
+                        bandwidth_mbps,
+                        timestamp,
+                        ROW_NUMBER() OVER (PARTITION BY sensor_id ORDER BY timestamp DESC) AS rn
+                    FROM sensor_metrics
+                    WHERE timestamp > NOW() - INTERVAL '2 minutes'
+                ) ranked
+                WHERE rn <= 2
             ''')
 
             recent_metrics = cursor.fetchall()
 
-            # Calculate packets/sec from deltas
-            # Group by sensor_id and get last 2 records for each
+            # Bereken packets/sec uit deltas — resultaat is al max 2 rows per sensor
             sensor_packets = {}
             sensor_bandwidth = {}
-            sensor_latest_timestamp = {}
 
             for metric in recent_metrics:
                 sid = metric['sensor_id']
-
-                # Initialize structures for new sensors
-                if sid not in sensor_packets:
-                    sensor_packets[sid] = []
-                    sensor_bandwidth[sid] = 0
-                    sensor_latest_timestamp[sid] = metric['timestamp']
-
-                # Always use the MOST RECENT bandwidth (results are ordered DESC)
-                # Update bandwidth if this record is newer than previously seen
-                if metric['timestamp'] >= sensor_latest_timestamp[sid]:
-                    bw = metric['bandwidth_mbps']
-                    sensor_bandwidth[sid] = float(bw) if isinstance(bw, Decimal) else (bw or 0)
-                    sensor_latest_timestamp[sid] = metric['timestamp']
-
-                # Convert packets_captured to int
+                bw = metric['bandwidth_mbps']
                 packets = metric['packets_captured']
-                packets = int(packets) if isinstance(packets, Decimal) else (packets or 0)
 
-                sensor_packets[sid].append({
-                    'packets': packets,
+                if metric['rn'] == 1:
+                    # Meest recente rij: gebruik voor bandwidth
+                    sensor_bandwidth[sid] = float(bw) if isinstance(bw, Decimal) else (bw or 0)
+
+                sensor_packets.setdefault(sid, []).append({
+                    'packets': int(packets) if isinstance(packets, Decimal) else (packets or 0),
                     'timestamp': metric['timestamp']
                 })
 
-            # Calculate total packets/sec
+            # Bereken totaal packets/sec
             total_packets_per_sec = 0
             total_bandwidth = sum(sensor_bandwidth.values())
 
             for sid, metrics_list in sensor_packets.items():
                 if len(metrics_list) >= 2:
-                    # Sort by timestamp
-                    sorted_metrics = sorted(metrics_list, key=lambda x: x['timestamp'])
-                    latest = sorted_metrics[-1]
-                    previous = sorted_metrics[-2]
-
-                    # Calculate delta
+                    # SQL levert DESC volgorde — rn=1 is nieuwste, rn=2 is oudste
+                    latest, previous = sorted(metrics_list, key=lambda x: x['timestamp'], reverse=True)[:2]
                     packet_delta = latest['packets'] - previous['packets']
                     time_delta = (latest['timestamp'] - previous['timestamp']).total_seconds()
-
                     if time_delta > 0:
-                        packets_per_sec = packet_delta / time_delta
-                        total_packets_per_sec += packets_per_sec
+                        total_packets_per_sec += packet_delta / time_delta
 
             # Get alerts in last minute
             cursor.execute('''
@@ -3719,6 +3704,39 @@ class DatabaseManager:
             return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             self.logger.error(f"Error getting devices: {e}")
+            return []
+        finally:
+            self._return_connection(conn)
+
+    def get_duplicate_devices(self) -> List[Dict]:
+        """Haal actieve devices op die hetzelfde MAC-adres delen (duplicaten via SQL)."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute('''
+                WITH dup_macs AS (
+                    SELECT mac_address
+                    FROM devices
+                    WHERE is_active = TRUE AND mac_address IS NOT NULL
+                    GROUP BY mac_address
+                    HAVING COUNT(*) > 1
+                )
+                SELECT
+                    d.mac_address::text AS mac_address,
+                    d.ip_address::text AS ip_address,
+                    d.hostname,
+                    d.last_seen,
+                    d.vendor,
+                    t.name AS template_name
+                FROM devices d
+                JOIN dup_macs dm ON d.mac_address = dm.mac_address
+                LEFT JOIN device_templates t ON d.template_id = t.id
+                WHERE d.is_active = TRUE
+                ORDER BY d.mac_address, d.last_seen DESC NULLS LAST
+            ''')
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            self.logger.error(f"Error getting duplicate devices: {e}")
             return []
         finally:
             self._return_connection(conn)
