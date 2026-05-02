@@ -197,6 +197,13 @@ QUICK_INTENTS: List[Tuple[str, str, Dict[str, Any], str]] = [
      "dns_lookup", {}, "DNS lookup uitvoeren"),
     (r"(dns|resolve|lookup).*(domain|domein|hostname)",
      "dns_lookup", {}, "DNS lookup uitvoeren"),
+
+    # Meta: vragen over beschikbare tools zelf — speciaal intern patroon
+    # Voorkomt dat LLM willekeurige tools aanroept bij "welke tools zijn er?"
+    (r"(geef|toon|show|list|welke|wat zijn|hoeveel|naam|namen).*(tool|tools)",
+     "__list_tools__", {}, "beschikbare tools opnoemen"),
+    (r"(tool|tools).*(beschikbaar|available|lijst|list|naam|namen|overzicht)",
+     "__list_tools__", {}, "beschikbare tools opnoemen"),
 ]
 
 
@@ -1269,6 +1276,55 @@ async def websocket_chat(websocket: WebSocket):
 
                 await send_status(f"Herkenning: {description}", "quick_match")
                 await asyncio.sleep(0.1)  # Brief pause so user sees status
+
+                # --------------------------------------------------------
+                # Speciaal intern patroon: tools opnoemen zonder LLM-tool-call
+                # Voorkomt dat modellen zoals qwen2.5-coder willekeurig tools
+                # aanroepen bij vragen als "geef de namen van alle tools"
+                # --------------------------------------------------------
+                if tool_name == "__list_tools__":
+                    await send_status("Beschikbare tools ophalen...", "tool_call")
+                    all_tools = await mcp_client.list_tools()
+                    tool_list_text = "\n".join(
+                        f"- **{t['name']}**: {t.get('description', '')[:80]}"
+                        for t in all_tools
+                    )
+                    final_result: Dict[str, Any] = {
+                        "success": True,
+                        "data": {"count": len(all_tools), "tools": [{"name": t["name"], "description": t.get("description", "")} for t in all_tools]}
+                    }
+                    await websocket.send_json({"type": "tool_result", "tool": "__list_tools__", "result": final_result})
+                    await send_status("Antwoord formuleren...", "formatting")
+                    format_prompt = f"""De gebruiker vroeg: "{message}"
+
+Er zijn {len(all_tools)} beschikbare tools:
+{tool_list_text}
+
+Geef een overzichtelijke lijst van alle tool namen. Groepeer ze logisch (sensors, threats, devices, etc.) als dat past bij de vraag. Geef een beknopt Nederlands antwoord."""
+                    format_messages = [
+                        {"role": "system", "content": system_prompt or "Je bent een security expert die duidelijke Nederlandse antwoorden geeft."},
+                        {"role": "user", "content": format_prompt}
+                    ]
+                    think_filter = ThinkTagFilter()
+                    async for chunk in llm_client.chat(model, format_messages, stream=True, temperature=temperature, tools=None, max_tokens=max_tokens):
+                        if "error" in chunk:
+                            await websocket.send_json({"type": "error", "content": chunk["error"]})
+                            break
+                        if "message" in chunk:
+                            content = chunk["message"].get("content", "")
+                            if content:
+                                filtered = think_filter.feed(content)
+                                if filtered:
+                                    await websocket.send_json({"type": "token", "content": filtered})
+                        if chunk.get("done"):
+                            remainder = think_filter.flush()
+                            if remainder:
+                                await websocket.send_json({"type": "token", "content": remainder})
+                            break
+                    await websocket.send_json({"type": "done"})
+                    await llm_client.close(); llm_client = None
+                    await mcp_client.close(); mcp_client = None
+                    continue
 
                 await send_status(f"Tool uitvoeren: {tool_name}", "tool_call")
                 await websocket.send_json({"type": "tool_call", "tool": tool_name, "args": tool_args})
