@@ -1285,42 +1285,55 @@ async def websocket_chat(websocket: WebSocket):
                 if tool_name == "__list_tools__":
                     await send_status("Beschikbare tools ophalen...", "tool_call")
                     all_tools = await mcp_client.list_tools()
-                    tool_list_text = "\n".join(
-                        f"- **{t['name']}**: {t.get('description', '')[:80]}"
-                        for t in all_tools
-                    )
-                    final_result: Dict[str, Any] = {
-                        "success": True,
-                        "data": {"count": len(all_tools), "tools": [{"name": t["name"], "description": t.get("description", "")} for t in all_tools]}
-                    }
-                    await websocket.send_json({"type": "tool_result", "tool": "__list_tools__", "result": final_result})
-                    await send_status("Antwoord formuleren...", "formatting")
-                    format_prompt = f"""De gebruiker vroeg: "{message}"
 
-Er zijn {len(all_tools)} beschikbare tools:
-{tool_list_text}
-
-Geef een overzichtelijke lijst van alle tool namen. Groepeer ze logisch (sensors, threats, devices, etc.) als dat past bij de vraag. Geef een beknopt Nederlands antwoord."""
-                    format_messages = [
-                        {"role": "system", "content": system_prompt or "Je bent een security expert die duidelijke Nederlandse antwoorden geeft."},
-                        {"role": "user", "content": format_prompt}
+                    # Groepeer tools op categorie via trefwoorden in de naam
+                    _TOOL_GROUPS: List[Tuple[str, List[str]]] = [
+                        ("Internet & DNS",       ["web_search", "dns_lookup"]),
+                        ("IP Analyse",           ["lookup_ip_owner", "analyze_ip", "check_indicator", "check_ip_service_provider"]),
+                        ("Sensors",              ["get_sensor_status", "send_sensor_command", "get_sensor_command_history"]),
+                        ("Threats & Detecties",  ["get_threat", "enable_threat", "lookup_threat", "get_security", "get_threat_context", "sync_threat", "update_threat", "get_recent_threats"]),
+                        ("Threat Feeds",         ["get_threat_feed", "update_threat_feeds", "sync_threat_feeds"]),
+                        ("Aanvalsketens & MITRE",["get_attack_chains", "get_mitre_mapping"]),
+                        ("Risico & Assets",      ["get_top_risk", "get_asset_risk", "get_risk_trends"]),
+                        ("Devices",              ["get_device", "get_devices", "touch_device", "assign_device", "create_template", "clone_device", "get_device_by_ip"]),
+                        ("Device Leergedrag",    ["get_device_learn", "save_device_learn", "get_device_classif"]),
+                        ("Traffic & Top Talkers",["get_top_talkers", "get_device_traffic"]),
+                        ("TLS & JA3",            ["get_tls", "check_ja3", "add_ja3"]),
+                        ("PCAP & Exports",       ["get_pcap", "export_flow", "export_alerts", "get_packet", "delete_pcap"]),
+                        ("Kerberos",             ["get_kerberos", "check_weak"]),
+                        ("Whitelist",            ["add_whitelist", "get_whitelist", "remove_whitelist"]),
+                        ("SOAR",                 ["get_soar", "get_pending", "approve_soar", "get_soar_history"]),
+                        ("Configuratie",         ["get_config", "set_config"]),
+                        ("Systeem & Geheugen",   ["get_memory", "flush_memory"]),
+                        ("Service Providers",    ["get_service_providers", "create_service_provider"]),
                     ]
-                    think_filter = ThinkTagFilter()
-                    async for chunk in llm_client.chat(model, format_messages, stream=True, temperature=temperature, tools=None, max_tokens=max_tokens):
-                        if "error" in chunk:
-                            await websocket.send_json({"type": "error", "content": chunk["error"]})
-                            break
-                        if "message" in chunk:
-                            content = chunk["message"].get("content", "")
-                            if content:
-                                filtered = think_filter.feed(content)
-                                if filtered:
-                                    await websocket.send_json({"type": "token", "content": filtered})
-                        if chunk.get("done"):
-                            remainder = think_filter.flush()
-                            if remainder:
-                                await websocket.send_json({"type": "token", "content": remainder})
-                            break
+
+                    assigned: set = set()
+                    grouped: Dict[str, List[str]] = {g: [] for g, _ in _TOOL_GROUPS}
+                    for tool in all_tools:
+                        tname = tool["name"]
+                        for group_label, prefixes in _TOOL_GROUPS:
+                            if any(tname.startswith(p) or tname == p for p in prefixes):
+                                grouped[group_label].append(tname)
+                                assigned.add(tname)
+                                break
+                    # Overige tools
+                    overig = [t["name"] for t in all_tools if t["name"] not in assigned]
+                    if overig:
+                        grouped["Overig"] = overig
+
+                    lines = [f"Er zijn **{len(all_tools)} tools** beschikbaar:\n"]
+                    for group_label, names in grouped.items():
+                        if not names:
+                            continue
+                        lines.append(f"**{group_label}** ({len(names)})")
+                        for n in names:
+                            lines.append(f"- {n}")
+                        lines.append("")
+                    response_text = "\n".join(lines)
+
+                    # Stuur direct als tokens — geen LLM nodig voor gestructureerde data
+                    await websocket.send_json({"type": "token", "content": response_text})
                     await websocket.send_json({"type": "done"})
                     await llm_client.close(); llm_client = None
                     await mcp_client.close(); mcp_client = None
