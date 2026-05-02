@@ -279,7 +279,7 @@
                                     <label class="block text-xs font-medium text-gray-700 mb-1">MCP Server URL</label>
                                     <input type="text"
                                            x-model="mcpServerUrl"
-                                           placeholder="https://soc.poort.net/mcp"
+                                           placeholder="https://mcp-server/mcp"
                                            class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
                                 </div>
 
@@ -546,7 +546,7 @@
                 lmstudioUrl: 'http://localhost:1234',
                 mcpConfigs: [],  // Available MCP configurations from server
                 selectedMcpConfig: '',  // Selected config name (empty = custom)
-                mcpServerUrl: 'https://soc.poort.net/mcp',
+                mcpServerUrl: '',
                 mcpAuthToken: '',
                 systemPrompt: 'Je bent een security expert die helpt met NetMonitor. Gebruik ALTIJD de beschikbare tools om informatie op te halen - verwijs gebruikers NOOIT naar externe websites. Belangrijkste tools: lookup_ip_owner voor IP eigenaar/organisatie opzoeken (bij vragen als \"van wie is dit IP?\"), web_search voor internet zoeken (type moet text of news zijn, NIET web), dns_lookup voor domeinnaam→IP vertaling, analyze_ip voor dreigingsanalyse. Geef altijd duidelijke, Nederlandse antwoorden.',
                 forceToolsLMStudio: false,  // Force function calling for LM Studio (experimental)
@@ -566,7 +566,7 @@
                     const savedLmstudioUrl = localStorage.getItem('netmonitor-chat-lmstudio-url');
                     const savedMcpConfig = localStorage.getItem('netmonitor-chat-mcp-config');
                     const savedMcpUrl = localStorage.getItem('netmonitor-chat-mcp-url');
-                    const savedMcpToken = localStorage.getItem('netmonitor-chat-mcp-token');
+                    const savedMcpToken = sessionStorage.getItem('netmonitor-chat-mcp-token');
                     const savedSystemPrompt = localStorage.getItem('netmonitor-chat-system-prompt');
                     const savedForceTools = localStorage.getItem('netmonitor-chat-force-tools-lmstudio');
                     const savedMaxTokens = localStorage.getItem('netmonitor-chat-max-tokens');
@@ -610,34 +610,25 @@
                         }
                     }
 
-                    // Watch for model changes and save to localStorage
+                    // Registreer alle watchers NA het laden van opgeslagen waarden,
+                    // zodat watchers niet onnodig triggeren bij initialisatie.
                     this.$watch('selectedModel', (value) => {
-                        if (value) {
-                            localStorage.setItem('netmonitor-chat-model', value);
-                        }
+                        if (value) localStorage.setItem('netmonitor-chat-model', value);
                     });
-
-                    // Watch for debugMode changes and save to localStorage
-                    this.$watch('debugMode', (value) => {
-                        localStorage.setItem('netmonitor-chat-debug', value);
-                    });
-
-                    // Load saved debugMode
-                    const savedDebugMode = localStorage.getItem('netmonitor-chat-debug');
-                    if (savedDebugMode !== null) {
-                        this.debugMode = savedDebugMode === 'true';
-                    }
-
-                    // Watch configuration changes and save to localStorage
+                    this.$watch('debugMode', (value) => localStorage.setItem('netmonitor-chat-debug', value));
                     this.$watch('llmProvider', (value) => localStorage.setItem('netmonitor-chat-llm-provider', value));
                     this.$watch('ollamaUrl', (value) => localStorage.setItem('netmonitor-chat-ollama-url', value));
                     this.$watch('lmstudioUrl', (value) => localStorage.setItem('netmonitor-chat-lmstudio-url', value));
                     this.$watch('selectedMcpConfig', (value) => localStorage.setItem('netmonitor-chat-mcp-config', value));
                     this.$watch('mcpServerUrl', (value) => localStorage.setItem('netmonitor-chat-mcp-url', value));
-                    this.$watch('mcpAuthToken', (value) => localStorage.setItem('netmonitor-chat-mcp-token', value));
+                    this.$watch('mcpAuthToken', (value) => sessionStorage.setItem('netmonitor-chat-mcp-token', value));
                     this.$watch('systemPrompt', (value) => localStorage.setItem('netmonitor-chat-system-prompt', value));
                     this.$watch('forceToolsLMStudio', (value) => localStorage.setItem('netmonitor-chat-force-tools-lmstudio', value));
                     this.$watch('maxTokens', (value) => localStorage.setItem('netmonitor-chat-max-tokens', value));
+
+                    // Laad debugMode (na watcher registratie voor consistentie)
+                    const savedDebugMode = localStorage.getItem('netmonitor-chat-debug');
+                    if (savedDebugMode !== null) this.debugMode = savedDebugMode === 'true';
                 },
 
                 // Load available MCP configurations
@@ -685,6 +676,7 @@
                 async applyConfig() {
                     if (this.applyingConfig) return;
                     this.applyingConfig = true;
+                    this.configSuccess = false;
                     this.error = null;
                     try {
                         await this.loadModels();
@@ -807,9 +799,10 @@
 
                     // Connect WebSocket
                     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                    this.ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/chat`);
+                    const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/chat`);
+                    this.ws = ws;
 
-                    this.ws.onopen = () => {
+                    ws.onopen = () => {
                         // Send message with configuration
                         const llmUrl = this.llmProvider === 'lmstudio' ? this.lmstudioUrl : this.ollamaUrl;
                         const mcpConfig = this.getCurrentMcpConfig();
@@ -826,7 +819,7 @@
                             mcpToken = mcpConfig.token;
                         }
 
-                        this.ws.send(JSON.stringify({
+                        ws.send(JSON.stringify({
                             model: this.selectedModel,
                             message: userMessage,
                             history: history,
@@ -842,19 +835,23 @@
                         }));
                     };
 
-                    this.ws.onmessage = (event) => {
+                    ws.onmessage = (event) => {
                         const data = JSON.parse(event.data);
                         this.handleWebSocketMessage(data);
                     };
 
-                    this.ws.onerror = (error) => {
+                    ws.onerror = (error) => {
                         console.error('WebSocket error:', error);
                         this.error = 'Verbindingsfout';
                         this.isTyping = false;
                     };
 
-                    this.ws.onclose = () => {
-                        this.isTyping = false;
+                    ws.onclose = () => {
+                        // Alleen isTyping resetten als dit nog de actieve verbinding is
+                        if (this.ws === ws) {
+                            this.isTyping = false;
+                            this.ws = null;
+                        }
                     };
                 },
 
