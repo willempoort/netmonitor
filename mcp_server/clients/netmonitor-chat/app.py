@@ -64,11 +64,11 @@ def load_mcp_configurations() -> List[Dict[str, str]]:
 
     for key in os.environ:
         if key.startswith("MCP_CONFIG_") and key.endswith("_NAME"):
-            try:
-                idx = key.replace("MCP_CONFIG_", "").replace("_NAME", "")
-                config_indices.add(idx)
-            except Exception:
-                pass
+            idx_str = key.replace("MCP_CONFIG_", "").replace("_NAME", "")
+            if idx_str.isdigit():
+                config_indices.add(int(idx_str))
+            else:
+                print(f"[Config] Ongeldige MCP config index '{idx_str}' in {key}, overgeslagen")
 
     for idx in sorted(config_indices):
         name = os.getenv(f"MCP_CONFIG_{idx}_NAME", "")
@@ -436,7 +436,10 @@ def extract_ips_from_result(result: Any, max_ips: int = 5) -> List[str]:
             for key, val in obj.items():
                 if key in ('src_ip', 'dest_ip', 'ip', 'source_ip', 'destination_ip', 'remote_ip', 'external_ip'):
                     if isinstance(val, str) and ip_pattern.match(val):
-                        if not val.startswith(('10.', '192.168.', '172.16.', '127.', '0.')):
+                        if not val.startswith(('10.', '192.168.', '172.16.', '172.17.', '172.18.', '172.19.',
+                                               '172.20.', '172.21.', '172.22.', '172.23.', '172.24.', '172.25.',
+                                               '172.26.', '172.27.', '172.28.', '172.29.', '172.30.', '172.31.',
+                                               '127.', '0.')):
                             ips.add(val)
                 else:
                     search_recursive(val)
@@ -632,37 +635,20 @@ def extract_tool_call_from_text(text: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def build_tool_prompt(tools: List[Dict[str, Any]], user_system_prompt: str = "") -> str:
-    """Build system prompt with tool instructions for JSON fallback mode."""
-    tool_descriptions = []
-    for tool in tools[:10]:
-        name = tool.get("name", "unknown")
-        desc = tool.get("description", "No description")[:100]
-        params = tool.get("inputSchema", {}).get("properties", {})
-        param_names = list(params.keys())[:3]
-        tool_descriptions.append(f"- {name}: {desc} (params: {param_names})")
-
-    tools_text = "\n".join(tool_descriptions)
-
-    return f"""{user_system_prompt}
-
-Je bent een security assistent voor NetMonitor. Je kunt tools aanroepen om actuele netwerkdata op te halen.
-
-BESCHIKBARE TOOLS:
-{tools_text}
-
+# Gedeelde tool-guidance gebruikt door zowel JSON-fallback als native tool-calling mode
+_TOOL_GUIDANCE = """
 BELANGRIJKE TOOL PARAMETERS:
-- web_search VEREIST query: {{"name": "web_search", "arguments": {{"query": "zoekterm hier"}}}}
+- web_search VEREIST query: {"name": "web_search", "arguments": {"query": "zoekterm hier"}}
   LET OP: type moet 'text' of 'news' zijn (NIET 'web')
-- dns_lookup VEREIST domain: {{"name": "dns_lookup", "arguments": {{"domain": "example.com"}}}}
+- dns_lookup VEREIST domain: {"name": "dns_lookup", "arguments": {"domain": "example.com"}}
   LET OP: Alleen voor domeinnaam→IP vertaling. NIET voor IP eigenaar opzoeken.
-- lookup_ip_owner VEREIST ip_address: {{"name": "lookup_ip_owner", "arguments": {{"ip_address": "8.8.8.8"}}}}
+- lookup_ip_owner VEREIST ip_address: {"name": "lookup_ip_owner", "arguments": {"ip_address": "8.8.8.8"}}
   Gebruik dit als iemand vraagt "van wie is dit IP?" of "wie zit er achter dit IP?"
   Strip /32 of andere CIDR notatie - geef alleen het IP-adres.
-- analyze_ip VEREIST ip_address: {{"name": "analyze_ip", "arguments": {{"ip_address": "8.8.8.8"}}}}
+- analyze_ip VEREIST ip_address: {"name": "analyze_ip", "arguments": {"ip_address": "8.8.8.8"}}
   Gebruik dit om dreigingshistorie van een IP in het netwerk te bekijken.
 - get_top_talkers: hours=168 voor week, hours=24 voor dag
-- get_sensor_status: geen arguments nodig {{}}
+- get_sensor_status: geen arguments nodig {}
 
 WELKE TOOL WANNEER:
 - "Van wie is IP X?" / "Wie is eigenaar van IP?" → lookup_ip_owner
@@ -677,6 +663,50 @@ WANNEER WEL/NIET TOOLS GEBRUIKEN:
 - Doe GEEN automatische extra lookups (lookup_ip_owner, analyze_ip) op IPs uit resultaten tenzij de gebruiker daar specifiek om vraagt
 - Bij "toon meldingen/alerts" vragen: geef de meldingen weer, doe GEEN extra IP-analyses
 
+WORKFLOW VOOR RAPPORTAGES:
+1. EERST netwerk data ophalen: get_sensor_status, get_top_talkers, get_threat_detections
+2. DAARNA internet zoeken voor aanbevelingen: web_search(query="relevante zoekterm")
+3. TENSLOTTE een compleet rapport schrijven met alle verzamelde informatie
+
+BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Verwijs de gebruiker NOOIT naar externe websites. Maar als de vraag geen nieuwe data vereist, geef gewoon een direct antwoord in het Nederlands."""
+
+
+def _is_repetitive(text: str) -> bool:
+    """Detecteer herhaling in LLM output: laatste 200 chars eerder in de tekst gezien."""
+    if len(text) <= 600:
+        return False
+    tail = text[-200:]
+    return text[:-200].find(tail) != -1
+
+
+def build_tool_prompt(tools: List[Dict[str, Any]], user_system_prompt: str = "") -> str:
+    """Build system prompt with tool instructions for JSON fallback mode."""
+    tool_descriptions = []
+    for tool in tools[:10]:
+        name = tool.get("name", "unknown")
+        desc = tool.get("description", "No description")[:100]
+        schema = tool.get("inputSchema", {})
+        properties = schema.get("properties", {})
+        required = set(schema.get("required", []))
+        param_parts = []
+        for pname, pdef in properties.items():
+            marker = "*" if pname in required else ""
+            ptype = pdef.get("type", "any")
+            param_parts.append(f"{pname}{marker}:{ptype}")
+        params_str = ", ".join(param_parts) if param_parts else "geen"
+        tool_descriptions.append(f"- {name}: {desc} (params: [{params_str}])")
+
+    tools_text = "\n".join(tool_descriptions)
+
+    return f"""{user_system_prompt}
+
+Je bent een security assistent voor NetMonitor. Je kunt tools aanroepen om actuele netwerkdata op te halen.
+
+BESCHIKBARE TOOLS (* = verplicht):
+{tools_text}
+
+{_TOOL_GUIDANCE}
+
 HOE TOOLS TE GEBRUIKEN:
 1. Als je een tool nodig hebt, antwoord met ALLEEN JSON (geen tekst ervoor of erna):
    {{"name": "tool_naam", "arguments": {{"param": "waarde"}}}}
@@ -687,16 +717,7 @@ HOE TOOLS TE GEBRUIKEN:
 
 3. Roep tools ÉÉN VOOR ÉÉN aan.
 
-4. Als GEEN tool nodig is, antwoord direct in het Nederlands (geen JSON).
-
-WORKFLOW VOOR RAPPORTAGES:
-Stap 1: {{"name": "get_sensor_status", "arguments": {{}}}}
-Stap 2: {{"name": "get_top_talkers", "arguments": {{"hours": 168, "limit": 10}}}}
-Stap 3: {{"name": "get_threat_detections", "arguments": {{"hours": 24}}}}
-Stap 4: {{"name": "web_search", "arguments": {{"query": "network security recommendations"}}}}
-Stap 5: Nederlands rapport met alle data (GEEN JSON)
-
-BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Stel niet voor dat de gebruiker zelf naar websites gaat. Maar als de vraag geen nieuwe data vereist, geef gewoon een direct antwoord in het Nederlands."""
+4. Als GEEN tool nodig is, antwoord direct in het Nederlands (geen JSON)."""
 
 
 def filter_relevant_tools(user_message: str, all_tools: List[Dict[str, Any]], max_tools: int = 10) -> List[Dict[str, Any]]:
@@ -806,12 +827,15 @@ class ThinkTagFilter:
         return result
 
     def flush(self) -> str:
-        """Return any remaining buffered content at end of stream."""
-        if not self.in_think:
-            result = self.pending
-            self.pending = ""
-            return result
-        return ""
+        """Return any remaining buffered content at end of stream.
+
+        Als de stream afbrak binnen een <think> block, geef de buffer toch terug
+        zodat geen zichtbare content verloren gaat.
+        """
+        result = self.pending
+        self.pending = ""
+        self.in_think = False
+        return result
 
 
 # ------------------------------------------------------------
@@ -999,7 +1023,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="NetMonitor Chat",
     description="On-premise chat interface with NetMonitor MCP tools",
-    version="2.0.0",
+    version="2.1.0",
     lifespan=lifespan
 )
 
@@ -1198,6 +1222,9 @@ async def websocket_chat(websocket: WebSocket):
         """Send status update to client."""
         await websocket.send_json({"type": "status", "message": message, "phase": phase})
 
+    llm_client = None
+    mcp_client = None
+
     try:
         while True:
             data = await websocket.receive_json()
@@ -1208,6 +1235,11 @@ async def websocket_chat(websocket: WebSocket):
             temperature = data.get("temperature", 0.3)
             max_tokens = int(data.get("max_tokens", 2000))
             system_prompt = data.get("system_prompt", "")
+
+            # Input length validation
+            if len(message) > 4096:
+                await websocket.send_json({"type": "error", "content": "Bericht te lang (max 4096 tekens)."})
+                continue
 
             llm_provider = data.get("llm_provider", "ollama")
             llm_url = data.get("llm_url", OLLAMA_BASE_URL)
@@ -1242,7 +1274,7 @@ async def websocket_chat(websocket: WebSocket):
                 await websocket.send_json({"type": "tool_call", "tool": tool_name, "args": tool_args})
 
                 # Execute tool with streaming
-                final_result: Optional[Dict[str, Any]] = None
+                final_result: Dict[str, Any] = {"success": False, "error": "Geen resultaat ontvangen van tool"}
                 async for evt in mcp_client.call_tool_stream(tool_name, tool_args):
                     if evt.get("type") == "notification":
                         msg = evt["message"]
@@ -1316,12 +1348,10 @@ Regels:
                         content = chunk["message"].get("content", "")
                         if content:
                             format_response += content
-                            if len(format_response) > 600 and not format_repetition:
-                                tail = format_response[-200:]
-                                if format_response[:-200].find(tail) != -1:
-                                    format_repetition = True
-                                    print(f"[WebSocket] Format repetition detected, stopping")
-                                    break
+                            if not format_repetition and _is_repetitive(format_response):
+                                format_repetition = True
+                                print("[WebSocket] Format repetition detected, stopping")
+                                break
                             filtered = think_filter.feed(content)
                             if filtered:
                                 await websocket.send_json({"type": "token", "content": filtered})
@@ -1332,8 +1362,8 @@ Regels:
                         break
 
                 await websocket.send_json({"type": "done"})
-                await llm_client.close()
-                await mcp_client.close()
+                await llm_client.close(); llm_client = None
+                await mcp_client.close(); mcp_client = None
                 continue  # Wait for next message
 
             # ============================================================
@@ -1361,12 +1391,10 @@ Regels:
                         content = chunk["message"].get("content", "")
                         if content:
                             conv_response += content
-                            if len(conv_response) > 600 and not conv_repetition:
-                                tail = conv_response[-200:]
-                                if conv_response[:-200].find(tail) != -1:
-                                    conv_repetition = True
-                                    print(f"[WebSocket] Conv repetition detected, stopping")
-                                    break
+                            if not conv_repetition and _is_repetitive(conv_response):
+                                conv_repetition = True
+                                print("[WebSocket] Conv repetition detected, stopping")
+                                break
                             filtered = think_filter.feed(content)
                             if filtered:
                                 await websocket.send_json({"type": "token", "content": filtered})
@@ -1377,8 +1405,8 @@ Regels:
                         break
 
                 await websocket.send_json({"type": "done"})
-                await llm_client.close()
-                await mcp_client.close()
+                await llm_client.close(); llm_client = None
+                await mcp_client.close(); mcp_client = None
                 continue  # Wait for next message
 
             # ============================================================
@@ -1422,40 +1450,13 @@ Regels:
                 # JSON fallback mode - detailed tool instructions
                 messages.append({"role": "system", "content": build_tool_prompt(filtered_mcp_tools, system_prompt)})
             elif use_tools:
-                # Native tool calling mode - also needs multi-tool instructions
-                native_tool_prompt = f"""{system_prompt}
-
-Je bent een security assistent voor NetMonitor met toegang tot {len(ollama_tools)} tools.
-
-BELANGRIJKE TOOL PARAMETERS:
-- lookup_ip_owner(ip_address="8.8.8.8") - Gebruik voor "van wie is dit IP?", eigenaar/organisatie opzoeken. Strip /32 CIDR notatie.
-- analyze_ip(ip_address="8.8.8.8") - Gebruik voor dreigingsanalyse van een IP in het netwerk
-- web_search(query="zoekterm") - Zoek op internet. Type moet 'text' of 'news' zijn (NIET 'web')
-- dns_lookup(domain="example.com") - ALLEEN voor domeinnaam→IP vertaling. NIET voor IP eigenaar.
-- get_top_talkers(hours=168, limit=10) - hours=168 voor een week, hours=24 voor een dag
-- get_threat_detections(hours=24, limit=20) - recente bedreigingen
-- get_sensor_status() - geen parameters nodig
-
-WELKE TOOL WANNEER:
-- "Van wie is IP X?" / "Wie zit achter IP X?" → lookup_ip_owner(ip_address="X")
-- "Zoek informatie over X" / "Wat is CVE-X?" → web_search(query="X")
-- "Wat is het IP van example.com?" → dns_lookup(domain="example.com")
-- "Is IP X verdacht?" → analyze_ip(ip_address="X")
-
-WORKFLOW VOOR RAPPORTAGES:
-1. EERST netwerk data ophalen: get_sensor_status, get_top_talkers, get_threat_detections
-2. DAARNA internet zoeken voor aanbevelingen: web_search(query="relevante zoekterm")
-3. TENSLOTTE een compleet rapport schrijven met alle verzamelde informatie
-
-WANNEER WEL/NIET TOOLS GEBRUIKEN:
-- Gebruik een tool als de gebruiker NIEUWE data nodig heeft (actuele status, statistieken, lookups)
-- Gebruik GEEN tool als de vraag conversationeel is, een mening vraagt, of een follow-up is op eerder getoonde data
-- Bij twijfel: beantwoord gewoon in het Nederlands zonder tool
-- Doe GEEN automatische extra lookups (lookup_ip_owner, analyze_ip) op IPs uit resultaten tenzij de gebruiker daar specifiek om vraagt
-- Bij "toon meldingen/alerts" vragen: geef de meldingen weer, doe GEEN extra IP-analyses
-
-Roep tools ÉÉN VOOR ÉÉN aan. Geef pas een eindantwoord als je ALLE benodigde data hebt.
-BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Verwijs de gebruiker NOOIT naar externe websites. Maar als de vraag geen nieuwe data vereist, geef gewoon een direct antwoord."""
+                # Native tool calling mode - uses shared _TOOL_GUIDANCE constant
+                native_tool_prompt = (
+                    f"{system_prompt}\n\n"
+                    f"Je bent een security assistent voor NetMonitor met toegang tot {len(ollama_tools)} tools.\n"
+                    + _TOOL_GUIDANCE
+                    + "\n\nRoep tools ÉÉN VOOR ÉÉN aan. Geef pas een eindantwoord als je ALLE benodigde data hebt."
+                )
                 messages.append({"role": "system", "content": native_tool_prompt})
             elif system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
@@ -1463,12 +1464,17 @@ BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Verwijs de gebr
 
             # Multi-tool loop: keep calling LLM until no more tool calls
             MAX_TOOL_ITERATIONS = 10  # Prevent infinite loops
+            TOOL_LOOP_TIMEOUT = 300   # Max wall-clock seconds voor de gehele tool loop
             tool_iteration = 0
             called_tools: List[str] = []  # Track called tools to detect loops
             force_final_report = False  # Flag to force LLM to generate final report
             collected_tool_results: List[Dict[str, Any]] = []  # Track all tool results for final report
+            tool_loop_deadline = asyncio.get_event_loop().time() + TOOL_LOOP_TIMEOUT
 
             while tool_iteration < MAX_TOOL_ITERATIONS:
+                if asyncio.get_event_loop().time() > tool_loop_deadline:
+                    await websocket.send_json({"type": "token", "content": "\n\n*Tijdslimiet bereikt (300s). Verwerking gestopt.*"})
+                    break
                 tool_iteration += 1
                 full_response = ""
                 has_tool_call = False
@@ -1501,13 +1507,11 @@ BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Verwijs de gebr
                         if content:
                             full_response += content
 
-                            # Repetitie detectie: stop als de laatste 200 chars eerder in response voorkomen
-                            if len(full_response) > 600 and not repetition_detected:
-                                tail = full_response[-200:]
-                                if full_response[:-200].find(tail) != -1:
-                                    repetition_detected = True
-                                    print(f"[WebSocket] Repetition detected, stopping LLM generation")
-                                    break
+                            # Repetitie detectie
+                            if not repetition_detected and _is_repetitive(full_response):
+                                repetition_detected = True
+                                print("[WebSocket] Repetition detected, stopping LLM generation")
+                                break
 
                             if not first_token_sent and not has_tool_call:
                                 await send_status("Antwoord genereren...", "generating")
@@ -1603,7 +1607,7 @@ BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Verwijs de gebr
                         await websocket.send_json({"type": "tool_call", "tool": tool_name, "args": tool_args})
 
                         # Execute tool with streaming
-                        final_result = None
+                        final_result: Dict[str, Any] = {"success": False, "error": "Geen resultaat ontvangen van tool"}
                         async for evt in mcp_client.call_tool_stream(tool_name, tool_args):
                             if evt.get("type") == "notification":
                                 msg_evt = evt["message"]
@@ -1727,17 +1731,25 @@ BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Verwijs de gebr
                 break
 
             await websocket.send_json({"type": "done"})
-            await llm_client.close()
-            await mcp_client.close()
+            await llm_client.close(); llm_client = None
+            await mcp_client.close(); mcp_client = None
 
     except WebSocketDisconnect:
         print("Client disconnected")
     except Exception as e:
-        print(f"WebSocket error: {e}")
+        print(f"WebSocket error: {e}", flush=True)
         try:
             await websocket.send_json({"type": "error", "content": str(e)})
         except Exception:
             pass
+    finally:
+        # Sluit clients die niet correct gesloten zijn na een exception
+        for client in (llm_client, mcp_client):
+            if client is not None:
+                try:
+                    await client.close()
+                except Exception:
+                    pass
 
 
 # ------------------------------------------------------------
@@ -1746,7 +1758,7 @@ BELANGRIJK: Gebruik de juiste tool wanneer nieuwe data nodig is. Verwijs de gebr
 
 if __name__ == "__main__":
     print("=" * 70)
-    print("NetMonitor Chat v2.0 - Hybrid Mode")
+    print("NetMonitor Chat v2.1 - Hybrid Mode (bugfixes: client cleanup, timeouts, dedup)")
     print("=" * 70)
     print(f"Ollama: {OLLAMA_BASE_URL}")
     if MCP_CONFIGURATIONS:
