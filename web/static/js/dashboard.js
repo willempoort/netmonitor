@@ -3133,7 +3133,7 @@ const trafficViz = (() => {
             sx: from.x + j(), sy: from.y + j(),
             tx: to.x   + j(), ty: to.y   + j(),
             progress: 0,
-            speed: 0.005 + Math.random() * 0.008,
+            speed: 0.002 + Math.random() * 0.003,
             color,
             size: 2.5 + Math.random() * 1.5,
         });
