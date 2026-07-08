@@ -3139,26 +3139,24 @@ const trafficViz = (() => {
         });
     }
 
+    const MAX_PARTICLES = 40;
+
     function maybeSpawnParticles(now) {
-        if (now - lastSpawn < 250) return;
+        if (now - lastSpawn < 800) return;
+        if (particles.length >= MAX_PARTICLES) return;
         lastSpawn = now;
 
         const gw = nodes.find(n => n.isGateway);
         if (!gw || !gw.x) return;
 
-        nodes.filter(n => !n.isGateway).forEach(n => {
-            const total = n.inMb + n.outMb;
-            const extra = Math.min(3, Math.floor(total / 4));
-
-            // Altijd 1 particle per richting garanderen, plus extra op basis van volume
+        const nonGw = nodes.filter(n => !n.isGateway);
+        // Spawn 1 particle per node per richting, stop zodra cap bereikt is
+        for (const n of nonGw) {
+            if (particles.length >= MAX_PARTICLES) break;
             spawnParticle(gw, n, C.inbound);
-            spawnParticle(n, gw, C.outbound);
-            for (let i = 0; i < extra; i++) {
-                spawnParticle(n.inMb >= n.outMb ? gw : n,
-                              n.inMb >= n.outMb ? n   : gw,
-                              n.inMb >= n.outMb ? C.inbound : C.outbound);
-            }
-        });
+            if (particles.length < MAX_PARTICLES)
+                spawnParticle(n, gw, C.outbound);
+        }
     }
 
     function flashAlert(severity) {
