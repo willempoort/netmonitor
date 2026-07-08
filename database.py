@@ -3524,7 +3524,9 @@ class DatabaseManager:
             if mac_address:
                 cursor.execute('''
                     SELECT id, ip_address::text as ip_address FROM devices
-                    WHERE mac_address = %s AND sensor_id = %s
+                    WHERE mac_address = %s AND sensor_id = %s AND is_active = TRUE
+                    ORDER BY last_seen DESC
+                    LIMIT 1
                 ''', (mac_address, sensor_id))
                 existing = cursor.fetchone()
 
