@@ -699,7 +699,15 @@ class EncryptedTrafficAnalyzer:
 
         # Check for ESNI/ECH usage
         if self.detect_esni_ech:
-            if parsed.get('has_esni'):
+            # Skip for whitelisted source IPs (e.g. trusted internal browsers)
+            src_whitelisted = False
+            if self.db:
+                try:
+                    src_whitelisted = self.db.check_ip_whitelisted(src_ip, direction='source')
+                except Exception:
+                    pass
+
+            if parsed.get('has_esni') and not src_whitelisted:
                 threats.append({
                     'type': 'ESNI_DETECTED',
                     'severity': 'LOW',
@@ -712,7 +720,7 @@ class EncryptedTrafficAnalyzer:
                     }
                 })
 
-            if parsed.get('has_ech'):
+            if parsed.get('has_ech') and not src_whitelisted:
                 threats.append({
                     'type': 'ECH_DETECTED',
                     'severity': 'LOW',
