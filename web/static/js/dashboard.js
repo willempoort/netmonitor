@@ -3036,194 +3036,240 @@ const trafficViz = (() => {
     if (!canvas) return { updateNodes: () => {}, flashAlert: () => {}, updatePps: () => {} };
 
     const ctx = canvas.getContext('2d');
-    let nodes = [];
-    let particles = [];
+    let nodes = [];       // { ip, label, isGateway, inMb, outMb, x, y }
+    let particles = [];   // { sx, sy, tx, ty, progress, speed, color, size }
     let radarAngle = 0;
     let pps = 0;
     let flashColor = null;
     let flashAlpha = 0;
-    let animFrame;
+    let lastSpawn = 0;
 
-    const COLORS = { inbound: '#0d9ddb', outbound: '#f59e0b', alert_CRITICAL: '#ef4444', alert_HIGH: '#f97316', alert_MEDIUM: '#eab308', alert_LOW: '#22c55e' };
-    const NODE_RADIUS = 5;
-    const GATEWAY_IP = '10.100.0.1';
+    const C = {
+        inbound:        '#0d9ddb',
+        outbound:       '#f59e0b',
+        alert_CRITICAL: '#ef4444',
+        alert_HIGH:     '#f97316',
+        alert_MEDIUM:   '#eab308',
+        alert_LOW:      '#22c55e',
+        gateway:        '#22c55e',
+        node:           '#64748b',
+        edge:           'rgba(255,255,255,0.08)',
+        sweep:          'rgba(34,197,94,0.18)',
+    };
 
     function resize() {
-        canvas.width = canvas.offsetWidth;
-        canvas.height = canvas.offsetHeight;
-        positionNodes();
+        const w = canvas.offsetWidth;
+        const h = canvas.offsetHeight;
+        if (w > 0 && h > 0) {
+            canvas.width = w;
+            canvas.height = h;
+            positionNodes();
+        }
     }
 
     function positionNodes() {
-        if (!nodes.length) return;
+        if (!nodes.length || !canvas.width) return;
         const W = canvas.width, H = canvas.height;
-        const cx = W * 0.12, cy = H / 2; // gateway hub on left
-        nodes.forEach((n, i) => {
-            if (n.isGateway) { n.x = cx; n.y = cy; return; }
-            const count = nodes.filter(x => !x.isGateway).length;
-            const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
-            const rx = (W * 0.36), ry = (H * 0.38);
-            n.x = W * 0.55 + Math.cos(angle) * rx;
-            n.y = cy + Math.sin(angle) * ry;
+        const gwX = W * 0.10, cy = H / 2;
+        const nonGw = nodes.filter(n => !n.isGateway);
+        const count = nonGw.length;
+
+        nodes.forEach(n => {
+            if (n.isGateway) { n.x = gwX; n.y = cy; return; }
+            const idx = nonGw.indexOf(n);
+            // Spread nodes in an arc on the right half
+            const angle = (idx / Math.max(count, 1)) * Math.PI * 1.6 - Math.PI * 0.8;
+            n.x = W * 0.55 + Math.cos(angle) * W * 0.33;
+            n.y = cy + Math.sin(angle) * H * 0.38;
         });
     }
 
     function updateNodes(talkers) {
         if (!talkers || !talkers.length) return;
+
         const top = talkers.slice(0, 9);
         const existing = new Map(nodes.map(n => [n.ip, n]));
 
-        const gateway = existing.get(GATEWAY_IP) || { ip: GATEWAY_IP, label: 'GW', isGateway: true, totalMb: 0, x: 0, y: 0 };
-        const newNodes = [gateway];
+        // Gateway node — altijd aanwezig als centraal hub
+        // Gebruik het eerste item als proxy voor de gateway als 10.100.0.254 niet in de lijst staat
+        const gwIp = '10.100.0.254';
+        const gwOld = existing.get(gwIp) || existing.get('GW') || {};
+        const gw = { ip: gwIp, label: 'GW', isGateway: true, inMb: 0, outMb: 0, x: gwOld.x || 0, y: gwOld.y || 0 };
 
+        const newNodes = [gw];
         top.forEach(t => {
             const ip = t.ip || t.ip_address || '';
-            if (ip === GATEWAY_IP) return;
-            const label = (t.hostname && t.hostname !== ip) ? t.hostname.split('.')[0] : ip.split('.').pop();
-            const totalMb = parseFloat(t.inbound_mb || 0) + parseFloat(t.outbound_mb || 0);
-            const old = existing.get(ip) || { x: 0, y: 0 };
-            newNodes.push({ ip, label, totalMb, inMb: parseFloat(t.inbound_mb || 0), outMb: parseFloat(t.outbound_mb || 0), isGateway: false, x: old.x, y: old.y });
+            if (ip === gwIp) return;
+            const hostname = t.hostname || '';
+            const label = (hostname && hostname !== ip) ? hostname.split('.')[0] : ip.split('.').pop();
+            const old = existing.get(ip) || {};
+            newNodes.push({
+                ip, label, isGateway: false,
+                inMb:  parseFloat(t.inbound_mb  || 0),
+                outMb: parseFloat(t.outbound_mb || 0),
+                x: old.x || 0, y: old.y || 0,
+            });
         });
 
         nodes = newNodes;
+
+        // Zorg dat canvas dimensies bekend zijn voor positionNodes
+        if (!canvas.width) resize();
         positionNodes();
 
-        // Spawn particles for top talkers
-        nodes.filter(n => !n.isGateway && n.totalMb > 0).forEach(n => {
-            const count = Math.min(3, Math.ceil(n.totalMb / 10) + 1);
-            for (let i = 0; i < count; i++) {
-                if (Math.random() < 0.6) spawnParticle(gateway, n, 'inbound');
-                if (Math.random() < 0.6) spawnParticle(n, gateway, 'outbound');
-            }
-        });
-
+        // Status bijwerken
         const statusEl = document.getElementById('traffic-viz-status');
-        if (statusEl) statusEl.textContent = `${top.length} actieve hosts · ${pps > 0 ? pps.toFixed(0) + ' pps' : 'scanning...'}`;
+        if (statusEl) {
+            const ppsText = pps > 0 ? `${pps.toFixed(0)} pps · ` : '';
+            statusEl.textContent = `${ppsText}${top.length} actieve hosts`;
+        }
     }
 
-    function spawnParticle(from, to, dir) {
+    function spawnParticle(from, to, color) {
+        // Sla over als positie nog niet bepaald is
         if (!from.x && !from.y) return;
-        const jitter = () => (Math.random() - 0.5) * 8;
+        if (!to.x && !to.y) return;
+        const j = () => (Math.random() - 0.5) * 6;
         particles.push({
-            x: from.x + jitter(), y: from.y + jitter(),
-            tx: to.x + jitter(), ty: to.y + jitter(),
+            sx: from.x + j(), sy: from.y + j(),   // vaste startpositie
+            tx: to.x   + j(), ty: to.y   + j(),   // vaste eindpositie
             progress: 0,
-            speed: 0.008 + Math.random() * 0.012,
-            color: COLORS[dir],
-            size: 2 + Math.random() * 1.5,
+            speed: 0.006 + Math.random() * 0.010,
+            color,
+            size: 1.8 + Math.random() * 1.4,
+        });
+    }
+
+    function maybeSpawnParticles(now) {
+        // Spawn elke ~400ms een batch gebaseerd op actuele node-data
+        if (now - lastSpawn < 400) return;
+        lastSpawn = now;
+
+        const gw = nodes.find(n => n.isGateway);
+        if (!gw) return;
+
+        nodes.filter(n => !n.isGateway).forEach(n => {
+            const total = n.inMb + n.outMb;
+            // Altijd minstens 1 particle per node zodat de animatie zichtbaar is
+            const count = Math.max(1, Math.min(4, Math.ceil(total / 5)));
+            for (let i = 0; i < count; i++) {
+                if (Math.random() < 0.55) spawnParticle(gw, n, C.inbound);
+                if (Math.random() < 0.55) spawnParticle(n, gw, C.outbound);
+            }
         });
     }
 
     function flashAlert(severity) {
-        flashColor = COLORS['alert_' + severity] || COLORS.alert_HIGH;
+        flashColor = C['alert_' + severity] || C.alert_HIGH;
         flashAlpha = 0.18;
     }
 
-    function updatePps(val) {
-        pps = val;
+    function updatePps(val) { pps = val; }
+
+    function drawNode(n) {
+        if (!n.x && !n.y) return;
+        const r = n.isGateway ? 8 : 5;
+        const col = n.isGateway ? C.gateway : C.node;
+
+        // Glow
+        const glow = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, r * 3.5);
+        glow.addColorStop(0, n.isGateway ? 'rgba(34,197,94,0.35)' : 'rgba(100,116,139,0.25)');
+        glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r * 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = glow;
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = col;
+        ctx.fill();
+
+        ctx.fillStyle = 'rgba(255,255,255,0.80)';
+        ctx.font = 'bold 9px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(n.label, n.x, n.y - r - 3);
     }
 
-    function draw() {
-        if (!canvas.width) resize();
+    function draw(now) {
+        // Zorg voor geldige canvas-afmetingen
+        if (!canvas.width || !canvas.height) { resize(); }
         const W = canvas.width, H = canvas.height;
+        if (!W || !H) { requestAnimationFrame(draw); return; }
+
         ctx.clearRect(0, 0, W, H);
 
-        // Flash overlay for new alerts
+        // Alert flash overlay
         if (flashAlpha > 0) {
-            ctx.fillStyle = flashColor;
             ctx.globalAlpha = flashAlpha;
+            ctx.fillStyle = flashColor;
             ctx.fillRect(0, 0, W, H);
             ctx.globalAlpha = 1;
-            flashAlpha = Math.max(0, flashAlpha - 0.008);
+            flashAlpha = Math.max(0, flashAlpha - 0.006);
         }
 
         if (!nodes.length) {
             drawIdle(W, H);
-            animFrame = requestAnimationFrame(draw);
+            requestAnimationFrame(draw);
             return;
         }
 
         const gw = nodes.find(n => n.isGateway);
+        const gwX = gw ? gw.x : W * 0.10;
+        const gwY = gw ? gw.y : H / 2;
 
-        // Draw radar sweep from gateway
-        if (gw && gw.x) {
-            radarAngle = (radarAngle + 0.015) % (Math.PI * 2);
-            const sweepR = Math.max(W, H) * 0.9;
-            const grad = ctx.createConicalGradient ? null : null; // fallback: simple arc
-            ctx.save();
-            ctx.translate(gw.x, gw.y);
-            ctx.rotate(radarAngle);
-            const sweep = ctx.createLinearGradient(0, 0, sweepR, 0);
-            sweep.addColorStop(0, 'rgba(34,197,94,0.18)');
-            sweep.addColorStop(1, 'rgba(34,197,94,0)');
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.arc(0, 0, sweepR, -0.3, 0.3);
-            ctx.closePath();
-            ctx.fillStyle = sweep;
-            ctx.fill();
-            ctx.restore();
-        }
+        // Radar sweep vanuit gateway
+        radarAngle = (radarAngle + 0.012) % (Math.PI * 2);
+        ctx.save();
+        ctx.translate(gwX, gwY);
+        ctx.rotate(radarAngle);
+        const sweep = ctx.createLinearGradient(0, 0, W, 0);
+        sweep.addColorStop(0, C.sweep);
+        sweep.addColorStop(1, 'rgba(34,197,94,0)');
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, W, -0.28, 0.28);
+        ctx.closePath();
+        ctx.fillStyle = sweep;
+        ctx.fill();
+        ctx.restore();
 
-        // Draw edges from gateway to nodes
-        nodes.filter(n => !n.isGateway && n.x).forEach(n => {
+        // Verbindingslijnen gateway → nodes
+        nodes.filter(n => !n.isGateway && (n.x || n.y)).forEach(n => {
             ctx.beginPath();
-            ctx.moveTo(gw ? gw.x : 0, gw ? gw.y : H / 2);
+            ctx.moveTo(gwX, gwY);
             ctx.lineTo(n.x, n.y);
-            ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+            ctx.strokeStyle = C.edge;
             ctx.lineWidth = 1;
             ctx.stroke();
         });
 
-        // Update & draw particles
+        // Spawn nieuwe particles op interval
+        maybeSpawnParticles(now);
+
+        // Particles tekenen — interpoleer op basis van sx/sy → tx/ty
         particles = particles.filter(p => p.progress < 1);
         particles.forEach(p => {
-            p.progress += p.speed;
-            const t = p.progress;
-            p.x = p.x + (p.tx - p.x) * p.speed / (1 - t + p.speed);
-            const cx = p.x + (p.tx - p.x) * t;
-            const cy = p.y + (p.ty - p.y) * t;
+            p.progress = Math.min(1, p.progress + p.speed);
+            const x = p.sx + (p.tx - p.sx) * p.progress;
+            const y = p.sy + (p.ty - p.sy) * p.progress;
             ctx.beginPath();
-            ctx.arc(cx, cy, p.size, 0, Math.PI * 2);
+            ctx.arc(x, y, p.size, 0, Math.PI * 2);
             ctx.fillStyle = p.color;
-            ctx.globalAlpha = 1 - t * 0.5;
+            ctx.globalAlpha = 0.9 - p.progress * 0.5;
             ctx.fill();
             ctx.globalAlpha = 1;
         });
 
-        // Draw nodes
-        nodes.forEach(n => {
-            if (!n.x && !n.y) return;
-            const r = n.isGateway ? 8 : NODE_RADIUS;
-            const col = n.isGateway ? '#22c55e' : '#64748b';
+        // Nodes tekenen
+        nodes.forEach(drawNode);
 
-            // Glow
-            const glow = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, r * 3);
-            glow.addColorStop(0, n.isGateway ? 'rgba(34,197,94,0.3)' : 'rgba(100,116,139,0.2)');
-            glow.addColorStop(1, 'rgba(0,0,0,0)');
-            ctx.beginPath();
-            ctx.arc(n.x, n.y, r * 3, 0, Math.PI * 2);
-            ctx.fillStyle = glow;
-            ctx.fill();
-
-            ctx.beginPath();
-            ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
-            ctx.fillStyle = col;
-            ctx.fill();
-
-            // Label
-            ctx.fillStyle = 'rgba(255,255,255,0.75)';
-            ctx.font = '9px monospace';
-            ctx.textAlign = 'center';
-            ctx.fillText(n.label, n.x, n.y - r - 3);
-        });
-
-        animFrame = requestAnimationFrame(draw);
+        requestAnimationFrame(draw);
     }
 
     function drawIdle(W, H) {
         radarAngle = (radarAngle + 0.01) % (Math.PI * 2);
-        const cx = W / 2, cy = H / 2, r = Math.min(W, H) * 0.3;
+        const cx = W / 2, cy = H / 2, r = Math.min(W, H) * 0.28;
 
         ctx.save();
         ctx.translate(cx, cy);
@@ -3239,10 +3285,10 @@ const trafficViz = (() => {
         ctx.fill();
         ctx.restore();
 
-        [r * 0.33, r * 0.66, r].forEach(cr => {
+        [r * 0.35, r * 0.68, r].forEach(cr => {
             ctx.beginPath();
             ctx.arc(cx, cy, cr, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(34,197,94,0.1)';
+            ctx.strokeStyle = 'rgba(34,197,94,0.12)';
             ctx.lineWidth = 1;
             ctx.stroke();
         });
@@ -3253,9 +3299,10 @@ const trafficViz = (() => {
         ctx.fillText('scanning...', cx, cy + 4);
     }
 
-    window.addEventListener('resize', resize);
-    resize();
-    draw();
+    window.addEventListener('resize', () => { resize(); positionNodes(); });
+
+    // Start na layout (requestAnimationFrame garandeert dat CSS is toegepast)
+    requestAnimationFrame(() => { resize(); draw(); });
 
     return { updateNodes, flashAlert, updatePps };
 })();
