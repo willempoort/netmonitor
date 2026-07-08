@@ -46,3 +46,7 @@ Thumbs.db
 # Config overrides (optioneel, commentaar uit als je custom configs wilt ignoren)
 # config.local.yaml
 config.yaml
+
+# Gegenereerde data — worden door scripts gedownload/opgebouwd
+data/oui_database.json
+data/oui.csv
