@@ -893,6 +893,21 @@
             </div>
         </div>
 
+        <!-- Network Traffic Visualizer -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="card bg-secondary">
+                    <div class="card-header d-flex justify-content-between align-items-center py-1">
+                        <span><i class="bi bi-broadcast-pin text-success"></i> <small>Live Network Activity</small></span>
+                        <small class="text-muted" id="traffic-viz-status">scanning...</small>
+                    </div>
+                    <div class="card-body p-0" style="height:140px; overflow:hidden;">
+                        <canvas id="trafficVizCanvas" style="width:100%;height:140px;display:block;"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Main Content Row -->
         <div class="row">
             <!-- Recent Alerts -->
