@@ -1303,14 +1303,13 @@ class ThreatDetector:
         """
         Detecteer brute force aanvallen op authenticatie services
 
-        Detecteert herhaalde connection attempts naar:
+        Detecteert herhaalde SYN-pakketten naar:
         - SSH (22), Telnet (23), FTP (21), RDP (3389)
-        - HTTP Auth (80, 443, 8080), SMB (445), MySQL (3306), PostgreSQL (5432)
+        - SMB (445), MySQL (3306), PostgreSQL (5432), VNC (5900)
 
-        Excludes false positives from:
-        - Known streaming services (Netflix, YouTube, Prime Video)
-        - CDN providers (Cloudflare, Akamai)
-        - QUIC/HTTP3 traffic (many parallel connections are normal)
+        HTTP/HTTPS (80, 443, 8080) worden niet gedetecteerd via SYN-tellen:
+        browsers openen tientallen parallelle verbindingen per paginalaad,
+        waardoor dit structureel false positives oplevert.
         """
         if not packet.haslayer(TCP):
             return None
@@ -1321,19 +1320,20 @@ class ThreatDetector:
         dst_ip = ip_layer.dst
         dst_port = tcp_layer.dport
 
-        # Authentication service ports
+        # Authentication service ports — alleen protocollen waar elke SYN een loginpoging is.
+        # HTTP/HTTPS (80, 443, 8080) zijn bewust weggelaten: browsers openen tientallen
+        # parallelle verbindingen per paginalaad, waardoor SYN-tellen structureel false
+        # positives oplevert. HTTP auth brute force werkt via keep-alive en is een
+        # applicatielaag-probleem, niet detecteerbaar via TCP SYN-pakket telling.
         auth_ports = {
             21: 'FTP',
             22: 'SSH',
             23: 'Telnet',
-            80: 'HTTP',
-            443: 'HTTPS',
             445: 'SMB',
             3306: 'MySQL',
             3389: 'RDP',
             5432: 'PostgreSQL',
             5900: 'VNC',
-            8080: 'HTTP-Alt'
         }
 
         if dst_port not in auth_ports:
@@ -1350,19 +1350,6 @@ class ThreatDetector:
         brute_force_config = self.config['thresholds'].get('brute_force', {})
         if not brute_force_config.get('enabled', True):
             return None
-
-        # Check if we should exclude streaming services and CDN providers
-        exclude_streaming = brute_force_config.get('exclude_streaming', True)
-        exclude_cdn = brute_force_config.get('exclude_cdn', True)
-
-        # Skip detection for HTTP/HTTPS if destination is streaming service or CDN
-        if dst_port in [80, 443, 8080]:
-            is_match, service_type = self._is_streaming_or_cdn(dst_ip)
-            if is_match:
-                if (service_type == 'streaming' and exclude_streaming) or \
-                   (service_type == 'cdn' and exclude_cdn):
-                    self.logger.debug(f"Brute force detection skipped for {dst_ip} ({service_type} service)")
-                    return None
 
         # Alleen inbound aanvallen detecteren (externe aanvaller → intern doelwit)
         # Uitgaand verkeer van lokale servers naar externe poorten is geen brute force
