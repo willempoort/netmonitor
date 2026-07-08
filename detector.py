@@ -1343,6 +1343,10 @@ class ThreatDetector:
         if not (tcp_layer.flags & 0x02) or (tcp_layer.flags & 0x10):  # SYN maar niet ACK
             return None
 
+        # Skip detection for whitelisted source IPs
+        if self._is_src_whitelisted(src_ip):
+            return None
+
         brute_force_config = self.config['thresholds'].get('brute_force', {})
         if not brute_force_config.get('enabled', True):
             return None
