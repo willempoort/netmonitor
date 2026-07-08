@@ -106,7 +106,7 @@
     </div>
 
     <!-- Navbar -->
-    <nav class="navbar navbar-dark bg-black border-bottom border-secondary">
+    <nav class="navbar navbar-dark bg-black border-bottom border-secondary fixed-top">
         <div class="container-fluid">
             <span class="navbar-brand mb-0 h1 d-flex align-items-center">
                 <img src="{{ url_for('static', filename='logo.png') }}" alt="NetMonitor" height="32" class="me-2">
@@ -128,7 +128,17 @@
         </div>
     </nav>
 
-    <div class="container-fluid mt-3">
+    <!-- Live Network Activity — sticky strip direct onder navbar -->
+    <div id="traffic-viz-bar" style="position:fixed;top:56px;left:0;right:0;z-index:1019;background:#1a1d20;border-bottom:1px solid #495057;">
+        <div style="display:flex;align-items:center;padding:0 12px;height:18px;background:#111315;">
+            <i class="bi bi-broadcast-pin text-success me-2" style="font-size:0.7rem;"></i>
+            <small class="text-success" style="font-size:0.7rem;letter-spacing:0.05em;">LIVE NETWORK ACTIVITY</small>
+            <small class="text-muted ms-auto" id="traffic-viz-status" style="font-size:0.7rem;">scanning...</small>
+        </div>
+        <canvas id="trafficVizCanvas" style="width:100%;height:100px;display:block;"></canvas>
+    </div>
+
+    <div class="container-fluid" style="margin-top:calc(56px + 118px + 8px);">
 
         <!-- System Stats Row -->
         <div class="row mb-4">
@@ -888,21 +898,6 @@
                     </div>
                     <div class="card-body">
                         <canvas id="alertPieChart" height="200"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Network Traffic Visualizer -->
-        <div class="row mb-3">
-            <div class="col-12">
-                <div class="card bg-secondary">
-                    <div class="card-header d-flex justify-content-between align-items-center py-1">
-                        <span><i class="bi bi-broadcast-pin text-success"></i> <small>Live Network Activity</small></span>
-                        <small class="text-muted" id="traffic-viz-status">scanning...</small>
-                    </div>
-                    <div class="card-body p-0" style="height:140px; overflow:hidden;">
-                        <canvas id="trafficVizCanvas" style="width:100%;height:140px;display:block;"></canvas>
                     </div>
                 </div>
             </div>
