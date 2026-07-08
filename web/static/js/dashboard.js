@@ -3126,35 +3126,37 @@ const trafficViz = (() => {
     }
 
     function spawnParticle(from, to, color) {
-        // Sla over als positie nog niet bepaald is
-        if (!from.x && !from.y) return;
-        if (!to.x && !to.y) return;
+        if (!isFinite(from.x) || !isFinite(from.y)) return;
+        if (!isFinite(to.x)   || !isFinite(to.y))   return;
         const j = () => (Math.random() - 0.5) * 6;
         particles.push({
-            sx: from.x + j(), sy: from.y + j(),   // vaste startpositie
-            tx: to.x   + j(), ty: to.y   + j(),   // vaste eindpositie
+            sx: from.x + j(), sy: from.y + j(),
+            tx: to.x   + j(), ty: to.y   + j(),
             progress: 0,
-            speed: 0.006 + Math.random() * 0.010,
+            speed: 0.005 + Math.random() * 0.008,
             color,
-            size: 1.8 + Math.random() * 1.4,
+            size: 2.5 + Math.random() * 1.5,
         });
     }
 
     function maybeSpawnParticles(now) {
-        // Spawn elke ~400ms een batch gebaseerd op actuele node-data
-        if (now - lastSpawn < 400) return;
+        if (now - lastSpawn < 250) return;
         lastSpawn = now;
 
         const gw = nodes.find(n => n.isGateway);
-        if (!gw) return;
+        if (!gw || !gw.x) return;
 
         nodes.filter(n => !n.isGateway).forEach(n => {
             const total = n.inMb + n.outMb;
-            // Altijd minstens 1 particle per node zodat de animatie zichtbaar is
-            const count = Math.max(1, Math.min(4, Math.ceil(total / 5)));
-            for (let i = 0; i < count; i++) {
-                if (Math.random() < 0.55) spawnParticle(gw, n, C.inbound);
-                if (Math.random() < 0.55) spawnParticle(n, gw, C.outbound);
+            const extra = Math.min(3, Math.floor(total / 4));
+
+            // Altijd 1 particle per richting garanderen, plus extra op basis van volume
+            spawnParticle(gw, n, C.inbound);
+            spawnParticle(n, gw, C.outbound);
+            for (let i = 0; i < extra; i++) {
+                spawnParticle(n.inMb >= n.outMb ? gw : n,
+                              n.inMb >= n.outMb ? n   : gw,
+                              n.inMb >= n.outMb ? C.inbound : C.outbound);
             }
         });
     }
@@ -3256,7 +3258,7 @@ const trafficViz = (() => {
             ctx.beginPath();
             ctx.arc(x, y, p.size, 0, Math.PI * 2);
             ctx.fillStyle = p.color;
-            ctx.globalAlpha = 0.9 - p.progress * 0.5;
+            ctx.globalAlpha = 1.0 - p.progress * 0.35;
             ctx.fill();
             ctx.globalAlpha = 1;
         });
