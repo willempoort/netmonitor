@@ -353,11 +353,19 @@ function updateDashboard(data) {
 
     if (data.top_talkers) {
         updateTopTalkers(data.top_talkers);
+        trafficViz.updateNodes(data.top_talkers);
+    }
+
+    if (data.recent_alerts && data.recent_alerts.length > 0) {
+        trafficViz.flashAlert(data.recent_alerts[0].severity);
     }
 
     // Update gauges with current metrics
     if (data.current_metrics) {
         updateMetrics(data.current_metrics);
+        if (data.current_metrics.traffic) {
+            trafficViz.updatePps(data.current_metrics.traffic.packets_per_second || 0);
+        }
     }
 }
 
@@ -3020,6 +3028,237 @@ function formatNumber(num) {
     }
     return num.toString();
 }
+
+// ==================== Traffic Visualizer ====================
+
+const trafficViz = (() => {
+    const canvas = document.getElementById('trafficVizCanvas');
+    if (!canvas) return { updateNodes: () => {}, flashAlert: () => {}, updatePps: () => {} };
+
+    const ctx = canvas.getContext('2d');
+    let nodes = [];
+    let particles = [];
+    let radarAngle = 0;
+    let pps = 0;
+    let flashColor = null;
+    let flashAlpha = 0;
+    let animFrame;
+
+    const COLORS = { inbound: '#0d9ddb', outbound: '#f59e0b', alert_CRITICAL: '#ef4444', alert_HIGH: '#f97316', alert_MEDIUM: '#eab308', alert_LOW: '#22c55e' };
+    const NODE_RADIUS = 5;
+    const GATEWAY_IP = '10.100.0.1';
+
+    function resize() {
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+        positionNodes();
+    }
+
+    function positionNodes() {
+        if (!nodes.length) return;
+        const W = canvas.width, H = canvas.height;
+        const cx = W * 0.12, cy = H / 2; // gateway hub on left
+        nodes.forEach((n, i) => {
+            if (n.isGateway) { n.x = cx; n.y = cy; return; }
+            const count = nodes.filter(x => !x.isGateway).length;
+            const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
+            const rx = (W * 0.36), ry = (H * 0.38);
+            n.x = W * 0.55 + Math.cos(angle) * rx;
+            n.y = cy + Math.sin(angle) * ry;
+        });
+    }
+
+    function updateNodes(talkers) {
+        if (!talkers || !talkers.length) return;
+        const top = talkers.slice(0, 9);
+        const existing = new Map(nodes.map(n => [n.ip, n]));
+
+        const gateway = existing.get(GATEWAY_IP) || { ip: GATEWAY_IP, label: 'GW', isGateway: true, totalMb: 0, x: 0, y: 0 };
+        const newNodes = [gateway];
+
+        top.forEach(t => {
+            const ip = t.ip || t.ip_address || '';
+            if (ip === GATEWAY_IP) return;
+            const label = (t.hostname && t.hostname !== ip) ? t.hostname.split('.')[0] : ip.split('.').pop();
+            const totalMb = parseFloat(t.inbound_mb || 0) + parseFloat(t.outbound_mb || 0);
+            const old = existing.get(ip) || { x: 0, y: 0 };
+            newNodes.push({ ip, label, totalMb, inMb: parseFloat(t.inbound_mb || 0), outMb: parseFloat(t.outbound_mb || 0), isGateway: false, x: old.x, y: old.y });
+        });
+
+        nodes = newNodes;
+        positionNodes();
+
+        // Spawn particles for top talkers
+        nodes.filter(n => !n.isGateway && n.totalMb > 0).forEach(n => {
+            const count = Math.min(3, Math.ceil(n.totalMb / 10) + 1);
+            for (let i = 0; i < count; i++) {
+                if (Math.random() < 0.6) spawnParticle(gateway, n, 'inbound');
+                if (Math.random() < 0.6) spawnParticle(n, gateway, 'outbound');
+            }
+        });
+
+        const statusEl = document.getElementById('traffic-viz-status');
+        if (statusEl) statusEl.textContent = `${top.length} actieve hosts · ${pps > 0 ? pps.toFixed(0) + ' pps' : 'scanning...'}`;
+    }
+
+    function spawnParticle(from, to, dir) {
+        if (!from.x && !from.y) return;
+        const jitter = () => (Math.random() - 0.5) * 8;
+        particles.push({
+            x: from.x + jitter(), y: from.y + jitter(),
+            tx: to.x + jitter(), ty: to.y + jitter(),
+            progress: 0,
+            speed: 0.008 + Math.random() * 0.012,
+            color: COLORS[dir],
+            size: 2 + Math.random() * 1.5,
+        });
+    }
+
+    function flashAlert(severity) {
+        flashColor = COLORS['alert_' + severity] || COLORS.alert_HIGH;
+        flashAlpha = 0.18;
+    }
+
+    function updatePps(val) {
+        pps = val;
+    }
+
+    function draw() {
+        if (!canvas.width) resize();
+        const W = canvas.width, H = canvas.height;
+        ctx.clearRect(0, 0, W, H);
+
+        // Flash overlay for new alerts
+        if (flashAlpha > 0) {
+            ctx.fillStyle = flashColor;
+            ctx.globalAlpha = flashAlpha;
+            ctx.fillRect(0, 0, W, H);
+            ctx.globalAlpha = 1;
+            flashAlpha = Math.max(0, flashAlpha - 0.008);
+        }
+
+        if (!nodes.length) {
+            drawIdle(W, H);
+            animFrame = requestAnimationFrame(draw);
+            return;
+        }
+
+        const gw = nodes.find(n => n.isGateway);
+
+        // Draw radar sweep from gateway
+        if (gw && gw.x) {
+            radarAngle = (radarAngle + 0.015) % (Math.PI * 2);
+            const sweepR = Math.max(W, H) * 0.9;
+            const grad = ctx.createConicalGradient ? null : null; // fallback: simple arc
+            ctx.save();
+            ctx.translate(gw.x, gw.y);
+            ctx.rotate(radarAngle);
+            const sweep = ctx.createLinearGradient(0, 0, sweepR, 0);
+            sweep.addColorStop(0, 'rgba(34,197,94,0.18)');
+            sweep.addColorStop(1, 'rgba(34,197,94,0)');
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.arc(0, 0, sweepR, -0.3, 0.3);
+            ctx.closePath();
+            ctx.fillStyle = sweep;
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // Draw edges from gateway to nodes
+        nodes.filter(n => !n.isGateway && n.x).forEach(n => {
+            ctx.beginPath();
+            ctx.moveTo(gw ? gw.x : 0, gw ? gw.y : H / 2);
+            ctx.lineTo(n.x, n.y);
+            ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        });
+
+        // Update & draw particles
+        particles = particles.filter(p => p.progress < 1);
+        particles.forEach(p => {
+            p.progress += p.speed;
+            const t = p.progress;
+            p.x = p.x + (p.tx - p.x) * p.speed / (1 - t + p.speed);
+            const cx = p.x + (p.tx - p.x) * t;
+            const cy = p.y + (p.ty - p.y) * t;
+            ctx.beginPath();
+            ctx.arc(cx, cy, p.size, 0, Math.PI * 2);
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = 1 - t * 0.5;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        });
+
+        // Draw nodes
+        nodes.forEach(n => {
+            if (!n.x && !n.y) return;
+            const r = n.isGateway ? 8 : NODE_RADIUS;
+            const col = n.isGateway ? '#22c55e' : '#64748b';
+
+            // Glow
+            const glow = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, r * 3);
+            glow.addColorStop(0, n.isGateway ? 'rgba(34,197,94,0.3)' : 'rgba(100,116,139,0.2)');
+            glow.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.beginPath();
+            ctx.arc(n.x, n.y, r * 3, 0, Math.PI * 2);
+            ctx.fillStyle = glow;
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+            ctx.fillStyle = col;
+            ctx.fill();
+
+            // Label
+            ctx.fillStyle = 'rgba(255,255,255,0.75)';
+            ctx.font = '9px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(n.label, n.x, n.y - r - 3);
+        });
+
+        animFrame = requestAnimationFrame(draw);
+    }
+
+    function drawIdle(W, H) {
+        radarAngle = (radarAngle + 0.01) % (Math.PI * 2);
+        const cx = W / 2, cy = H / 2, r = Math.min(W, H) * 0.3;
+
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(radarAngle);
+        const sweep = ctx.createLinearGradient(0, 0, r, 0);
+        sweep.addColorStop(0, 'rgba(34,197,94,0.15)');
+        sweep.addColorStop(1, 'rgba(34,197,94,0)');
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, r, -0.4, 0.4);
+        ctx.closePath();
+        ctx.fillStyle = sweep;
+        ctx.fill();
+        ctx.restore();
+
+        [r * 0.33, r * 0.66, r].forEach(cr => {
+            ctx.beginPath();
+            ctx.arc(cx, cy, cr, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(34,197,94,0.1)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        });
+
+        ctx.fillStyle = 'rgba(34,197,94,0.6)';
+        ctx.font = '11px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('scanning...', cx, cy + 4);
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+    draw();
+
+    return { updateNodes, flashAlert, updatePps };
+})();
 
 // ==================== Export for debugging ====================
 
