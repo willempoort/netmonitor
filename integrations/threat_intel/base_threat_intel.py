@@ -68,12 +68,15 @@ class ThreatIntelSource(IntegrationBase):
     All threat intel integrations (MISP, OTX, etc.) should inherit from this class.
     """
 
+    # Sentinel to distinguish "cached negative result" from "not cached at all"
+    _CACHE_MISS = object()
+
     def __init__(self, config: Dict = None):
         super().__init__(config)
 
         # Cache settings
         self.cache_ttl = config.get('cache_ttl_hours', 24) * 3600  # Convert to seconds
-        self._cache: Dict[str, tuple] = {}  # key -> (indicator, timestamp)
+        self._cache: Dict[str, tuple] = {}  # key -> (indicator_or_None, timestamp)
 
     @abstractmethod
     def lookup_ip(self, ip: str) -> Optional[ThreatIndicator]:
@@ -116,18 +119,25 @@ class ThreatIntelSource(IntegrationBase):
         """
         return None
 
-    def _get_cached(self, key: str) -> Optional[ThreatIndicator]:
-        """Get cached indicator if still valid"""
+    def _get_cached(self, key: str):
+        """
+        Get cached indicator if still valid.
+
+        Returns _CACHE_MISS (not None) when there is no valid cache entry,
+        so a cached negative lookup (indicator=None, meaning "checked, nothing
+        found") can be distinguished from "never checked" and doesn't trigger
+        a fresh API call on every access.
+        """
         if key in self._cache:
             indicator, timestamp = self._cache[key]
             if datetime.now().timestamp() - timestamp < self.cache_ttl:
                 return indicator
             else:
                 del self._cache[key]
-        return None
+        return self._CACHE_MISS
 
-    def _set_cached(self, key: str, indicator: ThreatIndicator) -> None:
-        """Cache an indicator"""
+    def _set_cached(self, key: str, indicator: Optional[ThreatIndicator]) -> None:
+        """Cache an indicator, including negative (None) results"""
         self._cache[key] = (indicator, datetime.now().timestamp())
 
     def clear_cache(self) -> int:
@@ -163,8 +173,8 @@ class ThreatIntelManager:
         # Registered sources
         self._sources: List[ThreatIntelSource] = []
 
-        # In-memory cache for quick lookups
-        self._lookup_cache: Dict[str, Optional[ThreatIndicator]] = {}
+        # In-memory cache for quick lookups: key -> (indicator_or_None, timestamp)
+        self._lookup_cache: Dict[str, tuple] = {}
         self._cache_ttl = config.get('cache_ttl_hours', 24) * 3600
 
         # Known malicious indicators (from all sources)
@@ -184,24 +194,47 @@ class ThreatIntelManager:
             return [s for s in self._sources if s.enabled]
         return self._sources
 
+    def _cache_get(self, cache_key: str):
+        """Get from lookup cache, honoring TTL. Returns _CACHE_MISS if absent/expired."""
+        if cache_key in self._lookup_cache:
+            cached, timestamp = self._lookup_cache[cache_key]
+            if datetime.now().timestamp() - timestamp < self._cache_ttl:
+                return cached
+            else:
+                del self._lookup_cache[cache_key]
+        return ThreatIntelSource._CACHE_MISS
+
+    def _cache_set(self, cache_key: str, value: Optional[ThreatIndicator]) -> None:
+        self._lookup_cache[cache_key] = (value, datetime.now().timestamp())
+
     def lookup_ip(self, ip: str) -> Optional[ThreatIndicator]:
         """
         Look up an IP across all enabled sources.
 
         Returns the first match with highest confidence.
         """
-        # Check cache first
+        # Check cache first (including cached negative results, so "clean" IPs
+        # don't trigger a fresh API call on every single alert)
         cache_key = f"ip:{ip}"
-        if cache_key in self._lookup_cache:
-            cached = self._lookup_cache[cache_key]
-            if cached is not None:
-                return cached
+        cached = self._cache_get(cache_key)
+        if cached is not ThreatIntelSource._CACHE_MISS:
+            return cached
 
         results = []
 
         for source in self.get_sources(enabled_only=True):
             try:
+                was_cached = source._get_cached(f"ip:{ip}") is not ThreatIntelSource._CACHE_MISS
                 indicator = source.lookup_ip(ip)
+                if source.name == 'abuseipdb':
+                    if was_cached:
+                        self._track_abuseipdb_stats(is_cache_hit=True)
+                    elif source._get_cached(f"ip:{ip}") is not ThreatIntelSource._CACHE_MISS:
+                        # Wasn't cached before, is cached now: a live API call was made
+                        # and its result (positive or negative) got cached. If it's
+                        # still not cached (e.g. skipped as non-public IP, or the
+                        # request errored), no call was actually made, so don't track it.
+                        self._track_abuseipdb_stats(is_cache_hit=False)
                 if indicator:
                     results.append(indicator)
                     source.record_success()
@@ -210,7 +243,7 @@ class ThreatIntelManager:
                 self.logger.warning(f"Error looking up IP in {source.name}: {e}")
 
         if not results:
-            self._lookup_cache[cache_key] = None
+            self._cache_set(cache_key, None)
             return None
 
         # Return highest confidence result
@@ -227,20 +260,52 @@ class ThreatIntelManager:
         best.tags = list(all_tags)
 
         # Cache result
-        self._lookup_cache[cache_key] = best
+        self._cache_set(cache_key, best)
 
         # Add to known malicious set
         self.malicious_ips.add(ip)
 
         return best
 
+    def _track_abuseipdb_stats(self, is_cache_hit: bool) -> None:
+        """Record an AbuseIPDB query (call or cache hit) in abuseipdb_api_stats, so the
+        dashboard's AbuseIPDB statistics reflect usage from this lookup path too."""
+        if not self.db:
+            return
+
+        try:
+            conn = self.db._get_connection()
+            cursor = conn.cursor()
+
+            if is_cache_hit:
+                cursor.execute("""
+                    INSERT INTO abuseipdb_api_stats (date, cache_hits, updated_at)
+                    VALUES (CURRENT_DATE, 1, NOW())
+                    ON CONFLICT (date) DO UPDATE SET
+                        cache_hits = abuseipdb_api_stats.cache_hits + 1,
+                        updated_at = NOW()
+                """)
+            else:
+                cursor.execute("""
+                    INSERT INTO abuseipdb_api_stats (date, api_calls, unique_ips_queried, updated_at)
+                    VALUES (CURRENT_DATE, 1, 1, NOW())
+                    ON CONFLICT (date) DO UPDATE SET
+                        api_calls = abuseipdb_api_stats.api_calls + 1,
+                        unique_ips_queried = abuseipdb_api_stats.unique_ips_queried + 1,
+                        updated_at = NOW()
+                """)
+
+            conn.commit()
+            self.db._return_connection(conn)
+        except Exception as e:
+            self.logger.debug(f"Error tracking AbuseIPDB stats: {e}")
+
     def lookup_domain(self, domain: str) -> Optional[ThreatIndicator]:
         """Look up a domain across all enabled sources"""
         cache_key = f"domain:{domain}"
-        if cache_key in self._lookup_cache:
-            cached = self._lookup_cache[cache_key]
-            if cached is not None:
-                return cached
+        cached = self._cache_get(cache_key)
+        if cached is not ThreatIntelSource._CACHE_MISS:
+            return cached
 
         results = []
 
@@ -255,11 +320,11 @@ class ThreatIntelManager:
                 self.logger.warning(f"Error looking up domain in {source.name}: {e}")
 
         if not results:
-            self._lookup_cache[cache_key] = None
+            self._cache_set(cache_key, None)
             return None
 
         best = max(results, key=lambda x: x.confidence)
-        self._lookup_cache[cache_key] = best
+        self._cache_set(cache_key, best)
         self.malicious_domains.add(domain)
 
         return best
@@ -278,7 +343,8 @@ class ThreatIntelManager:
         # Quick check in known set
         if ip in self.malicious_ips:
             # Get full indicator if cached
-            indicator = self._lookup_cache.get(f"ip:{ip}")
+            cached = self._cache_get(f"ip:{ip}")
+            indicator = cached if cached is not ThreatIntelSource._CACHE_MISS else None
             return True, indicator
 
         if not check_sources:

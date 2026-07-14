@@ -772,7 +772,11 @@ function addAlertToFeed(alert, prepend = false) {
     }
 }
 
+let currentAlertGroup = null;
+
 function showAlertDetails(group) {
+    currentAlertGroup = group;
+
     const modalTitle = document.getElementById('alertDetailsModalLabel');
     const modalBody = document.getElementById('alertDetailsBody');
 
@@ -903,6 +907,168 @@ function showAlertDetails(group) {
     // Show the modal
     const modal = new bootstrap.Modal(document.getElementById('alertDetailsModal'));
     modal.show();
+}
+
+function loadIpInfoInto(elementId, ip) {
+    const el = document.getElementById(elementId);
+    el.innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm"></span> IP-informatie laden...</span>';
+
+    fetch(`/api/ip-info/${encodeURIComponent(ip)}`)
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) {
+                el.innerHTML = `<span class="text-muted">Geen IP-informatie beschikbaar</span>`;
+                return;
+            }
+
+            if (data.is_private) {
+                el.innerHTML = '<span class="text-muted"><i class="bi bi-house"></i> Intern IP-adres (geen publieke reputatiegegevens)</span>';
+                return;
+            }
+
+            const parts = [];
+
+            if (data.country) {
+                parts.push(`${data.country_flag || ''} ${data.country}`);
+            }
+
+            if (data.cloud_provider) {
+                parts.push(`<span class="badge bg-info text-dark">${data.cloud_provider}</span>`);
+            } else if (data.asn_name) {
+                parts.push(data.asn_name);
+            } else if (data.asn) {
+                parts.push(`AS${data.asn}`);
+            }
+
+            let scoreHTML = '';
+            if (data.abuse_score !== null && data.abuse_score !== undefined) {
+                let scoreClass = 'success';
+                if (data.abuse_score >= 80) scoreClass = 'danger';
+                else if (data.abuse_score >= 50) scoreClass = 'warning';
+                else if (data.abuse_score >= 20) scoreClass = 'warning';
+                scoreHTML = ` <span class="badge bg-${scoreClass}">AbuseIPDB: ${data.abuse_score}%` +
+                    (data.abuse_reports ? ` (${data.abuse_reports} reports)` : '') + `</span>`;
+            } else {
+                scoreHTML = ' <span class="badge bg-secondary">Geen AbuseIPDB data</span>';
+            }
+
+            const flags = [];
+            if (data.is_known_c2) flags.push('<span class="badge bg-danger">C2</span>');
+            if (data.is_known_attacker) flags.push('<span class="badge bg-danger">Known attacker</span>');
+            if (data.is_tor_exit) flags.push('<span class="badge bg-warning text-dark">Tor exit</span>');
+            if (data.is_vpn) flags.push('<span class="badge bg-warning text-dark">VPN</span>');
+            if (data.is_proxy) flags.push('<span class="badge bg-warning text-dark">Proxy</span>');
+            if (data.is_datacenter) flags.push('<span class="badge bg-secondary">Datacenter</span>');
+
+            el.innerHTML = `
+                <div>${parts.join(' &middot; ') || '<span class="text-muted">Geen locatie/ASN gevonden</span>'}${scoreHTML}</div>
+                ${flags.length ? `<div class="mt-1">${flags.join(' ')}</div>` : ''}
+                <a href="https://www.abuseipdb.com/check/${encodeURIComponent(ip)}" target="_blank" rel="noopener" class="small">
+                    <i class="bi bi-box-arrow-up-right"></i> Bekijk op AbuseIPDB
+                </a>
+            `;
+        })
+        .catch(() => {
+            el.innerHTML = '<span class="text-muted">IP-informatie kon niet worden geladen</span>';
+        });
+}
+
+function openWhitelistFromAlert() {
+    if (!currentAlertGroup) return;
+    const group = currentAlertGroup;
+    const alert = group.alerts ? group.alerts[0] : group;
+
+    const sourceRow = document.getElementById('wl-source-row');
+    const destRow = document.getElementById('wl-dest-row');
+    const sourceIpEl = document.getElementById('wl-source-ip');
+    const destIpEl = document.getElementById('wl-dest-ip');
+    const useSource = document.getElementById('wl-use-source');
+    const useDest = document.getElementById('wl-use-dest');
+    const portInput = document.getElementById('wl-port');
+    const descInput = document.getElementById('wl-description');
+
+    if (group.source_ip) {
+        sourceRow.style.display = '';
+        sourceIpEl.textContent = group.source_ip;
+        useSource.checked = true;
+        loadIpInfoInto('wl-source-info', group.source_ip);
+    } else {
+        sourceRow.style.display = 'none';
+    }
+
+    if (group.destination_ip) {
+        destRow.style.display = '';
+        destIpEl.textContent = group.destination_ip;
+        useDest.checked = true;
+        loadIpInfoInto('wl-dest-info', group.destination_ip);
+    } else {
+        destRow.style.display = 'none';
+    }
+
+    const port = getAlertPort(alert);
+    portInput.value = port ? String(port) : '';
+
+    descInput.value = `Whitelisted vanuit alert: ${group.threat_type} (${group.source_ip || '?'} -> ${group.destination_ip || '?'})`;
+
+    // Hide the alert details modal, then show the whitelist modal
+    const detailsModalEl = document.getElementById('alertDetailsModal');
+    const detailsModal = bootstrap.Modal.getInstance(detailsModalEl) || new bootstrap.Modal(detailsModalEl);
+    detailsModal.hide();
+
+    const wlModal = new bootstrap.Modal(document.getElementById('whitelistFromAlertModal'));
+    wlModal.show();
+}
+
+function submitWhitelistFromAlert() {
+    if (!currentAlertGroup) return;
+    const group = currentAlertGroup;
+
+    const useSource = document.getElementById('wl-use-source').checked;
+    const useDest = document.getElementById('wl-use-dest').checked;
+    const sourceIp = (group.source_ip && useSource) ? group.source_ip : null;
+    const targetIp = (group.destination_ip && useDest) ? group.destination_ip : null;
+    const portFilter = document.getElementById('wl-port').value.trim() || null;
+    const description = document.getElementById('wl-description').value.trim();
+
+    if (!sourceIp && !targetIp) {
+        showToast('Selecteer minimaal een bron- of doel-IP', 'warning');
+        return;
+    }
+
+    const submitBtn = document.getElementById('wl-submit-btn');
+    const originalContent = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    submitBtn.disabled = true;
+
+    fetch('/api/whitelist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            source_ip: sourceIp,
+            target_ip: targetIp,
+            port_filter: portFilter,
+            description: description,
+            scope: 'global',
+            created_by: 'dashboard-alert'
+        })
+    })
+        .then(response => response.json())
+        .then(data => {
+            submitBtn.innerHTML = originalContent;
+            submitBtn.disabled = false;
+
+            if (data.success) {
+                showToast(data.message || 'Whitelist entry toegevoegd', 'success');
+                bootstrap.Modal.getInstance(document.getElementById('whitelistFromAlertModal')).hide();
+            } else {
+                showToast(data.error || 'Toevoegen mislukt', 'danger');
+            }
+        })
+        .catch(error => {
+            submitBtn.innerHTML = originalContent;
+            submitBtn.disabled = false;
+            showToast(`Fout: ${error.message}`, 'danger');
+        });
 }
 
 function updateAlertStats(stats) {

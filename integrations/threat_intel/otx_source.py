@@ -109,7 +109,7 @@ class OTXSource(ThreatIntelSource):
             return None
 
         cached = self._get_cached(f"ip:{ip}")
-        if cached:
+        if cached is not self._CACHE_MISS:
             return cached
 
         try:
@@ -123,8 +123,7 @@ class OTXSource(ThreatIntelSource):
                 data = response.json()
                 indicator = self._parse_response(ip, data, IndicatorType.IP)
 
-                if indicator:
-                    self._set_cached(f"ip:{ip}", indicator)
+                self._set_cached(f"ip:{ip}", indicator)
 
                 return indicator
 
@@ -140,7 +139,7 @@ class OTXSource(ThreatIntelSource):
             return None
 
         cached = self._get_cached(f"domain:{domain}")
-        if cached:
+        if cached is not self._CACHE_MISS:
             return cached
 
         try:
@@ -154,8 +153,7 @@ class OTXSource(ThreatIntelSource):
                 data = response.json()
                 indicator = self._parse_response(domain, data, IndicatorType.DOMAIN)
 
-                if indicator:
-                    self._set_cached(f"domain:{domain}", indicator)
+                self._set_cached(f"domain:{domain}", indicator)
 
                 return indicator
 
@@ -171,7 +169,7 @@ class OTXSource(ThreatIntelSource):
             return None
 
         cached = self._get_cached(f"hash:{hash_value}")
-        if cached:
+        if cached is not self._CACHE_MISS:
             return cached
 
         try:
@@ -194,8 +192,7 @@ class OTXSource(ThreatIntelSource):
 
                 indicator = self._parse_response(hash_value, data, ind_type)
 
-                if indicator:
-                    self._set_cached(f"hash:{hash_value}", indicator)
+                self._set_cached(f"hash:{hash_value}", indicator)
 
                 return indicator
 
