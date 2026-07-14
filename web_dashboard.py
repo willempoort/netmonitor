@@ -34,6 +34,7 @@ from database import DatabaseManager
 from sensor_auth import SensorAuthManager
 from web_auth import WebAuthManager, WebUser
 from functools import wraps
+from version import __version__
 
 
 # Initialize Flask app
@@ -632,7 +633,7 @@ def api_deactivate_user(user_id):
 @login_required
 def index():
     """Main dashboard page"""
-    return render_template('dashboard.html', user=current_user)
+    return render_template('dashboard.html', user=current_user, netmonitor_version=__version__)
 
 @app.route('/favicon.ico')
 def favicon():
@@ -647,7 +648,7 @@ def api_status():
     return jsonify({
         'status': 'online',
         'timestamp': datetime.now().isoformat(),
-        'version': '2.0.0'
+        'version': __version__
     })
 
 
