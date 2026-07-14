@@ -978,6 +978,11 @@ function openWhitelistFromAlert() {
     const group = currentAlertGroup;
     const alert = group.alerts ? group.alerts[0] : group;
 
+    // Alert IPs sometimes carry a CIDR suffix (e.g. "10.100.0.2/32"); strip it so it
+    // doesn't break the /api/ip-info/<ip> route and doesn't clutter the display.
+    const sourceIp = group.source_ip ? group.source_ip.split('/')[0] : null;
+    const destIp = group.destination_ip ? group.destination_ip.split('/')[0] : null;
+
     const sourceRow = document.getElementById('wl-source-row');
     const destRow = document.getElementById('wl-dest-row');
     const sourceIpEl = document.getElementById('wl-source-ip');
@@ -987,20 +992,20 @@ function openWhitelistFromAlert() {
     const portInput = document.getElementById('wl-port');
     const descInput = document.getElementById('wl-description');
 
-    if (group.source_ip) {
+    if (sourceIp) {
         sourceRow.style.display = '';
-        sourceIpEl.textContent = group.source_ip;
+        sourceIpEl.textContent = sourceIp;
         useSource.checked = true;
-        loadIpInfoInto('wl-source-info', group.source_ip);
+        loadIpInfoInto('wl-source-info', sourceIp);
     } else {
         sourceRow.style.display = 'none';
     }
 
-    if (group.destination_ip) {
+    if (destIp) {
         destRow.style.display = '';
-        destIpEl.textContent = group.destination_ip;
+        destIpEl.textContent = destIp;
         useDest.checked = true;
-        loadIpInfoInto('wl-dest-info', group.destination_ip);
+        loadIpInfoInto('wl-dest-info', destIp);
     } else {
         destRow.style.display = 'none';
     }
@@ -1008,7 +1013,7 @@ function openWhitelistFromAlert() {
     const port = getAlertPort(alert);
     portInput.value = port ? String(port) : '';
 
-    descInput.value = `Whitelisted vanuit alert: ${group.threat_type} (${group.source_ip || '?'} -> ${group.destination_ip || '?'})`;
+    descInput.value = `Whitelisted vanuit alert: ${group.threat_type} (${sourceIp || '?'} -> ${destIp || '?'})`;
 
     // Hide the alert details modal, then show the whitelist modal
     const detailsModalEl = document.getElementById('alertDetailsModal');
@@ -1021,12 +1026,13 @@ function openWhitelistFromAlert() {
 
 function submitWhitelistFromAlert() {
     if (!currentAlertGroup) return;
-    const group = currentAlertGroup;
 
     const useSource = document.getElementById('wl-use-source').checked;
     const useDest = document.getElementById('wl-use-dest').checked;
-    const sourceIp = (group.source_ip && useSource) ? group.source_ip : null;
-    const targetIp = (group.destination_ip && useDest) ? group.destination_ip : null;
+    const sourceIpText = document.getElementById('wl-source-ip').textContent.trim();
+    const destIpText = document.getElementById('wl-dest-ip').textContent.trim();
+    const sourceIp = (sourceIpText && useSource) ? sourceIpText : null;
+    const targetIp = (destIpText && useDest) ? destIpText : null;
     const portFilter = document.getElementById('wl-port').value.trim() || null;
     const description = document.getElementById('wl-description').value.trim();
 
