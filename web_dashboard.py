@@ -1811,6 +1811,202 @@ def api_check_whitelist(ip_address):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# Known cloud/CDN provider ASNs - helps distinguish "IP behind a well-known
+# CDN/cloud" (e.g. Fastly serving api.abuseipdb.com) from unknown infrastructure
+_CLOUD_ASNS = {
+    8075: 'Microsoft Azure', 14618: 'Amazon AWS', 16509: 'Amazon AWS',
+    15169: 'Google Cloud', 396982: 'Google Cloud', 13335: 'Cloudflare',
+    20940: 'Akamai', 54113: 'Fastly', 16276: 'OVH', 24940: 'Hetzner',
+    14061: 'DigitalOcean', 63949: 'Linode/Akamai', 46844: 'Oracle Cloud',
+    36351: 'SoftLayer/IBM', 19551: 'Incapsula', 209242: 'Cloudflare',
+}
+
+
+def _lookup_asn_info(ip_address):
+    """Best-effort ASN/organization lookup via Team Cymru DNS. Returns a dict; never raises."""
+    import subprocess
+
+    info = {'asn': None, 'asn_name': None, 'is_cloud_provider': False, 'cloud_provider': None}
+    try:
+        octets = ip_address.split('.')
+        if len(octets) != 4:
+            return info  # IPv6 not supported by this lookup
+        reversed_ip = '.'.join(reversed(octets))
+
+        origin = subprocess.run(
+            ['dig', '+short', '+time=2', '+tries=1', f'{reversed_ip}.origin.asn.cymru.com', 'TXT'],
+            capture_output=True, text=True, timeout=3
+        )
+        if origin.returncode == 0 and origin.stdout.strip():
+            parts = [p.strip() for p in origin.stdout.strip().strip('"').split('|')]
+            if parts and parts[0].isdigit():
+                asn = int(parts[0])
+                info['asn'] = asn
+                if asn in _CLOUD_ASNS:
+                    info['is_cloud_provider'] = True
+                    info['cloud_provider'] = _CLOUD_ASNS[asn]
+
+                name_result = subprocess.run(
+                    ['dig', '+short', '+time=2', '+tries=1', f'AS{asn}.asn.cymru.com', 'TXT'],
+                    capture_output=True, text=True, timeout=3
+                )
+                if name_result.returncode == 0 and name_result.stdout.strip():
+                    name_parts = [p.strip() for p in name_result.stdout.strip().strip('"').split('|')]
+                    if len(name_parts) >= 5:
+                        info['asn_name'] = name_parts[4]
+    except Exception as e:
+        logger.debug(f"ASN lookup failed for {ip_address}: {e}")
+
+    return info
+
+
+def _live_abuseipdb_check(ip_address, api_key, max_age_days=90):
+    """One-off, on-demand AbuseIPDB lookup (not the auto-alert enrichment path).
+    Caller is responsible for rate-limit / quota checks before calling this."""
+    import urllib.request
+    import urllib.parse
+
+    params = {'ipAddress': ip_address, 'maxAgeInDays': max_age_days, 'verbose': ''}
+    url = f"https://api.abuseipdb.com/api/v2/check?{urllib.parse.urlencode(params)}"
+    req = urllib.request.Request(url, headers={'Key': api_key, 'Accept': 'application/json'})
+    with urllib.request.urlopen(req, timeout=10) as response:
+        data = json.loads(response.read().decode('utf-8'))
+    return data.get('data', {})
+
+
+@app.route('/api/ip-info/<ip_address>', methods=['GET'])
+@login_required
+def api_ip_info(ip_address):
+    """Reputation/ownership info for a public IP: country, ASN/organization and
+    AbuseIPDB reputation. Meant to help decide whether an IP is safe to whitelist
+    (e.g. from the "Add alert to whitelist" flow) before committing to it."""
+    import ipaddress as ip_mod
+
+    try:
+        addr = ip_mod.ip_address(ip_address)
+    except ValueError:
+        return jsonify({'success': False, 'error': f'Invalid IP address: {ip_address}'}), 400
+
+    is_private = (
+        addr.is_private or addr.is_loopback or addr.is_link_local
+        or addr.is_reserved or addr.is_multicast or addr.is_unspecified
+    )
+
+    result = {
+        'success': True, 'ip_address': ip_address, 'is_private': is_private,
+        'country': None, 'country_flag': None,
+        'asn': None, 'asn_name': None, 'is_cloud_provider': False, 'cloud_provider': None,
+        'abuse_score': None, 'abuse_reports': None, 'abuse_last_reported': None,
+        'is_tor_exit': False, 'is_vpn': False, 'is_proxy': False, 'is_datacenter': False,
+        'is_known_attacker': False, 'is_known_c2': False, 'threat_level': None,
+        'sources': [], 'checked_live': False,
+    }
+
+    if is_private:
+        return jsonify(result)
+
+    try:
+        from geoip_helper import get_country_for_ip, get_flag_emoji
+        country = get_country_for_ip(ip_address)
+        if country:
+            result['country'] = country
+            result['country_flag'] = get_flag_emoji(country)
+    except Exception as e:
+        logger.debug(f"GeoIP lookup failed for {ip_address}: {e}")
+
+    result.update(_lookup_asn_info(ip_address))
+
+    # Cached threat intel (populated by feed syncs and prior AbuseIPDB lookups)
+    try:
+        conn = db._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT abuseipdb_score, abuseipdb_reports, abuseipdb_last_reported,
+                   is_tor_exit, is_vpn, is_proxy, is_datacenter,
+                   is_known_attacker, is_known_c2, threat_level, sources
+            FROM threat_intel_ip_cache
+            WHERE ip_address = %s::inet
+        """, (ip_address,))
+        row = cursor.fetchone()
+        db._return_connection(conn)
+        if row:
+            (score, reports, last_reported, is_tor, is_vpn, is_proxy, is_dc,
+             is_attacker, is_c2, threat_level, sources) = row
+            result['abuse_score'] = score
+            result['abuse_reports'] = reports
+            result['abuse_last_reported'] = last_reported.isoformat() if last_reported else None
+            result['is_tor_exit'] = bool(is_tor)
+            result['is_vpn'] = bool(is_vpn)
+            result['is_proxy'] = bool(is_proxy)
+            result['is_datacenter'] = bool(is_dc)
+            result['is_known_attacker'] = bool(is_attacker)
+            result['is_known_c2'] = bool(is_c2)
+            result['threat_level'] = threat_level
+            result['sources'] = sources or []
+    except Exception as e:
+        logger.debug(f"Threat intel cache lookup failed for {ip_address}: {e}")
+
+    # No cached abuse score yet: do a single on-demand live check. This is a rare,
+    # deliberate user action (opening this panel), not part of the automatic
+    # per-alert enrichment path, so it doesn't reintroduce the quota-exhaustion bug.
+    if result['abuse_score'] is None:
+        try:
+            abuseipdb_config = config.get('integrations', {}).get('threat_intel', {}).get('abuseipdb', {})
+            if abuseipdb_config.get('enabled', False):
+                api_key = os.environ.get('ABUSEIPDB_API_KEY') or abuseipdb_config.get('api_key', '')
+                rate_limit = abuseipdb_config.get('rate_limit', 1000)
+                if api_key:
+                    conn = db._get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT api_calls FROM abuseipdb_api_stats WHERE date = CURRENT_DATE"
+                    )
+                    row = cursor.fetchone()
+                    db._return_connection(conn)
+                    calls_today = row[0] if row else 0
+
+                    if calls_today < rate_limit:
+                        data = _live_abuseipdb_check(ip_address, api_key)
+                        result['abuse_score'] = data.get('abuseConfidenceScore', 0)
+                        result['abuse_reports'] = data.get('totalReports', 0)
+                        result['abuse_last_reported'] = data.get('lastReportedAt')
+                        result['is_tor_exit'] = bool(data.get('isTor', False))
+                        result['checked_live'] = True
+                        if not result['country'] and data.get('countryCode'):
+                            result['country'] = data.get('countryCode')
+
+                        conn = db._get_connection()
+                        cursor = conn.cursor()
+                        cursor.execute("""
+                            INSERT INTO threat_intel_ip_cache
+                                (ip_address, abuseipdb_score, abuseipdb_reports,
+                                 abuseipdb_last_reported, is_tor_exit, last_updated, expires_at)
+                            VALUES (%s::inet, %s, %s, %s, %s, NOW(), NOW() + INTERVAL '24 hours')
+                            ON CONFLICT (ip_address) DO UPDATE SET
+                                abuseipdb_score = EXCLUDED.abuseipdb_score,
+                                abuseipdb_reports = EXCLUDED.abuseipdb_reports,
+                                abuseipdb_last_reported = EXCLUDED.abuseipdb_last_reported,
+                                is_tor_exit = EXCLUDED.is_tor_exit,
+                                last_updated = NOW(),
+                                expires_at = NOW() + INTERVAL '24 hours'
+                        """, (ip_address, result['abuse_score'], result['abuse_reports'],
+                              result['abuse_last_reported'], result['is_tor_exit']))
+                        cursor.execute("""
+                            INSERT INTO abuseipdb_api_stats (date, api_calls, unique_ips_queried, updated_at)
+                            VALUES (CURRENT_DATE, 1, 1, NOW())
+                            ON CONFLICT (date) DO UPDATE SET
+                                api_calls = abuseipdb_api_stats.api_calls + 1,
+                                unique_ips_queried = abuseipdb_api_stats.unique_ips_queried + 1,
+                                updated_at = NOW()
+                        """)
+                        conn.commit()
+                        db._return_connection(conn)
+        except Exception as e:
+            logger.debug(f"Live AbuseIPDB check failed for {ip_address}: {e}")
+
+    return jsonify(result)
+
+
 # ==================== Configuration Management Endpoints ====================
 
 @app.route('/api/config', methods=['GET'])

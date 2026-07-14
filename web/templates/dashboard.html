@@ -982,7 +982,58 @@
                     <!-- Alert details will be populated here -->
                 </div>
                 <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-success" id="alert-add-whitelist-btn" onclick="openWhitelistFromAlert()">
+                        <i class="bi bi-shield-check"></i> Toevoegen aan whitelist
+                    </button>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Alert to Whitelist Modal -->
+    <div class="modal fade" id="whitelistFromAlertModal" tabindex="-1" aria-labelledby="whitelistFromAlertModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content bg-dark text-light">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="whitelistFromAlertModalLabel">
+                        <i class="bi bi-shield-check"></i> Voeg toe aan whitelist
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3" id="wl-source-row" style="display:none;">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="wl-use-source" checked>
+                            <label class="form-check-label" for="wl-use-source">Bron IP: <code id="wl-source-ip"></code></label>
+                        </div>
+                        <div class="ms-4 small" id="wl-source-info"><span class="text-muted">IP-informatie laden...</span></div>
+                    </div>
+                    <div class="mb-3" id="wl-dest-row" style="display:none;">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="wl-use-dest" checked>
+                            <label class="form-check-label" for="wl-use-dest">Doel IP: <code id="wl-dest-ip"></code></label>
+                        </div>
+                        <div class="ms-4 small" id="wl-dest-info"><span class="text-muted">IP-informatie laden...</span></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="wl-port">Poort filter (optioneel)</label>
+                        <input type="text" class="form-control bg-secondary text-light" id="wl-port" placeholder="bijv. 443 of 80,443,8080-8090">
+                        <div class="form-text">Leeg = alle poorten worden gewhitelist</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="wl-description">Omschrijving</label>
+                        <input type="text" class="form-control bg-secondary text-light" id="wl-description">
+                    </div>
+                    <div class="form-text text-warning">
+                        <i class="bi bi-exclamation-triangle"></i> Dit onderdrukt toekomstige alerts voor dit verkeer (globaal, alle sensors).
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuleren</button>
+                    <button type="button" class="btn btn-success" id="wl-submit-btn" onclick="submitWhitelistFromAlert()">
+                        <i class="bi bi-plus-circle"></i> Toevoegen
+                    </button>
                 </div>
             </div>
         </div>

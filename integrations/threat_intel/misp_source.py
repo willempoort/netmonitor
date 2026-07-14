@@ -170,7 +170,7 @@ class MISPSource(ThreatIntelSource):
 
         # Check cache
         cached = self._get_cached(f"ip:{ip}")
-        if cached:
+        if cached is not self._CACHE_MISS:
             return cached
 
         # Search for IP in both source and destination attributes
@@ -178,6 +178,7 @@ class MISPSource(ThreatIntelSource):
         attributes.extend(self._search_attributes(ip, 'ip-dst'))
 
         if not attributes:
+            self._set_cached(f"ip:{ip}", None)
             return None
 
         # Create indicator from first match
@@ -214,13 +215,14 @@ class MISPSource(ThreatIntelSource):
             return None
 
         cached = self._get_cached(f"domain:{domain}")
-        if cached:
+        if cached is not self._CACHE_MISS:
             return cached
 
         attributes = self._search_attributes(domain, 'domain')
         attributes.extend(self._search_attributes(domain, 'hostname'))
 
         if not attributes:
+            self._set_cached(f"domain:{domain}", None)
             return None
 
         attr = attributes[0]
@@ -247,12 +249,13 @@ class MISPSource(ThreatIntelSource):
                 return None
 
         cached = self._get_cached(f"hash:{hash_value}")
-        if cached:
+        if cached is not self._CACHE_MISS:
             return cached
 
         attributes = self._search_attributes(hash_value, hash_type)
 
         if not attributes:
+            self._set_cached(f"hash:{hash_value}", None)
             return None
 
         attr = attributes[0]

@@ -7,6 +7,7 @@ AbuseIPDB is a project dedicated to helping combat the spread of
 hackers, spammers, and abusive activity on the internet.
 """
 
+import ipaddress
 import requests
 from typing import Dict, Optional, Tuple
 from datetime import datetime
@@ -64,6 +65,9 @@ class AbuseIPDBSource(ThreatIntelSource):
             max_age_days: Maximum age of reports to consider (default: 90)
             min_confidence: Minimum confidence score (0-100) to consider malicious (default: 50)
             timeout: Request timeout in seconds (default: 30)
+            query_suspicious_only: Skip lookups for private/reserved/loopback IPs (default: True).
+                Those addresses never have AbuseIPDB reputation data, so querying them just
+                burns the daily rate limit for nothing.
 
         Environment variables (take precedence over config):
             ABUSEIPDB_API_KEY: AbuseIPDB API key
@@ -76,6 +80,19 @@ class AbuseIPDBSource(ThreatIntelSource):
         self.max_age_days = config.get('max_age_days', 90)
         self.min_confidence = config.get('min_confidence', 50)
         self.timeout = config.get('timeout', 30)
+        self.query_suspicious_only = config.get('query_suspicious_only', True)
+
+    @staticmethod
+    def _is_non_public(ip: str) -> bool:
+        """True if the IP is private/loopback/link-local/reserved (never has reputation data)"""
+        try:
+            addr = ipaddress.ip_address(ip)
+        except ValueError:
+            return False
+        return (
+            addr.is_private or addr.is_loopback or addr.is_link_local
+            or addr.is_reserved or addr.is_multicast or addr.is_unspecified
+        )
 
     def validate_config(self) -> Tuple[bool, Optional[str]]:
         """Validate AbuseIPDB configuration"""
@@ -143,8 +160,11 @@ class AbuseIPDBSource(ThreatIntelSource):
         if not self.enabled:
             return None
 
+        if self.query_suspicious_only and self._is_non_public(ip):
+            return None
+
         cached = self._get_cached(f"ip:{ip}")
-        if cached:
+        if cached is not self._CACHE_MISS:
             return cached
 
         try:
@@ -163,8 +183,9 @@ class AbuseIPDBSource(ThreatIntelSource):
                 data = response.json().get('data', {})
                 indicator = self._parse_response(ip, data)
 
-                if indicator:
-                    self._set_cached(f"ip:{ip}", indicator)
+                # Cache even a negative result (score below threshold), otherwise
+                # every alert involving a "clean" IP re-queries the API forever.
+                self._set_cached(f"ip:{ip}", indicator)
 
                 return indicator
 
