@@ -658,6 +658,25 @@ configure_netmonitor() {
         # Update self_monitor.interface as well
         sed -i "/^self_monitor:/,/^[a-z]/ s/interface: .*/interface: $INTERFACE/" config.yaml
 
+        # Add the admin's actual LAN CIDR (collected above as $INTERNAL_NET) to
+        # internal_networks. config.yaml.example only ships the broad RFC1918
+        # supernets (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16), which are fine
+        # for internal/external traffic classification but NOT for detecting a
+        # subnet's broadcast address (device_discovery.py's
+        # _is_broadcast_or_multicast() checks "ip == network.broadcast_address",
+        # and a /8's broadcast is X.255.255.255, not the real LAN's X.Y.Z.255) -
+        # without the precise subnet here, the real broadcast address gets
+        # tracked as a phantom "device". Idempotent: skips if already present
+        # (re-install) or if internal_networks isn't found (unexpected template
+        # edit) rather than corrupting the file.
+        if grep -q "^internal_networks:" config.yaml; then
+            if ! grep -qF "  - $INTERNAL_NET" config.yaml; then
+                sed -i "/^internal_networks:/a\\  - $INTERNAL_NET" config.yaml
+            fi
+        else
+            print_warning "internal_networks: niet gevonden in config.yaml - broadcast-detectie kan onjuist zijn, voeg $INTERNAL_NET handmatig toe"
+        fi
+
         # Update database password in config.yaml
         sed -i "s|password: netmonitor|password: $DB_PASS|" config.yaml
         sed -i "s|password: .*  # PostgreSQL password|password: $DB_PASS  # PostgreSQL password|" config.yaml
