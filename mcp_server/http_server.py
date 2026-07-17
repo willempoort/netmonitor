@@ -412,7 +412,7 @@ class MCPHTTPServer:
                     "type": "object",
                     "properties": {
                         "hours": {"type": "number", "default": 24},
-                        "severity": {"type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]},
+                        "severity": {"type": "string", "description": "Filter op ernst: CRITICAL, HIGH, MEDIUM, LOW of INFO (niet hoofdlettergevoelig)"},
                         "threat_type": {"type": "string"},
                         "limit": {"type": "number", "default": 50}
                     }
@@ -1081,8 +1081,7 @@ class MCPHTTPServer:
                         "hours": {"type": "number", "default": 24},
                         "severity": {
                             "type": "string",
-                            "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"],
-                            "description": "Filter op ernst-niveau. Laat leeg voor alle niveaus."
+                            "description": "Filter op ernst: CRITICAL, HIGH, MEDIUM, LOW of INFO (niet hoofdlettergevoelig). Laat leeg voor alle niveaus."
                         },
                         "threat_type": {
                             "type": "string",
@@ -1366,6 +1365,8 @@ class MCPHTTPServer:
         """Implement get_recent_threats tool"""
         hours = params.get('hours', 24)
         severity = params.get('severity')
+        if severity:
+            severity = severity.upper()
         threat_type = params.get('threat_type')
         limit = params.get('limit', 50)
 
@@ -3801,6 +3802,8 @@ TOP THREAT TYPES:
         hours = params.get('hours', 24)
         threat_type = params.get('threat_type')
         severity = params.get('severity')
+        if severity:
+            severity = severity.upper()
         limit = params.get('limit', 50)
 
         # Get recent alerts filtered by advanced threat types
