@@ -871,13 +871,17 @@ class OllamaClient:
         messages: List[Dict[str, Any]],
         stream: bool = True,
         temperature: float = 0.7,
-        tools: Optional[List[Dict[str, Any]]] = None
+        tools: Optional[List[Dict[str, Any]]] = None,
+        max_tokens: Optional[int] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
+        options: Dict[str, Any] = {"temperature": temperature}
+        if max_tokens is not None:
+            options["num_predict"] = max_tokens
         payload = {
             "model": model,
             "messages": messages,
             "stream": stream,
-            "options": {"temperature": temperature}
+            "options": options
         }
         if tools:
             payload["tools"] = tools
