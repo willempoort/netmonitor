@@ -318,7 +318,7 @@ install_system_packages() {
     apt update >> $LOG_FILE 2>&1
     print_success "Package list updated"
 
-    PACKAGES="git python3 python3-pip python3-venv build-essential libpcap-dev tcpdump curl wget"
+    PACKAGES="git python3 python3-pip python3-venv build-essential libpcap-dev tcpdump curl wget gnupg"
 
     if [[ $INSTALL_DB =~ ^[Yy]$ ]]; then
         PACKAGES="$PACKAGES postgresql postgresql-contrib postgresql-server-dev-all"
@@ -344,12 +344,32 @@ install_timescaledb() {
     PG_VERSION=$(psql --version | grep -oP '\d+' | head -1)
     print_info "PostgreSQL version: $PG_VERSION"
 
-    # Add TimescaleDB repo
-    sh -c "echo 'deb https://packagecloud.io/timescale/timescaledb/ubuntu/ $(lsb_release -c -s) main' > /etc/apt/sources.list.d/timescaledb.list"
-    wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey | apt-key add - >> $LOG_FILE 2>&1
+    # TimescaleDB's packagecloud repo has separate ubuntu/ and debian/ paths -
+    # $ID komt uit /etc/os-release, gezet door check_os() eerder in main().
+    case "$ID" in
+        debian) TIMESCALE_REPO_OS="debian" ;;
+        ubuntu) TIMESCALE_REPO_OS="ubuntu" ;;
+        *)
+            print_warning "Onbekende distributie ($ID) voor TimescaleDB-repo, val terug op ubuntu"
+            TIMESCALE_REPO_OS="ubuntu"
+            ;;
+    esac
+
+    # Add TimescaleDB repo met een signed-by keyring (apt-key is deprecated/
+    # verwijderd op recente Debian/Ubuntu releases)
+    install -d -m 0755 /etc/apt/keyrings
+    wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey \
+        | gpg --dearmor -o /etc/apt/keyrings/timescaledb.gpg
+    chmod 0644 /etc/apt/keyrings/timescaledb.gpg
+
+    sh -c "echo 'deb [signed-by=/etc/apt/keyrings/timescaledb.gpg] https://packagecloud.io/timescale/timescaledb/${TIMESCALE_REPO_OS}/ $(lsb_release -c -s) main' > /etc/apt/sources.list.d/timescaledb.list"
 
     apt update >> $LOG_FILE 2>&1
-    apt install -y timescaledb-2-postgresql-$PG_VERSION >> $LOG_FILE 2>&1
+    if ! apt install -y timescaledb-2-postgresql-$PG_VERSION >> $LOG_FILE 2>&1; then
+        print_error "TimescaleDB package niet gevonden voor PostgreSQL $PG_VERSION / $(lsb_release -c -s)."
+        print_error "Mogelijk heeft TimescaleDB nog geen packages voor deze OS/PG-versie - check $LOG_FILE"
+        return 1
+    fi
 
     # Tune PostgreSQL for TimescaleDB
     timescaledb-tune --quiet --yes >> $LOG_FILE 2>&1

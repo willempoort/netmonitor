@@ -15,6 +15,13 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.3.4] - 2026-07-17
+
+### Fixed
+- TimescaleDB-installatie (`install_complete.sh` STAP 2, en `setup_database.sh`) gebruikte overal `apt-key add` (al jarenlang deprecated, op recente Debian/Ubuntu-releases niet meer beschikbaar) en hardcodede het packagecloud-repo-pad op `/ubuntu/`, ook op Debian. Vervangen door een moderne `signed-by`-keyring en OS-detectie (`$ID` uit `/etc/os-release`) die het juiste ubuntu/debian-pad kiest.
+- `setup_database.sh` installeerde altijd `timescaledb-2-postgresql-14`, ongeacht de daadwerkelijk geïnstalleerde PostgreSQL-versie - detecteert nu net als `install_complete.sh` de echte versie na installatie van de PostgreSQL-basispackages.
+- `install_complete.sh` gaf bij een mislukte TimescaleDB-package-install (bv. nog geen packages voor een gloednieuwe OS/PG-versie) geen duidelijke foutmelding - toont nu expliciet welke PG-versie/OS-codename niet gevonden werd.
+
 ## [2.3.3] - 2026-07-17
 
 ### Fixed
