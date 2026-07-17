@@ -488,52 +488,36 @@ Open dashboard → Scroll to "Remote Sensors" → Should see sensor online
 
 ---
 
-### **STAP 9: MCP HTTP API Server (Optioneel)**
+### **STAP 9: MCP Streamable HTTP Server (Optioneel)**
 
-**Voor AI integration (Claude Desktop, Open WebUI, etc.)**
+**Voor AI integration (Claude Desktop, Open WebUI, netmonitor-chat, etc.)**
 
-#### 9.1 Install MCP Server
+#### 9.1 Install & Start MCP Server
 ```bash
-cd /opt/netmonitor
-
-# Install additional dependencies
-source venv/bin/activate
-pip install fastapi uvicorn[standard]
-
-# Setup MCP server
-cd mcp_server
-./setup_http_api.sh
-
-# This creates:
-# - /etc/systemd/system/netmonitor-mcp.service
-# - Environment file with config
+cd /opt/netmonitor/mcp_server
+sudo ./setup_streamable_http.sh
 ```
 
-#### 9.2 Generate MCP Token
-```bash
-# Use database to create MCP access token
-psql -U netmonitor -d netmonitor << EOF
--- This will be automated in token management UI
--- For now, use sensor token system
-EOF
+Dit script (idempotent, ook later opnieuw te draaien):
+- installeert `mcp_server/requirements.txt` in de bestaande venv
+- maakt de benodigde databasetabellen aan (indien nog niet aanwezig)
+- genereert een initieel admin API-token als er nog geen tokens bestaan
+- zet en enabled het systemd-service-bestand `netmonitor-mcp-streamable.service`
 
-# Or use existing sensor auth system
-python3 /opt/netmonitor/setup_sensor_auth.py
-Sensor ID: mcp-api
-Token name: MCP API Token
-Expires: (empty)
-Commands: Y  # MCP needs full access
+Start de service daarna:
+```bash
+sudo systemctl start netmonitor-mcp-streamable
+sudo systemctl status netmonitor-mcp-streamable
 ```
 
-#### 9.3 Start MCP Server
+#### 9.2 Tokens beheren
 ```bash
-sudo systemctl start netmonitor-mcp
-sudo systemctl enable netmonitor-mcp
+python3 mcp_server/manage_tokens.py list
+python3 mcp_server/manage_tokens.py create --name "Mijn token" --scope read_only
+```
 
-# Check status
-sudo systemctl status netmonitor-mcp
-
-# Test API
+#### 9.3 Testen
+```bash
 curl http://localhost:8000/health
 
 # Should return:
@@ -551,6 +535,8 @@ http://localhost:8000/docs
 
 # Shows all available MCP tools and endpoints
 ```
+
+Zie [`mcp_server/STREAMABLE_HTTP_README.md`](../../mcp_server/STREAMABLE_HTTP_README.md) voor volledige documentatie.
 
 ---
 

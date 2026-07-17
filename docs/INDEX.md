@@ -64,7 +64,7 @@ Feature-specifieke documentatie:
 - **[Device Classification](features/DEVICE_CLASSIFICATION.md)** - ML-based apparaat classificatie en alert suppression
 - **[Detection Features](features/DETECTION_FEATURES.md)** - Alle threat detection capabilities
 - **[Threat Feeds](features/THREAT_FEEDS.md)** - Threat intelligence configuratie
-- **[MCP HTTP API](features/MCP_HTTP_API.md)** - AI integration via HTTP API
+- **[MCP Streamable HTTP Server](../mcp_server/STREAMABLE_HTTP_README.md)** - AI integration via MCP Streamable HTTP
 - **[MCP Nginx Setup](features/MCP_NGINX_SETUP.md)** - Reverse proxy voor MCP API
 
 ### 🔗 Integrations
@@ -104,7 +104,7 @@ Architectuur en best practices:
 | Device classification setup | [Device Classification](features/DEVICE_CLASSIFICATION.md) |
 | Switch to Gunicorn | [Dashboard Server Comparison](deployment/DASHBOARD_SERVER_COMPARISON.md) |
 | Setup threat feeds | [Threat Feeds](features/THREAT_FEEDS.md) |
-| Configure MCP API | [MCP HTTP API](features/MCP_HTTP_API.md) |
+| Configure MCP API | [MCP Streamable HTTP Server](../mcp_server/STREAMABLE_HTTP_README.md) |
 | Setup SIEM integration | [Integrations Overview](features/INTEGRATIONS.md) |
 | Setup Wazuh | [Wazuh Setup](features/WAZUH_SETUP.md) |
 | Setup MISP | [MISP Setup](features/MISP_SETUP.md) |
@@ -127,7 +127,7 @@ Architectuur en best practices:
 |---------|---------|---------------|
 | `netmonitor.service` | Main monitoring engine | [SERVICE_INSTALLATION.md](installation/SERVICE_INSTALLATION.md) |
 | `netmonitor-dashboard.service` | Gunicorn dashboard | [Dashboard Server Comparison](deployment/DASHBOARD_SERVER_COMPARISON.md) |
-| `netmonitor-mcp-http.service` | MCP HTTP API | [MCP HTTP API](features/MCP_HTTP_API.md) |
+| `netmonitor-mcp-streamable.service` | MCP Streamable HTTP API | [MCP Streamable HTTP Server](../mcp_server/STREAMABLE_HTTP_README.md) |
 | `netmonitor-sensor.service` | Remote sensor | [Sensor Deployment](deployment/SENSOR_DEPLOYMENT.md) |
 | `netmonitor-feed-update.service` | Threat feed updates | [Threat Feeds](features/THREAT_FEEDS.md) |
 

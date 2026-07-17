@@ -95,9 +95,9 @@ Een krachtig netwerk monitoring platform voor Linux met **real-time web dashboar
   cd /opt/netmonitor && sudo ./install_services.sh
   ```
 
-  **Documentatie:** [MCP_HTTP_API.md](docs/features/MCP_HTTP_API.md) | API Docs: http://localhost:8000/docs
+  **Documentatie:** [mcp_server/STREAMABLE_HTTP_README.md](mcp_server/STREAMABLE_HTTP_README.md) | API Docs: http://localhost:8000/docs
 
-  **⚠️ Belangrijke wijziging:** De oude STDIO/SSE MCP implementatie is vervangen door een moderne HTTP REST API met volledige token authenticatie. Legacy files zijn verplaatst naar `mcp_server/legacy_stdio_sse/`
+  MCP draait als de `netmonitor-mcp-streamable` service (MCP Streamable HTTP protocol, met tokenauthenticatie). De tussenliggende `http_server.py` HTTP-API is inmiddels vervangen; code en documentatie staan nog ter referentie in `archive/mcp_legacy_http_api/`.
 
 ### ⚡ Performance Tuning
 

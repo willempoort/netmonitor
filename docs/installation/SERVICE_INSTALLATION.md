@@ -15,10 +15,10 @@ NetMonitor bestaat uit **drie hoofdcomponenten**, elk met hun eigen systemd serv
 - Draait elk uur via systemd timer
 - Type: oneshot (draait taak en stopt)
 
-### 3. **MCP Server** (`netmonitor-mcp.service`)
+### 3. **MCP Server** (`netmonitor-mcp-streamable.service`)
 - AI interface via Model Context Protocol
-- Geeft Claude Desktop/Ollama toegang tot security data
-- HTTP/SSE server op poort 3000
+- Geeft Claude Desktop/Ollama/netmonitor-chat toegang tot security data
+- MCP Streamable HTTP server op poort 8000
 - Optioneel - alleen nodig voor AI integratie
 
 ---
@@ -60,16 +60,19 @@ sudo ./install_services.sh
 ```
 Enable and start netmonitor.service? (Y/n): y
 Enable and start netmonitor-feed-update.timer? (Y/n): y
-Enable and start netmonitor-mcp.service? (Y/n): n  # Skip MCP if not needed
+Enable and start netmonitor-mcp-streamable.service? (Y/n): n  # Skip MCP if not needed
 ```
 
-### Methode 2: Alleen MCP Server (Backwards Compatible)
+### Methode 2: Alleen MCP Server Later Activeren
 
-Voor alleen de MCP server (oude methode):
+Als MCP bij de initiële installatie is overgeslagen, kan je 'm los alsnog activeren:
 
 ```bash
-sudo ./install_mcp_service.sh
+cd mcp_server
+sudo ./setup_streamable_http.sh
 ```
+
+Zie [`mcp_server/STREAMABLE_HTTP_README.md`](../../mcp_server/STREAMABLE_HTTP_README.md) voor details.
 
 ---
 
@@ -114,39 +117,39 @@ systemctl list-timers netmonitor-feed-update.timer
 
 ```bash
 # Start/Stop
-sudo systemctl start netmonitor-mcp
-sudo systemctl stop netmonitor-mcp
-sudo systemctl restart netmonitor-mcp
+sudo systemctl start netmonitor-mcp-streamable
+sudo systemctl stop netmonitor-mcp-streamable
+sudo systemctl restart netmonitor-mcp-streamable
 
 # Status en logs
-sudo systemctl status netmonitor-mcp
-sudo journalctl -u netmonitor-mcp -f
+sudo systemctl status netmonitor-mcp-streamable
+sudo journalctl -u netmonitor-mcp-streamable -f
 
 # Test health endpoint
-curl http://localhost:3000/health
+curl http://localhost:8000/health
 
 # Enable/Disable auto-start
-sudo systemctl enable netmonitor-mcp
-sudo systemctl disable netmonitor-mcp
+sudo systemctl enable netmonitor-mcp-streamable
+sudo systemctl disable netmonitor-mcp-streamable
 ```
 
 ### Alle Services Tegelijk
 
 ```bash
 # Status overview
-sudo systemctl status netmonitor netmonitor-feed-update.timer netmonitor-mcp
+sudo systemctl status netmonitor netmonitor-feed-update.timer netmonitor-mcp-streamable
 
 # Stop alles
-sudo systemctl stop netmonitor netmonitor-feed-update.timer netmonitor-mcp
+sudo systemctl stop netmonitor netmonitor-feed-update.timer netmonitor-mcp-streamable
 
 # Start alles
-sudo systemctl start netmonitor netmonitor-feed-update.timer netmonitor-mcp
+sudo systemctl start netmonitor netmonitor-feed-update.timer netmonitor-mcp-streamable
 
 # Restart alles
-sudo systemctl restart netmonitor netmonitor-mcp
+sudo systemctl restart netmonitor netmonitor-mcp-streamable
 
 # Logs van alles
-sudo journalctl -u netmonitor -u netmonitor-feed-update -u netmonitor-mcp -f
+sudo journalctl -u netmonitor -u netmonitor-feed-update -u netmonitor-mcp-streamable -f
 ```
 
 ---
@@ -175,9 +178,9 @@ sudo journalctl -u <service-name> -n 50
    - Oorzaak: PostgreSQL draait niet of is niet bereikbaar
    - Oplossing: `sudo systemctl start postgresql`
 
-4. **Port already in use** (alleen netmonitor-mcp)
-   - Oorzaak: Poort 3000 al in gebruik
-   - Check: `sudo netstat -tlnp | grep 3000`
+4. **Port already in use** (alleen netmonitor-mcp-streamable)
+   - Oorzaak: Poort 8000 al in gebruik
+   - Check: `sudo netstat -tlnp | grep 8000`
    - Oplossing: Stop andere proces of wijzig poort in service file
 
 ### Venv probleem na system update
@@ -219,7 +222,7 @@ Als je NetMonitor code update (git pull, wijzigingen, etc.):
 # Restart alleen de betreffende service
 sudo systemctl restart netmonitor
 # of
-sudo systemctl restart netmonitor-mcp
+sudo systemctl restart netmonitor-mcp-streamable
 ```
 
 ### Nieuwe Python dependencies
@@ -229,7 +232,7 @@ source venv/bin/activate
 pip install nieuwe-package
 
 # Restart services
-sudo systemctl restart netmonitor netmonitor-mcp
+sudo systemctl restart netmonitor netmonitor-mcp-streamable
 ```
 
 ### Service file wijzigingen
@@ -252,10 +255,10 @@ sudo systemctl restart <service-name>
 # Quick check
 sudo systemctl is-active netmonitor
 sudo systemctl is-active netmonitor-feed-update.timer
-sudo systemctl is-active netmonitor-mcp
+sudo systemctl is-active netmonitor-mcp-streamable
 
 # Detailed status
-sudo systemctl status netmonitor netmonitor-feed-update.timer netmonitor-mcp
+sudo systemctl status netmonitor netmonitor-feed-update.timer netmonitor-mcp-streamable
 ```
 
 ### Live logs (alle services)
@@ -268,7 +271,7 @@ sudo journalctl -u netmonitor -f
 sudo journalctl -u netmonitor-feed-update -f
 
 # Terminal 3: MCP server
-sudo journalctl -u netmonitor-mcp -f
+sudo journalctl -u netmonitor-mcp-streamable -f
 ```
 
 ### Check recent alerts
@@ -296,7 +299,7 @@ sudo ./install_services.sh
 # → Enable alle drie services
 
 # 3. Check status
-sudo systemctl status netmonitor netmonitor-feed-update.timer netmonitor-mcp
+sudo systemctl status netmonitor netmonitor-feed-update.timer netmonitor-mcp-streamable
 ```
 
 ### Scenario 2: Only Main Monitor (No AI)
@@ -319,8 +322,8 @@ sudo systemctl list-unit-files | grep netmonitor
 
 ```bash
 # MCP service al geïnstalleerd maar disabled
-sudo systemctl enable netmonitor-mcp
-sudo systemctl start netmonitor-mcp
+sudo systemctl enable netmonitor-mcp-streamable
+sudo systemctl start netmonitor-mcp-streamable
 
 # Of herinstall als venv niet bestaat was tijdens install
 sudo ./install_services.sh
@@ -342,7 +345,7 @@ python3 -m flask --app web.app run
 
 # Terminal 3: MCP server (voor testing)
 cd mcp_server
-python3 server.py --transport sse --host 0.0.0.0 --port 3000
+python3 streamable_http_server.py
 
 # Services zijn NIET nodig voor development
 ```
@@ -358,7 +361,7 @@ python3 server.py --transport sse --host 0.0.0.0 --port 3000
 sudo cp netmonitor.service /etc/systemd/system/
 sudo cp netmonitor-feed-update.service /etc/systemd/system/
 sudo cp netmonitor-feed-update.timer /etc/systemd/system/
-sudo cp netmonitor-mcp.service /etc/systemd/system/
+sudo cp netmonitor-mcp-streamable.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now netmonitor
 # etc...
@@ -391,7 +394,7 @@ Na installatie:
 ├── netmonitor.service                    # Main monitor
 ├── netmonitor-feed-update.service        # Feed update
 ├── netmonitor-feed-update.timer          # Feed update timer
-└── netmonitor-mcp.service                # MCP server
+└── netmonitor-mcp-streamable.service                # MCP server
 ```
 
 **BELANGRIJK:** Dit zijn gegenereerde files! Wijzig deze niet direct.
@@ -434,8 +437,8 @@ Voor production: overweeg systemd credential system of secrets management.
 - [ ] Services geïnstalleerd: `sudo ./install_services.sh`
 - [ ] Main monitor draait: `systemctl is-active netmonitor`
 - [ ] Feed timer actief: `systemctl is-active netmonitor-feed-update.timer`
-- [ ] MCP server draait (indien enabled): `systemctl is-active netmonitor-mcp`
-- [ ] MCP health check OK: `curl http://localhost:3000/health`
+- [ ] MCP server draait (indien enabled): `systemctl is-active netmonitor-mcp-streamable`
+- [ ] MCP health check OK: `curl http://localhost:8000/health`
 - [ ] Logs zijn clean: `journalctl -u netmonitor -n 20` geen errors
 - [ ] Services enabled voor auto-start: `systemctl is-enabled <service>`
 

@@ -291,10 +291,9 @@ database:
 
 **Update MCP service:**
 ```bash
-sudo nano /etc/systemd/system/netmonitor-mcp.service
-# Wijzig NETMONITOR_DB_PASSWORD environment variable
-sudo systemctl daemon-reload
-sudo systemctl restart netmonitor-mcp
+sudo nano /opt/netmonitor/.env
+# Wijzig DB_PASSWORD
+sudo systemctl restart netmonitor-mcp-streamable
 ```
 
 ### 2. Restrict Network Access

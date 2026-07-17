@@ -39,24 +39,24 @@ Dit script:
 ### Stap 2: Installeer de MCP Service
 
 ```bash
-sudo ./install_mcp_service.sh
+cd mcp_server
+sudo ./setup_streamable_http.sh
 ```
 
 Het install script:
-- Detecteert automatisch de venv
-- Biedt aan om venv te maken als deze niet bestaat
-- Gebruikt de venv Python in de systemd service
+- Hergebruikt de bestaande venv (foutmelding als die niet bestaat)
+- Installeert `mcp_server/requirements.txt`
+- Zet en enabled de systemd service
 
 ### Stap 3: Verificatie
 
 ```bash
-# Check service status
-sudo systemctl status netmonitor-mcp
+# Start en check service status
+sudo systemctl start netmonitor-mcp-streamable
+sudo systemctl status netmonitor-mcp-streamable
 
 # Test MCP server
-source venv/bin/activate
-cd mcp_server
-python3 server.py --help
+curl http://localhost:8000/health
 ```
 
 ---
@@ -146,7 +146,7 @@ sudo chown -R $USER:$USER /path/to/netmonitor
 
 **Check logs:**
 ```bash
-sudo journalctl -u netmonitor-mcp -n 50
+sudo journalctl -u netmonitor-mcp-streamable -n 50
 ```
 
 **Veelvoorkomende oorzaken:**
@@ -161,8 +161,8 @@ rm -rf venv/
 ./setup_venv.sh
 
 # Reinstall service
-sudo ./install_mcp_service.sh
-sudo systemctl restart netmonitor-mcp
+sudo mcp_server/setup_streamable_http.sh
+sudo systemctl restart netmonitor-mcp-streamable
 ```
 
 ### Probleem: Venv werkt niet na system upgrade
@@ -174,7 +174,7 @@ sudo systemctl restart netmonitor-mcp
 # Recreate venv met nieuwe Python
 rm -rf venv/
 ./setup_venv.sh
-sudo ./install_mcp_service.sh  # Reinstall service
+sudo mcp_server/setup_streamable_http.sh  # Reinstall service
 ```
 
 ---
@@ -189,9 +189,9 @@ sudo ./install_mcp_service.sh  # Reinstall service
 
 ### MCP Server Dependencies
 - `mcp>=1.0.0` - Model Context Protocol library
-- `starlette` - ASGI web framework
+- `fastapi` - ASGI web framework voor de Streamable HTTP server
 - `uvicorn` - ASGI server
-- `sse-starlette` - Server-Sent Events support
+- `starlette`, `sse-starlette` - alleen nodig voor de gearchiveerde legacy SSE-server (`archive/mcp_legacy_http_api/`)
 
 ### Zie volledige lijst:
 ```bash
@@ -216,7 +216,8 @@ netmonitor/
 │   └── ...
 ├── setup_venv.sh                 # Setup script
 ├── activate_venv.sh              # Helper activation script
-├── install_mcp_service.sh        # Service installer (uses venv)
+├── mcp_server/
+│   └── setup_streamable_http.sh  # MCP service installer (uses venv)
 └── ...
 ```
 
@@ -234,7 +235,8 @@ netmonitor/
 
 2. **Gebruik venv Python voor manual testing:**
    ```bash
-   venv/bin/python3 mcp_server/server.py --help
+   cd mcp_server
+   ../venv/bin/python3 streamable_http_server.py
    ```
 
 3. **Update requirements bij nieuwe dependencies:**
@@ -305,10 +307,10 @@ Gebruik deze checklist om te verifiëren dat alles correct is ingesteld:
 
 - [ ] Venv gemaakt: `./setup_venv.sh` uitgevoerd zonder errors
 - [ ] Venv bevat MCP: `venv/bin/python3 -c "import mcp; print('OK')"`
-- [ ] Service gebruikt venv: `systemctl cat netmonitor-mcp | grep ExecStart` toont venv path
-- [ ] Service draait: `systemctl status netmonitor-mcp` toont "active (running)"
-- [ ] MCP server reageert: `curl http://localhost:3000/health` returns "OK"
-- [ ] Logs zijn clean: `journalctl -u netmonitor-mcp -n 20` geen errors
+- [ ] Service gebruikt venv: `systemctl cat netmonitor-mcp-streamable | grep ExecStart` toont venv path
+- [ ] Service draait: `systemctl status netmonitor-mcp-streamable` toont "active (running)"
+- [ ] MCP server reageert: `curl http://localhost:8000/health` returns "OK"
+- [ ] Logs zijn clean: `journalctl -u netmonitor-mcp-streamable -n 20` geen errors
 
 ---
 

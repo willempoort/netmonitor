@@ -868,10 +868,8 @@ class Valves(BaseModel):
 ## 📚 Meer Informatie
 
 **NetMonitor MCP Documentatie:**
-- HTTP API Quick Start: `mcp_server/HTTP_API_QUICKSTART.md`
-- Complete API Docs: `MCP_HTTP_API.md`
-- Claude Desktop Setup: `mcp_server/CLAUDE_DESKTOP_CONFIG.md`
-- Installation Guide: `mcp_server/INSTALLATION.md`
+- Streamable HTTP Server: `mcp_server/STREAMABLE_HTTP_README.md`
+- Claude Desktop Setup: `mcp_server/CLAUDE_DESKTOP_BRIDGE_SETUP.md`
 
 **Open WebUI Resources:**
 - Documentation: https://docs.openwebui.com

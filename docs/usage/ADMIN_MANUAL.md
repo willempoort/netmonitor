@@ -1232,25 +1232,22 @@ The MCP server enables AI-powered security operations by exposing SOC functional
 ```bash
 cd /opt/netmonitor
 
-# Ensure Python venv is activated
-python3 -m venv venv
-source venv/bin/activate
-
-# Run installation script
-sudo ./mcp_server/setup_http_api.sh
+# Run installation script (hergebruikt de bestaande venv)
+cd mcp_server
+sudo ./setup_streamable_http.sh
 ```
 
 The setup script will:
-- ✅ Install required Python dependencies (fastapi, uvicorn, etc.)
-- ✅ Create systemd service (`netmonitor-mcp-http`)
-- ✅ Configure firewall (optional)
+- ✅ Install required Python dependencies (fastapi, uvicorn, etc.) into the existing venv
+- ✅ Create an initial admin API token
+- ✅ Create systemd service (`netmonitor-mcp-streamable`)
 - ✅ Start MCP server on port 8000
 
 **2. Verify Installation:**
 
 ```bash
 # Check service status
-systemctl status netmonitor-mcp-http
+systemctl status netmonitor-mcp-streamable
 
 # Test health endpoint
 curl http://localhost:8000/health
@@ -1700,10 +1697,10 @@ For production use:
 **MCP Server not starting:**
 ```bash
 # Check service status
-systemctl status netmonitor-mcp-http
+systemctl status netmonitor-mcp-streamable
 
 # View logs
-journalctl -u netmonitor-mcp-http -f
+journalctl -u netmonitor-mcp-streamable -f
 
 # Check port availability
 netstat -tlnp | grep 8000
@@ -2042,7 +2039,7 @@ journalctl -u netmonitor-sensor -f
 
 **MCP Server logs:**
 ```bash
-journalctl -u netmonitor-mcp-http -f
+journalctl -u netmonitor-mcp-streamable -f
 ```
 
 **PostgreSQL logs:**
@@ -2106,10 +2103,10 @@ sudo systemctl status netmonitor-sensor
 
 **MCP Server:**
 ```bash
-sudo systemctl start netmonitor-mcp-http
-sudo systemctl stop netmonitor-mcp-http
-sudo systemctl restart netmonitor-mcp-http
-sudo systemctl status netmonitor-mcp-http
+sudo systemctl start netmonitor-mcp-streamable
+sudo systemctl stop netmonitor-mcp-streamable
+sudo systemctl restart netmonitor-mcp-streamable
+sudo systemctl status netmonitor-mcp-streamable
 ```
 
 ### Backup & Restore
@@ -2123,21 +2120,21 @@ sudo -u postgres pg_dump netmonitor > netmonitor_backup.sql
 sudo -u postgres pg_dump netmonitor | gzip > netmonitor_backup.sql.gz
 
 # Include MCP tokens and audit logs
-sudo -u postgres pg_dump netmonitor --table=mcp_tokens --table=mcp_audit_log >> netmonitor_backup.sql
+sudo -u postgres pg_dump netmonitor --table=mcp_api_tokens --table=mcp_api_token_usage >> netmonitor_backup.sql
 ```
 
 **Restore database:**
 ```bash
 # Stop services
 sudo systemctl stop netmonitor-soc
-sudo systemctl stop netmonitor-mcp-http
+sudo systemctl stop netmonitor-mcp-streamable
 
 # Restore
 sudo -u postgres psql netmonitor < netmonitor_backup.sql
 
 # Restart services
 sudo systemctl start netmonitor-soc
-sudo systemctl start netmonitor-mcp-http
+sudo systemctl start netmonitor-mcp-streamable
 ```
 
 ---
@@ -2505,7 +2502,7 @@ Enable comprehensive audit trails:
 
 ```bash
 # Check MCP audit logs are enabled
-psql -U netmonitor -d netmonitor -c "SELECT COUNT(*) FROM mcp_audit_log;"
+psql -U netmonitor -d netmonitor -c "SELECT COUNT(*) FROM mcp_api_token_usage;"
 
 # Check web user audit logs
 psql -U netmonitor -d netmonitor -c "SELECT COUNT(*) FROM web_user_audit;"
@@ -2716,7 +2713,7 @@ SELECT add_retention_policy('alerts', INTERVAL '90 days');
 SELECT add_retention_policy('sensor_metrics', INTERVAL '365 days');
 
 -- Auto-delete MCP audit logs older than 30 days
-SELECT add_retention_policy('mcp_audit_log', INTERVAL '30 days');
+SELECT add_retention_policy('mcp_api_token_usage', INTERVAL '30 days');
 ```
 
 ### TLS/HTTPS Analysis Configuration
