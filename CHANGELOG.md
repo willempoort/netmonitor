@@ -15,6 +15,16 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.3.5] - 2026-07-17
+
+### Fixed
+- **`install_complete.sh` annuleerde zichzelf stilletjes op elk OS behalve exact Ubuntu 24.04 of Debian 12.** De OS-waarschuwing ("Toch doorgaan?") en de daaropvolgende "Doorgaan met installatie?"-prompt gebruiken allebei `read -n 1`, dat maar 1 teken leest en de Enter-toets (of extra tekens bij bv. "yes") in de inputbuffer laat staan. Zonder read ertussenin werd die restinvoer door de tweede prompt gelezen als lege/foutieve invoer, waardoor de installatie afbrak alsof de gebruiker "N" had geantwoord - ook al werd er twee keer "y" ingetikt. Trof elke niet-expliciet-whitelisted OS-versie (Debian 13, Ubuntu 22.04/26.04, ...). Dezelfde bug zat in de "Keuze (1/2/3)"-prompt van `setup_database()` en in `install_services.sh` (per-service enable-prompts in een lus). Opgelost met een `drain_stdin_line`-helper die na elke `read -n 1` de restbuffer leegt.
+- `mcp_server/threat_intel/load_knowledge_base.py` en `sync_service.py` (STAP 7, threat intelligence setup) faalden altijd met `ModuleNotFoundError` voor `dotenv` en `httpx` - deze stonden niet in `requirements.txt`. Toegevoegd (`python-dotenv`, `httpx`).
+- `check_os()` herkende alleen Ubuntu 24.04 en Debian 12 als "volledig ondersteund"; elke andere versie (inclusief Debian 13, dat al een eigen fix heeft, en Ubuntu 22.04) kreeg een "niet getest"-waarschuwing. Uitgebreid naar een expliciete lijst (Ubuntu 22.04/24.04/26.04, Debian 12/13).
+
+### Added
+- Ubuntu 26.04 LTS geverifieerd als volledig ondersteund: complete installatie (PostgreSQL 18 + TimescaleDB 2.28, NetMonitor Core, MCP Streamable HTTP API, nginx met self-signed TLS) end-to-end getest, geen OS-specifieke code nodig - de packagecloud TimescaleDB-repo en PGDG hebben al packages voor de `resolute`-codename/PG18-combinatie.
+
 ## [2.3.4] - 2026-07-17
 
 ### Fixed

@@ -47,8 +47,10 @@ if [ ! -f /etc/apt/sources.list.d/timescale_timescaledb.list ]; then
     echo "Adding TimescaleDB repository..."
 
     install -d -m 0755 /etc/apt/keyrings
+    # --yes voorkomt een interactieve "File exists. Overwrite?"-prompt van gpg
+    # als de keyring nog van een eerdere (deels voltooide) run aanwezig is.
     wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey \
-        | gpg --dearmor -o /etc/apt/keyrings/timescaledb.gpg
+        | gpg --yes --dearmor -o /etc/apt/keyrings/timescaledb.gpg
     chmod 0644 /etc/apt/keyrings/timescaledb.gpg
 
     sh -c "echo 'deb [signed-by=/etc/apt/keyrings/timescaledb.gpg] https://packagecloud.io/timescale/timescaledb/${TIMESCALE_REPO_OS}/ $(lsb_release -c -s) main' > /etc/apt/sources.list.d/timescale_timescaledb.list"

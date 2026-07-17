@@ -3,22 +3,28 @@
 # Copyright (c) 2025 Willem M. Poort
 #
 # NetMonitor SOC - Complete Installation Script
-# Version: 2.3.0
+# Version: 2.3.5
 # Installs: PostgreSQL, TimescaleDB, NetMonitor, Web Auth, MCP API, Nginx
 #
 # Features:
 # - Enforces root execution for automatic dependency installation
 # - Reads existing .env values and uses them as defaults
 # - Uses .env.example as template if .env doesn't exist
-# - Supports Ubuntu 24.04 & Debian 12 (other distros need manual adaptation)
+# - Supports Ubuntu 22.04/24.04/26.04 & Debian 12/13 (other distros need manual adaptation)
 # - Checks for existing database and prompts to keep or overwrite
 # - Configures all variables from .env including paths, ports, security settings
 #
 # Usage: sudo ./install_complete.sh
 #
 # Supported OS:
-# - Ubuntu 24.04 LTS (fully tested)
-# - Debian 12 (fully tested)
+# - Ubuntu 24.04 LTS, Debian 12: fully tested (original target platforms)
+# - Ubuntu 26.04 LTS: fully tested (verified end-to-end incl. PostgreSQL 18 +
+#   TimescaleDB, MCP API, nginx/self-signed TLS - no OS-specific code needed,
+#   see check_os())
+# - Debian 13: tested; needs the sudo package on minimal installs, handled
+#   automatically by ensure_sudo_debian13()
+# - Ubuntu 22.04 LTS: same code paths as 24.04 (older PostgreSQL/TimescaleDB
+#   combo also published by upstream repos), not independently verified here
 # - Other Ubuntu/Debian versions may work but are not tested
 # - Other distributions require manual adaptation
 #
@@ -89,6 +95,21 @@ check_root() {
     fi
 }
 
+# `read -n 1` stopt zodra 1 teken is gelezen, maar in canonical terminal mode
+# (die dit script niet uitzet) levert de tty pas een hele regel af zodra
+# Enter is ingedrukt. Bij "y<Enter>" wordt dus alleen "y" geconsumeerd en
+# blijft de Enter (of extra getypte tekens zoals bij "yes<Enter>") in de
+# inputbuffer staan. Een DIRECT daaropvolgende read - of het nu een tweede
+# `-n 1` prompt is of een normale `read -p` - leest die restanten dan als
+# eigen antwoord, met een leeg/fout resultaat tot gevolg (bv. installatie die
+# zichzelf stilletjes annuleert na een tweede "Doorgaan?"-prompt). Deze helper
+# leegt die restbuffer meteen na elke `-n 1` read.
+drain_stdin_line() {
+    local _junk
+    while read -t 0.01 -n 1 -r _junk 2>/dev/null; do :; done
+    return 0
+}
+
 check_os() {
     if [ ! -f /etc/os-release ]; then
         print_error "Kan OS niet detecteren"
@@ -98,21 +119,27 @@ check_os() {
     . /etc/os-release
     print_info "Gedetecteerd OS: $PRETTY_NAME"
 
-    # Check for supported distros: Ubuntu 24.04 or Debian 12
+    # Getest en volledig ondersteund: Ubuntu 22.04/24.04/26.04 en Debian 12/13.
+    # Deze lijst is bewust expliciet (i.p.v. "elke ubuntu/debian") zodat een
+    # nieuwe distro-versie standaard door de "niet getest"-tak hieronder gaat
+    # totdat iemand 'm daadwerkelijk heeft geverifieerd en toevoegt.
+    SUPPORTED_UBUNTU_VERSIONS="22.04 24.04 26.04"
+    SUPPORTED_DEBIAN_VERSIONS="12 13"
+
     SUPPORTED=false
 
-    if [[ "$ID" == "ubuntu" && "$VERSION_ID" == "24.04" ]]; then
+    if [[ "$ID" == "ubuntu" ]] && [[ " $SUPPORTED_UBUNTU_VERSIONS " == *" $VERSION_ID "* ]]; then
         SUPPORTED=true
-        print_success "Ubuntu 24.04 gedetecteerd - volledig ondersteund"
-    elif [[ "$ID" == "debian" && "$VERSION_ID" == "12" ]]; then
+        print_success "Ubuntu $VERSION_ID gedetecteerd - volledig ondersteund"
+    elif [[ "$ID" == "debian" ]] && [[ " $SUPPORTED_DEBIAN_VERSIONS " == *" $VERSION_ID "* ]]; then
         SUPPORTED=true
-        print_success "Debian 12 gedetecteerd - volledig ondersteund"
+        print_success "Debian $VERSION_ID gedetecteerd - volledig ondersteund"
     elif [[ "$ID" == "ubuntu" || "$ID" == "debian" ]]; then
-        print_warning "Dit script is getest op Ubuntu 24.04 en Debian 12"
+        print_warning "Dit script is getest op Ubuntu ($SUPPORTED_UBUNTU_VERSIONS) en Debian ($SUPPORTED_DEBIAN_VERSIONS)"
         print_warning "Je versie: $PRETTY_NAME"
         print_warning "Het script zou moeten werken, maar is niet getest op deze versie"
     else
-        print_warning "Dit script is alleen getest op Ubuntu 24.04 en Debian 12"
+        print_warning "Dit script is alleen getest op Ubuntu ($SUPPORTED_UBUNTU_VERSIONS) en Debian ($SUPPORTED_DEBIAN_VERSIONS)"
         print_warning "Je OS: $PRETTY_NAME"
         print_warning "Andere distributies vereisen mogelijk aanpassingen"
         print_warning "Voeg zelf ondersteuning toe voor jouw distributie indien nodig"
@@ -122,6 +149,7 @@ check_os() {
         echo
         read -p "Toch doorgaan? (y/N) " -n 1 -r
         echo
+        drain_stdin_line
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             print_info "Installatie geannuleerd"
             exit 0
@@ -383,10 +411,13 @@ install_timescaledb() {
     esac
 
     # Add TimescaleDB repo met een signed-by keyring (apt-key is deprecated/
-    # verwijderd op recente Debian/Ubuntu releases)
+    # verwijderd op recente Debian/Ubuntu releases). --yes voorkomt dat gpg
+    # interactief "File exists. Overwrite? (y/N)" vraagt en het script laat
+    # hangen wanneer install_complete.sh een tweede keer draait (bv. om .env
+    # bij te werken) en de keyring van de vorige run al bestaat.
     install -d -m 0755 /etc/apt/keyrings
     wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey \
-        | gpg --dearmor -o /etc/apt/keyrings/timescaledb.gpg
+        | gpg --yes --dearmor -o /etc/apt/keyrings/timescaledb.gpg
     chmod 0644 /etc/apt/keyrings/timescaledb.gpg
 
     sh -c "echo 'deb [signed-by=/etc/apt/keyrings/timescaledb.gpg] https://packagecloud.io/timescale/timescaledb/${TIMESCALE_REPO_OS}/ $(lsb_release -c -s) main' > /etc/apt/sources.list.d/timescaledb.list"
@@ -431,6 +462,7 @@ setup_database() {
         echo
         read -p "Keuze (1/2/3): " -n 1 -r DB_CHOICE
         echo
+        drain_stdin_line
 
         case "$DB_CHOICE" in
             1)
@@ -1218,9 +1250,9 @@ main() {
     clear
 
     print_header "NetMonitor SOC - Complete Installation"
-    echo "Versie: 2.3.0"
+    echo "Versie: 2.3.5"
     echo "Dit script installeert ALLES automatisch inclusief web authenticatie"
-    echo "Ondersteunde OS: Ubuntu 24.04 & Debian 12"
+    echo "Ondersteunde OS: Ubuntu 22.04/24.04/26.04 & Debian 12/13"
     echo
 
     check_root
@@ -1238,6 +1270,7 @@ main() {
     echo
     read -p "Doorgaan met installatie? (y/N) " -n 1 -r
     echo
+    drain_stdin_line
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         print_info "Installatie geannuleerd"
         exit 0

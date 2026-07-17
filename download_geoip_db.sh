@@ -40,6 +40,10 @@ echo ""
 
 read -p "Download db-ip.com free database now? [y/N] " -n 1 -r
 echo
+# Leeg eventuele restinvoer (bv. de Enter-toets) die `read -n 1` laat staan,
+# zodat een script dat dit script aanroept en daarna zelf weer stdin leest
+# niet per ongeluk die restinvoer krijgt.
+while read -t 0.01 -n 1 -r _drain_junk 2>/dev/null; do :; done
 if [[ $REPLY =~ ^[Yy]$ ]]
 then
     echo "Downloading db-ip.com free GeoIP database..."
