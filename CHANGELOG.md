@@ -15,6 +15,11 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.3.8] - 2026-07-17
+
+### Fixed
+- **Het subnet-broadcast-adres (bv. `10.100.0.255`) werd getrackt als een normaal "apparaat".** `internal_networks` in `config.yaml.example` bevat alleen de brede RFC1918-supernetten (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`); `_is_broadcast_or_multicast()` in `device_discovery.py` herkent een IP alleen als broadcast wanneer het exact het broadcast-adres van een van de geconfigureerde netwerken is - en dat is voor een `/8` bijvoorbeeld `X.255.255.255`, niet het broadcast-adres van het daadwerkelijke `/24`-subnet. De installatieprompt "Jouw interne netwerk CIDR" verzamelt precies de benodigde precieze CIDR, maar die waarde werd alleen naar `.env` geschreven en nooit toegepast op `internal_networks` in `config.yaml` - trof dus elke installatie, ongeacht het ingevoerde antwoord. `install_complete.sh` voegt het opgegeven netwerk nu toe aan `internal_networks` in `config.yaml` (idempotent, naast de bestaande brede defaults).
+
 ## [2.3.7] - 2026-07-17
 
 ### Fixed
