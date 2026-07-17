@@ -1616,14 +1616,14 @@ function renderAlertCard(alert, threatType) {
     }
 
     return `
-        <div class="card bg-secondary mb-2">
+        <div class="card bg-secondary mb-2" id="alert-card-${alert.id}">
             <div class="card-body">
                 <div class="d-flex justify-content-between">
                     <div>
                         <span class="badge bg-${alert.severity === 'CRITICAL' ? 'danger' : alert.severity === 'HIGH' ? 'warning' : 'info'}">${alert.severity}</span>
                         <small class="text-muted ms-2">${new Date(alert.timestamp).toLocaleString('nl-NL')}</small>
                     </div>
-                    <div>
+                    <div class="alert-card-ack-status">
                         ${alert.acknowledged ? '<span class="badge bg-success">Acknowledged</span>' : ''}
                     </div>
                 </div>
@@ -1645,9 +1645,70 @@ function renderAlertCard(alert, threatType) {
                     </div>
                 ` : ''}
                 ${extraInfo}
+                <div class="mt-2 d-flex gap-2 alert-card-actions">
+                    ${alert.acknowledged ? '' : `
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="acknowledgeAlertCard(${alert.id}, this)" title="Bevestigen">
+                        <i class="bi bi-check2-circle"></i> Bevestigen
+                    </button>
+                    `}
+                    <button type="button" class="btn btn-sm btn-outline-success" onclick="openWhitelistFromThreatAlert(${alert.id})" title="Toevoegen aan whitelist">
+                        <i class="bi bi-shield-check"></i> Whitelist
+                    </button>
+                </div>
             </div>
         </div>
     `;
+}
+
+function acknowledgeAlertCard(alertId, btnEl) {
+    btnEl.disabled = true;
+    const originalContent = btnEl.innerHTML;
+    btnEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+    fetch(`/api/alerts/${alertId}/acknowledge`, { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const card = document.getElementById(`alert-card-${alertId}`);
+                if (card) {
+                    const statusEl = card.querySelector('.alert-card-ack-status');
+                    if (statusEl) statusEl.innerHTML = '<span class="badge bg-success">Acknowledged</span>';
+                    btnEl.remove();
+                }
+                const alert = currentThreatData.allAlerts.find(a => a.id === alertId);
+                if (alert) alert.acknowledged = true;
+                showToast('Melding bevestigd', 'success');
+            } else {
+                btnEl.disabled = false;
+                btnEl.innerHTML = originalContent;
+                showToast(data.error || 'Bevestigen mislukt', 'danger');
+            }
+        })
+        .catch(error => {
+            btnEl.disabled = false;
+            btnEl.innerHTML = originalContent;
+            showToast(`Fout: ${error.message}`, 'danger');
+        });
+}
+
+function openWhitelistFromThreatAlert(alertId) {
+    const alert = (currentThreatData.allAlerts || []).find(a => a.id === alertId);
+    if (!alert) return;
+
+    currentAlertGroup = {
+        threat_type: alert.threat_type,
+        source_ip: alert.source_ip,
+        destination_ip: alert.destination_ip,
+        alerts: [alert]
+    };
+
+    // openWhitelistFromAlert() only hides #alertDetailsModal, which isn't the
+    // one open here - close the threat-details modal ourselves first.
+    const threatModalEl = document.getElementById('threatDetailsModal');
+    const threatModal = bootstrap.Modal.getInstance(threatModalEl);
+    if (threatModal) threatModal.hide();
+
+    openWhitelistFromAlert();
 }
 
 function showThreatDetailsError(error) {

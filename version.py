@@ -15,4 +15,4 @@ SCHEMA_VERSION in database.py and don't require an application version bump
 by themselves - only bump here if the change is user/operator visible.
 """
 
-__version__ = "2.2.0"
+__version__ = "2.3.0"
