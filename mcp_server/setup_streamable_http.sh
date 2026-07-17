@@ -191,6 +191,34 @@ else
 fi
 
 echo ""
+
+# Step 5: Check nginx routing for /mcp (read-only check - never auto-edits
+# a live nginx config, just tells you where the current template lives)
+echo "Step 5: Checking nginx configuration..."
+echo ""
+
+NGINX_SITE=$(grep -Rl "netmonitor_dashboard" /etc/nginx/sites-enabled/ 2>/dev/null | head -1)
+
+if [ -z "$NGINX_SITE" ]; then
+    echo "ℹ️  Geen nginx-config gevonden voor NetMonitor - overgeslagen."
+    echo "   (De MCP-server is lokaal bereikbaar op poort 8000; nginx is alleen"
+    echo "   nodig voor externe/HTTPS toegang.)"
+elif grep -q "netmonitor_mcp_api" "$NGINX_SITE" 2>/dev/null; then
+    echo "✅ Nginx heeft al MCP-routing ($NGINX_SITE)"
+    echo "   /mcp werkt nu zodra nginx herladen is:"
+    echo "   sudo systemctl reload nginx"
+else
+    echo "⚠️  Nginx serveert het dashboard ($NGINX_SITE) maar heeft GEEN /mcp-routing"
+    echo ""
+    echo "   Voeg dit toe aan de hand van het actuele template:"
+    echo "   $NETMONITOR_DIR/nginx-netmonitor.conf.example"
+    echo ""
+    echo "   Neem de 'netmonitor_mcp_api' upstream en de 'location = /mcp' /"
+    echo "   'location /mcp/' blokken over in $NGINX_SITE, test daarna en herlaad:"
+    echo "   sudo nginx -t && sudo systemctl reload nginx"
+fi
+echo ""
+
 echo "=================================================="
 echo "Setup Complete!"
 echo "=================================================="
