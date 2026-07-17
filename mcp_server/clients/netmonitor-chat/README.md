@@ -204,10 +204,13 @@ ollama list
 ollama serve &
 
 # Pull een model (kies één)
-ollama pull qwen3:14b             # Aanbevolen: beste tool calling (2026)
+ollama pull qwen3.5:9b            # Aanbevolen: nieuwste generatie, beste tool calling (medio 2026)
+ollama pull qwen3:14b             # Alternatief: iets ouder, meer geheugen nodig
 ollama pull llama3.1:8b           # Budget: goede tool calling
 ollama pull mistral:7b-instruct   # Snelst: basic tool calling
 ```
+
+> **Waarom qwen3.5:9b op Ollama?** Ollama gebruikt op Apple Silicon sinds v0.19 een MLX-backend, maar **alleen bij 32GB+ unified memory** — op Macs met minder RAM (bijv. 24GB) valt Ollama automatisch terug op de llama.cpp/GGUF-engine. Dat is hier een voordeel: Qwen3.5's tool-calling betrouwbaarheid neemt bij lange tool-ketens (5-10+ rondes) aantoonbaar af bij **MLX**-quantisatie, maar niet bij GGUF. Met Ollama op een 24GB Mac krijg je dus automatisch de stabielere GGUF-route, zonder dat je daar iets voor hoeft te doen. Qua geheugen: `qwen3.5:9b` is ~6,6GB, ruim lichter dan `qwen3:14b` (~9-10GB).
 
 **Optie B: LM Studio (sneller op Mac M1/M2/M3)**
 
@@ -562,7 +565,8 @@ NetMonitor Chat gebruikt intelligente tool filtering om context size te reducere
 
 | Model | Tool Calling | Multi-Tool | Snelheid | Geheugen (Q4) | Aanbeveling |
 |-------|--------------|------------|----------|----------------|-------------|
-| **qwen3:14b / Qwen3-14B** | ⭐⭐⭐ Excellent | ⭐⭐⭐ | ~5-10s | ~9-10GB | **Aanbevolen** |
+| **qwen3.5:9b** (Ollama, GGUF) | ⭐⭐⭐ Excellent | ⭐⭐⭐ | ~4-8s | ~6,6GB | **Aanbevolen op Ollama / <32GB Mac** |
+| **qwen3:14b / Qwen3-14B** | ⭐⭐⭐ Excellent | ⭐⭐⭐ | ~5-10s | ~9-10GB | Bewezen alternatief, meer geheugen |
 | **Qwen3-30B-A3B-Instruct-2507** (MoE) | ⭐⭐⭐ Excellent | ⭐⭐⭐ | ~3-6s* | ~17-18GB | Meer power, 24GB+ nodig |
 | qwen2.5-coder:14b | ⭐⭐⭐ Excellent | ⭐⭐⭐ | ~5-10s | ~9GB | Nog prima, ouder |
 | **llama3.1:8b** | ⭐⭐ Goed | ⭐⭐ | ~3-5s | ~4.5GB | Budget optie |
@@ -573,7 +577,9 @@ NetMonitor Chat gebruikt intelligente tool filtering om context size te reducere
 
 > **Let op**: Modellen kleiner dan 7B parameters hebben vaak problemen met multi-tool calling. Ze stoppen na de eerste tool of hallucinereren tool formaten.
 
-**LM Studio op Mac**: Vaak 2-3x sneller door Metal GPU optimalisatie!
+> **Qwen3.5 MLX-variant**: vermijd bij lange tool-ketens (5-10+ rondes) de MLX-quant van Qwen3.5 (bijv. in LM Studio) — bekend probleem waarbij tool-calling betrouwbaarheid afneemt. De GGUF-variant (standaard via `ollama pull qwen3.5:9b`) heeft dit probleem niet.
+
+**LM Studio op Mac**: Vaak 2-3x sneller door Metal GPU optimalisatie — dit voordeel geldt vooral bij 32GB+ Macs waar Ollama's MLX-backend ook actief is; op kleinere Macs (<32GB) draaien beide via een vergelijkbare GGUF/llama.cpp-route.
 
 ### Temperature Settings
 - **0.0**: Deterministisch, geen hallucinaties (aanbevolen)
