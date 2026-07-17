@@ -23,19 +23,14 @@ dashboard:
 
 ### 1. Nginx Configuratie Updaten
 
-De nginx configuratie moet de kiosk routes bevatten. Twee opties:
+De nginx configuratie moet de kiosk routes bevatten:
 
-**Optie A: Dual Config (Dashboard + MCP)**
 ```bash
-sudo cp nginx-netmonitor-dual.conf /etc/nginx/sites-available/soc.poort.net
+sudo cp nginx-netmonitor.conf.example /etc/nginx/sites-available/soc.poort.net
 sudo ln -sf /etc/nginx/sites-available/soc.poort.net /etc/nginx/sites-enabled/
 ```
 
-**Optie B: Dashboard-only Config**
-```bash
-sudo cp nginx-netmonitor.conf /etc/nginx/sites-available/soc.poort.net
-sudo ln -sf /etc/nginx/sites-available/soc.poort.net /etc/nginx/sites-enabled/
-```
+(Eén template - bevat zowel dashboard- als MCP-routing. Geen MCP-server draaiend? Dan geven de `/mcp`-locaties gewoon een 502, verder geen impact.)
 
 ### 2. Test Nginx Configuratie
 ```bash

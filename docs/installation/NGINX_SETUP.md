@@ -9,11 +9,14 @@ NetMonitor draait met **twee backend services** op verschillende poorten:
 | **Web Dashboard** | 8080 | Flask + eventlet + SocketIO | Web UI voor mensen |
 | **MCP HTTP API** | 8000 | FastAPI + Uvicorn | AI/MCP clients (Claude, Open WebUI) |
 
-## 📁 Nginx Configuratie Bestanden
+## 📁 Nginx Configuratie Bestand
 
-### 1. `nginx-netmonitor-dual.conf` ⭐ **AANBEVOLEN**
+### `nginx-netmonitor.conf.example`
 
-**Gebruik dit bestand** voor volledige setup met beide services.
+Er is één template, voor de volledige setup met beide services. Het bevat
+altijd de MCP-routing, ongeacht of je de MCP HTTP API (nog) geïnstalleerd
+hebt - draait er niets op poort 8000, dan geven de `/mcp/*`-locaties
+gewoon een 502 totdat je 'm alsnog activeert.
 
 **Features:**
 - ✅ Routeert `/mcp/*` naar MCP API (poort 8000)
@@ -33,29 +36,24 @@ https://soc.example.com/mcp/*        → MCP HTTP API (8000)
 
 **Installatie:**
 ```bash
-sudo cp nginx-netmonitor-dual.conf /etc/nginx/sites-available/netmonitor
+sudo cp nginx-netmonitor.conf.example /etc/nginx/sites-available/netmonitor
 sudo ln -sf /etc/nginx/sites-available/netmonitor /etc/nginx/sites-enabled/netmonitor
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-### 2. `nginx-netmonitor.conf`
-
-**Legacy configuratie** - alleen Web Dashboard (poort 8080).
-
-Gebruik dit als je **geen** MCP HTTP API hebt draaien.
-
-### 3. `nginx-netmonitor-gunicorn.conf`
-
-**Alternatieve configuratie** voor Gunicorn als WSGI server.
-
-⚠️ **Niet gebruiken** tenzij je specifiek Gunicorn wilt gebruiken in plaats van eventlet.
+Wil je specifiek Gunicorn i.p.v. eventlet als WSGI-server? Zie de
+gearchiveerde `archive/nginx/nginx-netmonitor-gunicorn.conf` en
+`docs/installation/GUNICORN_SETUP.md` - dat is een losstaande, minder
+gebruikelijke opstelling.
 
 ## 🚀 Setup Instructies
 
-### Stap 1: Kies je Configuratie
+### Stap 1: Kopieer de Configuratie
 
-Voor de meeste gevallen: gebruik `nginx-netmonitor-dual.conf`
+```bash
+sudo cp nginx-netmonitor.conf.example /etc/nginx/sites-available/netmonitor
+```
 
 ### Stap 2: Pas Domeinnaam Aan
 
@@ -181,7 +179,7 @@ sudo systemctl status netmonitor.service
 sudo lsof -i :8080
 
 # Is MCP API running?
-sudo systemctl status netmonitor-mcp-http.service
+sudo systemctl status netmonitor-mcp-streamable.service
 sudo lsof -i :8000
 ```
 
@@ -226,7 +224,7 @@ add_header Access-Control-Allow-Origin "*" always;
 add_header Access-Control-Allow-Headers "Authorization, Content-Type, X-API-Key" always;
 ```
 
-**Or configure in FastAPI** (`mcp_server/http_server.py`):
+**Or configure in FastAPI** (`mcp_server/streamable_http_server.py`):
 ```python
 app.add_middleware(
     CORSMiddleware,
@@ -265,7 +263,7 @@ sudo tail -f /var/log/nginx/netmonitor_error.log
 sudo journalctl -u netmonitor.service -f
 
 # MCP API
-sudo journalctl -u netmonitor-mcp-http.service -f
+sudo journalctl -u netmonitor-mcp-streamable.service -f
 ```
 
 ## 🔀 Service Port Mapping
@@ -276,7 +274,7 @@ sudo journalctl -u netmonitor-mcp-http.service -f
 | `/api/*` | `netmonitor_dashboard` | web_dashboard.py | 8080 |
 | `/api/sensors/*` | `netmonitor_dashboard` | web_dashboard.py | 8080 |
 | `/socket.io/*` | `netmonitor_dashboard` | web_dashboard.py | 8080 |
-| `/mcp/*` | `netmonitor_mcp_api` | http_server.py | 8000 |
+| `/mcp/*` | `netmonitor_mcp_api` | streamable_http_server.py | 8000 |
 
 ## 🌐 Firewall Configuration
 
