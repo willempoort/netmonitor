@@ -129,6 +129,33 @@ check_os() {
     fi
 }
 
+# Debian 13 (trixie) specifieke fix: minimale Debian 13-installaties (geen
+# tasksel "standard system utilities") bevatten het 'sudo' pakket niet
+# standaard, in tegenstelling tot de geteste Ubuntu 24.04- en Debian
+# 12-images. Dit script draait al als root (zie check_root), maar gebruikt
+# verderop overal "sudo -u postgres ..." om als de postgres-user database-
+# commando's uit te voeren. Als sudo ontbreekt falen die commando's stil met
+# "command not found" - de exitcode wordt niet gecontroleerd - waardoor de
+# netmonitor database/user nooit worden aangemaakt terwijl het script wel
+# [SUCCESS] meldt. Dat komt pas later (Database Schema Initialiseren) aan
+# het licht als Python niet kan verbinden. Los daarom sudo hier op, alleen
+# voor Debian 13, zodat Debian 12/Ubuntu 24.04 ongewijzigd blijven werken.
+ensure_sudo_debian13() {
+    if [[ "$ID" == "debian" && "$VERSION_ID" == "13" ]]; then
+        if ! command -v sudo >/dev/null 2>&1; then
+            print_warning "sudo niet gevonden (normaal bij minimale Debian 13-installaties)"
+            print_info "sudo wordt geïnstalleerd zodat database-commando's als postgres-user kunnen draaien..."
+            apt update >> $LOG_FILE 2>&1
+            if apt install -y sudo >> $LOG_FILE 2>&1; then
+                print_success "sudo geïnstalleerd"
+            else
+                print_error "Kon sudo niet installeren - installatie kan niet doorgaan"
+                exit 1
+            fi
+        fi
+    fi
+}
+
 parse_env_file() {
     local env_file="$1"
 
@@ -940,6 +967,44 @@ setup_mcp_api() {
     fi
 }
 
+# Genereert (indien nog niet aanwezig) een 10-jarig self-signed certificaat
+# voor $1 (domeinnaam), zodat de site meteen met werkende HTTPS live gaat
+# in plaats van kaal op HTTP te blijven staan tot de gebruiker zelf certbot
+# draait. Idempotent: een bestaand self-signed cert wordt niet overschreven,
+# zodat browsers die het al vertrouwen (of een handmatig aangemaakte variant)
+# niet bij elke herinstallatie ongevraagd vervangen worden.
+generate_selfsigned_cert() {
+    local domain="$1"
+    local cert_dir="/etc/nginx/ssl/$domain"
+
+    if [ -f "$cert_dir/fullchain.pem" ] && [ -f "$cert_dir/privkey.pem" ]; then
+        print_info "Self-signed certificaat voor $domain bestaat al - hergebruikt"
+        return 0
+    fi
+
+    if ! command -v openssl >/dev/null 2>&1; then
+        print_error "openssl niet gevonden - kan geen self-signed certificaat genereren"
+        return 1
+    fi
+
+    print_info "Self-signed certificaat genereren voor $domain (geldig 10 jaar)..."
+    install -d -m 0755 "$cert_dir"
+    if openssl req -x509 -nodes -newkey rsa:2048 \
+        -keyout "$cert_dir/privkey.pem" \
+        -out "$cert_dir/fullchain.pem" \
+        -days 3650 \
+        -subj "/CN=$domain" \
+        -addext "subjectAltName=DNS:$domain" >> $LOG_FILE 2>&1; then
+        chmod 600 "$cert_dir/privkey.pem"
+        chmod 644 "$cert_dir/fullchain.pem"
+        print_success "Self-signed certificaat aangemaakt: $cert_dir"
+        return 0
+    else
+        print_error "Genereren self-signed certificaat mislukt - check $LOG_FILE"
+        return 1
+    fi
+}
+
 setup_nginx() {
     if [[ ! $INSTALL_NGINX =~ ^[Yy]$ ]]; then
         return
@@ -949,14 +1014,52 @@ setup_nginx() {
 
     cd $INSTALL_DIR
 
+    # Kies template: de volledige HTTPS-config verwijst standaard naar Let's
+    # Encrypt certificaten (/etc/letsencrypt/live/$DOMAIN_NAME/...). Op een
+    # eerste install bestaan die nog niet, dus "nginx -t" zou gegarandeerd
+    # falen. Volgorde:
+    #   1) Bestaand Let's Encrypt certificaat -> gebruik dat (HTTPS-config
+    #      ongewijzigd, bv. bij een herinstallatie na eerdere certbot-run)
+    #   2) Geen domein opgegeven -> HTTP-only (geen zinvolle CN om een
+    #      certificaat op te genereren)
+    #   3) Domein opgegeven, geen Let's Encrypt cert -> self-signed
+    #      certificaat genereren (10 jaar geldig) zodat de site meteen met
+    #      werkende HTTPS live gaat; gebruiker upgradet later zelf met
+    #      "certbot --nginx -d $DOMAIN_NAME" naar een vertrouwd certificaat.
+    SELFSIGNED_USED=false
+    if [ ! -z "$DOMAIN_NAME" ] && [ -f "/etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem" ]; then
+        print_info "Bestaande Let's Encrypt certificaten gevonden voor $DOMAIN_NAME - HTTPS-config gebruikt"
+        NGINX_TEMPLATE="nginx-netmonitor.conf.example"
+    elif [ ! -z "$DOMAIN_NAME" ] && generate_selfsigned_cert "$DOMAIN_NAME"; then
+        NGINX_TEMPLATE="nginx-netmonitor.conf.example"
+        SELFSIGNED_USED=true
+    else
+        [ ! -z "$DOMAIN_NAME" ] && print_warning "Self-signed certificaat mislukt - val terug op HTTP-only config"
+        print_info "Start met HTTP-only config"
+        NGINX_TEMPLATE="nginx-netmonitor-http.conf.example"
+    fi
+
     # Copy config (single template - always includes MCP /mcp routing;
     # harmless if MCP wasn't installed, those locations just 502 until
     # the MCP service is started later via mcp_server/setup_streamable_http.sh)
-    cp nginx-netmonitor.conf.example /etc/nginx/sites-available/netmonitor
+    cp "$NGINX_TEMPLATE" /etc/nginx/sites-available/netmonitor
 
     # Update domain in config
     if [ ! -z "$DOMAIN_NAME" ]; then
         sed -i "s/soc\.example\.com/$DOMAIN_NAME/g" /etc/nginx/sites-available/netmonitor
+    fi
+
+    # Self-signed cert leeft in /etc/nginx/ssl/, niet in /etc/letsencrypt/live/
+    # zoals het HTTPS-template standaard verwacht - paden omzetten. Ook
+    # ssl_stapling/ssl_trusted_certificate verwijderen: die vereisen een
+    # CA-keten die een self-signed cert niet heeft.
+    if [ "$SELFSIGNED_USED" = true ]; then
+        sed -i \
+            -e "s|/etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem|/etc/nginx/ssl/$DOMAIN_NAME/fullchain.pem|" \
+            -e "s|/etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem|/etc/nginx/ssl/$DOMAIN_NAME/privkey.pem|" \
+            -e "/ssl_trusted_certificate/d" \
+            -e "/ssl_stapling/d" \
+            /etc/nginx/sites-available/netmonitor
     fi
 
     # Enable site
@@ -969,15 +1072,29 @@ setup_nginx() {
         print_success "Nginx reloaded"
     else
         print_error "Nginx config invalid - check manually"
-        return
+        rm -f /etc/nginx/sites-enabled/netmonitor
+        print_warning "sites-enabled/netmonitor symlink verwijderd om nginx niet in kapotte staat achter te laten"
+        return 1
     fi
 
-    # SSL certificate (if domain provided)
-    if [ ! -z "$DOMAIN_NAME" ]; then
+    # SSL certificate follow-up
+    if [ "$SELFSIGNED_USED" = true ]; then
         print_info "SSL Certificate Setup"
         echo
-        print_warning "Run this manually after installation:"
+        print_warning "Site draait nu op HTTPS met een SELF-SIGNED certificaat (10 jaar geldig)."
+        print_warning "Browsers tonen een 'niet vertrouwd' waarschuwing tot je een echt certificaat installeert."
+        echo "  Upgrade naar een vertrouwd certificaat (vereist geldige DNS naar deze server):"
         echo "  sudo certbot --nginx -d $DOMAIN_NAME"
+        echo "  (certbot herschrijft /etc/nginx/sites-available/netmonitor automatisch"
+        echo "   met een Let's Encrypt certificaat)"
+        echo
+    elif [ ! -z "$DOMAIN_NAME" ] && [ "$NGINX_TEMPLATE" = "nginx-netmonitor-http.conf.example" ]; then
+        print_info "SSL Certificate Setup"
+        echo
+        print_warning "Run dit handmatig na installatie om naar HTTPS te upgraden:"
+        echo "  sudo certbot --nginx -d $DOMAIN_NAME"
+        echo "  (certbot herschrijft /etc/nginx/sites-available/netmonitor automatisch"
+        echo "   met het 443-server-block en de HTTP->HTTPS redirect)"
         echo
     fi
 }
@@ -1108,6 +1225,7 @@ main() {
 
     check_root
     check_os
+    ensure_sudo_debian13
 
     echo
     print_warning "BELANGRIJK:"
