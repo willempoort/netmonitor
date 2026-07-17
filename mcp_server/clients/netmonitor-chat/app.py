@@ -656,12 +656,18 @@ BELANGRIJKE TOOL PARAMETERS:
   Gebruik dit om dreigingshistorie van een IP in het netwerk te bekijken.
 - get_top_talkers: hours=168 voor week, hours=24 voor dag
 - get_sensor_status: geen arguments nodig {}
+- get_threat_detections / get_recent_threats ondersteunen een severity-parameter
+  (CRITICAL, HIGH, MEDIUM, LOW, INFO). Vraagt de gebruiker naar een specifiek
+  ernstniveau (bijv. "kritieke meldingen", "high severity threats", "critical
+  threats"), geef dan ALTIJD severity mee in de tool call. Roep de tool NIET
+  zonder severity aan om vervolgens zelf te gaan filteren.
 
 WELKE TOOL WANNEER:
 - "Van wie is IP X?" / "Wie is eigenaar van IP?" → lookup_ip_owner
 - "Zoek informatie over X" / "Wat is CVE-X?" → web_search
 - "Wat is het IP van example.com?" → dns_lookup
 - "Is IP X verdacht?" / "Threat analyse van IP X" → analyze_ip
+- "Wat zijn de laatste kritieke/critical/high meldingen?" → get_threat_detections met severity="CRITICAL" (of "HIGH")
 
 WANNEER WEL/NIET TOOLS GEBRUIKEN:
 - Gebruik een tool als de gebruiker NIEUWE data nodig heeft (actuele status, statistieken, lookups)
