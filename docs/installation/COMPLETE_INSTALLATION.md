@@ -561,7 +561,7 @@ http://localhost:8000/docs
 #### 10.1 Basic Nginx Setup
 ```bash
 # Copy nginx config
-sudo cp nginx-netmonitor.conf /etc/nginx/sites-available/netmonitor
+sudo cp nginx-netmonitor.conf.example /etc/nginx/sites-available/netmonitor
 
 # Edit domain
 sudo nano /etc/nginx/sites-available/netmonitor

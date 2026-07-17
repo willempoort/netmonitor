@@ -533,7 +533,7 @@ docker run -d \
 
 **3. Configure Nginx:**
 ```bash
-sudo cp nginx-netmonitor.conf /etc/nginx/sites-available/netmonitor
+sudo cp nginx-netmonitor.conf.example /etc/nginx/sites-available/netmonitor
 sudo ln -s /etc/nginx/sites-available/netmonitor /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl reload nginx

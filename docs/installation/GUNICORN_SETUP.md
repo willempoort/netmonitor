@@ -17,7 +17,7 @@
 Gebruik de standaard setup met:
 - Web Dashboard op poort 8080 (eventlet)
 - MCP API op poort 8000 (FastAPI)
-- Nginx config: `nginx-netmonitor-dual.conf`
+- Nginx config: `nginx-netmonitor.conf.example`
 
 ### Optie 2: Gunicorn Gebruiken (Gevorderd)
 Als je echt Gunicorn wilt gebruiken:

@@ -15,6 +15,12 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.3.2] - 2026-07-17
+
+### Fixed
+- Kapotte `nginx-netmonitor-dual.conf`/`nginx-netmonitor.conf`-verwijzingen (bestonden niet) hersteld naar `nginx-netmonitor.conf.example` in nog vijf documentatiebestanden: `docs/installation/NGINX_SETUP.md`, `docs/deployment/KIOSK-DEPLOYMENT.md`, `docs/installation/COMPLETE_INSTALLATION.md`, `docs/features/DETECTION_FEATURES.md`, `docs/installation/GUNICORN_SETUP.md`.
+- `docs/installation/NGINX_SETUP.md` beschreef in de service-mapping en troubleshooting-secties nog de oudere `netmonitor-mcp-http.service`/`http_server.py`-architectuur; gelijkgetrokken naar `netmonitor-mcp-streamable.service`/`streamable_http_server.py` (wat daadwerkelijk draait).
+
 ## [2.3.1] - 2026-07-17
 
 ### Fixed
