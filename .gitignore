@@ -50,3 +50,13 @@ config.yaml
 # Gegenereerde data — worden door scripts gedownload/opgebouwd
 data/oui_database.json
 data/oui.csv
+
+# Vendor assets (CDN) — gedownload door download_bootstrap_assets() in
+# install_complete.sh, hoeven niet in git zoals node_modules/
+web/static/css/bootstrap.min.css
+web/static/css/bootstrap-icons.css
+web/static/js/bootstrap.bundle.min.js
+web/static/js/chart.umd.min.js
+web/static/js/socket.io.min.js
+web/static/fonts/bootstrap-icons.woff
+web/static/fonts/bootstrap-icons.woff2
