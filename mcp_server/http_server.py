@@ -868,6 +868,19 @@ class MCPHTTPServer:
                 },
                 "scope_required": "read_only"
             },
+            # Alert Management Tools
+            {
+                "name": "acknowledge_alert",
+                "description": "Bevestig (acknowledge) een threat detection/alert. Markeert de melding als gezien/afgehandeld.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "alert_id": {"type": "integer", "description": "ID van de te bevestigen alert (zie 'id' veld in get_threat_detections/get_recent_threats resultaten)"}
+                    },
+                    "required": ["alert_id"]
+                },
+                "scope_required": "read_write"
+            },
             # Whitelist Management Tools
             {
                 "name": "add_whitelist_entry",
@@ -1260,6 +1273,8 @@ class MCPHTTPServer:
             # Sensor Command Tools
             'send_sensor_command': self._tool_send_sensor_command,
             'get_sensor_command_history': self._tool_get_sensor_command_history,
+            # Alert Management Tools
+            'acknowledge_alert': self._tool_acknowledge_alert,
             # Whitelist Management Tools
             'add_whitelist_entry': self._tool_add_whitelist_entry,
             'get_whitelist_entries': self._tool_get_whitelist_entries,
@@ -2972,6 +2987,35 @@ class MCPHTTPServer:
             return {'success': False, 'error': str(e)}
 
     # ==================== Whitelist Management Tool Implementations ====================
+
+    async def _tool_acknowledge_alert(self, params: Dict) -> Dict:
+        """Acknowledge a threat detection/alert via the dashboard API"""
+        import requests
+
+        alert_id = params.get('alert_id')
+        if not alert_id:
+            return {'success': False, 'error': 'alert_id is required'}
+
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.post(
+                f"{dashboard_url}/api/alerts/{alert_id}/acknowledge",
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success'):
+                    return {'success': True, 'alert_id': alert_id}
+                else:
+                    return {'success': False, 'error': result.get('error', 'Unknown error')}
+            else:
+                return {'success': False, 'error': f'API returned status {response.status_code}'}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error acknowledging alert {alert_id}: {e}")
+            return {'success': False, 'error': str(e)}
 
     async def _tool_add_whitelist_entry(self, params: Dict) -> Dict:
         """Add an IP, CIDR range, or domain to the whitelist with source/target/port filtering"""

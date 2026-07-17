@@ -22,6 +22,7 @@ import eventlet
 eventlet.monkey_patch()
 
 from flask import Flask, render_template, jsonify, request, session, g, redirect, url_for, send_from_directory
+from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
@@ -41,6 +42,14 @@ from version import __version__
 app = Flask(__name__,
            template_folder='web/templates',
            static_folder='web/static')
+
+# Trust exactly one reverse proxy hop (nginx) for X-Forwarded-For/-Proto/-Host,
+# so request.remote_addr reflects the real client IP instead of nginx's own
+# loopback connection. Critical for is_local_request()/local_or_*_required to
+# correctly distinguish genuine localhost callers (MCP server) from external
+# traffic proxied through nginx - without this, all proxied requests would
+# appear to originate from localhost.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 # Configure SECRET_KEY from environment or use a development default
 # SECURITY: Set FLASK_SECRET_KEY environment variable in production!
@@ -367,6 +376,30 @@ def local_or_login_required(f):
             # External request without authentication
             return jsonify({'success': False, 'error': 'Authentication required'}), 401
     return decorated_function
+
+
+def local_or_role_required(*roles):
+    """
+    Decorator that allows access from localhost without login (for the MCP
+    server, which proxies write actions from AI tool calls), or requires
+    login with one of the given roles for external requests.
+    Used for write endpoints that are both role-restricted for browser users
+    AND called internally by MCP tools (e.g. whitelist, alert acknowledge).
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if is_local_request():
+                logger.debug(f"Internal API access from localhost: {request.path}")
+                return f(*args, **kwargs)
+            if not current_user.is_authenticated:
+                return jsonify({'success': False, 'error': 'Authentication required'}), 401
+            if current_user.role not in roles and current_user.role != 'admin':
+                logger.warning(f"Unauthorized access attempt by {current_user.username} (role: {current_user.role})")
+                return jsonify({'success': False, 'error': 'Insufficient permissions'}), 403
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
 
 
 # ==================== Authentication Routes ====================
@@ -1063,7 +1096,7 @@ def api_alert_stats():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/alerts/<int:alert_id>/acknowledge', methods=['POST'])
-@require_role('admin', 'operator')
+@local_or_role_required('admin', 'operator')
 def api_acknowledge_alert(alert_id):
     """Acknowledge an alert"""
     try:
@@ -1650,7 +1683,7 @@ def api_get_whitelist():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/whitelist', methods=['POST'])
-@require_role('admin', 'operator')
+@local_or_role_required('admin', 'operator')
 def api_add_whitelist():
     """Add whitelist entry
 
@@ -1739,7 +1772,7 @@ def api_add_whitelist():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/whitelist/<int:entry_id>', methods=['DELETE'])
-@require_role('admin', 'operator')
+@local_or_role_required('admin', 'operator')
 def api_delete_whitelist(entry_id):
     """Delete whitelist entry"""
     try:
@@ -3102,7 +3135,7 @@ def api_get_device_traffic_stats(ip_address):
 
 
 @app.route('/api/devices/<path:ip_address>/classification-hints')
-@login_required
+@local_or_login_required
 def api_get_device_classification_hints(ip_address):
     """
     Get classification hints for a device based on learned behavior.
@@ -4287,7 +4320,7 @@ def api_create_device_template():
 
 
 @app.route('/api/device-templates/<int:template_id>/clone', methods=['POST'])
-@login_required
+@local_or_login_required
 def api_clone_device_template(template_id):
     """Clone an existing device template (including built-in templates)"""
     try:
@@ -4605,7 +4638,7 @@ def api_check_ip_in_providers():
 # ==================== Alert Suppression API ====================
 
 @app.route('/api/suppression/stats')
-@login_required
+@local_or_login_required
 def api_get_suppression_stats():
     """Get alert suppression statistics"""
     try:

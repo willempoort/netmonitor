@@ -973,6 +973,41 @@ function loadIpInfoInto(elementId, ip) {
         });
 }
 
+function acknowledgeCurrentAlert() {
+    if (!currentAlertGroup) return;
+    const group = currentAlertGroup;
+    const alertIds = (group.alerts || [group]).map(a => a.id).filter(id => id !== undefined);
+
+    if (alertIds.length === 0) return;
+
+    const ackBtn = document.getElementById('alert-acknowledge-btn');
+    const originalContent = ackBtn.innerHTML;
+    ackBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    ackBtn.disabled = true;
+
+    Promise.all(alertIds.map(id =>
+        fetch(`/api/alerts/${id}/acknowledge`, { method: 'POST' }).then(r => r.json())
+    ))
+        .then(results => {
+            ackBtn.innerHTML = originalContent;
+            ackBtn.disabled = false;
+
+            const failed = results.filter(r => !r.success).length;
+            if (failed === 0) {
+                showToast(alertIds.length > 1 ? `${alertIds.length} meldingen bevestigd` : 'Melding bevestigd', 'success');
+                group.alerts.forEach(a => { a.acknowledged = true; });
+                bootstrap.Modal.getInstance(document.getElementById('alertDetailsModal')).hide();
+            } else {
+                showToast(`${failed} van ${alertIds.length} meldingen konden niet bevestigd worden`, 'danger');
+            }
+        })
+        .catch(error => {
+            ackBtn.innerHTML = originalContent;
+            ackBtn.disabled = false;
+            showToast(`Fout: ${error.message}`, 'danger');
+        });
+}
+
 function openWhitelistFromAlert() {
     if (!currentAlertGroup) return;
     const group = currentAlertGroup;
