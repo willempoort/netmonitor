@@ -437,6 +437,13 @@ class DeviceClassifier:
             'switch': 'network_device',
             'access point': 'network_device',
             'firewall': 'network_device',
+            'network device': 'network_device',
+            'unifi controller': 'server',
+            'dns server': 'server',
+            'dhcp server': 'server',
+            'pbx server': 'server',
+            'remote desktop server': 'server',
+            'samba server': 'server',
         }
 
         for key, device_type in mappings.items():
@@ -520,10 +527,29 @@ class DeviceClassifier:
 
         # Filter classes with too few samples
         valid_labels = {lbl for lbl, count in class_counts.items() if count >= min_samples_per_class}
-        if len(valid_labels) < 2:
+        # A RandomForestClassifier can only ever output a probability across the
+        # classes it was actually trained on - it has no way to say "none of the
+        # above". With only 2 classes (e.g. the first two categories to reach
+        # min_samples_per_class organically, typically smart_speaker/iot_sensor
+        # from vendor-hint-derived seed labels), every device gets forced into
+        # whichever of those 2 it's marginally less dissimilar to, often with a
+        # deceptively high confidence - a server, firewall, laptop or tablet has
+        # been observed getting auto-assigned "Smart Speaker"/"IoT Sensor" at
+        # 80-95% confidence this way. Requiring a broader minimum spread of
+        # classes before the model is considered usable doesn't fully solve the
+        # "unknown category" problem (still a forced choice among known classes),
+        # but avoids the degenerate 2-class case where that forced choice is
+        # essentially a coin flip dressed up as high confidence.
+        MIN_CLASSES = 4
+        if len(valid_labels) < MIN_CLASSES:
             return {
                 'success': False,
-                'error': f'Need at least 2 device types with {min_samples_per_class}+ samples each',
+                'error': (
+                    f'Need at least {MIN_CLASSES} device types with {min_samples_per_class}+ '
+                    f'samples each (have {len(valid_labels)}) - a model trained on too few '
+                    f'categories forces every device into whichever known category it is '
+                    f'marginally closest to, regardless of fit'
+                ),
                 'class_distribution': dict(class_counts)
             }
 

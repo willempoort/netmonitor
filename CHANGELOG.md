@@ -15,6 +15,12 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.3.7] - 2026-07-17
+
+### Fixed
+- **ML device-classificatie wees niet-IoT devices met hoge (fout) confidence toe aan "Smart Speaker"/"IoT Sensor".** Nadat het model voor het eerst voldoende data had om te trainen, bleken maar 2 categorieën genoeg voorbeelden te hebben (smart_speaker, iot_sensor). Een RandomForestClassifier kan alleen kiezen uit de klassen waarop hij getraind is - hij heeft geen "geen van deze" optie - waardoor onder andere de SOC-server en een MacBook Air als "Smart Speaker" (95% confidence) en een UniFi-controller en Android-tablet als "IoT Sensor" (80-96% confidence) werden geclassificeerd en automatisch die template kregen toegewezen. `train()` vereist nu minimaal 4 categorieën met voldoende voorbeelden (was 2) voordat een model bruikbaar wordt geacht. Het al opgeslagen 2-klassen-model is verwijderd zodat het niet na herstart opnieuw geladen wordt.
+- Template-namen "UniFi Controller", "Network Device" en enkele andere server-templates (DNS/DHCP/PBX/Remote Desktop/Samba Server) werden niet herkend door de template→categorie-mapping die trainingslabels aflevert voor `train()` - handmatig toegewezen templates met die namen droegen daardoor niets bij aan het uitbreiden van de trainingsdiversiteit. Mapping aangevuld.
+
 ## [2.3.6] - 2026-07-17
 
 ### Fixed
