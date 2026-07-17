@@ -3093,12 +3093,14 @@ class NetMonitorTools:
         """Implement get_threat_detections tool"""
         hours = params.get('hours', 24)
         threat_type = params.get('threat_type')
+        severity = params.get('severity')
         limit = params.get('limit', 50)
 
         # Get recent alerts - all alerts are threat detections
         alerts = self.db.get_recent_alerts(
             limit=limit,
             hours=hours,
+            severity=severity,
             threat_type=threat_type
         )
 
@@ -4351,11 +4353,16 @@ TOOL_DEFINITIONS = [
             },
             {
                 "name": "get_threat_detections",
-                "description": "Get recent threat detections (60+ threat types across 9 phases: Web App Security, DDoS, Ransomware, IoT, OT/ICS, Container, Evasion, Kill Chain)",
+                "description": "Get recent threat detections (60+ threat types across 9 phases: Web App Security, DDoS, Ransomware, IoT, OT/ICS, Container, Evasion, Kill Chain). Gebruik de severity-parameter om te filteren op ernst (bijv. alleen CRITICAL/HIGH).",
                 "input_schema": {
                     "type": "object",
                     "properties": {
                         "hours": {"type": "number", "default": 24},
+                        "severity": {
+                            "type": "string",
+                            "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"],
+                            "description": "Filter op ernst-niveau. Laat leeg voor alle niveaus."
+                        },
                         "threat_type": {
                             "type": "string",
                             "enum": [
