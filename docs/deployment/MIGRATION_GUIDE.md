@@ -396,9 +396,9 @@ sudo systemctl start netmonitor-feed-update.timer
 sudo systemctl enable netmonitor-dashboard
 sudo systemctl start netmonitor-dashboard
 
-# Als MCP HTTP API enabled (MCP_API_ENABLED=true in .env):
-sudo systemctl enable netmonitor-mcp-http
-sudo systemctl start netmonitor-mcp-http
+# Als MCP enabled (MCP_API_ENABLED=true in .env):
+sudo systemctl enable netmonitor-mcp-streamable
+sudo systemctl start netmonitor-mcp-streamable
 ```
 
 **6.2 Check service status:**
@@ -544,7 +544,7 @@ Als de migratie mislukt, rollback naar oude situatie:
 # 1. Stop nieuwe services
 sudo systemctl stop netmonitor
 sudo systemctl stop netmonitor-dashboard 2>/dev/null || true
-sudo systemctl stop netmonitor-mcp-http 2>/dev/null || true
+sudo systemctl stop netmonitor-mcp-streamable 2>/dev/null || true
 
 # 2. Restore oude service files
 sudo cp /opt/netmonitor-migration-backup/services/* /etc/systemd/system/

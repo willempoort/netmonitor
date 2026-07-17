@@ -2,6 +2,12 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (c) 2025 Willem M. Poort
 """
+ARCHIVED: superseded by mcp_server/streamable_http_server.py (MCP Streamable
+HTTP protocol). Kept only for reference - not imported or run by anything in
+the active codebase. Its sibling-module imports (database_client,
+geoip_helper, ollama_client, token_auth) assume it still lives in
+mcp_server/, so it will not run as-is from this archive location.
+
 MCP HTTP API Server
 
 Modern HTTP-based MCP server with token authentication.

@@ -1,3 +1,8 @@
+> ⚠️ **GEARCHIVEERD**: dit document beschrijft de oudere `http_server.py`/`netmonitor-mcp`-architectuur,
+> die inmiddels vervangen is door de MCP Streamable HTTP server. Zie
+> [`mcp_server/STREAMABLE_HTTP_README.md`](../../mcp_server/STREAMABLE_HTTP_README.md) voor de actuele documentatie.
+> Dit bestand blijft alleen ter referentie staan.
+
 # NetMonitor MCP Server - Installation Guide
 
 **Modern HTTP API met Token Authenticatie**

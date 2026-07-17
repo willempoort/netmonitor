@@ -881,11 +881,8 @@ setup_systemd_services() {
     systemctl start netmonitor-feed-update.timer >> $LOG_FILE 2>&1
     print_success "Feed update timer gestart"
 
-    # Start MCP API if enabled
-    if [[ $MCP_API_ENABLED == "true" ]]; then
-        systemctl start netmonitor-mcp-http >> $LOG_FILE 2>&1
-        print_success "MCP API service gestart"
-    fi
+    # NB: MCP API wordt pas in STAP 11 (setup_mcp_api) gestart - daar wordt
+    # ook het service-bestand aangemaakt/geënabled via setup_streamable_http.sh.
 
     # Check status
     sleep 2
@@ -902,29 +899,24 @@ setup_mcp_api() {
         return
     fi
 
-    print_header "STAP 11/12: MCP HTTP API Server Setup"
+    print_header "STAP 11/12: MCP Streamable HTTP Server Setup"
 
-    cd $INSTALL_DIR
-    source venv/bin/activate
+    # setup_streamable_http.sh installs mcp_server/requirements.txt into the
+    # existing venv, creates an initial API token, and enables (but does not
+    # start) the netmonitor-mcp-streamable systemd service.
+    cd $INSTALL_DIR/mcp_server
+    ./setup_streamable_http.sh >> $LOG_FILE 2>&1
 
-    # Install additional dependencies
-    pip install fastapi uvicorn[standard] >> $LOG_FILE 2>&1
-
-    # Setup MCP server
-    cd mcp_server
-    ./setup_http_api.sh >> $LOG_FILE 2>&1
-
-    print_success "MCP API server geïnstalleerd"
+    print_success "MCP Streamable HTTP server geïnstalleerd"
 
     # Start service
-    systemctl start netmonitor-mcp
-    systemctl enable netmonitor-mcp
+    systemctl start netmonitor-mcp-streamable
 
-    if systemctl is-active --quiet netmonitor-mcp; then
+    if systemctl is-active --quiet netmonitor-mcp-streamable; then
         print_success "MCP API draait op http://localhost:8000"
     else
         print_warning "MCP API failed to start - check logs:"
-        echo "  sudo journalctl -u netmonitor-mcp -n 50"
+        echo "  sudo journalctl -u netmonitor-mcp-streamable -n 50"
     fi
 }
 
@@ -1022,7 +1014,7 @@ print_summary() {
     fi
 
     if [[ $INSTALL_MCP =~ ^[Yy]$ ]]; then
-        if systemctl is-active --quiet netmonitor-mcp; then
+        if systemctl is-active --quiet netmonitor-mcp-streamable; then
             echo -e "  MCP API:        ${GREEN}running${NC}"
         else
             echo -e "  MCP API:        ${RED}stopped${NC}"

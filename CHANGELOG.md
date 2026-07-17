@@ -15,6 +15,17 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.3.3] - 2026-07-17
+
+### Fixed
+- **`install_complete.sh` installeerde de verkeerde MCP-server.** STAP 11 riep het gearchiveerde `setup_http_api.sh` aan en beheerde de niet-bestaande services `netmonitor-mcp`/`netmonitor-mcp-http`, terwijl de daadwerkelijk gegenereerde/actieve service `netmonitor-mcp-streamable` is. Roept nu `mcp_server/setup_streamable_http.sh` aan en beheert de juiste service. Ook een dubbele, foutief-genaamde vroegtijdige service-start in STAP 10 verwijderd.
+- Kapotte verwijzingen naar niet-bestaande scripts (`install_mcp_service.sh`, `setup_http_api.sh`, `mcp_server/server.py`) en verkeerde poort (3000 i.p.v. 8000) hersteld in `setup_venv.sh`, `docs/installation/SERVICE_INSTALLATION.md`, `docs/installation/VENV_SETUP.md`, `docs/installation/POSTGRESQL_SETUP.md`, `docs/usage/ADMIN_MANUAL.md`, `docs/deployment/MIGRATION_GUIDE.md`, `mcp_server/OPEN_WEBUI_SETUP.md`, `README.md`.
+- Foutieve MCP-tabelnamen (`mcp_tokens`/`mcp_audit_log`) in `docs/usage/ADMIN_MANUAL.md` gecorrigeerd naar de echte tabellen (`mcp_api_tokens`/`mcp_api_token_usage`).
+
+### Changed
+- Vier documenten die uitsluitend de oudere `http_server.py`/`netmonitor-mcp`-architectuur beschreven (`mcp_server/README.md`, `mcp_server/HTTP_API_QUICKSTART.md`, `mcp_server/INSTALLATION.md`, `docs/features/MCP_HTTP_API.md`) plus het bijbehorende, nergens meer geïmporteerde `mcp_server/http_server.py` zelf verplaatst naar `archive/mcp_legacy_http_api/` met een duidelijke deprecatie-banner. `mcp_server/README.md` vervangen door een korte, actuele index die naar `STREAMABLE_HTTP_README.md` wijst.
+- `docs/INDEX.md` en overige documentatie wijzen nu naar de actuele MCP-documentatie i.p.v. de gearchiveerde bestanden.
+
 ## [2.3.2] - 2026-07-17
 
 ### Fixed

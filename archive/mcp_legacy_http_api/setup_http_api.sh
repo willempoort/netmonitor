@@ -1,6 +1,11 @@
 #!/bin/bash
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (c) 2025 Willem M. Poort
+#
+# ARCHIVED: sets up the legacy http_server.py/netmonitor-mcp server, superseded
+# by the MCP Streamable HTTP server. Use mcp_server/setup_streamable_http.sh
+# instead. Kept here only for reference.
+#
 # Setup script for MCP HTTP API Server
 # This script:
 # 1. Creates the database schema for API tokens
