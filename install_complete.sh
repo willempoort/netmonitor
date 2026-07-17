@@ -937,8 +937,10 @@ setup_nginx() {
 
     cd $INSTALL_DIR
 
-    # Copy config
-    cp nginx-netmonitor.conf /etc/nginx/sites-available/netmonitor
+    # Copy config (single template - always includes MCP /mcp routing;
+    # harmless if MCP wasn't installed, those locations just 502 until
+    # the MCP service is started later via mcp_server/setup_streamable_http.sh)
+    cp nginx-netmonitor.conf.example /etc/nginx/sites-available/netmonitor
 
     # Update domain in config
     if [ ! -z "$DOMAIN_NAME" ]; then

@@ -1,169 +1,133 @@
-# NetMonitor Nginx Configuration Templates
+# NetMonitor Nginx Configuration Template
 
-This directory contains nginx configuration templates for different deployment scenarios.
+## `nginx-netmonitor.conf.example`
 
-## Available Templates
-
-### 1. `nginx-netmonitor.conf` - Simple Dashboard Setup
-
-**Use when:** You only need the NetMonitor dashboard (no MCP API).
+Er is één nginx-template. Het bevat zowel de dashboard-routing als de MCP
+`/mcp`-routing, ongeacht of je de MCP-server (nog) geïnstalleerd hebt.
 
 **Features:**
-- NetMonitor dashboard on port 443 (HTTPS)
-- HTTP to HTTPS redirect
-- SSL/TLS configuration (Let's Encrypt ready)
+- NetMonitor dashboard op poort 443 (HTTPS)
+- HTTP naar HTTPS redirect
+- SSL/TLS configuratie (Let's Encrypt/certbot-ready)
 - Security headers (HSTS, X-Frame-Options, etc.)
-- CORS support
-- Session management
+- MCP Streamable HTTP API op `/mcp` en `/mcp/*`
+  - OpenAPI/Swagger docs op `/mcp/docs`
+  - ReDoc documentatie op `/mcp/redoc`
+  - API spec op `/mcp/openapi.json`
+  - Tools listing op `/mcp/tools`
+  - JSON-RPC endpoint op `/mcp` (POST)
+  - SSE streaming op `/mcp` (GET)
+- Token authenticatie voor de MCP API (CORS + Authorization/X-API-Key passthrough)
 
-**Does NOT include:**
-- MCP API endpoints
-- OpenAPI/Swagger documentation
-- AI integration endpoints
+**Upstream configuratie:**
+- `netmonitor_dashboard` - poort 8080 (Flask dashboard)
+- `netmonitor_mcp_api` - poort 8000 (FastAPI MCP server)
 
-**Installation:**
+**Heb je de MCP-server (nog) niet geïnstalleerd?** Geen probleem — de
+`/mcp`-locaties geven dan gewoon een 502 (niets luistert op poort 8000)
+totdat je 'm later alsnog activeert via `mcp_server/setup_streamable_http.sh`.
+Je hoeft de nginx-config dan niet opnieuw aan te passen; die routing staat
+er al.
+
+**Installatie:**
 ```bash
-# 1. Edit the template
-sudo nano nginx-netmonitor.conf
-# Change: soc.example.com -> your actual domain
-
-# 2. Copy to nginx sites
-sudo cp nginx-netmonitor.conf /etc/nginx/sites-available/netmonitor
+# 1. Kopieer het template
+sudo cp nginx-netmonitor.conf.example /etc/nginx/sites-available/netmonitor
 sudo ln -s /etc/nginx/sites-available/netmonitor /etc/nginx/sites-enabled/
 
-# 3. Get SSL certificate
-sudo certbot --nginx -d soc.example.com
+# 2. Wijzig het domein
+sudo sed -i 's/soc\.example\.com/JOUW-DOMEIN/g' /etc/nginx/sites-available/netmonitor
 
-# 4. Test and reload
+# 3. SSL certificaat
+sudo certbot --nginx -d JOUW-DOMEIN
+
+# 4. Test en herlaad
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
----
+`install_complete.sh` (STAP 12/12) doet dit automatisch als je bij de
+installatie voor nginx kiest.
 
-### 2. `nginx-netmonitor-dual.conf` - Complete Setup (Recommended)
+## Configuratie-eisen
 
-**Use when:** You need both dashboard AND MCP API (AI integration).
+1. **Domeinnaam** - vervang `soc.example.com` door je eigen domein
+2. **SSL certificaten** - via Let's Encrypt (certbot) of eigen certificaten
+3. **Upstream services draaiend:**
+   - NetMonitor dashboard op poort 8080
+   - MCP API op poort 8000 (alleen nodig als je `/mcp` daadwerkelijk gebruikt)
 
-**Features:**
-- Everything from nginx-netmonitor.conf PLUS:
-- MCP Streamable HTTP API on `/mcp` and `/mcp/*`
-  - OpenAPI/Swagger docs at `/mcp/docs`
-  - ReDoc documentation at `/mcp/redoc`
-  - API spec at `/mcp/openapi.json`
-  - Tools listing at `/mcp/tools`
-  - JSON-RPC endpoint at `/mcp` (POST)
-  - SSE streaming at `/mcp` (GET)
-- Token authentication for MCP API
-- Proper handling of MCP_ROOT_PATH
+## Testen
 
-**Upstream configuration includes:**
-- `netmonitor_dashboard` - port 8080 (Flask dashboard)
-- `netmonitor_mcp_api` - port 8000 (FastAPI MCP server)
-
-**Installation:**
+### Dashboard:
 ```bash
-# 1. Edit the template
-sudo nano nginx-netmonitor-dual.conf
-# Change: soc.example.com -> your actual domain
-
-# 2. Ensure both services are running
-sudo systemctl status netmonitor
-sudo systemctl status netmonitor-mcp-streamable
-
-# 3. Copy to nginx sites
-sudo cp nginx-netmonitor-dual.conf /etc/nginx/sites-available/netmonitor
-sudo ln -s /etc/nginx/sites-available/netmonitor /etc/nginx/sites-enabled/
-
-# 4. Get SSL certificate
-sudo certbot --nginx -d soc.example.com
-
-# 5. Test and reload
-sudo nginx -t
-sudo systemctl reload nginx
+curl https://JOUW-DOMEIN
 ```
 
----
-
-## Configuration Requirements
-
-Both templates require:
-
-1. **Domain name** - Replace `soc.example.com` with your actual domain
-2. **SSL certificates** - Use Let's Encrypt (certbot) or provide your own
-3. **Upstream services running:**
-   - NetMonitor dashboard on port 8080
-   - MCP API on port 8000 (dual config only)
-
-## Testing Your Configuration
-
-### Test Dashboard (both configs):
+### MCP API (alleen als de MCP-server draait):
 ```bash
-curl https://soc.example.com
-```
+# Health check (geen auth nodig)
+curl https://JOUW-DOMEIN/mcp/health
 
-### Test MCP API (dual config only):
-```bash
-# Health check (no auth required)
-curl https://soc.example.com/mcp/health
+# OpenAPI docs (publiek)
+curl https://JOUW-DOMEIN/mcp/docs
 
-# OpenAPI docs (public)
-curl https://soc.example.com/mcp/docs
+# Tools list (publiek)
+curl https://JOUW-DOMEIN/mcp/tools | jq .
 
-# Tools list (public)
-curl https://soc.example.com/mcp/tools | jq .
-
-# MCP endpoint (requires Bearer token)
-curl -X POST https://soc.example.com/mcp \
+# MCP endpoint (vereist Bearer token)
+curl -X POST https://JOUW-DOMEIN/mcp \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
 ```
 
-## Archived Templates
+## Gearchiveerde templates
 
-The following templates have been archived to `archive/nginx/`:
+De volgende templates zijn gearchiveerd naar `archive/nginx/` en niet meer
+relevant voor nieuwe installaties:
 
-- `nginx-mcp-subdomain.conf` - Separate subdomain for MCP (deprecated)
-- `nginx-netmonitor-gunicorn.conf` - Gunicorn-specific config (use dual instead)
-- `nginx_mcp_location_fixed.conf` - Location block snippet (merged into dual)
-
-These are kept for reference but should not be used for new installations.
+- `nginx-mcp-subdomain.conf` - Aparte subdomain voor MCP (deprecated)
+- `nginx-netmonitor-gunicorn.conf` - Gunicorn-specifieke config (gebruik het huidige template)
+- `nginx_mcp_location_fixed.conf` - Losse location-block snippet (samengevoegd in het huidige template)
 
 ## Troubleshooting
 
-### "405 Method Not Allowed" for POST /mcp
+### "405 Method Not Allowed" voor POST /mcp
 
 Check nginx error log:
 ```bash
 sudo tail -f /var/log/nginx/error.log
 ```
 
-Ensure you're using `nginx-netmonitor-dual.conf` which includes the `location = /mcp` block.
+Controleer of `location = /mcp` in je config staat (exact match, niet alleen `/mcp/`).
 
-### "502 Bad Gateway"
+### "502 Bad Gateway" op /mcp
 
-Check if upstream services are running:
+De MCP-server draait niet of niet op poort 8000:
 ```bash
-sudo systemctl status netmonitor
 sudo systemctl status netmonitor-mcp-streamable
+sudo netstat -tlnp | grep :8000
 ```
 
-Verify ports match nginx upstream configuration:
+Nog niet geactiveerd? Zie `mcp_server/setup_streamable_http.sh`.
+
+### "502 Bad Gateway" op het dashboard
+
 ```bash
-sudo netstat -tlnp | grep -E ':8000|:8080'
+sudo systemctl status netmonitor-dashboard
+sudo netstat -tlnp | grep :8080
 ```
 
-### SSL Certificate Issues
+### SSL certificaatproblemen
 
-Renew certificates:
 ```bash
 sudo certbot renew
 sudo systemctl reload nginx
 ```
 
-## See Also
+## Zie ook
 
-- [MCP Server Documentation](mcp_server/STREAMABLE_HTTP_README.md)
+- [MCP Server Documentatie](mcp_server/STREAMABLE_HTTP_README.md)
 - [Service Installation Guide](docs/installation/SERVICE_INSTALLATION.md)
 - [Nginx Setup Guide](docs/installation/NGINX_SETUP.md)

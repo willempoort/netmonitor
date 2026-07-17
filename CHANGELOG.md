@@ -15,6 +15,13 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.3.1] - 2026-07-17
+
+### Fixed
+- `install_complete.sh` verwees bij de nginx-stap naar het niet-bestaande `nginx-netmonitor.conf`, waardoor die stap altijd faalde. Gecorrigeerd naar `nginx-netmonitor.conf.example` (het enige, actuele template - bevat zowel dashboard- als MCP-routing).
+- `NGINX_TEMPLATES.md` beschreef een `nginx-netmonitor-dual.conf` die nooit heeft bestaan, en omschreef het wél bestaande template ten onrechte als "geen MCP". Herschreven naar de werkelijke situatie.
+- `mcp_server/setup_streamable_http.sh` detecteert nu (stap 5) of nginx het dashboard al serveert maar de `/mcp`-routing mist, en verwijst dan naar het actuele template - relevant als je MCP later alsnog activeert op een instantie die dit initieel oversloeg.
+
 ## [2.3.0] - 2026-07-17
 
 ### Added
