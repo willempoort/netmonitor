@@ -15,6 +15,21 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.2.0] - 2026-07-17
+
+### Security
+- Interne schrijf-endpoints die de MCP-server aanroept (`/api/whitelist`, `/api/alerts/<id>/acknowledge`) vertrouwden `request.remote_addr` zonder `ProxyFix`, waardoor achter nginx *elke* request (ook echt externe, ongeauthenticeerde bezoekers) als "lokaal" werd gezien. `ProxyFix` toegevoegd (vertrouwt exact 1 hop) en nieuwe `local_or_role_required`-decorator die de bestaande admin/operator-rolcheck voor externe requests intact houdt en alleen genuine localhost-aanroepen (MCP-server) vrijstelt.
+
+### Added
+- `severity`-filter (CRITICAL/HIGH/MEDIUM/LOW/INFO, niet hoofdlettergevoelig) op de `get_threat_detections` MCP-tool, naast de bestaande `get_recent_threats`.
+- Nieuwe MCP-tool `acknowledge_alert` en een "Bevestigen"-knop in de dashboard alert-detail modal (bevestigt alle gegroepeerde meldingen in één keer).
+
+### Fixed
+- Ollama-provider in netmonitor-chat ondersteunde geen `max_tokens`, verwerkte `tool_calls.arguments` verkeerd (Ollama levert een dict, geen gestreamde string) en toonde bij HTTP-fouten alleen een generieke statuscode i.p.v. Ollama's eigen foutmelding.
+- Strikte severity-`enum` in tool-schema's veroorzaakte een onnodige retry-ronde bij afwijkend hoofdlettergebruik (bv. "Critical" i.p.v. "CRITICAL"); nu een vrij veld met server-side normalisatie.
+- Modellen gebruikten de severity-parameter niet bij vragen naar een specifiek ernstniveau door ontbrekende tool-guidance in de system prompt.
+- netmonitor-chat gaf soms stilzwijgend geen antwoord wanneer het model na een tool-aanroep niets teruggaf (bv. bepaalde Qwen3.5 MTP-varianten).
+
 ## [2.1.0] - 2026-07-14
 
 ### Fixed

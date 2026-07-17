@@ -1043,7 +1043,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="NetMonitor Chat",
     description="On-premise chat interface with NetMonitor MCP tools",
-    version="2.1.0",
+    version="2.1.1",
     lifespan=lifespan
 )
 
