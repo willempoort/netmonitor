@@ -1647,11 +1647,11 @@ function renderAlertCard(alert, threatType) {
                 ${extraInfo}
                 <div class="mt-2 d-flex gap-2 alert-card-actions">
                     ${alert.acknowledged ? '' : `
-                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="acknowledgeAlertCard(${alert.id}, this)" title="Bevestigen">
+                    <button type="button" class="btn btn-sm btn-outline-light" onclick="acknowledgeAlertCard(${alert.id}, this)" title="Bevestigen">
                         <i class="bi bi-check2-circle"></i> Bevestigen
                     </button>
                     `}
-                    <button type="button" class="btn btn-sm btn-outline-success" onclick="openWhitelistFromThreatAlert(${alert.id})" title="Toevoegen aan whitelist">
+                    <button type="button" class="btn btn-sm btn-outline-light" onclick="openWhitelistFromThreatAlert(${alert.id})" title="Toevoegen aan whitelist">
                         <i class="bi bi-shield-check"></i> Whitelist
                     </button>
                 </div>
