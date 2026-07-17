@@ -204,15 +204,17 @@ ollama list
 ollama serve &
 
 # Pull een model (kies één)
-ollama pull llama3.1:8b          # Aanbevolen: goede tool calling
-ollama pull qwen2.5-coder:14b    # Best: excellente tool support
-ollama pull mistral:7b-instruct  # Snelst: basic tool calling
+ollama pull qwen3:14b             # Aanbevolen: beste tool calling (2026)
+ollama pull llama3.1:8b           # Budget: goede tool calling
+ollama pull mistral:7b-instruct   # Snelst: basic tool calling
 ```
 
 **Optie B: LM Studio (sneller op Mac M1/M2/M3)**
 
 1. Download en installeer [LM Studio](https://lmstudio.ai/)
-2. Download een model (aanbevolen: Qwen 2.5 Coder 14B Instruct)
+2. Download een model (aanbevolen: **Qwen3-14B MLX, 4-bit** — zoek op "Qwen3-14B" in de LM Studio model browser, MLX-community build)
+   - Let op: Qwen bracht voor de dense 14B géén aparte "-Instruct" versie uit (anders dan Qwen2.5) — `Qwen3-14B` zelf is al het afgestemde chat-model, met ingebouwde hybride thinking/non-thinking mode
+   - Op 24GB Mac's met ruimte over: **Qwen3-30B-A3B-Instruct-2507 MLX** (MoE, 3B actief per token; deze "-2507"-variant is non-thinking-only en dus sneller/directer voor tool calling) geeft meer redeneervermogen bij vergelijkbare snelheid, maar is krapper qua geheugen (~17-18GB) — sluit andere apps tijdens gebruik
 3. Start de Local Server in LM Studio:
    - Klik "Local Server" tab
    - Selecteer een model
@@ -224,6 +226,8 @@ ollama pull mistral:7b-instruct  # Snelst: basic tool calling
    - **Vink "Force Tools" aan** (nodig voor function calling in LM Studio)
    - (Optioneel) Voeg System Prompt toe voor context
    - Klik "Configuratie Toepassen"
+
+> **Thinking mode uit bij Qwen3-14B**: voeg `/no_think` toe aan je system prompt (of zet `enable_thinking: false` als de API dat ondersteunt) zodat het model niet eerst een lange redenering genereert vóór de tool call — dat vertraagt responses en kan de JSON tool-call parsing verstoren.
 
 **💡 Tip**: LM Studio is vaak 2-3x sneller dan Ollama op Apple Silicon dankzij Metal optimalisatie!
 
@@ -427,7 +431,7 @@ Als dit werkt maar UI niet → check environment variables in .env
 **Fixes:**
 1. **LM Studio**: Vink "Force Tools" aan in Server Configuratie (essentieel!)
 2. **Verlaag temperature** naar 0.0 (meest deterministisch)
-3. **Wissel model**: probeer `qwen2.5-coder:14b` (beste tool calling)
+3. **Wissel model**: probeer `qwen3:14b` / `Qwen3-14B` (beste tool calling, thinking mode uit met `/no_think`)
 4. **Check tool output**: Kijk of tool calls verschijnen in de chat (gele blokken)
 5. **Check logs**: Terminal toont `[WebSocket] LM Studio JSON fallback mode (10 tools in prompt)`
 
@@ -556,13 +560,16 @@ NetMonitor Chat gebruikt intelligente tool filtering om context size te reducere
 
 ### Model Selectie
 
-| Model | Tool Calling | Multi-Tool | Snelheid | Aanbeveling |
-|-------|--------------|------------|----------|-------------|
-| **qwen2.5-coder:14b** | ⭐⭐⭐ Excellent | ⭐⭐⭐ | ~5-10s | **Aanbevolen** |
-| **qwen2.5:14b** | ⭐⭐⭐ Excellent | ⭐⭐⭐ | ~5-10s | **Aanbevolen** |
-| **llama3.1:8b** | ⭐⭐ Goed | ⭐⭐ | ~3-5s | Budget optie |
-| **mistral:7b** | ⭐ Basis | ⭐ | ~2-3s | Alleen simpele taken |
-| **llama3.2:3b** | ❌ Slecht | ❌ | ~1-2s | **Niet aanbevolen** |
+| Model | Tool Calling | Multi-Tool | Snelheid | Geheugen (Q4) | Aanbeveling |
+|-------|--------------|------------|----------|----------------|-------------|
+| **qwen3:14b / Qwen3-14B** | ⭐⭐⭐ Excellent | ⭐⭐⭐ | ~5-10s | ~9-10GB | **Aanbevolen** |
+| **Qwen3-30B-A3B-Instruct-2507** (MoE) | ⭐⭐⭐ Excellent | ⭐⭐⭐ | ~3-6s* | ~17-18GB | Meer power, 24GB+ nodig |
+| qwen2.5-coder:14b | ⭐⭐⭐ Excellent | ⭐⭐⭐ | ~5-10s | ~9GB | Nog prima, ouder |
+| **llama3.1:8b** | ⭐⭐ Goed | ⭐⭐ | ~3-5s | ~4.5GB | Budget optie |
+| **mistral:7b** | ⭐ Basis | ⭐ | ~2-3s | ~4GB | Alleen simpele taken |
+| **llama3.2:3b** | ❌ Slecht | ❌ | ~1-2s | ~2GB | **Niet aanbevolen** |
+
+> \* MoE-architectuur (3B actief van 30B totaal) is sneller dan de modelgrootte doet vermoeden, maar geheugen moet wel volledig geladen zijn.
 
 > **Let op**: Modellen kleiner dan 7B parameters hebben vaak problemen met multi-tool calling. Ze stoppen na de eerste tool of hallucinereren tool formaten.
 
@@ -588,7 +595,7 @@ NetMonitor Chat gebruikt intelligente tool filtering om context size te reducere
 {
   "models": [
     {"name": "llama3.1:8b", "size": "4.7GB", ...},
-    {"name": "qwen2.5-coder:14b", "size": "9.0GB", ...}
+    {"name": "qwen3:14b", "size": "9.3GB", ...}
   ]
 }
 ```
@@ -648,7 +655,7 @@ NetMonitor Chat gebruikt intelligente tool filtering om context size te reducere
 ```
 
 **Parameters:**
-- `model`: Model naam (bijv. "llama3.1:8b", "qwen2.5-coder-14b-instruct-mlx:2")
+- `model`: Model naam (bijv. "llama3.1:8b", "qwen3-14b-mlx")
 - `message`: User vraag
 - `history`: Array van eerdere messages
 - `temperature`: 0.0-1.0 (default: 0.3)
