@@ -698,25 +698,38 @@ class DeviceClassifier:
                 results['classified'] += 1
                 results['by_type'][classification['device_type']] += 1
 
-                # Update database if requested and confidence is high enough
-                # SKIP devices with manual classification to preserve user choices
-                if update_db and classification['confidence'] >= 0.7:
+                # Update database if requested.
+                # SKIP devices with manual classification to preserve user choices.
+                #
+                # Two different actions, two different confidence bars:
+                # - Recording classification_method/classification_confidence is just
+                #   metadata for the "suggested classification" UI - low risk, so it's
+                #   written for every non-'unknown' result. The vendor_hint fallback
+                #   (the only method that can ever fire before a model is trained,
+                #   see classify()) is capped at 0.6 confidence by design; gating this
+                #   write at >=0.7 meant vendor-hint suggestions were computed but
+                #   never persisted, so nothing ever showed up as "suggested" even
+                #   though get_learning_status() reported the device as ready.
+                # - Auto-assigning a template changes device behavior, so that stays
+                #   gated behind a real confidence bar (>=0.7).
+                if update_db:
                     existing_method = device.get('classification_method')
                     existing_template = device.get('template_id')
 
                     if existing_method != 'manual':
                         try:
-                            # Look up template for this device type
-                            device_type = classification['device_type']
-                            template_name = DEVICE_CATEGORIES.get(device_type, {}).get('template_name')
-
                             template_id = None
-                            if template_name:
-                                # Check cache first
-                                if template_name not in template_cache:
-                                    template = self.db.get_device_template_by_name(template_name)
-                                    template_cache[template_name] = template.get('id') if template else None
-                                template_id = template_cache.get(template_name)
+                            if classification['confidence'] >= 0.7:
+                                # Look up template for this device type
+                                device_type = classification['device_type']
+                                template_name = DEVICE_CATEGORIES.get(device_type, {}).get('template_name')
+
+                                if template_name:
+                                    # Check cache first
+                                    if template_name not in template_cache:
+                                        template = self.db.get_device_template_by_name(template_name)
+                                        template_cache[template_name] = template.get('id') if template else None
+                                    template_id = template_cache.get(template_name)
 
                             if template_id and (not existing_template or existing_template != template_id):
                                 # Assign the template along with classification
@@ -733,7 +746,8 @@ class DeviceClassifier:
                                     f"(confidence: {classification['confidence']:.1%})"
                                 )
                             else:
-                                # Just update classification metadata (no template found or already has same template)
+                                # Just update classification metadata (no template found,
+                                # confidence too low to auto-assign, or already has same template)
                                 self.db.update_device_classification(
                                     device_id=device['id'],
                                     classification_method=classification['method'],
@@ -1023,17 +1037,25 @@ class MLClassifierManager:
                 result = self.classifier.train()
                 if result.get('success'):
                     self.logger.info(f"Classifier training complete: {result.get('message')}")
-
-                    # Auto-classify all devices and update database
-                    auto_classify = self.config.get('ml', {}).get('auto_classify', True)
-                    if auto_classify:
-                        classify_result = self.classifier.classify_all_devices(update_db=True)
-                        self.logger.info(
-                            f"Auto-classification complete: {classify_result.get('classified')} classified, "
-                            f"{classify_result.get('updated')} updated in database"
-                        )
                 else:
                     self.logger.warning(f"Classifier training failed: {result.get('error')}")
+
+                # Auto-classify all devices and update database. This runs
+                # regardless of whether train() succeeded: classify() falls
+                # back to vendor-hint matching when no model is trained yet
+                # (see DeviceClassifier.classify()), so useful "suggested
+                # classification" data can still be persisted long before
+                # there's enough labeled data to train a model - which,
+                # without this, would never happen since bootstrap labels
+                # for train() come from vendor hints/templates in the first
+                # place.
+                auto_classify = self.config.get('ml', {}).get('auto_classify', True)
+                if auto_classify:
+                    classify_result = self.classifier.classify_all_devices(update_db=True)
+                    self.logger.info(
+                        f"Auto-classification complete: {classify_result.get('classified')} classified, "
+                        f"{classify_result.get('updated')} updated in database"
+                    )
 
                 # Train anomaly detector
                 result = self.anomaly_detector.train_global_model()

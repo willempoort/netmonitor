@@ -3521,10 +3521,20 @@ class DatabaseManager:
 
             # First check: Do we have a device with this MAC address? (DHCP-friendly)
             # This allows IP changes without creating duplicate device entries
+            #
+            # IS NOT DISTINCT FROM instead of "=" for sensor_id: with "=", a NULL
+            # sensor_id never matches anything (SQL NULL semantics) - not even a row
+            # that was itself inserted with a NULL sensor_id. If this function is ever
+            # called with sensor_id=None, this lookup would silently find nothing, fall
+            # through to the INSERT below, and create a duplicate device row (the
+            # unique_device_per_sensor constraint on (ip_address, sensor_id) doesn't
+            # catch it either, since NULL sensor_id is its own distinct constraint
+            # value). IS NOT DISTINCT FROM treats NULL as matching NULL, closing that
+            # gap regardless of what upstream callers pass in.
             if mac_address:
                 cursor.execute('''
                     SELECT id, ip_address::text as ip_address FROM devices
-                    WHERE mac_address = %s AND sensor_id = %s AND is_active = TRUE
+                    WHERE mac_address = %s AND sensor_id IS NOT DISTINCT FROM %s AND is_active = TRUE
                     ORDER BY last_seen DESC
                     LIMIT 1
                 ''', (mac_address, sensor_id))
@@ -3596,7 +3606,7 @@ class DatabaseManager:
                            learned_behavior
                     FROM devices
                     WHERE hostname = %s
-                      AND sensor_id = %s
+                      AND sensor_id IS NOT DISTINCT FROM %s
                       AND template_id IS NOT NULL
                       AND ip_address != %s
                     ORDER BY
@@ -3743,8 +3753,19 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
-    def get_device_by_ip(self, ip_address: str, sensor_id: str = None) -> Optional[Dict]:
-        """Get a specific device by IP address"""
+    def get_device_by_ip(self, ip_address: str, sensor_id: str = None,
+                          include_inactive: bool = False) -> Optional[Dict]:
+        """Get a specific device by IP address.
+
+        Without an is_active filter or ORDER BY, this used to hand back an
+        arbitrary row whenever duplicate device entries existed for the same
+        IP (e.g. leftover inactive duplicates from the sensor_id mixup fixed
+        in register_device()) - callers like the "confirm template" endpoint
+        would then update a hidden, deactivated row while the dashboard kept
+        showing the real active device unchanged. Filtering to is_active and
+        ordering deterministically makes this always resolve to the device
+        that's actually visible/current.
+        """
         conn = self._get_connection()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -3760,9 +3781,14 @@ class DatabaseManager:
             '''
             params = [ip_address]
 
+            if not include_inactive:
+                query += ' AND d.is_active = TRUE'
+
             if sensor_id:
                 query += ' AND d.sensor_id = %s'
                 params.append(sensor_id)
+
+            query += ' ORDER BY d.last_seen DESC, d.id DESC LIMIT 1'
 
             cursor.execute(query, params)
             result = cursor.fetchone()
@@ -4093,6 +4119,18 @@ class DatabaseManager:
         Clean up duplicate device entries with the same MAC address.
         Keeps the most recently seen device active, marks older duplicates as inactive.
 
+        Handles two distinct cases:
+        1. Multiple active rows for the same (mac_address, sensor_id) - e.g. DHCP IP
+           churn that raced with the MAC-based upsert in register_device(). Keeps the
+           most recently seen row, deactivates the rest. Scoped to `sensor_id` when
+           given, so legitimate cross-sensor duplicates (the same physical device
+           genuinely seen by two different real sensors) are never touched here.
+        2. "Orphan" rows with sensor_id IS NULL that duplicate a same-MAC row which
+           DOES have a real sensor_id. A NULL sensor_id is never legitimate (every
+           real registration carries a real sensor_id) - these are artifacts of a
+           bug where register_device() was called without a sensor_id (see the
+           IS NOT DISTINCT FROM fix above) and always lose to the real-sensor row.
+
         Returns:
             Number of duplicate devices marked as inactive
         """
@@ -4100,9 +4138,8 @@ class DatabaseManager:
         try:
             cursor = conn.cursor()
 
-            # Find duplicate MAC addresses (same MAC, different IPs, all active)
             query = '''
-                WITH duplicate_macs AS (
+                WITH same_sensor_duplicates AS (
                     SELECT mac_address, sensor_id
                     FROM devices
                     WHERE mac_address IS NOT NULL
@@ -4118,25 +4155,43 @@ class DatabaseManager:
                     GROUP BY mac_address, sensor_id
                     HAVING COUNT(*) > 1
                 ),
-                ranked_devices AS (
+                ranked_same_sensor AS (
                     SELECT d.id,
-                           d.mac_address,
-                           d.ip_address,
-                           d.last_seen,
                            ROW_NUMBER() OVER (
                                PARTITION BY d.mac_address, d.sensor_id
                                ORDER BY d.last_seen DESC, d.id DESC
                            ) as rank
                     FROM devices d
-                    INNER JOIN duplicate_macs dm
+                    INNER JOIN same_sensor_duplicates dm
                         ON d.mac_address = dm.mac_address
-                        AND d.sensor_id = dm.sensor_id
+                        AND d.sensor_id IS NOT DISTINCT FROM dm.sensor_id
                     WHERE d.is_active = TRUE
+                ),
+                orphan_null_sensor AS (
+                    SELECT d.id
+                    FROM devices d
+                    WHERE d.is_active = TRUE
+                      AND d.mac_address IS NOT NULL
+                      AND d.sensor_id IS NULL
+                      AND EXISTS (
+                          SELECT 1 FROM devices d2
+                          WHERE d2.mac_address = d.mac_address
+                            AND d2.sensor_id IS NOT NULL
+                            AND d2.is_active = TRUE
+            '''
+            if sensor_id:
+                query += ' AND d2.sensor_id = %s'
+                params.append(sensor_id)
+
+            query += '''
+                      )
                 )
                 UPDATE devices
                 SET is_active = FALSE
                 WHERE id IN (
-                    SELECT id FROM ranked_devices WHERE rank > 1
+                    SELECT id FROM ranked_same_sensor WHERE rank > 1
+                    UNION
+                    SELECT id FROM orphan_null_sensor
                 )
                 RETURNING id, mac_address, ip_address
             '''
