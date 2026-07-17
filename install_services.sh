@@ -396,6 +396,11 @@ enable_service() {
         # Prompt user
         read -p "Enable and start $service_description? (Y/n): " -n 1 -r
         echo
+        # `read -n 1` alleen leest 1 teken; de Enter (of extra tekens bij
+        # bv. "yes<Enter>") blijft in de inputbuffer staan en zou anders
+        # door de -n 1 read van de VOLGENDE service in deze lus worden
+        # opgepikt als diens antwoord. Buffer leegmaken voorkomt dat.
+        while read -t 0.01 -n 1 -r _drain_junk 2>/dev/null; do :; done
         if [[ ! $REPLY =~ ^[Nn]$ ]]; then
             systemctl enable "$service_name"
             systemctl start "$service_name"

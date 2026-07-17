@@ -115,6 +115,11 @@ if [ "$GEOIP_FOUND" = false ]; then
     echo ""
     read -p "  Download free GeoIP database now? (y/N) " -n 1 -r
     echo
+    # `read -n 1` laat de Enter-toets in de inputbuffer staan; zonder deze
+    # leeg te maken zou die regel doorlekken naar de eerste -n1 prompt van
+    # download_geoip_db.sh hieronder (nieuw proces, zelfde tty-inputbuffer)
+    # en daar ten onrechte als "N" gelezen worden.
+    while read -t 0.01 -n 1 -r _drain_junk 2>/dev/null; do :; done
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         bash download_geoip_db.sh
     else
