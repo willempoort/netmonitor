@@ -93,7 +93,38 @@ echo "  This ensures default data is available in the Web UI"
 python3 tools/load_builtin_data.py
 echo ""
 
-echo -e "${YELLOW}Step 7: Checking GeoIP database...${NC}"
+echo -e "${YELLOW}Step 7: Building OUI (MAC vendor) database...${NC}"
+echo "  Device vendor lookup (and vendor-based device-type suggestions) need"
+echo "  data/oui_database.json, which is generated from the IEEE OUI registry"
+echo "  and is NOT checked into git - without this step every device falls"
+echo "  back to a tiny built-in list of ~15 vendors."
+if python3 update_oui_database.py --quiet; then
+    echo -e "${GREEN}  ✅ OUI database built${NC}"
+    echo "  Backfilling vendor info for already-discovered devices..."
+    python3 -c "
+from database import DatabaseManager
+from device_discovery import DeviceDiscovery
+from config_loader import load_config
+
+config = load_config('config.yaml')
+db_config = config['database']['postgresql']
+db = DatabaseManager(
+    host=db_config['host'], port=db_config['port'], database=db_config['database'],
+    user=db_config['user'], password=db_config['password']
+)
+dd = DeviceDiscovery(db_manager=db, config=config)
+updated = dd.update_missing_vendors()
+print(f'  Updated vendor info for {updated} device(s)')
+db.close()
+" || echo -e "${YELLOW}  ⚠️  Vendor backfill failed - devices already tracked will pick up vendors on next capture${NC}"
+else
+    echo -e "${YELLOW}  ⚠️  OUI database download failed (no internet access?) - device vendor lookup"
+    echo "     will use the limited built-in list until you run:"
+    echo "     python3 update_oui_database.py"
+fi
+echo ""
+
+echo -e "${YELLOW}Step 8: Checking GeoIP database...${NC}"
 GEOIP_PATHS=(
     "/var/lib/GeoIP/GeoLite2-Country.mmdb"
     "/usr/share/GeoIP/GeoLite2-Country.mmdb"

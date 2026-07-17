@@ -628,13 +628,15 @@ class MCPDatabaseClient:
             self.logger.error(f"Error getting devices: {e}")
             return []
 
-    def get_device_by_ip(self, ip_address: str, sensor_id: str = None) -> Optional[Dict]:
+    def get_device_by_ip(self, ip_address: str, sensor_id: str = None,
+                          include_inactive: bool = False) -> Optional[Dict]:
         """
         Get a specific device by IP address
 
         Args:
             ip_address: Device IP address
             sensor_id: Sensor ID (optional)
+            include_inactive: If False (default), only match active devices
 
         Returns:
             Device dictionary or None
@@ -654,9 +656,14 @@ class MCPDatabaseClient:
                 '''
                 params = [ip_address]
 
+                if not include_inactive:
+                    query += ' AND d.is_active = TRUE'
+
                 if sensor_id:
                     query += ' AND d.sensor_id = %s'
                     params.append(sensor_id)
+
+                query += ' ORDER BY d.last_seen DESC, d.id DESC LIMIT 1'
 
                 cursor.execute(query, params)
                 result = cursor.fetchone()
