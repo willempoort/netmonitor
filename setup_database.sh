@@ -23,22 +23,42 @@ DB_PASSWORD="netmonitor"
 echo "📦 Step 1: Installing PostgreSQL + TimescaleDB..."
 echo "-------------------------------------------"
 
-# Add TimescaleDB repository
+apt-get update
+apt-get install -y wget gnupg lsb-release postgresql postgresql-contrib
+
+# Detect the PostgreSQL version that was just installed from the distro repos
+PG_VERSION=$(psql --version | grep -oP '\d+' | head -1)
+echo "Detected PostgreSQL version: $PG_VERSION"
+
+# TimescaleDB's packagecloud repo has separate ubuntu/ and debian/ paths
+. /etc/os-release
+case "$ID" in
+    debian) TIMESCALE_REPO_OS="debian" ;;
+    ubuntu) TIMESCALE_REPO_OS="ubuntu" ;;
+    *)
+        echo "⚠️  Onbekende distributie ($ID) voor TimescaleDB-repo, val terug op ubuntu"
+        TIMESCALE_REPO_OS="ubuntu"
+        ;;
+esac
+
+# Add TimescaleDB repository met een signed-by keyring (apt-key is deprecated/
+# verwijderd op recente Debian/Ubuntu releases)
 if [ ! -f /etc/apt/sources.list.d/timescale_timescaledb.list ]; then
     echo "Adding TimescaleDB repository..."
-    apt-get update
-    apt-get install -y wget gnupg lsb-release
 
-    # Add TimescaleDB APT repository
-    sh -c "echo 'deb https://packagecloud.io/timescale/timescaledb/ubuntu/ $(lsb_release -c -s) main' > /etc/apt/sources.list.d/timescale_timescaledb.list"
-    wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey | apt-key add -
+    install -d -m 0755 /etc/apt/keyrings
+    wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey \
+        | gpg --dearmor -o /etc/apt/keyrings/timescaledb.gpg
+    chmod 0644 /etc/apt/keyrings/timescaledb.gpg
+
+    sh -c "echo 'deb [signed-by=/etc/apt/keyrings/timescaledb.gpg] https://packagecloud.io/timescale/timescaledb/${TIMESCALE_REPO_OS}/ $(lsb_release -c -s) main' > /etc/apt/sources.list.d/timescale_timescaledb.list"
 
     apt-get update
 fi
 
-# Install PostgreSQL and TimescaleDB
+# Install TimescaleDB matching the detected PostgreSQL version
 echo "Installing packages..."
-apt-get install -y postgresql postgresql-contrib timescaledb-2-postgresql-14
+apt-get install -y timescaledb-2-postgresql-$PG_VERSION
 
 # Tune TimescaleDB
 echo "Tuning TimescaleDB..."
