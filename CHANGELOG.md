@@ -15,6 +15,11 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.3.0] - 2026-07-17
+
+### Added
+- "Bevestigen"- en "Toevoegen aan whitelist"-knoppen per alert in de threat-type-detailweergave (voorheen alleen beschikbaar via de alert-feed modal).
+
 ## [2.2.0] - 2026-07-17
 
 ### Security
