@@ -40,8 +40,9 @@ server {
 
 # HTTPS Server
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name soc.example.com;  # WIJZIG NAAR JE DOMEIN
 
     # SSL Certificaten
