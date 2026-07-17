@@ -888,7 +888,10 @@ class OllamaClient:
 
         try:
             async with self.client.stream("POST", f"{self.base_url}/api/chat", json=payload) as response:
-                response.raise_for_status()
+                if response.status_code >= 400:
+                    body = await response.aread()
+                    yield {"error": f"Ollama {response.status_code}: {body.decode(errors='replace')[:500]}"}
+                    return
                 async for line in response.aiter_lines():
                     if line.strip():
                         try:
@@ -1628,7 +1631,12 @@ Regels:
                                     if "name" in func_chunk and func_chunk["name"]:
                                         accumulated_tool_calls[idx]["function"]["name"] = func_chunk["name"]
                                     if "arguments" in func_chunk and func_chunk["arguments"]:
-                                        accumulated_tool_calls[idx]["function"]["arguments"] += func_chunk["arguments"]
+                                        args_chunk = func_chunk["arguments"]
+                                        if isinstance(args_chunk, dict):
+                                            # Ollama levert arguments als compleet dict i.p.v. gestreamde string (OpenAI/LM Studio-stijl)
+                                            accumulated_tool_calls[idx]["function"]["arguments"] = args_chunk
+                                        elif isinstance(accumulated_tool_calls[idx]["function"]["arguments"], str):
+                                            accumulated_tool_calls[idx]["function"]["arguments"] += args_chunk
 
                     if chunk.get("done"):
                         # Flush any remaining buffered think filter content
