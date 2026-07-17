@@ -1537,6 +1537,7 @@ Regels:
             tool_iteration = 0
             called_tools: List[str] = []  # Track called tools to detect loops
             force_final_report = False  # Flag to force LLM to generate final report
+            empty_response_retried = False  # Guard tegen herhaalde lege antwoorden na tool-uitvoering
             collected_tool_results: List[Dict[str, Any]] = []  # Track all tool results for final report
             tool_loop_deadline = asyncio.get_event_loop().time() + TOOL_LOOP_TIMEOUT
 
@@ -1795,6 +1796,20 @@ Regels:
                 # No tool calls - send buffered content and exit loop
                 if buffered_content and not accumulated_tool_calls:
                     await websocket.send_json({"type": "token", "content": buffered_content})
+                elif not accumulated_tool_calls and not full_response.strip() and collected_tool_results:
+                    # Model gaf geen tool call én geen tekst terug na eerdere tool-resultaten
+                    # (geobserveerd bij o.a. Qwen3.5 MTP-varianten). Eén keer proberen te herstellen
+                    # door het model expliciet te vragen een eindantwoord te genereren.
+                    if not empty_response_retried:
+                        empty_response_retried = True
+                        force_final_report = True
+                        summary = "\n".join([f"- {r['tool']}: {json.dumps(r['result'], ensure_ascii=False)[:500]}" for r in collected_tool_results[-5:]])
+                        messages.append({"role": "user", "content": f"Geef NU een antwoord in het Nederlands op basis van deze eerder verzamelde data:\n{summary}"})
+                        continue
+                    await websocket.send_json({
+                        "type": "token",
+                        "content": "\n\n*Het model gaf geen antwoord na het uitvoeren van de tool(s). Probeer het opnieuw of wissel van model.*"
+                    })
 
                 # Done - no more tool calls
                 break
