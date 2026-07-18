@@ -276,6 +276,21 @@ class DeviceDiscovery:
         cleanup_counter = 0   # Counter for duplicate MAC cleanup
         traffic_stats_counter = 0  # Counter for traffic stats cleanup
         device_cache_counter = 0  # Counter for device cache cleanup
+
+        # Duplicate-MAC cleanup normaal pas na 30 iteraties (30 min, zie onder).
+        # Bij elke (her)start van de service - dus ook meteen na een fresh
+        # install - genereert de initiele netwerk-sweep juist de meeste DHCP-
+        # churn-duplicaten (zie cleanup_duplicate_mac_devices() docstring in
+        # database.py). Zonder deze eenmalige vroege pas blijven die tot 30
+        # minuten in de "Duplicate MAC Addresses"-melding op het dashboard
+        # staan bij elke restart, ook al ruimt de reguliere cyclus ze
+        # uiteindelijk vanzelf op.
+        try:
+            time.sleep(120)  # geef discovery even de tijd om MAC's te leren
+            self._cleanup_duplicate_macs()
+        except Exception as e:
+            self.logger.error(f"Error in initial duplicate MAC cleanup: {e}")
+
         while self._running:
             try:
                 # Flush stale DNS cache entries

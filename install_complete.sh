@@ -3,7 +3,7 @@
 # Copyright (c) 2025 Willem M. Poort
 #
 # NetMonitor SOC - Complete Installation Script
-# Version: 2.3.5
+# Version: 2.3.9
 # Installs: PostgreSQL, TimescaleDB, NetMonitor, Web Auth, MCP API, Nginx
 #
 # Features:
@@ -236,6 +236,31 @@ load_existing_env() {
     return 1
 }
 
+
+# Interface met een default route is vrijwel altijd de bedoelde monitor-
+# interface (bv. ens18); "lo" en interfaces zonder default route (extra
+# NICs, docker-bridges) zijn dat zelden. Valt terug op de eerste UP,
+# niet-lo interface als er geen default route is (bv. air-gapped sensor).
+detect_default_interface() {
+    local iface
+    iface=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
+    if [ -z "$iface" ]; then
+        iface=$(ip -o link show up 2>/dev/null | awk -F': ' '{print $2}' | grep -v '^lo$' | head -1)
+    fi
+    echo "$iface"
+}
+
+# Leidt de netwerk-CIDR (bv. 192.168.1.0/24) af van het IPv4-adres dat al
+# op de gekozen interface geconfigureerd staat, zodat het voorstel klopt
+# met het daadwerkelijke netwerk i.p.v. altijd 192.168.1.0/24 te tonen.
+detect_subnet_cidr() {
+    local iface="$1"
+    local addr
+    addr=$(ip -o -4 addr show dev "$iface" 2>/dev/null | awk '{print $4}' | head -1)
+    [ -z "$addr" ] && return 1
+    python3 -c "import ipaddress,sys; print(ipaddress.ip_interface(sys.argv[1]).network)" "$addr" 2>/dev/null
+}
+
 prompt_config() {
     print_header "CONFIGURATIE"
 
@@ -262,12 +287,28 @@ prompt_config() {
     echo
     DB_PASS=${DB_PASS_INPUT:-${DB_PASSWORD:-netmonitor}}
 
+    # Nginx (gevraagd vóór Dashboard/MCP-host zodat het antwoord de defaults
+    # daarvoor kan sturen: met nginx ervoor hoeven Flask/uvicorn niet zelf op
+    # alle interfaces (0.0.0.0) te luisteren, alleen nginx moet dat).
+    echo
+    print_info "Nginx Reverse Proxy:"
+    read -p "Nginx reverse proxy? (y/N): " INSTALL_NGINX
+    INSTALL_NGINX=${INSTALL_NGINX:-N}
+
+    if [[ $INSTALL_NGINX =~ ^[Yy]$ ]]; then
+        read -p "Domain name [${NGINX_SERVER_NAME}] (bijv. soc.example.com): " DOMAIN_NAME_INPUT
+        DOMAIN_NAME=${DOMAIN_NAME_INPUT:-${NGINX_SERVER_NAME}}
+        HOST_BIND_DEFAULT="127.0.0.1"
+    else
+        HOST_BIND_DEFAULT="0.0.0.0"
+    fi
+
     # Dashboard configuration
     echo
     print_info "Web Dashboard Configuratie:"
 
-    read -p "Dashboard host [${DASHBOARD_HOST:-0.0.0.0}]: " DASH_HOST_INPUT
-    DASHBOARD_HOST=${DASH_HOST_INPUT:-${DASHBOARD_HOST:-0.0.0.0}}
+    read -p "Dashboard host [${DASHBOARD_HOST:-$HOST_BIND_DEFAULT}]: " DASH_HOST_INPUT
+    DASHBOARD_HOST=${DASH_HOST_INPUT:-${DASHBOARD_HOST:-$HOST_BIND_DEFAULT}}
 
     read -p "Dashboard port [${DASHBOARD_PORT:-8080}]: " DASH_PORT_INPUT
     DASHBOARD_PORT=${DASH_PORT_INPUT:-${DASHBOARD_PORT:-8080}}
@@ -285,12 +326,16 @@ prompt_config() {
     print_info "Beschikbare network interfaces:"
     ip link show | grep -E "^[0-9]+:" | awk '{print "  - " $2}' | sed 's/:$//'
     echo
-    read -p "Welke interface wil je monitoren? [${MONITOR_INTERFACE:-eth0}]: " INTERFACE_INPUT
-    INTERFACE=${INTERFACE_INPUT:-${MONITOR_INTERFACE:-eth0}}
+    DETECTED_INTERFACE=$(detect_default_interface)
+    INTERFACE_DEFAULT=${MONITOR_INTERFACE:-${DETECTED_INTERFACE:-eth0}}
+    read -p "Welke interface wil je monitoren? [$INTERFACE_DEFAULT]: " INTERFACE_INPUT
+    INTERFACE=${INTERFACE_INPUT:-$INTERFACE_DEFAULT}
 
-    # Internal network
-    read -p "Jouw interne netwerk CIDR [${INTERNAL_NETWORK:-192.168.1.0/24}]: " INTERNAL_NET_INPUT
-    INTERNAL_NET=${INTERNAL_NET_INPUT:-${INTERNAL_NETWORK:-192.168.1.0/24}}
+    # Internal network - stel de daadwerkelijke subnet van de gekozen interface voor
+    DETECTED_SUBNET=$(detect_subnet_cidr "$INTERFACE")
+    INTERNAL_NET_DEFAULT=${INTERNAL_NETWORK:-${DETECTED_SUBNET:-192.168.1.0/24}}
+    read -p "Jouw interne netwerk CIDR [$INTERNAL_NET_DEFAULT]: " INTERNAL_NET_INPUT
+    INTERNAL_NET=${INTERNAL_NET_INPUT:-$INTERNAL_NET_DEFAULT}
 
     # Installation directory
     echo
@@ -323,8 +368,8 @@ prompt_config() {
 
     if [[ $INSTALL_MCP =~ ^[Yy]$ ]]; then
         MCP_API_ENABLED="true"
-        read -p "MCP API host [${MCP_API_HOST:-0.0.0.0}]: " MCP_HOST_INPUT
-        MCP_API_HOST=${MCP_HOST_INPUT:-${MCP_API_HOST:-0.0.0.0}}
+        read -p "MCP API host [${MCP_API_HOST:-$HOST_BIND_DEFAULT}]: " MCP_HOST_INPUT
+        MCP_API_HOST=${MCP_HOST_INPUT:-${MCP_API_HOST:-$HOST_BIND_DEFAULT}}
 
         read -p "MCP API port [${MCP_API_PORT:-8000}]: " MCP_PORT_INPUT
         MCP_API_PORT=${MCP_PORT_INPUT:-${MCP_API_PORT:-8000}}
@@ -333,35 +378,21 @@ prompt_config() {
         MCP_API_WORKERS=${MCP_WORKERS_INPUT:-${MCP_API_WORKERS:-4}}
     else
         MCP_API_ENABLED="false"
-        MCP_API_HOST=${MCP_API_HOST:-0.0.0.0}
+        MCP_API_HOST=${MCP_API_HOST:-$HOST_BIND_DEFAULT}
         MCP_API_PORT=${MCP_API_PORT:-8000}
         MCP_API_WORKERS=${MCP_API_WORKERS:-4}
     fi
 
     # Security settings
-    echo
-    print_info "Security Instellingen:"
-    REQUIRE_2FA_DEFAULT="N"
-    if [[ "${REQUIRE_2FA}" == "true" ]]; then
-        REQUIRE_2FA_DEFAULT="Y"
-    fi
-    read -p "Verplicht 2FA voor dashboard login? (Y/n) [${REQUIRE_2FA_DEFAULT}]: " REQUIRE_2FA_INPUT
-    REQUIRE_2FA_INPUT=${REQUIRE_2FA_INPUT:-${REQUIRE_2FA_DEFAULT}}
-    if [[ $REQUIRE_2FA_INPUT =~ ^[Yy]$ ]]; then
-        REQUIRE_2FA="true"
-    else
-        REQUIRE_2FA="false"
-    fi
-
-    # Nginx
-    echo
-    read -p "Nginx reverse proxy? (y/N): " INSTALL_NGINX
-    INSTALL_NGINX=${INSTALL_NGINX:-N}
-
-    if [[ $INSTALL_NGINX =~ ^[Yy]$ ]]; then
-        read -p "Domain name [${NGINX_SERVER_NAME}] (bijv. soc.example.com): " DOMAIN_NAME_INPUT
-        DOMAIN_NAME=${DOMAIN_NAME_INPUT:-${NGINX_SERVER_NAME}}
-    fi
+    #
+    # REQUIRE_2FA wordt hier bewust niet meer los gevraagd: de env var wordt
+    # nergens in de Python-code gelezen (2FA-afdwinging bestaat niet als
+    # globale policy) en het enige werkende 2FA-aanbod zit al in
+    # setup_admin_user.py (STAP 9, "Enable 2FA now?"). Een tweede vraag hier
+    # was dus zowel dubbelop als misleidend (leek een echte instelling terwijl
+    # er niets mee gebeurde). De bestaande .env/.env.example waarde wordt
+    # ongewijzigd doorgezet.
+    REQUIRE_2FA=${REQUIRE_2FA:-true}
 
     echo
     print_success "Configuratie compleet!"
@@ -1150,6 +1181,23 @@ setup_nginx() {
     fi
 }
 
+# Geeft de URL terug waarmee de gebruiker de dashboard hoort te benaderen:
+# met nginx is dat de https-front-end (domain, of anders het server-IP), zonder
+# nginx blijft dat de directe http://localhost:$DASHBOARD_PORT.
+dashboard_base_url() {
+    if [[ $INSTALL_NGINX =~ ^[Yy]$ ]]; then
+        if [ ! -z "$DOMAIN_NAME" ]; then
+            echo "https://$DOMAIN_NAME"
+        else
+            local ip
+            ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+            echo "https://${ip:-<server-ip>}"
+        fi
+    else
+        echo "http://localhost:${DASHBOARD_PORT:-8080}"
+    fi
+}
+
 print_summary() {
     print_header "INSTALLATIE COMPLEET!"
 
@@ -1223,7 +1271,7 @@ print_summary() {
     echo -e "${YELLOW}Volgende Stappen:${NC}"
     echo
     echo "1. Login naar Dashboard:"
-    echo "   URL: http://localhost:8080"
+    echo "   URL: $(dashboard_base_url)"
     echo "   User de admin credentials die je zojuist hebt aangemaakt"
     echo
     echo "2. Enable 2FA (aanbevolen):"
@@ -1269,7 +1317,7 @@ main() {
     clear
 
     print_header "NetMonitor SOC - Complete Installation"
-    echo "Versie: 2.3.5"
+    echo "Versie: 2.3.9"
     echo "Dit script installeert ALLES automatisch inclusief web authenticatie"
     echo "Ondersteunde OS: Ubuntu 22.04/24.04/26.04 & Debian 12/13"
     echo

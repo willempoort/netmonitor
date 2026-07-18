@@ -75,8 +75,14 @@ then
     echo ""
     echo "SUCCESS! GeoIP database installed to: $INSTALL_DIR/$DB_FILE"
     echo ""
-    echo "Restart netmonitor service to use the new database:"
-    echo "  sudo systemctl restart netmonitor"
+    if systemctl is-active --quiet netmonitor 2>/dev/null; then
+        echo "Restarting netmonitor service to use the new database..."
+        sudo systemctl restart netmonitor
+        echo "  netmonitor service restarted"
+    else
+        echo "Restart netmonitor service to use the new database:"
+        echo "  sudo systemctl restart netmonitor"
+    fi
 else
     echo ""
     echo "No action taken. Follow the instructions above to manually install the database."

@@ -19,6 +19,27 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Enkel voor de "Next steps"-URLs hieronder: als nginx voor netmonitor
+# geconfigureerd is (site-symlink aanwezig), hoort de gebruiker naar de
+# https-front-end te gaan i.p.v. het directe (en met nginx vaak niet meer
+# extern bereikbare) http://localhost:$DASHBOARD_PORT.
+if [ -f .env ]; then
+    DASHBOARD_PORT=$(grep -E "^DASHBOARD_PORT=" .env | tail -1 | cut -d= -f2)
+    NGINX_SERVER_NAME=$(grep -E "^NGINX_SERVER_NAME=" .env | tail -1 | cut -d= -f2)
+fi
+DASHBOARD_PORT=${DASHBOARD_PORT:-8080}
+
+if [ -L "/etc/nginx/sites-enabled/netmonitor" ]; then
+    if [ -n "$NGINX_SERVER_NAME" ] && [ "$NGINX_SERVER_NAME" != "soc.example.com" ]; then
+        DASHBOARD_BASE_URL="https://$NGINX_SERVER_NAME"
+    else
+        SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+        DASHBOARD_BASE_URL="https://${SERVER_IP:-<server-ip>}"
+    fi
+else
+    DASHBOARD_BASE_URL="http://localhost:${DASHBOARD_PORT}"
+fi
+
 # Activate Python virtual environment
 if [ -f "venv/bin/activate" ]; then
     echo -e "${YELLOW}Activating Python virtual environment...${NC}"
@@ -164,8 +185,8 @@ echo -e "${GREEN}Post-Installation Setup Complete!${NC}"
 echo "======================================================================"
 echo ""
 echo "Next steps:"
-echo "  1. Configure templates via Web UI: http://localhost:8080/templates"
-echo "  2. Add device classifications: http://localhost:8080/devices"
+echo "  1. Configure templates via Web UI: $DASHBOARD_BASE_URL/templates"
+echo "  2. Add device classifications: $DASHBOARD_BASE_URL/devices"
 echo "  3. Configure KIOSK mode rotation interval if needed"
 echo "  4. Set up MCP server if using Claude Desktop integration"
 echo ""
