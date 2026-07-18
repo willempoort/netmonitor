@@ -180,6 +180,14 @@ function renderDevicesTable(devices) {
                 : '';
 
             templateBadge = `<span class="badge bg-${badgeColor}" title="${isAutoAssigned ? 'Auto-assigned by ML - click ✓ to confirm' : 'Manually assigned'}">${device.template_name}${confidenceText}</span>${confirmBtn}`;
+        } else if (device.suggested_template_name && device.suggested_template_id) {
+            // Classifier suggestion below the auto-assign confidence threshold:
+            // not applied to the device, but shown so the user can confirm it
+            const suggestConfidence = device.classification_confidence
+                ? ` (${Math.round(device.classification_confidence * 100)}%)`
+                : '';
+            const acceptBtn = `<button class="btn btn-sm btn-outline-success ms-1" onclick="event.stopPropagation(); confirmDeviceTemplate('${device.ip_address}', ${device.suggested_template_id}, '${device.suggested_template_name}')" title="Accept this suggestion (assign template)"><i class="bi bi-check-circle"></i></button>`;
+            templateBadge = `<span class="badge bg-info text-dark" title="Suggested by classifier (${device.classification_method || 'unknown'}) - click ✓ to accept">Suggested: ${device.suggested_template_name}${suggestConfidence}</span>${acceptBtn}`;
         } else {
             templateBadge = `<span class="badge bg-secondary">Unclassified</span>`;
         }

@@ -15,6 +15,14 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.3.10] - 2026-07-18
+
+### Fixed
+- **Device-classificatievoorstellen waren onzichtbaar in het dashboard, ook voor devices met learning status "Ready".** De classifier schreef wel `classification_method`/`classification_confidence` naar de database (sinds 2.3.6), maar het voorgestelde *type* zelf werd weggegooid: een template wordt pas echt toegewezen bij confidence ≥ 0.7, terwijl vendor-hints (de enige methode die kan vuren zolang er geen ML-model getraind is) per ontwerp op 0.6 gecapt zijn - en de UI toonde een voorstel uitsluitend via een toegewezen template. Gevolg: 19 devices hadden een berekend voorstel (Sonos → Smart Speaker, Espressif → IoT Sensor, Synology → NAS, ...) dat nergens te zien was; de devices-tabel toonde gewoon "Unclassified". Nieuw: `devices.suggested_template_id` (schema v23) bewaart het voorstel onder de auto-assign-drempel; de devices-tabel toont nu een "Suggested: <template> (60%)"-badge met een ✓-knop om het voorstel te accepteren. Bij (handmatige of automatische) template-toewijzing wordt het voorstel gewist.
+
+### Notes
+- Het ML-model zelf traint (bewust, zie 2.3.7) nog niet op dit netwerk: er zijn nu 2 categorieën met 3+ voorbeelden (iot_sensor 11, smart_speaker 6; nas en network_device elk 1), minimaal 4 nodig. Dit lost zichzelf op naarmate voorstellen geaccepteerd/templates handmatig toegewezen worden - elke bevestiging telt als trainingslabel.
+
 ## [2.3.9] - 2026-07-18
 
 ### Fixed
