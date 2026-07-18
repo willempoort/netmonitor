@@ -15,6 +15,12 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.3.11] - 2026-07-18
+
+### Fixed
+- **Template→trainingslabel-mapping labelde "File Server (NAS)" als `server` i.p.v. `nas`.** `_infer_label_from_template()` matcht op substrings in dict-volgorde, en het generieke `'server'` stond vóór het specifiekere `'file server'`/`'nas'` - een handmatig als NAS geclassificeerde Synology ging dus als verkeerd label de ML-training in. Matching gebeurt nu longest-key-first zodat specifieke templatenamen altijd winnen van generieke substrings.
+- **De ingebouwde templates "Smart Plug", "Smart Light" en "Home Automation Hub" mapten naar geen enkele trainingscategorie** - devices met die templates (bv. Tuya smart plugs) droegen niets bij aan de trainingsdiversiteit. Toegevoegd als `iot_sensor`, plus `'power switch'` → `iot_sensor` zodat custom relais-templates ("iOT smart power switch") niet per ongeluk als netwerk-switch (`network_device`) gelabeld worden.
+
 ## [2.3.10] - 2026-07-18
 
 ### Fixed

@@ -430,6 +430,10 @@ class DeviceClassifier:
             'sensor': 'iot_sensor',
             'iot': 'iot_sensor',
             'thermostat': 'iot_sensor',
+            'smart plug': 'iot_sensor',
+            'smart light': 'iot_sensor',
+            'home automation': 'iot_sensor',
+            'power switch': 'iot_sensor',  # bv. "iOT smart power switch" - relais, geen netwerk-switch
             'mobile': 'mobile',
             'phone': 'mobile',
             'tablet': 'mobile',
@@ -446,7 +450,11 @@ class DeviceClassifier:
             'samba server': 'server',
         }
 
-        for key, device_type in mappings.items():
+        # Longest key first: generic substrings zoals 'server' zitten ook in
+        # specifiekere templatenamen ('File Server (NAS)', 'DNS Server') en
+        # wonnen in dict-volgorde van 'file server'/'nas' - waardoor bv. een
+        # handmatig als NAS gelabeld device als 'server' de training in ging.
+        for key, device_type in sorted(mappings.items(), key=lambda kv: -len(kv[0])):
             if key in template_lower:
                 return device_type
 
