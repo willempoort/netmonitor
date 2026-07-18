@@ -15,6 +15,15 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.3.9] - 2026-07-18
+
+### Fixed
+- **`install_complete.sh` stelde altijd `eth0` en `192.168.1.0/24` voor**, ongeacht de daadwerkelijke server-interface/subnet - op een VM met alleen `lo`/`ens18` moest je dus altijd handmatig overtypen. Het script detecteert nu de interface met de default route (valt terug op de eerste UP niet-`lo`-interface) en leidt de subnet-CIDR af van het IPv4-adres op de gekozen interface; beide blijven overschrijfbaar en een bestaande `.env`-waarde wint nog steeds.
+- **2FA werd twee keer gevraagd tijdens installatie**, en de eerste vraag ("Verplicht 2FA voor dashboard login?", schreef naar `REQUIRE_2FA` in `.env`) deed niets - die env var wordt nergens in de Python-code gelezen. Het enige werkende 2FA-aanbod zit in `setup_admin_user.py` (STAP 9); de dode prompt in `prompt_config()` is verwijderd.
+- **Nginx-keuze had geen invloed op dashboard/MCP bind-adres of op de getoonde URL's.** Met nginx als reverse proxy hoeven Flask/uvicorn niet zelf op `0.0.0.0` te luisteren - de Nginx-vraag wordt nu vóór de Dashboard/MCP-host-vragen gesteld en stuurt de voorgestelde default (`127.0.0.1` met nginx, anders `0.0.0.0`, nog steeds overschrijfbaar). De "Volgende stappen"-URL's (`install_complete.sh` summary en `post_install.sh`) tonen nu `https://<domain-of-server-ip>` zodra nginx geconfigureerd is, i.p.v. altijd `http://localhost:8080`.
+- **`download_geoip_db.sh` toonde alleen een handmatige restart-instructie** ("Restart netmonitor service: sudo systemctl restart netmonitor") in plaats van het zelf te doen. Herstart de service nu automatisch wanneer die al actief is (bv. tijdens/na installatie); toont de handmatige instructie alleen nog als de service nog niet bestaat/draait.
+- **"Duplicate MAC Addresses" werd bij (bijna) elke installatie/herstart meteen gemeld.** De achtergrondtaak die dubbele MAC-rijen opruimt (ontstaan door DHCP-churn tijdens de eerste netwerk-sweep, zie `cleanup_duplicate_mac_devices()`) draaide pas na 30 minuten (elke 30e iteratie van de 60s-loop). `device_discovery.py` draait nu een eenmalige vroege opruimronde 2 minuten na startup, zodat de melding niet bij elke restart tot 30 minuten blijft staan.
+
 ## [2.3.8] - 2026-07-17
 
 ### Fixed
