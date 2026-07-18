@@ -58,7 +58,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 22  # Increment this when schema changes (v22: top_talkers outbound/inbound byte columns)
+        SCHEMA_VERSION = 23  # Increment this when schema changes (v23: devices.suggested_template_id)
 
         # Schema initialisatie met automatisch herstel bij TimescaleDB versie-mismatch na apt upgrade
         for _attempt in range(2):
@@ -956,6 +956,26 @@ class DatabaseManager:
                     ) THEN
                         ALTER TABLE top_talkers ADD COLUMN outbound_byte_count BIGINT DEFAULT 0;
                         ALTER TABLE top_talkers ADD COLUMN inbound_byte_count BIGINT DEFAULT 0;
+                    END IF;
+                END $$;
+            """)
+
+            # Migration v23: Add suggested_template_id to devices. Holds the
+            # template the classifier *suggests* when confidence is below the
+            # auto-assign threshold (0.7) - separate from template_id, which
+            # only ever holds an actually-assigned template. Without this the
+            # suggestion had nowhere to live: classification_method/confidence
+            # were persisted but the suggested type itself was discarded, so
+            # the dashboard could never show what was being suggested.
+            cursor.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'devices' AND column_name = 'suggested_template_id'
+                    ) THEN
+                        ALTER TABLE devices ADD COLUMN suggested_template_id INTEGER
+                            REFERENCES device_templates(id) ON DELETE SET NULL;
                     END IF;
                 END $$;
             """)
@@ -3330,6 +3350,7 @@ class DatabaseManager:
                 SET template_id = %s,
                     classification_method = %s,
                     classification_confidence = %s,
+                    suggested_template_id = NULL,
                     last_seen = NOW()
                 WHERE id = %s
             ''', (template_id, method, confidence, device_id))
@@ -3693,9 +3714,11 @@ class DatabaseManager:
                        d.mac_address::text as mac_address,
                        t.name as template_name,
                        t.icon as template_icon,
-                       t.category as template_category
+                       t.category as template_category,
+                       st.name as suggested_template_name
                 FROM devices d
                 LEFT JOIN device_templates t ON d.template_id = t.id
+                LEFT JOIN device_templates st ON d.suggested_template_id = st.id
                 WHERE 1=1
             '''
             params = []
@@ -3774,9 +3797,11 @@ class DatabaseManager:
                        d.ip_address::text as ip_address,
                        d.mac_address::text as mac_address,
                        t.name as template_name,
-                       t.icon as template_icon
+                       t.icon as template_icon,
+                       st.name as suggested_template_name
                 FROM devices d
                 LEFT JOIN device_templates t ON d.template_id = t.id
+                LEFT JOIN device_templates st ON d.suggested_template_id = st.id
                 WHERE d.ip_address = %s
             '''
             params = [ip_address]
@@ -3848,6 +3873,7 @@ class DatabaseManager:
                 SET template_id = %s,
                     classification_confidence = %s,
                     classification_method = %s,
+                    suggested_template_id = NULL,
                     last_seen = NOW()
                 WHERE id = %s
             ''', (template_id, confidence, method, device_id))
@@ -3961,10 +3987,16 @@ class DatabaseManager:
 
     def update_device_classification(self, device_id: int,
                                      classification_method: str,
-                                     classification_confidence: float) -> bool:
+                                     classification_confidence: float,
+                                     suggested_template_id: int = None) -> bool:
         """
         Update only the classification fields of a device (not the template).
         Used by ML classifier to store classification results.
+
+        suggested_template_id records which template the classifier would
+        assign if it were confident enough - shown in the dashboard as a
+        suggestion the user can confirm. Passing None clears any previous
+        suggestion (the latest classification run is authoritative).
         """
         conn = self._get_connection()
         try:
@@ -3973,9 +4005,11 @@ class DatabaseManager:
                 UPDATE devices
                 SET classification_method = %s,
                     classification_confidence = %s,
+                    suggested_template_id = %s,
                     last_seen = NOW()
                 WHERE id = %s
-            ''', (classification_method, classification_confidence, device_id))
+            ''', (classification_method, classification_confidence,
+                  suggested_template_id, device_id))
             conn.commit()
             return cursor.rowcount > 0
         except Exception as e:

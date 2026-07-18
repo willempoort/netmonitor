@@ -744,20 +744,27 @@ class DeviceClassifier:
 
                     if existing_method != 'manual':
                         try:
+                            # Look up the template for the classified type
+                            # regardless of confidence: at >=0.7 it gets
+                            # auto-assigned, below that it's persisted as
+                            # suggested_template_id so the dashboard can show
+                            # "Suggested: X" with a confirm button. Without
+                            # the below-threshold lookup, the suggestion had
+                            # no template to point at and stayed invisible.
                             template_id = None
-                            if classification['confidence'] >= 0.7:
-                                # Look up template for this device type
-                                device_type = classification['device_type']
-                                template_name = DEVICE_CATEGORIES.get(device_type, {}).get('template_name')
+                            device_type = classification['device_type']
+                            template_name = DEVICE_CATEGORIES.get(device_type, {}).get('template_name')
 
-                                if template_name:
-                                    # Check cache first
-                                    if template_name not in template_cache:
-                                        template = self.db.get_device_template_by_name(template_name)
-                                        template_cache[template_name] = template.get('id') if template else None
-                                    template_id = template_cache.get(template_name)
+                            if template_name:
+                                # Check cache first
+                                if template_name not in template_cache:
+                                    template = self.db.get_device_template_by_name(template_name)
+                                    template_cache[template_name] = template.get('id') if template else None
+                                template_id = template_cache.get(template_name)
 
-                            if template_id and (not existing_template or existing_template != template_id):
+                            auto_assign = classification['confidence'] >= 0.7
+
+                            if auto_assign and template_id and (not existing_template or existing_template != template_id):
                                 # Assign the template along with classification
                                 self.db.assign_template_to_device(
                                     device_id=device['id'],
@@ -772,12 +779,17 @@ class DeviceClassifier:
                                     f"(confidence: {classification['confidence']:.1%})"
                                 )
                             else:
-                                # Just update classification metadata (no template found,
-                                # confidence too low to auto-assign, or already has same template)
+                                # Update classification metadata. Record the
+                                # template as a suggestion only when it isn't
+                                # already the device's assigned template.
+                                suggested_id = None
+                                if template_id and existing_template != template_id:
+                                    suggested_id = template_id
                                 self.db.update_device_classification(
                                     device_id=device['id'],
                                     classification_method=classification['method'],
-                                    classification_confidence=classification['confidence']
+                                    classification_confidence=classification['confidence'],
+                                    suggested_template_id=suggested_id
                                 )
                                 results['updated'] += 1
                         except Exception as e:
