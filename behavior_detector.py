@@ -104,6 +104,23 @@ class BehaviorDetector:
         except ValueError:
             return False
 
+    def _is_broadcast_or_multicast(self, ip_str: str) -> bool:
+        """Check of IP een broadcast/multicast-adres is (nooit een echte C2-bestemming)"""
+        try:
+            ip = ipaddress.ip_address(ip_str)
+            if ip.is_multicast or ip.is_unspecified:
+                return True
+            # 255.255.255.255
+            if ip == ipaddress.ip_address('255.255.255.255'):
+                return True
+            # Subnet broadcast: check tegen internal networks
+            for network in self.internal_networks:
+                if ip in network and ip == network.broadcast_address:
+                    return True
+        except ValueError:
+            pass
+        return False
+
     def analyze_packet(self, packet) -> List[dict]:
         """
         Analyseer packet voor behavior-based threats
@@ -162,6 +179,11 @@ class BehaviorDetector:
 
         # Check alleen outbound traffic (internal -> external)
         if self.is_internal_ip(dst_ip):
+            return None
+
+        # Broadcast/multicast kan het lokale netwerk nooit verlaten - dus per
+        # definitie geen externe C2-beaconing, ongeacht hoe regelmatig het patroon is
+        if self._is_broadcast_or_multicast(dst_ip):
             return None
 
         current_time = time.time()
