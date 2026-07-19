@@ -1448,6 +1448,103 @@ async function pollMLClassificationStatus(btn, statusDiv) {
     }
 }
 
+async function trainMLModel() {
+    const btn = document.getElementById('train-ml-model-btn');
+    const statusDiv = document.getElementById('ml-training-status');
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Vereisten controleren...';
+    }
+    if (statusDiv) statusDiv.style.display = 'none';
+
+    try {
+        // Check the training requirements first, so we can tell the user
+        // exactly what's missing instead of a generic "training failed".
+        const readyResponse = await fetch('/api/ml/training-readiness');
+        const readyResult = await readyResponse.json();
+
+        if (!readyResult.success) {
+            throw new Error(readyResult.error || 'Kon trainingsstatus niet controleren');
+        }
+
+        const readiness = readyResult.readiness;
+
+        if (!readiness.ready) {
+            const items = (readiness.missing || []).map(m => `<li>${m}</li>`).join('');
+            if (statusDiv) {
+                statusDiv.innerHTML = `
+                    <div class="alert alert-warning mb-0">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <strong>Nog niet klaar om te trainen.</strong> Er is nog niet genoeg gelabelde data:
+                        <ul class="mb-0 mt-1">${items}</ul>
+                    </div>
+                `;
+                statusDiv.style.display = 'block';
+            }
+            return;
+        }
+
+        // Requirements met - actually train
+        if (btn) {
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Model wordt getraind...';
+        }
+
+        const trainResponse = await fetch('/api/ml/train', { method: 'POST' });
+        const trainResult = await trainResponse.json();
+        const classifierResult = trainResult.result?.classifier || {};
+
+        if (trainResult.success && classifierResult.success !== false) {
+            if (statusDiv) {
+                statusDiv.innerHTML = `
+                    <div class="alert alert-success mb-0">
+                        <i class="bi bi-check-circle me-2"></i>
+                        <strong>Model getraind!</strong> ${classifierResult.message || ''}
+                    </div>
+                `;
+                statusDiv.style.display = 'block';
+                setTimeout(() => { statusDiv.style.display = 'none'; }, 10000);
+            }
+            showSuccess('ML-model succesvol getraind');
+            loadMLStatus();
+        } else {
+            const errorMsg = classifierResult.error || trainResult.error || 'Onbekende fout';
+            if (statusDiv) {
+                statusDiv.innerHTML = `
+                    <div class="alert alert-danger mb-0">
+                        <i class="bi bi-x-circle me-2"></i>
+                        <strong>Training mislukt:</strong> ${errorMsg}
+                    </div>
+                `;
+                statusDiv.style.display = 'block';
+            }
+            showError('Training mislukt: ' + errorMsg);
+        }
+
+    } catch (error) {
+        console.error('Error training ML model:', error);
+        if (statusDiv) {
+            statusDiv.innerHTML = `
+                <div class="alert alert-danger mb-0">
+                    <i class="bi bi-x-circle me-2"></i>
+                    <strong>Fout:</strong> ${error.message || 'Kon model niet trainen'}
+                </div>
+            `;
+            statusDiv.style.display = 'block';
+        }
+        showError('Training fout: ' + error.message);
+    } finally {
+        resetTrainButton(btn);
+    }
+}
+
+function resetTrainButton(btn) {
+    if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-gear"></i> Train Model';
+    }
+}
+
 function resetMLButton(btn) {
     if (btn) {
         btn.disabled = false;
