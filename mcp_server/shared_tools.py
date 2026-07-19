@@ -3734,7 +3734,7 @@ TOOL_DEFINITIONS = [
             # Device Classification Tools
             {
                 "name": "get_device_templates",
-                "description": "Get all device templates (predefined device types like Camera, Smart TV, Server, etc.)",
+                "description": "Get all device templates (predefined device types like Camera, Smart TV, Server, etc.). Use this for questions about templates/device types themselves (e.g. how many templates exist, what categories exist). Does NOT return discovered network devices - use get_devices for that.",
                 "input_schema": {
                     "type": "object",
                     "properties": {
@@ -3757,7 +3757,7 @@ TOOL_DEFINITIONS = [
             },
             {
                 "name": "get_devices",
-                "description": "Get all discovered/registered network devices with their classification status",
+                "description": "Get all discovered/registered network devices with their classification status. Does NOT return the list of available device templates/types - use get_device_templates for that.",
                 "input_schema": {
                     "type": "object",
                     "properties": {
