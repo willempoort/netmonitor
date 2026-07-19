@@ -610,6 +610,11 @@ canvas {
     color: #aaa !important;
 }
 
+.card.bg-secondary small.text-muted,
+#alertDetailsBody .text-muted {
+    color: #aaa !important;
+}
+
 .param-type-badge {
     font-size: 0.7rem;
     padding: 2px 8px;
