@@ -438,6 +438,41 @@ class DeviceClassifier:
 
         return None
 
+    def _infer_tablet_platform(self, hostname: Optional[str]) -> Optional[str]:
+        """
+        Heuristic tablet detection for devices already classified as 'mobile',
+        counterpart to _infer_smartphone_platform() for the tablet form factor.
+
+        Returns 'ios', 'android', 'unknown' (hostname confirms a tablet but not
+        which platform), or None (hostname doesn't look like a tablet at all).
+        """
+        if not hostname:
+            return None
+
+        hostname_lower = hostname.lower()
+
+        exclude_patterns = ['watch', 'iphone', 'buds', 'earbuds', 'macbook', 'imac']
+        if any(p in hostname_lower for p in exclude_patterns):
+            return None
+
+        if 'ipad' in hostname_lower:
+            return 'ios'
+
+        # "Tab-"/"Tab_" is an Android-only product naming convention (Samsung
+        # Galaxy Tab, Lenovo Tab, etc.) - Apple never names a device "Tab", so
+        # this prefix alone is a reliable Android signal without needing a
+        # separate brand match.
+        if 'tab-' in hostname_lower or 'tab_' in hostname_lower:
+            return 'android'
+
+        if 'galaxy tab' in hostname_lower or 'tablet' in hostname_lower:
+            android_patterns = ['galaxy', 'sm-', 'lenovo', 'huawei', 'xiaomi', 'redmi', 'android']
+            if any(p in hostname_lower for p in android_patterns):
+                return 'android'
+            return 'unknown'
+
+        return None
+
     def _infer_label_from_template(self, template_name: str) -> Optional[str]:
         """Infer device type from assigned template name."""
         if not template_name:
@@ -473,6 +508,7 @@ class DeviceClassifier:
             'google home': 'smart_speaker',
             'sensor': 'iot_sensor',
             'iot': 'iot_sensor',
+            'p1 meter': 'iot_sensor',  # slimme-meter uitleeskastje (bv. HomeWizard P1)
             'thermostat': 'iot_sensor',
             'smart plug': 'iot_sensor',
             'smart light': 'iot_sensor',
@@ -871,17 +907,30 @@ class DeviceClassifier:
                             template_name = DEVICE_CATEGORIES.get(device_type, {}).get('template_name')
 
                             # Refine generic "mobile" into a platform-specific
-                            # smartphone template when the hostname gives it away.
+                            # smartphone/tablet template when the hostname gives
+                            # it away. Tablet check goes first since a "Tab-"/
+                            # "iPad" hostname is a form-factor signal that the
+                            # phone heuristic already excludes.
                             if device_type == 'mobile':
-                                platform = self._infer_smartphone_platform(device.get('hostname'))
-                                if platform == 'ios':
-                                    template_name = 'Smartphone (iOS)'
-                                    result_reasoning = classification.setdefault('reasoning', [])
-                                    result_reasoning.append("Hostname suggests iOS ('iPhone' pattern)")
-                                elif platform == 'android':
-                                    template_name = 'Smartphone (Android)'
-                                    result_reasoning = classification.setdefault('reasoning', [])
-                                    result_reasoning.append("Hostname suggests Android (model-name pattern)")
+                                result_reasoning = classification.setdefault('reasoning', [])
+                                tablet_platform = self._infer_tablet_platform(device.get('hostname'))
+                                if tablet_platform == 'ios':
+                                    template_name = 'Tablet (iOS)'
+                                    result_reasoning.append("Hostname suggests iPad")
+                                elif tablet_platform == 'android':
+                                    template_name = 'Tablet (Android)'
+                                    result_reasoning.append("Hostname suggests Android tablet ('Tab-' pattern)")
+                                elif tablet_platform == 'unknown':
+                                    template_name = 'Tablet (overig)'
+                                    result_reasoning.append("Hostname suggests a tablet, platform unclear")
+                                else:
+                                    platform = self._infer_smartphone_platform(device.get('hostname'))
+                                    if platform == 'ios':
+                                        template_name = 'Smartphone (iOS)'
+                                        result_reasoning.append("Hostname suggests iOS ('iPhone' pattern)")
+                                    elif platform == 'android':
+                                        template_name = 'Smartphone (Android)'
+                                        result_reasoning.append("Hostname suggests Android (model-name pattern)")
 
                             if template_name:
                                 # Check cache first

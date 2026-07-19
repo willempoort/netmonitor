@@ -58,7 +58,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 28  # Increment this when schema changes (v28: ml_classification_task table for cross-worker status)
+        SCHEMA_VERSION = 29  # Increment this when schema changes (v29: builtin Tablet (iOS/Android/overig) templates)
 
         # Schema initialisatie met automatisch herstel bij TimescaleDB versie-mismatch na apt upgrade
         for _attempt in range(2):
@@ -4719,6 +4719,42 @@ class DatabaseManager:
                 'name': 'Smartphone (Android)',
                 'description': 'Android smartphone - herkend via hostname-patroon (bv. modelnaam)',
                 'icon': 'phone',
+                'category': 'endpoint',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 5228]}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'QUIC', 'DNS']}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'periodic': True, 'many_destinations': True}, 'action': 'allow'},
+                    {'type': 'expected_destinations', 'params': {'categories': ['streaming', 'cdn', 'cloud', 'social']}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Tablet (overig)',
+                'description': 'Tablet waarvan het platform (iOS/Android) niet met zekerheid is vastgesteld',
+                'icon': 'tablet',
+                'category': 'endpoint',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 5223, 5228]}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'QUIC', 'DNS']}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'periodic': True, 'many_destinations': True}, 'action': 'allow'},
+                    {'type': 'expected_destinations', 'params': {'categories': ['streaming', 'cdn', 'cloud', 'social']}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Tablet (iOS)',
+                'description': 'iPad - herkend via hostname-patroon (bv. "iPad.local")',
+                'icon': 'tablet',
+                'category': 'endpoint',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 5223]}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'QUIC', 'DNS']}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'periodic': True, 'many_destinations': True}, 'action': 'allow'},
+                    {'type': 'expected_destinations', 'params': {'categories': ['streaming', 'cdn', 'cloud', 'social']}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Tablet (Android)',
+                'description': 'Android tablet - herkend via hostname-patroon (bv. "Tab-" modelnaam)',
+                'icon': 'tablet',
                 'category': 'endpoint',
                 'behaviors': [
                     {'type': 'allowed_ports', 'params': {'ports': [80, 443, 5228]}, 'action': 'allow'},
