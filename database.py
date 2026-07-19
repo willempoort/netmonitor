@@ -2128,6 +2128,54 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
+    def acknowledge_alerts_by_ip(self, ip_address: str, threat_type: str = None,
+                                  hours: int = None) -> List[int]:
+        """
+        Bulk-bevestig alle nog niet bevestigde alerts voor een IP (source of destination).
+
+        Args:
+            ip_address: IP om op te filteren
+            threat_type: optioneel, beperk tot dit threat_type
+            hours: optioneel, beperk tot alerts van de laatste N uur
+
+        Returns:
+            Lijst van alert-ID's die zijn bevestigd
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            query = '''
+                UPDATE alerts SET acknowledged = TRUE
+                WHERE (source_ip = %s::inet OR destination_ip = %s::inet)
+                  AND acknowledged = FALSE
+            '''
+            params = [ip_address, ip_address]
+
+            if threat_type:
+                query += ' AND threat_type = %s'
+                params.append(threat_type)
+
+            if hours:
+                cutoff_time = datetime.now() - timedelta(hours=hours)
+                query += ' AND timestamp > %s'
+                params.append(cutoff_time)
+
+            query += ' RETURNING id'
+
+            cursor.execute(query, params)
+            acknowledged_ids = [row[0] for row in cursor.fetchall()]
+
+            conn.commit()
+            return acknowledged_ids
+
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error bulk-acknowledging alerts for {ip_address}: {e}")
+            return []
+        finally:
+            self._return_connection(conn)
+
     def get_threat_type_details(self, threat_type: str, hours: int = 24, limit: int = 100) -> Dict:
         """Get detailed information for a specific threat type"""
         conn = self._get_connection()

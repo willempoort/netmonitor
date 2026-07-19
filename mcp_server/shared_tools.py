@@ -2286,6 +2286,43 @@ class NetMonitorTools:
             logger.error(f"Error acknowledging alert {alert_id}: {e}")
             return {'success': False, 'error': str(e)}
 
+    async def acknowledge_alerts_by_ip(self, params: Dict) -> Dict:
+        """Bulk-acknowledge all not-yet-acknowledged alerts for an IP via the dashboard API"""
+        import requests
+
+        ip_address = params.get('ip_address')
+        if not ip_address:
+            return {'success': False, 'error': 'ip_address is required'}
+
+        threat_type = params.get('threat_type')
+        hours = params.get('hours')
+
+        dashboard_url = os.environ.get('DASHBOARD_URL', 'http://localhost:8080')
+
+        try:
+            response = requests.post(
+                f"{dashboard_url}/api/alerts/acknowledge_bulk",
+                json={'ip_address': ip_address, 'threat_type': threat_type, 'hours': hours},
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success'):
+                    return {
+                        'success': True,
+                        'acknowledged_count': result.get('acknowledged_count', 0),
+                        'alert_ids': result.get('alert_ids', [])
+                    }
+                else:
+                    return {'success': False, 'error': result.get('error', 'Unknown error')}
+            else:
+                return {'success': False, 'error': f'API returned status {response.status_code}'}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error bulk-acknowledging alerts for {ip_address}: {e}")
+            return {'success': False, 'error': str(e)}
+
 
     # ==================== Whitelist Management Tool Implementations ====================
 
@@ -4164,13 +4201,27 @@ TOOL_DEFINITIONS = [
             # Alert Management Tools
             {
                 "name": "acknowledge_alert",
-                "description": "Bevestig (acknowledge) een threat detection/alert. Markeert de melding als gezien/afgehandeld.",
+                "description": "Bevestig (acknowledge) EEN specifieke threat detection/alert op basis van alert_id. Markeert de melding als gezien/afgehandeld. Gebruik acknowledge_alerts_by_ip als de gebruiker alle (of alle van een bepaald type) alerts van een IP in één keer wil bevestigen - alert_id-gebaseerd bevestigen is onpraktisch bij grote aantallen.",
                 "input_schema": {
                     "type": "object",
                     "properties": {
                         "alert_id": {"type": "integer", "description": "ID van de te bevestigen alert (zie 'id' veld in get_threat_detections/get_recent_threats resultaten)"}
                     },
                     "required": ["alert_id"]
+                },
+                "scope_required": "read_write"
+            },
+            {
+                "name": "acknowledge_alerts_by_ip",
+                "description": "Bevestig (acknowledge) IN ÉÉN KEER alle nog niet bevestigde alerts voor een IP-adres, optioneel gefilterd op threat_type (bv. 'BEACONING_DETECTED') en/of lookback-periode in uren. Gebruik dit bij verzoeken als 'bevestig de beaconing alerts van IP X' of 'bevestig alle meldingen van dit apparaat' - NIET analyze_ip, dat toont alleen data en bevestigt niets.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "ip_address": {"type": "string", "description": "IP-adres waarvan de alerts bevestigd moeten worden"},
+                        "threat_type": {"type": "string", "description": "Optioneel: beperk tot dit threat_type (bv. BEACONING_DETECTED). Zonder filter worden alle typen bevestigd."},
+                        "hours": {"type": "number", "description": "Optioneel: beperk tot alerts van de laatste N uur. Zonder filter worden alle openstaande alerts bevestigd, ongeacht leeftijd."}
+                    },
+                    "required": ["ip_address"]
                 },
                 "scope_required": "read_write"
             },

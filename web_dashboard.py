@@ -1114,6 +1114,33 @@ def api_acknowledge_alert(alert_id):
         logger.error(f"Error acknowledging alert: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/alerts/acknowledge_bulk', methods=['POST'])
+@local_or_role_required('admin', 'operator')
+def api_acknowledge_alerts_bulk():
+    """Bulk-bevestig alle nog niet bevestigde alerts voor een IP (optioneel gefilterd op threat_type/hours)"""
+    try:
+        data = request.get_json(force=True) or {}
+        ip_address = data.get('ip_address')
+        if not ip_address:
+            return jsonify({'success': False, 'error': 'ip_address is required'}), 400
+
+        threat_type = data.get('threat_type')
+        hours = data.get('hours')
+
+        acknowledged_ids = db.acknowledge_alerts_by_ip(ip_address, threat_type=threat_type, hours=hours)
+
+        for alert_id in acknowledged_ids:
+            socketio.emit('alert_acknowledged', {'alert_id': alert_id})
+
+        return jsonify({
+            'success': True,
+            'acknowledged_count': len(acknowledged_ids),
+            'alert_ids': acknowledged_ids
+        })
+    except Exception as e:
+        logger.error(f"Error bulk-acknowledging alerts: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/traffic/history')
 @login_required
 def api_traffic_history():
