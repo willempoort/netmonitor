@@ -60,3 +60,6 @@ web/static/js/chart.umd.min.js
 web/static/js/socket.io.min.js
 web/static/fonts/bootstrap-icons.woff
 web/static/fonts/bootstrap-icons.woff2
+
+# Lokale backups van sync_config/sync_env (bevatten secrets - nooit committen)
+*.backup.*
