@@ -853,8 +853,20 @@ class DeviceClassifier:
         # ("Sonos Play:3", mDNS model=iPad13,4) or an explicit hostname
         # ("Tab-A8-van-Willem") is the device stating its own identity.
         # Fingerprint (actively probed, not user-editable) beats hostname.
-        identity = (interpret_fingerprint(device.get('fingerprint'))
-                    or infer_from_hostname(device.get('hostname')))
+        fingerprint_identity = interpret_fingerprint(device.get('fingerprint'))
+        hostname_identity = infer_from_hostname(device.get('hostname'))
+        identity = fingerprint_identity or hostname_identity
+        # Fingerprint wins, but when it identifies only the *category* while
+        # the hostname pattern agrees on the type AND names a more specific
+        # template (e.g. mDNS says "a Shelly", hostname "shsw-..." says
+        # switch/dimmer), borrow the hostname's template.
+        if (fingerprint_identity and hostname_identity
+                and not fingerprint_identity.get('template_name')
+                and hostname_identity.get('template_name')
+                and hostname_identity['device_type'] == fingerprint_identity['device_type']):
+            identity = dict(fingerprint_identity)
+            identity['template_name'] = hostname_identity['template_name']
+            identity['reason'] += f"; {hostname_identity['reason']}"
         if identity:
             if identity['device_type'] == result['device_type']:
                 # Agreement: keep ML method, boost confidence, and take the
