@@ -4903,9 +4903,15 @@ def _run_ml_training_background(ml):
     keeps the request handler itself fast; the DB-backed status (see
     try_start_background_task) is what makes progress visible to every
     worker regardless of which one a status poll happens to hit.
+
+    run_blocking (eventlet.tpool) is essential here: under monkey_patch
+    this "thread" is a green thread, and CPU-bound sklearn work in it
+    blocks the worker's event loop until gunicorn kills the worker
+    (WORKER TIMEOUT) - taking the task down with it, stuck on 'running'.
     """
     try:
-        result = ml.train_models()
+        from ml_classifier import run_blocking
+        result = run_blocking(ml.train_models)
         db.complete_background_task('ml_train', result)
         logger.info(f"Background ML training complete: success={result.get('success')}")
     except Exception as e:
@@ -5017,9 +5023,13 @@ def api_ml_classify_device(ip_address):
 
 # Global state for background ML classification
 def _run_ml_classification_background(ml, update_db):
-    """Run ML classification in background thread."""
+    """Run ML classification in background thread.
+
+    See _run_ml_training_background for why run_blocking is required.
+    """
     try:
-        result = ml.classifier.classify_all_devices(update_db=update_db)
+        from ml_classifier import run_blocking
+        result = run_blocking(ml.classifier.classify_all_devices, update_db=update_db)
         db.complete_background_task('ml_classify_all', result)
         logger.info(f"Background ML classification complete: {result.get('classified', 0)} classified")
 
@@ -5108,6 +5118,104 @@ def api_ml_classify_all_status():
         })
 
 
+def _run_ml_fingerprint_background(ml):
+    """Run fingerprint scan + follow-up classification in background thread.
+
+    The scan itself is network I/O (green-thread safe, no run_blocking); the
+    classification that consumes the fresh evidence is CPU-bound and goes
+    through run_blocking like everywhere else.
+    """
+    try:
+        scan_result = ml.run_fingerprint_scan()
+        classify_result = None
+        if scan_result.get('success'):
+            from ml_classifier import run_blocking
+            classify_result = run_blocking(ml.classifier.classify_all_devices, update_db=True)
+        db.complete_background_task('ml_fingerprint_scan', {
+            'scan': scan_result,
+            'classification': classify_result
+        })
+        logger.info(
+            f"Background fingerprint scan complete: "
+            f"{scan_result.get('responses', 0)} devices with evidence"
+        )
+    except Exception as e:
+        logger.error(f"Background fingerprint scan error: {e}")
+        db.fail_background_task('ml_fingerprint_scan', str(e))
+
+
+@app.route('/api/ml/fingerprint-scan', methods=['POST'])
+@login_required
+def api_ml_fingerprint_scan():
+    """Actively fingerprint devices (mDNS/SSDP/NetBIOS/SNMP) and re-classify."""
+    ml = get_ml_classifier()
+    if not ml:
+        return jsonify({
+            'success': False,
+            'error': 'ML classification not available'
+        }), 400
+
+    if not db.try_start_background_task('ml_fingerprint_scan'):
+        status = db.get_background_task_status('ml_fingerprint_scan')
+        return jsonify({
+            'success': True,
+            'status': 'already_running',
+            'message': 'Fingerprint scan is already running',
+            'started_at': status.get('started_at')
+        })
+
+    try:
+        import threading
+        thread = threading.Thread(
+            target=_run_ml_fingerprint_background,
+            args=(ml,),
+            daemon=True
+        )
+        thread.start()
+        return jsonify({
+            'success': True,
+            'status': 'started',
+            'message': 'Fingerprint scan started in background'
+        })
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"Error starting fingerprint scan: {e}\n{error_trace}")
+        db.fail_background_task('ml_fingerprint_scan', str(e))
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/ml/fingerprint-scan/status')
+@login_required
+def api_ml_fingerprint_scan_status():
+    """Get status of background fingerprint scan."""
+    status = db.get_background_task_status('ml_fingerprint_scan')
+
+    if status['status'] == 'running':
+        return jsonify({
+            'success': True,
+            'status': 'running',
+            'started_at': status.get('started_at')
+        })
+    elif status['status'] == 'error':
+        return jsonify({
+            'success': False,
+            'status': 'error',
+            'error': status.get('error')
+        })
+    elif status['status'] == 'completed':
+        return jsonify({
+            'success': True,
+            'status': 'completed',
+            'result': status.get('result')
+        })
+    else:
+        return jsonify({
+            'success': True,
+            'status': 'idle',
+            'message': 'No fingerprint scan running'
+        })
+
+
 @app.route('/api/ml/start-background-training', methods=['POST'])
 @login_required
 def api_ml_start_background_training():
@@ -5152,12 +5260,18 @@ def api_internal_ml_status():
 @app.route('/api/internal/ml/train', methods=['POST'])
 @local_or_login_required
 def api_internal_ml_train():
-    """Internal API: Train ML models (localhost access)."""
+    """Internal API: Train ML models (localhost access).
+
+    Synchronous by design (MCP/CLI callers want the result), but the
+    CPU-bound work must still leave the eventlet loop via run_blocking -
+    otherwise this worker misses its gunicorn heartbeat and gets killed.
+    """
     ml = get_ml_classifier()
     if not ml:
         return jsonify({'success': False, 'error': 'ML classification not available'}), 400
     try:
-        result = ml.train_models()
+        from ml_classifier import run_blocking
+        result = run_blocking(ml.train_models)
         return jsonify({'success': result.get('success', False), 'result': result})
     except Exception as e:
         logger.error(f"Error training ML models: {e}")
@@ -5185,17 +5299,47 @@ def api_internal_ml_classify_device(ip_address):
 @app.route('/api/internal/ml/classify-all', methods=['POST'])
 @local_or_login_required
 def api_internal_ml_classify_all():
-    """Internal API: Classify all devices (localhost access)."""
+    """Internal API: Classify all devices (localhost access).
+
+    See api_internal_ml_train for why run_blocking is required.
+    """
     ml = get_ml_classifier()
     if not ml:
         return jsonify({'success': False, 'error': 'ML classification not available'}), 400
     try:
         data = request.get_json(silent=True) or {}
         update_db = data.get('update_db', False)
-        result = ml.classifier.classify_all_devices(update_db=update_db)
+        from ml_classifier import run_blocking
+        result = run_blocking(ml.classifier.classify_all_devices, update_db=update_db)
         return jsonify({'success': True, 'result': result})
     except Exception as e:
         logger.error(f"Error classifying all devices: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/internal/ml/fingerprint-scan', methods=['POST'])
+@local_or_login_required
+def api_internal_ml_fingerprint_scan():
+    """Internal API: fingerprint scan + re-classification (localhost access).
+
+    Synchronous: the scan is green-safe network I/O, the classification
+    goes through run_blocking (see api_internal_ml_train).
+    """
+    ml = get_ml_classifier()
+    if not ml:
+        return jsonify({'success': False, 'error': 'ML classification not available'}), 400
+    try:
+        scan_result = ml.run_fingerprint_scan()
+        classify_result = None
+        if scan_result.get('success'):
+            from ml_classifier import run_blocking
+            classify_result = run_blocking(ml.classifier.classify_all_devices, update_db=True)
+        return jsonify({
+            'success': scan_result.get('success', False),
+            'result': {'scan': scan_result, 'classification': classify_result}
+        })
+    except Exception as e:
+        logger.error(f"Error running fingerprint scan: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

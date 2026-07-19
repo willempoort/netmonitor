@@ -58,7 +58,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 29  # Increment this when schema changes (v29: builtin Tablet (iOS/Android/overig) templates)
+        SCHEMA_VERSION = 30  # Increment this when schema changes (v30: devices.fingerprint + Smartwatch template)
 
         # Schema initialisatie met automatisch herstel bij TimescaleDB versie-mismatch na apt upgrade
         for _attempt in range(2):
@@ -186,9 +186,14 @@ class DatabaseManager:
     # global only reflects the worker that handled the start request, so a
     # different worker handling a later status poll would wrongly see "idle".
 
-    def try_start_background_task(self, task_name: str) -> bool:
+    def try_start_background_task(self, task_name: str, stale_minutes: int = 10) -> bool:
         """
         Atomically claim a background task slot.
+
+        A 'running' row older than stale_minutes is treated as abandoned and
+        may be re-claimed: the worker that ran it can be SIGKILLed (gunicorn
+        WORKER TIMEOUT) without ever reaching complete/fail, and without this
+        expiry the slot would stay locked forever.
 
         Returns:
             True if this call claimed the task (caller should proceed),
@@ -203,8 +208,9 @@ class DatabaseManager:
                 ON CONFLICT (task_name) DO UPDATE
                     SET status = 'running', started_at = NOW(), result = NULL, error = NULL, updated_at = NOW()
                     WHERE background_task_status.status != 'running'
+                       OR background_task_status.started_at < NOW() - (%s * INTERVAL '1 minute')
                 RETURNING task_name
-            ''', (task_name,))
+            ''', (task_name, stale_minutes))
             claimed = cursor.fetchone() is not None
             conn.commit()
             return claimed
@@ -249,20 +255,35 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
-    def get_background_task_status(self, task_name: str) -> Dict:
-        """Get the current status of a background task (idle if never started)."""
+    def get_background_task_status(self, task_name: str, stale_minutes: int = 10) -> Dict:
+        """
+        Get the current status of a background task (idle if never started).
+
+        A 'running' row older than stale_minutes is reported as 'error'
+        instead: the worker that owned it died without completing, and the
+        UI would otherwise keep showing a spinner forever.
+        """
         conn = self._get_connection()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             cursor.execute('''
-                SELECT status, started_at, result, error
+                SELECT status, started_at, result, error,
+                       (status = 'running'
+                        AND started_at < NOW() - (%s * INTERVAL '1 minute')) AS stale
                 FROM background_task_status
                 WHERE task_name = %s
-            ''', (task_name,))
+            ''', (stale_minutes, task_name))
             row = cursor.fetchone()
             if not row:
                 return {'status': 'idle', 'started_at': None, 'result': None, 'error': None}
-            return dict(row)
+            result = dict(row)
+            if result.pop('stale', False):
+                result['status'] = 'error'
+                result['error'] = (
+                    f'Task did not complete within {stale_minutes} minutes - '
+                    f'the worker running it likely died. Start it again to retry.'
+                )
+            return result
         except Exception as e:
             self.logger.error(f"Error getting background task status '{task_name}': {e}")
             return {'status': 'idle', 'started_at': None, 'result': None, 'error': None}
@@ -1084,6 +1105,23 @@ class DatabaseManager:
                     ) THEN
                         ALTER TABLE devices ADD COLUMN suggested_template_id INTEGER
                             REFERENCES device_templates(id) ON DELETE SET NULL;
+                    END IF;
+                END $$;
+            """)
+
+            # Migration v30: Add fingerprint to devices. Raw identity evidence
+            # from device_fingerprinter.py (mDNS model, SSDP description,
+            # NetBIOS name, SNMP sysDescr) - interpreted by the classifier as
+            # high-priority evidence above the behavioral ML model.
+            cursor.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'devices' AND column_name = 'fingerprint'
+                    ) THEN
+                        ALTER TABLE devices ADD COLUMN fingerprint JSONB;
+                        ALTER TABLE devices ADD COLUMN fingerprint_updated TIMESTAMPTZ;
                     END IF;
                 END $$;
             """)
@@ -4127,6 +4165,30 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
+    def update_device_fingerprint(self, device_id: int, fingerprint: Dict) -> bool:
+        """
+        Store raw fingerprint evidence (device_fingerprinter.py) for a device.
+        Interpretation happens at classification time, so re-classifying with
+        improved rules doesn't require a re-scan.
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE devices
+                SET fingerprint = %s,
+                    fingerprint_updated = NOW()
+                WHERE id = %s
+            ''', (json.dumps(fingerprint), device_id))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error updating device fingerprint: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
     def touch_device(self, device_id: int = None, ip_address: str = None) -> bool:
         """
         Update a device's last_seen timestamp to NOW().
@@ -4761,6 +4823,19 @@ class DatabaseManager:
                     {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'QUIC', 'DNS']}, 'action': 'allow'},
                     {'type': 'connection_behavior', 'params': {'periodic': True, 'many_destinations': True}, 'action': 'allow'},
                     {'type': 'expected_destinations', 'params': {'categories': ['streaming', 'cdn', 'cloud', 'social']}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Smartwatch',
+                'description': 'Smartwatch (Apple Watch, Galaxy Watch) - herkend via hostname of mDNS-model',
+                'icon': 'watch',
+                'category': 'endpoint',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 5223]}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'QUIC', 'DNS']}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'periodic': True, 'low_frequency': True}, 'action': 'allow'},
+                    {'type': 'traffic_pattern', 'params': {'low_bandwidth': True}, 'action': 'allow'},
+                    {'type': 'expected_destinations', 'params': {'categories': ['cloud', 'cdn']}, 'action': 'allow'},
                 ]
             },
             {

@@ -275,6 +275,21 @@ performance:
   config_sync_interval: 300  # Configuration sync interval (seconds)
   whitelist_sync_interval: 300  # Whitelist sync interval (seconds)
 
+# Device fingerprinting: identity evidence for device classification.
+# Hostname heuristics are always on (passive). Active polling sends small
+# LAN-only UDP probes (mDNS/SSDP/NetBIOS/LLMNR/SNMP) from the SOC server's
+# management interface - a SPAN port is receive-only and cannot probe.
+fingerprinting:
+  active_polling: true       # Master switch for all active probes
+  mdns: true                 # mDNS query (UDP 5353): .local hostname, services, Apple model
+  ssdp: true                 # SSDP M-SEARCH (UDP 1900) + description XML
+  netbios: true              # NetBIOS node status (UDP 137): Windows name/workgroup
+  llmnr: true                # LLMNR reverse lookup (UDP 5355), fallback for Windows
+  snmp: true                 # SNMP v2c sysDescr/sysName (UDP 161)
+  snmp_community: public     # SNMP read community
+  probe_timeout: 1.0         # Per-probe timeout (seconds)
+  max_parallel: 8            # Devices probed concurrently
+
 # ============================================================================
 # NOTES: Configuration Structure
 # ============================================================================
