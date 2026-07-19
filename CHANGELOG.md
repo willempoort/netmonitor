@@ -15,6 +15,11 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.4.3] - 2026-07-19
+
+### Fixed
+- **Shelly Gen2 (Plus/Pro) bleef "IoT Sensor" krijgen i.p.v. "Smart Switch/Dimmer".** Gen1-Shelly's adverteren hun model in de mDNS service-instancenaam (`shellydimmer-…`), maar Gen2 adverteert alleen generieke services (`_http._tcp`, `_shelly._tcp`) en zet het model in de mDNS-hostnaam (`ShellyPro2-….local`) - waar de fingerprint-interpretatie niet naar keek. De generieke shelly-hint won daardoor (template-default "IoT Sensor") van het specifiekere hostname-bewijs, dat door de fingerprint-voorrang nooit meer aan bod kwam. Twee fixes: de geprobede mDNS-hostnaam telt nu mee als model-bewijs (met Shelly-modelprefixen in de keyword-tabel), en generieker: als de fingerprint alleen de *categorie* identificeert terwijl de hostname-heuristiek hetzelfde type met een specifiekere template aanwijst, wordt die template overgenomen.
+
 ## [2.4.2] - 2026-07-19
 
 ### Fixed

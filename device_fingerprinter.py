@@ -155,6 +155,16 @@ MODEL_KEYWORDS = [
     ('laserjet', ('printer', None)),
     ('officejet', ('printer', None)),
     ('camera', ('iot_camera', None)),
+    # Shelly model prefixes: Gen1 announces these in the mDNS service
+    # instance name, Gen2 (Plus/Pro) in the mDNS hostname
+    # ("ShellyPro2-AC15186BF574.local"). Specific before generic.
+    ('shellydimmer', ('iot_sensor', 'Smart Switch/Dimmer')),
+    ('shellyswitch', ('iot_sensor', 'Smart Switch/Dimmer')),
+    ('shellypro', ('iot_sensor', 'Smart Switch/Dimmer')),
+    ('shellyplus', ('iot_sensor', 'Smart Switch/Dimmer')),
+    ('shellyplug', ('iot_sensor', 'Smart Plug')),
+    ('shelly1', ('iot_sensor', 'Smart Switch/Dimmer')),
+    ('shelly', ('iot_sensor', None)),
     ('hue bridge', ('iot_sensor', 'Home Automation Hub')),
     ('homey', ('iot_sensor', 'Home Automation Hub')),
     ('router', ('network_device', None)),
@@ -220,13 +230,17 @@ def interpret_fingerprint(fingerprint: Optional[Dict]) -> Optional[Dict]:
     netbios = fingerprint.get('netbios') or {}
     snmp = fingerprint.get('snmp') or {}
 
-    # 1. Explicit model strings (mDNS device-info, SSDP description XML)
+    # 1. Explicit model strings (mDNS device-info, SSDP description XML).
+    # The probed mDNS hostname counts too: Gen2 IoT devices (e.g. Shelly
+    # Plus/Pro) put their model in the hostname instead of the service
+    # instance name.
     model_sources = [
         (mdns.get('model'), 'mDNS device-info model'),
         (ssdp.get('model'), 'SSDP modelName'),
         (ssdp.get('friendly_name'), 'SSDP friendlyName'),
         (ssdp.get('manufacturer'), 'SSDP manufacturer'),
         (ssdp.get('server'), 'SSDP server header'),
+        (mdns.get('hostname'), 'mDNS hostname'),
     ]
     for value, source in model_sources:
         if not value:
