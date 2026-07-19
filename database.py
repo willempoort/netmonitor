@@ -58,7 +58,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 25  # Increment this when schema changes (v25: builtin template Smart Switch/Dimmer)
+        SCHEMA_VERSION = 27  # Increment this when schema changes (v27: fix v26 migration - sync Smartphone (overig) description on rename)
 
         # Schema initialisatie met automatisch herstel bij TimescaleDB versie-mismatch na apt upgrade
         for _attempt in range(2):
@@ -4458,6 +4458,28 @@ class DatabaseManager:
 
     def init_builtin_templates(self) -> int:
         """Initialize builtin device templates"""
+        # Rename migration: 'Smartphone' -> 'Smartphone (overig)' now that the
+        # iOS/Android-specific variants exist, so the generic fallback reads as
+        # "other/unclear platform" instead of a third, ambiguous option next to
+        # them. Matches both the old and already-renamed name so it also syncs
+        # the description on installs that already ran the v26 migration
+        # (which only updated the name). No-op on fresh installs.
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE device_templates
+                SET name = 'Smartphone (overig)',
+                    description = 'Smartphone waarvan het platform (iOS/Android) niet met zekerheid is vastgesteld'
+                WHERE name IN ('Smartphone', 'Smartphone (overig)') AND is_builtin = TRUE
+            ''')
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            self.logger.warning(f"Could not rename 'Smartphone' builtin template: {e}")
+        finally:
+            self._return_connection(conn)
+
         builtin_templates = [
             {
                 'name': 'IP Camera',
@@ -4562,8 +4584,8 @@ class DatabaseManager:
                 ]
             },
             {
-                'name': 'Smartphone',
-                'description': 'iOS of Android smartphone (persoonlijk mobiel apparaat)',
+                'name': 'Smartphone (overig)',
+                'description': 'Smartphone waarvan het platform (iOS/Android) niet met zekerheid is vastgesteld',
                 'icon': 'phone',
                 'category': 'endpoint',
                 'behaviors': [
@@ -4707,6 +4729,18 @@ class DatabaseManager:
                     {'type': 'allowed_ports', 'params': {'ports': [80, 443, 5060, 5061, 5080, 5443, 8089, 10000, 20000]}, 'action': 'allow'},
                     {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'SIP', 'RTP', 'SRTP']}, 'action': 'allow'},
                     {'type': 'traffic_pattern', 'params': {'continuous': True, 'voice_traffic': True}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'SIP Phone',
+                'description': 'VoIP-telefoontoestel (Yealink, Grandstream, Snom, Fritz!App) - SIP/RTP naar PBX of provider',
+                'icon': 'phone_in_talk',
+                'category': 'iot',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [5060, 5061], 'direction': 'outbound'}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'SIP', 'RTP', 'SRTP']}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'periodic': True, 'continuous': True}, 'action': 'allow'},
+                    {'type': 'traffic_pattern', 'params': {'low_bandwidth': True, 'voice_traffic': True}, 'action': 'allow'},
                 ]
             },
             {

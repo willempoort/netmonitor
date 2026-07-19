@@ -363,6 +363,12 @@ function updateDeviceCounts() {
     document.getElementById('devices-classified').textContent = classified;
 }
 
+function sortedTemplatesByName() {
+    return [...allTemplates].sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    );
+}
+
 function populateTemplateFilter() {
     const select = document.getElementById('device-filter-template');
     if (!select) return;
@@ -373,7 +379,7 @@ function populateTemplateFilter() {
     }
 
     // Add templates
-    allTemplates.forEach(template => {
+    sortedTemplatesByName().forEach(template => {
         const option = document.createElement('option');
         option.value = template.id;
         option.textContent = template.name;
@@ -460,7 +466,7 @@ async function populateDeviceTemplateSelect(currentTemplateId) {
     }
 
     // Add templates
-    allTemplates.forEach(template => {
+    sortedTemplatesByName().forEach(template => {
         const option = document.createElement('option');
         option.value = template.id;
         option.textContent = template.name;
@@ -729,7 +735,7 @@ async function populateMergeTemplateSelect() {
     }
 
     // Add templates
-    allTemplates.forEach(template => {
+    sortedTemplatesByName().forEach(template => {
         const option = document.createElement('option');
         option.value = template.id;
         option.textContent = `${template.name} (${template.category})`;

@@ -99,6 +99,12 @@ DEVICE_CATEGORIES = {
         'typical_ports': {22, 23, 80, 443, 161, 162},
         'characteristics': {'management_ports': True, 'stable': True}
     },
+    'sip_phone': {
+        'description': 'VoIP/SIP telephone (deskphone or softphone)',
+        'template_name': 'SIP Phone',
+        'typical_ports': {5060, 5061, 10000, 20000},
+        'characteristics': {'voice_traffic': True, 'periodic': True}
+    },
     'unknown': {
         'description': 'Unknown device type',
         'template_name': None,  # Don't assign template for unknown
@@ -334,9 +340,11 @@ class DeviceClassifier:
             'precia': 'iot_sensor',  # Weighing systems
             'zenitel': 'iot_sensor',  # Intercom systems
             # VoIP phones
-            'yealink': 'iot_sensor',  # VoIP phones (treated as IoT)
-            'grandstream': 'iot_sensor',
-            'tiptel': 'iot_sensor',
+            'yealink': 'sip_phone',
+            'grandstream': 'sip_phone',
+            'tiptel': 'sip_phone',
+            'snom': 'sip_phone',
+            'polycom': 'sip_phone',
         }
 
         # Load existing model if available
@@ -472,6 +480,7 @@ class DeviceClassifier:
             'power switch': 'iot_sensor',  # bv. "iOT smart power switch" - relais, geen netwerk-switch
             'smart switch/dimmer': 'iot_sensor',  # Shelly-achtige schakel-/dimmodule, geen netwerk-switch
             'dimmer': 'iot_sensor',
+            'sip phone': 'sip_phone',  # eigen klasse, geen mobiele telefoon en geen generieke iot_sensor
             'mobile': 'mobile',
             'phone': 'mobile',
             'tablet': 'mobile',
