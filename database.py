@@ -58,7 +58,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 23  # Increment this when schema changes (v23: devices.suggested_template_id)
+        SCHEMA_VERSION = 25  # Increment this when schema changes (v25: builtin template Smart Switch/Dimmer)
 
         # Schema initialisatie met automatisch herstel bij TimescaleDB versie-mismatch na apt upgrade
         for _attempt in range(2):
@@ -4562,6 +4562,42 @@ class DatabaseManager:
                 ]
             },
             {
+                'name': 'Smartphone',
+                'description': 'iOS of Android smartphone (persoonlijk mobiel apparaat)',
+                'icon': 'phone',
+                'category': 'endpoint',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 5223, 5228]}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'QUIC', 'DNS']}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'periodic': True, 'many_destinations': True}, 'action': 'allow'},
+                    {'type': 'expected_destinations', 'params': {'categories': ['streaming', 'cdn', 'cloud', 'social']}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Smartphone (iOS)',
+                'description': 'iPhone - herkend via hostname-patroon (bv. "iPhone.local")',
+                'icon': 'phone',
+                'category': 'endpoint',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 5223]}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'QUIC', 'DNS']}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'periodic': True, 'many_destinations': True}, 'action': 'allow'},
+                    {'type': 'expected_destinations', 'params': {'categories': ['streaming', 'cdn', 'cloud', 'social']}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Smartphone (Android)',
+                'description': 'Android smartphone - herkend via hostname-patroon (bv. modelnaam)',
+                'icon': 'phone',
+                'category': 'endpoint',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 5228]}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'QUIC', 'DNS']}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'periodic': True, 'many_destinations': True}, 'action': 'allow'},
+                    {'type': 'expected_destinations', 'params': {'categories': ['streaming', 'cdn', 'cloud', 'social']}, 'action': 'allow'},
+                ]
+            },
+            {
                 'name': 'IoT Sensor',
                 'description': 'Generic IoT sensor or actuator',
                 'icon': 'sensors',
@@ -4685,6 +4721,17 @@ class DatabaseManager:
                 ]
             },
             {
+                'name': 'Linux Server',
+                'description': 'Generieke Linux-server, SSH-beheerd',
+                'icon': 'server',
+                'category': 'server',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [22, 80, 443], 'direction': 'inbound'}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'SSH']}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'long_sessions': True, 'management_access': True}, 'action': 'allow'},
+                ]
+            },
+            {
                 'name': 'Windows/Samba Server',
                 'description': 'Windows file sharing or Samba server (SMB/CIFS)',
                 'icon': 'folder_shared',
@@ -4719,6 +4766,18 @@ class DatabaseManager:
                     {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'mDNS', 'SSDP']}, 'action': 'allow'},
                     {'type': 'traffic_pattern', 'params': {'low_bandwidth': True, 'bursty': True}, 'action': 'allow'},
                     {'type': 'connection_behavior', 'params': {'low_frequency': True, 'event_driven': True}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'Smart Switch/Dimmer',
+                'description': 'Domotica schakel-/dimmodule (Shelly, Sonoff e.d.) - relais, dimmer of smart bulb; qua netwerkgedrag (MQTT/CoAP) niet te onderscheiden',
+                'icon': 'power',
+                'category': 'iot',
+                'behaviors': [
+                    {'type': 'allowed_ports', 'params': {'ports': [80, 443, 1883, 8883, 5683]}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'MQTT', 'CoAP']}, 'action': 'allow'},
+                    {'type': 'traffic_pattern', 'params': {'low_bandwidth': True, 'periodic': True}, 'action': 'allow'},
+                    {'type': 'connection_behavior', 'params': {'low_frequency': True, 'event_driven': True, 'small_packets': True}, 'action': 'allow'},
                 ]
             },
             {

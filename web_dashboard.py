@@ -4383,14 +4383,12 @@ def api_update_device_template(template_id):
         if template.get('is_builtin'):
             return jsonify({'success': False, 'error': 'Cannot modify builtin templates'}), 403
 
-        success = db.update_device_template(
-            template_id=template_id,
-            name=data.get('name'),
-            description=data.get('description'),
-            icon=data.get('icon'),
-            category=data.get('category'),
-            is_active=data.get('is_active')
-        )
+        update_fields = {
+            field: data[field]
+            for field in ('name', 'description', 'icon', 'category', 'is_active')
+            if field in data
+        }
+        success = db.update_device_template(template_id=template_id, **update_fields)
 
         if success:
             return jsonify({'success': True, 'message': 'Template updated successfully'})
