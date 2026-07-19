@@ -23,6 +23,8 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Set
 import numpy as np
 
+from device_fingerprinter import infer_from_hostname, interpret_fingerprint
+
 # Optional ML libraries - graceful fallback if not installed
 try:
     from sklearn.ensemble import RandomForestClassifier, IsolationForest
@@ -34,6 +36,28 @@ except ImportError:
     SKLEARN_AVAILABLE = False
 
 logger = logging.getLogger('NetMonitor.MLClassifier')
+
+
+def run_blocking(func, *args, **kwargs):
+    """
+    Run a CPU-bound/blocking function without freezing the eventlet event loop.
+
+    Under eventlet.monkey_patch() (the gunicorn dashboard workers),
+    threading.Thread is a green thread: CPU-bound sklearn work in it blocks
+    the worker's entire event loop, the worker misses its gunicorn heartbeat
+    and gets SIGKILLed after `timeout` seconds (WORKER TIMEOUT). tpool runs
+    the call in a real OS thread so the loop keeps servicing the heartbeat.
+
+    Outside eventlet (the netmonitor engine, CLI tools) this is a plain call.
+    """
+    try:
+        import eventlet
+        if eventlet.patcher.is_monkey_patched('thread'):
+            from eventlet import tpool
+            return tpool.execute(func, *args, **kwargs)
+    except ImportError:
+        pass
+    return func(*args, **kwargs)
 
 
 # Device type categories for classification
@@ -104,6 +128,12 @@ DEVICE_CATEGORIES = {
         'template_name': 'SIP Phone',
         'typical_ports': {5060, 5061, 10000, 20000},
         'characteristics': {'voice_traffic': True, 'periodic': True}
+    },
+    'smartwatch': {
+        'description': 'Smartwatch or wearable',
+        'template_name': 'Smartwatch',
+        'typical_ports': {80, 443, 5223},
+        'characteristics': {'low_traffic': True, 'intermittent': True}
     },
     'unknown': {
         'description': 'Unknown device type',
@@ -363,6 +393,11 @@ class DeviceClassifier:
                 with open(model_file, 'rb') as f:
                     saved_data = pickle.load(f)
                     self.model = saved_data.get('model')
+                    if self.model is not None:
+                        # Models pickled before v2.3.18 carry n_jobs=-1;
+                        # predict_proba() reuses that and joblib parallelism
+                        # deadlocks in eventlet green threads (see train()).
+                        self.model.n_jobs = 1
                     self.label_encoder = saved_data.get('label_encoder')
                     self.feature_extractor.scaler = saved_data.get('scaler')
                     self.feature_extractor.is_fitted = saved_data.get('scaler_fitted', False)
@@ -517,6 +552,7 @@ class DeviceClassifier:
             'smart switch/dimmer': 'iot_sensor',  # Shelly-achtige schakel-/dimmodule, geen netwerk-switch
             'dimmer': 'iot_sensor',
             'sip phone': 'sip_phone',  # eigen klasse, geen mobiele telefoon en geen generieke iot_sensor
+            'smartwatch': 'smartwatch',
             'mobile': 'mobile',
             'phone': 'mobile',
             'tablet': 'mobile',
@@ -728,14 +764,18 @@ class DeviceClassifier:
             X_train, y_train = X_scaled, y_encoded
             X_test, y_test = X_scaled, y_encoded
 
-        # Train Random Forest
+        # Train Random Forest.
+        # n_jobs=1: the estimator's n_jobs is also used by predict_proba(),
+        # which runs in eventlet green threads (classify endpoints/engine);
+        # joblib's thread pool deadlocks on monkey-patched locks there. At
+        # this data size (tens of samples) parallelism buys nothing anyway.
         self.model = RandomForestClassifier(
             n_estimators=100,
             max_depth=10,
             min_samples_split=2,
             min_samples_leaf=1,
             random_state=42,
-            n_jobs=-1
+            n_jobs=1
         )
         self.model.fit(X_train, y_train)
 
@@ -776,6 +816,7 @@ class DeviceClassifier:
             'device_type': 'unknown',
             'confidence': 0.0,
             'method': 'none',
+            'template_name': None,
             'all_probabilities': {},
             'reasoning': []
         }
@@ -805,6 +846,34 @@ class DeviceClassifier:
 
                 except Exception as e:
                     self.logger.debug(f"ML classification failed: {e}")
+
+        # Identity evidence outranks the behavioral model. The ML classifier
+        # judges *behavior*, and with a skewed training set it will happily
+        # call a tablet an "iot_sensor" at 0.95 - but a probed model string
+        # ("Sonos Play:3", mDNS model=iPad13,4) or an explicit hostname
+        # ("Tab-A8-van-Willem") is the device stating its own identity.
+        # Fingerprint (actively probed, not user-editable) beats hostname.
+        identity = (interpret_fingerprint(device.get('fingerprint'))
+                    or infer_from_hostname(device.get('hostname')))
+        if identity:
+            if identity['device_type'] == result['device_type']:
+                # Agreement: keep ML method, boost confidence, and take the
+                # more specific template (e.g. "Tablet (Android)" instead of
+                # the category default "Mobile Device").
+                result['confidence'] = round(
+                    min(max(result['confidence'], identity['confidence']) + 0.05, 0.99), 3)
+                result['reasoning'].append(f"Identity evidence confirms: {identity['reason']}")
+            else:
+                if result['confidence'] > 0:
+                    result['reasoning'].append(
+                        f"ML suggested {result['device_type']} "
+                        f"({result['confidence']:.0%}) but identity evidence wins")
+                result['device_type'] = identity['device_type']
+                result['confidence'] = identity['confidence']
+                result['method'] = identity['source']
+                result['reasoning'].append(identity['reason'])
+            if identity.get('template_name'):
+                result['template_name'] = identity['template_name']
 
         # Fall back to vendor hints if ML didn't work or confidence is low
         if result['confidence'] < 0.5:
@@ -904,14 +973,19 @@ class DeviceClassifier:
                             # no template to point at and stayed invisible.
                             template_id = None
                             device_type = classification['device_type']
-                            template_name = DEVICE_CATEGORIES.get(device_type, {}).get('template_name')
+                            # Identity evidence (fingerprint/hostname) may carry
+                            # an explicit, more specific template; otherwise fall
+                            # back to the category default.
+                            template_name = (classification.get('template_name')
+                                             or DEVICE_CATEGORIES.get(device_type, {}).get('template_name'))
 
                             # Refine generic "mobile" into a platform-specific
                             # smartphone/tablet template when the hostname gives
                             # it away. Tablet check goes first since a "Tab-"/
                             # "iPad" hostname is a form-factor signal that the
-                            # phone heuristic already excludes.
-                            if device_type == 'mobile':
+                            # phone heuristic already excludes. Skipped when
+                            # identity evidence already picked a template.
+                            if device_type == 'mobile' and not classification.get('template_name'):
                                 result_reasoning = classification.setdefault('reasoning', [])
                                 tablet_platform = self._infer_tablet_platform(device.get('hostname'))
                                 if tablet_platform == 'ios':
@@ -1246,6 +1320,9 @@ class MLClassifierManager:
         self.classifier = DeviceClassifier(db_manager=db_manager)
         self.anomaly_detector = AnomalyDetector(db_manager=db_manager)
 
+        from device_fingerprinter import DeviceFingerprinter
+        self.fingerprinter = DeviceFingerprinter(config=self.config)
+
         # Background training configuration
         self.auto_train_interval = self.config.get('ml', {}).get(
             'auto_train_interval', 86400  # 24 hours
@@ -1271,10 +1348,22 @@ class MLClassifierManager:
         time.sleep(300)  # 5 minutes
 
         while self._running:
+            # Every gunicorn worker starts this thread, so claim the cycle
+            # via the DB-backed task slot: exactly one process runs it, the
+            # rest skip and wait for the next interval. Before this, all
+            # workers trained simultaneously five minutes after every
+            # (re)start, saturating the CPU and getting each other killed
+            # on the gunicorn heartbeat (WORKER TIMEOUT).
+            claimed = self.db.try_start_background_task('ml_scheduled_train') if self.db else True
+            if not claimed:
+                self.logger.debug("Scheduled ML training already running in another worker, skipping cycle")
+                time.sleep(self.auto_train_interval)
+                continue
+
             try:
                 # Train classifier
                 self.logger.info("Starting scheduled ML training...")
-                result = self.classifier.train()
+                result = run_blocking(self.classifier.train)
                 if result.get('success'):
                     self.logger.info(f"Classifier training complete: {result.get('message')}")
                 else:
@@ -1289,26 +1378,83 @@ class MLClassifierManager:
                 # without this, would never happen since bootstrap labels
                 # for train() come from vendor hints/templates in the first
                 # place.
+                # Refresh fingerprint evidence before classifying, so the
+                # classification below sees current identity data. Plain call
+                # (no run_blocking): pure network I/O, green-thread safe.
+                if self.config.get('fingerprinting', {}).get('active_polling', True):
+                    try:
+                        self.run_fingerprint_scan()
+                    except Exception as e:
+                        self.logger.warning(f"Scheduled fingerprint scan failed: {e}")
+
                 auto_classify = self.config.get('ml', {}).get('auto_classify', True)
                 if auto_classify:
-                    classify_result = self.classifier.classify_all_devices(update_db=True)
+                    classify_result = run_blocking(self.classifier.classify_all_devices, update_db=True)
                     self.logger.info(
                         f"Auto-classification complete: {classify_result.get('classified')} classified, "
                         f"{classify_result.get('updated')} updated in database"
                     )
 
                 # Train anomaly detector
-                result = self.anomaly_detector.train_global_model()
+                result = run_blocking(self.anomaly_detector.train_global_model)
                 if result.get('success'):
                     self.logger.info(f"Anomaly detector training complete")
                 else:
                     self.logger.warning(f"Anomaly detector training failed: {result.get('error')}")
 
+                if self.db:
+                    self.db.complete_background_task('ml_scheduled_train', {'success': True})
             except Exception as e:
                 self.logger.error(f"Error in background training: {e}")
+                if self.db:
+                    self.db.fail_background_task('ml_scheduled_train', str(e))
 
             # Wait for next training cycle
             time.sleep(self.auto_train_interval)
+
+    def run_fingerprint_scan(self) -> Dict:
+        """
+        Actively fingerprint all active devices and persist the evidence.
+
+        Network I/O only (small UDP probes + one HTTP GET per SSDP device),
+        so unlike train/classify this is safe to run directly in an eventlet
+        green thread - monkey-patched sockets yield to the event loop.
+        """
+        if not self.db:
+            return {'success': False, 'error': 'Database not available'}
+
+        devices = self.db.get_devices(include_inactive=False)
+        ip_to_device = {}
+        for device in devices:
+            ip = (device.get('ip_address') or '').split('/')[0]
+            if ip:
+                ip_to_device[ip] = device
+
+        scan_results = self.fingerprinter.scan(list(ip_to_device.keys()))
+
+        stored = 0
+        identified = 0
+        from device_fingerprinter import interpret_fingerprint as _interpret
+        for ip, fingerprint in scan_results.items():
+            device = ip_to_device.get(ip)
+            if not device:
+                continue
+            if self.db.update_device_fingerprint(device['id'], fingerprint):
+                stored += 1
+                if _interpret(fingerprint):
+                    identified += 1
+
+        result = {
+            'success': True,
+            'scanned': len(ip_to_device),
+            'responses': stored,
+            'identified': identified
+        }
+        self.logger.info(
+            f"Fingerprint scan complete: {stored}/{len(ip_to_device)} devices "
+            f"returned evidence, {identified} conclusively identified"
+        )
+        return result
 
     def classify_device(self, device: Dict) -> Dict:
         """

@@ -1625,6 +1625,113 @@ function resetMLButton(btn) {
     }
 }
 
+// ==================== Fingerprint Scan ====================
+
+async function runFingerprintScan() {
+    const btn = document.getElementById('fingerprint-scan-btn');
+    const statusDiv = document.getElementById('ml-classification-status');
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Scannen...';
+    }
+    if (statusDiv) {
+        statusDiv.innerHTML = `
+            <div class="alert alert-info mt-2 mb-0">
+                <i class="bi bi-fingerprint me-2"></i>
+                <strong>Fingerprint scan gestart...</strong> Devices worden actief gepolld
+                (mDNS/SSDP/NetBIOS/SNMP), daarna volgt herclassificatie.
+            </div>
+        `;
+        statusDiv.style.display = 'block';
+    }
+
+    try {
+        const response = await fetch('/api/ml/fingerprint-scan', { method: 'POST' });
+        const startResult = await response.json();
+
+        if (!startResult.success && startResult.status !== 'already_running') {
+            throw new Error(startResult.error || 'Kon fingerprint scan niet starten');
+        }
+
+        pollFingerprintScanStatus(btn, statusDiv);
+
+    } catch (error) {
+        console.error('Error starting fingerprint scan:', error);
+        if (statusDiv) {
+            statusDiv.innerHTML = `
+                <div class="alert alert-danger mt-2 mb-0">
+                    <i class="bi bi-x-circle me-2"></i>
+                    <strong>Fout:</strong> ${error.message || 'Kon fingerprint scan niet starten'}
+                </div>
+            `;
+        }
+        showError('Fingerprint scan fout: ' + error.message);
+        resetFingerprintButton(btn);
+    }
+}
+
+async function pollFingerprintScanStatus(btn, statusDiv) {
+    try {
+        const response = await fetch('/api/ml/fingerprint-scan/status');
+        const result = await response.json();
+
+        if (result.status === 'running') {
+            setTimeout(() => pollFingerprintScanStatus(btn, statusDiv), 2000);
+
+        } else if (result.status === 'completed' && result.result) {
+            const scan = result.result.scan || {};
+            const classification = result.result.classification || {};
+            const templatesAssigned = classification.templates_assigned || 0;
+
+            if (statusDiv) {
+                statusDiv.innerHTML = `
+                    <div class="alert alert-success mt-2 mb-0">
+                        <i class="bi bi-check-circle me-2"></i>
+                        <strong>Fingerprint scan voltooid!</strong><br>
+                        <small>${scan.responses || 0} van ${scan.scanned || 0} devices gaven identiteitsbewijs
+                        (${scan.identified || 0} eenduidig herkend); herclassificatie:
+                        ${classification.classified || 0} geclassificeerd,
+                        ${templatesAssigned} templates toegewezen</small>
+                    </div>
+                `;
+                setTimeout(() => { statusDiv.style.display = 'none'; }, 12000);
+            }
+            showSuccess(`Fingerprint scan voltooid: ${scan.responses || 0} devices met identiteitsbewijs`);
+            loadDevices();
+            loadClassificationStats();
+            resetFingerprintButton(btn);
+
+        } else if (result.status === 'error') {
+            if (statusDiv) {
+                statusDiv.innerHTML = `
+                    <div class="alert alert-danger mt-2 mb-0">
+                        <i class="bi bi-x-circle me-2"></i>
+                        <strong>Fingerprint scan mislukt:</strong> ${result.error || 'Onbekende fout'}
+                    </div>
+                `;
+            }
+            showError('Fingerprint scan mislukt: ' + (result.error || 'Onbekende fout'));
+            resetFingerprintButton(btn);
+
+        } else {
+            resetFingerprintButton(btn);
+            if (statusDiv) statusDiv.style.display = 'none';
+        }
+
+    } catch (error) {
+        console.error('Error polling fingerprint scan status:', error);
+        setTimeout(() => pollFingerprintScanStatus(btn, statusDiv), 3000);
+    }
+}
+
+function resetFingerprintButton(btn) {
+    if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-fingerprint"></i> Fingerprint Scan';
+    }
+}
+
 async function loadMLStatus() {
     try {
         const response = await fetch('/api/ml/status');

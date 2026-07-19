@@ -15,6 +15,27 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.4.0] - 2026-07-19
+
+### Added
+- **Device fingerprinting: identiteitsbewijs voor classificatie (`device_fingerprinter.py`).** De ML-classifier beoordeelt alleen *gedrag* (verkeerspatronen) en duwde met een scheve trainingsset (18× iot_sensor vs. 3× mobile) zelfs een tablet met 95% zekerheid in "IoT Sensor". Er zijn nu twee nieuwe, hoger geprioriteerde bewijsbronnen:
+  - **Passief (altijd aan): hostname-heuristiek.** Hostnames benoemen het apparaat vaak letterlijk ("iPhone…", "Tab-A8-van-Willem", "MacBook", "sonos…", "shsw-…"); een patroontabel vertaalt dit naar type + specifieke template, voor álle apparaattypen i.p.v. alleen de bestaande mobile-verfijning.
+  - **Actief (LAN-only, config-gated `fingerprinting:`): lichte polls.** mDNS-query (UDP 5353: .local-hostname, service-enumeratie, Apple `model=`), SSDP M-SEARCH + description-XML (friendlyName/modelName/manufacturer), NetBIOS node status (Windows-naam/werkgroep), LLMNR reverse lookup, en SNMP v2c sysDescr/sysName (minimale eigen BER-implementatie, geen extra dependency). Alles kleine UDP-pakketjes met korte timeouts; geen port scans. Ruw bewijs wordt opgeslagen in `devices.fingerprint` (JSONB, schema v30) en pas bij classificatie geïnterpreteerd, zodat verbeterde regels geen re-scan vereisen.
+  - **Prioriteit: fingerprint > hostname > ML-model > vendor-hint.** Bij overeenstemming krijgt het ML-resultaat een confidence-boost en de specifiekere template; bij conflict wint identiteitsbewijs (met het ML-oordeel in de reasoning).
+  - **Dashboard-knop "Fingerprint Scan"** (naast Train Model): actieve scan + aansluitende herclassificatie als achtergrondtaak; ook via `/api/ml/fingerprint-scan` en `/api/internal/ml/fingerprint-scan`. De scheduled ML-cyclus ververst het bewijs voortaan automatisch vóór de auto-classificatie.
+  - **Nieuwe categorie `smartwatch` + builtin template "Smartwatch"** (herkend via hostname of mDNS-model).
+
+## [2.3.18] - 2026-07-19
+
+### Fixed
+- **"Run ML Classification" (en scheduled training) kon een gunicorn-worker laten killen, waarna de knop permanent "already running" teruggaf en classificatievoorstellen nooit meer bijgewerkt werden.** Drie samenhangende oorzaken verholpen:
+  - Onder `eventlet.monkey_patch()` zijn de "background threads" voor trainen/classificeren green threads: CPU-bound sklearn-werk blokkeerde de complete event loop van de worker, die daardoor zijn gunicorn-heartbeat miste en na 30s met SIGKILL werd afgeschoten (`WORKER TIMEOUT` in dashboard_error.log). Het ML-werk draait nu via `eventlet.tpool` in een echte OS-thread (`run_blocking()` in ml_classifier.py), zodat de event loop blijft reageren. Buiten eventlet (engine/CLI) is het een gewone call. Daarnaast traint de RandomForest nu met `n_jobs=1`: het model hergebruikt zijn `n_jobs` bij `predict_proba()`, en joblib-parallellisme op monkey-gepatchte locks in green threads kan deadlocken (bij dit datavolume levert parallellisme toch niets op).
+  - Een door SIGKILL gestorven worker kon `background_task_status` nooit meer bijwerken, dus de taak bleef eeuwig op `running` staan en `try_start_background_task()` weigerde elke volgende run. Een `running`-rij ouder dan 10 minuten geldt nu als verweesd: hij is opnieuw claimbaar en de status-API rapporteert hem als `error` in plaats van een eeuwige spinner.
+  - Elke van de 4 gunicorn-workers startte zijn eigen scheduled-training-thread, waardoor 5 minuten na elke (her)start 4 trainingen tegelijk de CPU verzadigden en workers elkaar in een permanente kill/reboot-cyclus hielden (~elke 5,5 min een `WORKER TIMEOUT`). De scheduled cycle claimt nu eerst het DB-slot `ml_scheduled_train`; alleen de winnaar draait, de rest slaat de cyclus over.
+
+### Notes
+- De changelog-entries en `version.py`-bumps voor 2.3.12 t/m 2.3.17 ontbreken: die wijzigingen zitten alleen in de commit-messages (zie `git log`). Deze release herstelt de nummering.
+
 ## [2.3.11] - 2026-07-18
 
 ### Fixed
