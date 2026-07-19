@@ -659,7 +659,13 @@ BELANGRIJKE TOOL PARAMETERS:
   Gebruik dit als iemand vraagt "van wie is dit IP?" of "wie zit er achter dit IP?"
   Strip /32 of andere CIDR notatie - geef alleen het IP-adres.
 - analyze_ip VEREIST ip_address: {"name": "analyze_ip", "arguments": {"ip_address": "8.8.8.8"}}
-  Gebruik dit om dreigingshistorie van een IP in het netwerk te bekijken.
+  Gebruik dit om dreigingshistorie van een IP in het netwerk te bekijken. Dit TOONT alleen
+  data en bevestigt/wijzigt niets - roep hierna acknowledge_alerts_by_ip aan als de gebruiker
+  ook vraagt om te bevestigen.
+- acknowledge_alerts_by_ip VEREIST ip_address: {"name": "acknowledge_alerts_by_ip", "arguments": {"ip_address": "10.100.0.97", "threat_type": "BEACONING_DETECTED"}}
+  Gebruik dit als de gebruiker vraagt om alert(s)/melding(en) van een IP te "bevestigen"
+  ("bevestig de beaconing alerts van IP X"). Bevestigt ALLE openstaande matches in één
+  keer - roep NIET los acknowledge_alert per alert_id aan, dat is voor één specifieke alert.
 - get_top_talkers: hours=168 voor week, hours=24 voor dag
 - get_sensor_status: geen arguments nodig {}
 - get_threat_detections / get_recent_threats ondersteunen een severity-parameter
@@ -674,6 +680,7 @@ WELKE TOOL WANNEER:
 - "Wat is het IP van example.com?" → dns_lookup
 - "Is IP X verdacht?" / "Threat analyse van IP X" → analyze_ip
 - "Wat zijn de laatste kritieke/critical/high meldingen?" → get_threat_detections met severity="CRITICAL" (of "HIGH")
+- "Bevestig de (beaconing) alerts/meldingen van IP X" → acknowledge_alerts_by_ip (NIET alleen analyze_ip)
 
 WANNEER WEL/NIET TOOLS GEBRUIKEN:
 - Gebruik een tool als de gebruiker NIEUWE data nodig heeft (actuele status, statistieken, lookups)
@@ -749,6 +756,8 @@ def filter_relevant_tools(user_message: str, all_tools: List[Dict[str, Any]], ma
     keyword_mappings = {
         'threat': (['threat', 'detection', 'alert', 'malware', 'attack', 'bedreig', 'dreig'],
                    ['threat', 'detection', 'alert', 'malware', 'attack']),
+        'acknowledge': (['bevestig', 'acknowledge', 'afhandel', 'markeer'],
+                        ['acknowledge']),
         'ip':     (['ip', 'address', 'adres'], ['ip', 'address', 'addr']),
         'ip_owner': (['eigenaar', 'owner', 'whois', 'wie', 'achter', 'organisatie', 'isp', 'provider'],
                      ['lookup_ip_owner', 'owner', 'ownership', 'asn', 'organization']),
