@@ -86,8 +86,14 @@ HOSTNAME_PATTERNS = [
      'Hostname contains "sonos"'),
     (re.compile(r'(chromecast|appletv|apple[-_ ]?tv|(^|[-_])(bravia|webos)([-_.]|$))', re.I),
      'smart_tv', 'Smart TV', 0.85, 'Hostname suggests a TV/cast device'),
-    # Shelly smart-home devices announce as shsw-/shdm-/shplg-/shelly*
-    (re.compile(r'(shelly|(^|[-_.])sh(sw|dm|plg|rgbw)-)', re.I),
+    # Shelly smart-home devices announce as shsw-/shdm-/shplg-/shelly*.
+    # shsw (switch) and shdm (dimmer) get the specific template; the plug
+    # its own; anything else Shelly falls back to the category default.
+    (re.compile(r'((^|[-_.])sh(sw|dm)-|shelly[-_ ]?(dimmer|switch|1|plus|pro))', re.I),
+     'iot_sensor', 'Smart Switch/Dimmer', 0.85, 'Shelly switch/dimmer hostname pattern'),
+    (re.compile(r'((^|[-_.])shplg-|shellyplug)', re.I),
+     'iot_sensor', 'Smart Plug', 0.85, 'Shelly plug hostname pattern'),
+    (re.compile(r'(shelly|(^|[-_.])shrgbw-)', re.I),
      'iot_sensor', None, 0.85, 'Shelly hostname pattern'),
     # Cameras / doorbells
     (re.compile(r'(camera|(^|[-_.])cam[0-9]*([-_.]|$)|doorbell|front[-_]?door|reolink)', re.I),
@@ -173,8 +179,18 @@ SERVICE_HINTS = [
     ('_hap', ('iot_sensor', None, 0.7)),      # HomeKit accessory
     ('_smb', ('nas', None, 0.7)),
     ('_afpovertcp', ('nas', None, 0.7)),
-    # Not a service type but a service *instance* prefix: Shelly devices
-    # advertise e.g. "shellydimmer-D3E7B4._http._tcp".
+    # Not service types but service *instance* prefixes: Shelly devices
+    # advertise their model, e.g. "shellydimmer-D3E7B4._http._tcp" or
+    # "shelly1-E098068D1508._http._tcp". Specific models before the
+    # generic 'shelly' fallback (first match wins). shelly1/plus/pro are
+    # relay modules, shellydimmer/shellyswitch dim/switch - all map to the
+    # Smart Switch/Dimmer template; shellyplug to Smart Plug.
+    ('shellydimmer', ('iot_sensor', 'Smart Switch/Dimmer', 0.9)),
+    ('shellyswitch', ('iot_sensor', 'Smart Switch/Dimmer', 0.9)),
+    ('shelly1', ('iot_sensor', 'Smart Switch/Dimmer', 0.9)),
+    ('shellyplus', ('iot_sensor', 'Smart Switch/Dimmer', 0.9)),
+    ('shellypro', ('iot_sensor', 'Smart Switch/Dimmer', 0.9)),
+    ('shellyplug', ('iot_sensor', 'Smart Plug', 0.9)),
     ('shelly', ('iot_sensor', None, 0.9)),
 ]
 
