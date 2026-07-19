@@ -15,6 +15,11 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.4.2] - 2026-07-19
+
+### Fixed
+- **"Fingerprint Scan"-knop deed niets in browsers met gecachte JavaScript.** v2.4.0 voegde `runFingerprintScan()` toe aan `device-classification.js` maar de cache-buster in dashboard.html bleef op `?v=11` staan - browsers die het dashboard eerder bezochten hielden de oude JS vast, waardoor de nieuwe knop een ReferenceError gaf en pas na een harde refresh werkte. Cache-buster opgehoogd naar `?v=12`.
+
 ## [2.4.1] - 2026-07-19
 
 ### Fixed
