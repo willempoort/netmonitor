@@ -15,6 +15,11 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.4.1] - 2026-07-19
+
+### Fixed
+- **Shelly's kregen de generieke "IoT Sensor"-template ondanks dat de fingerprint het exacte model bevatte.** De mDNS service-instancenaam (bv. `shellydimmer-D3E7B4`, `shelly1-E098068D1508`) en de hostname-prefixen `shsw-`/`shdm-` onderscheiden schakel-/dimmodules van andere IoT-apparaten; die mappen nu naar de specifiekere template "Smart Switch/Dimmer" (en `shellyplug`/`shplg-` naar "Smart Plug"). Overige Shelly's houden de categorie-default. Op installaties zonder die templates valt de toewijzing netjes terug op alleen classificatie-metadata.
+
 ## [2.4.0] - 2026-07-19
 
 ### Added
