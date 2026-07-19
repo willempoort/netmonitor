@@ -29,6 +29,20 @@ const THREAT_INFO = {
         icon: 'bi-diagram-3',
         color: '#fd7e14'
     },
+    'DNS_DGA_DETECTED': {
+        name: 'DNS DGA Detected',
+        description: 'DNS-query met kenmerken van een Domain Generation Algorithm (hoge entropie/willekeurige subdomeinnaam) - malware gebruikt dit om C&C-domeinen te genereren die detectie/blokkades omzeilen.',
+        impact: 'HOOG - Sterke indicatie van malware infectie die actief een C&C-server probeert te bereiken.',
+        icon: 'bi-hash',
+        color: '#fd7e14'
+    },
+    'DGA_DETECTED': {
+        name: 'DGA Detected',
+        description: 'Subdomeinnaam met DGA-kenmerken (lang, veel cijfers, geen herkenbaar patroon) - mogelijk algoritmisch gegenereerd C&C-domein.',
+        impact: 'HOOG - Sterke indicatie van malware infectie die actief een C&C-server probeert te bereiken.',
+        icon: 'bi-hash',
+        color: '#fd7e14'
+    },
     'LARGE_PACKET': {
         name: 'Large Packet',
         description: 'Ongebruikelijk grote pakketten die kunnen wijzen op data exfiltratie of buffer overflow pogingen.',
