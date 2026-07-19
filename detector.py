@@ -484,6 +484,22 @@ class ThreatDetector:
             self.logger.warning(f"Config key 'thresholds.{key_path}' not found and no default provided")
             return None
 
+    def _is_broadcast_or_multicast(self, ip_str: str) -> bool:
+        """Check of IP een broadcast/multicast-adres is (bv. mDNS 224.0.0.251) -
+        kan het lokale netwerk nooit verlaten, dus nooit een externe C2/exfil-bestemming"""
+        try:
+            ip = ipaddress.ip_address(ip_str)
+            if ip.is_multicast or ip.is_unspecified:
+                return True
+            if ip == ipaddress.ip_address('255.255.255.255'):
+                return True
+            for network in self._internal_networks:
+                if ip in network and ip == network.broadcast_address:
+                    return True
+        except ValueError:
+            pass
+        return False
+
     def _parse_ip_list(self, ip_list):
         """Parse lijst van IPs/CIDRs naar ipaddress objecten"""
         parsed = []
@@ -882,6 +898,10 @@ class ThreatDetector:
             return None
 
         ip_layer = packet[IP]
+
+        if self._is_broadcast_or_multicast(ip_layer.dst):
+            return None
+
         packet_size = len(packet)
         threshold = self._get_threshold('packet_size', 'min_suspicious_size', default=1400)
 
@@ -909,6 +929,13 @@ class ThreatDetector:
         query = packet[DNSQR].qname.decode('utf-8', errors='ignore')
         ip_layer = packet[IP]
         src_ip = ip_layer.src
+
+        # mDNS (224.0.0.251 e.d.) en andere multicast/broadcast-DNS is lokale
+        # service discovery - lange/willekeurig ogende namen (device-UUID's,
+        # service-instances) triggeren anders valse DGA/tunneling-alerts, en
+        # dit verkeer kan het lokale netwerk sowieso nooit verlaten
+        if self._is_broadcast_or_multicast(ip_layer.dst):
+            return None
 
         # Enhanced analysis with content analyzer
         if self.content_analyzer:
@@ -3598,6 +3625,9 @@ class ThreatDetector:
     def _detect_dga(self, packet, src_ip):
         """Detect Domain Generation Algorithm (DGA) patterns"""
         if not packet.haslayer(DNS):
+            return None
+
+        if packet.haslayer(IP) and self._is_broadcast_or_multicast(packet[IP].dst):
             return None
 
         dns_layer = packet[DNS]
