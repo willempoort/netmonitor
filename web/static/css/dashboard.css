@@ -134,6 +134,10 @@ body {
     margin-top: 4px;
 }
 
+.alert-meta .text-muted {
+    color: #aaa !important;
+}
+
 /* Scrollbar styling */
 .alert-feed::-webkit-scrollbar {
     width: 8px;
