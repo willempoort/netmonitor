@@ -930,12 +930,24 @@ async function showTemplateDetails(templateId) {
 
         // Populate template details
         document.getElementById('template-detail-id').value = templateId;
-        document.getElementById('template-detail-name').textContent = template.name;
-        document.getElementById('template-detail-category').textContent = template.category;
+        document.getElementById('template-detail-name').value = template.name;
+        document.getElementById('template-detail-category').value = template.category;
+        document.getElementById('template-detail-icon').value = template.icon || 'device';
         document.getElementById('template-detail-type').textContent = template.is_builtin ? 'Built-in' : 'Custom';
-        document.getElementById('template-detail-description').textContent = template.description || 'No description';
+        document.getElementById('template-detail-description').value = template.description || '';
 
-        // Show/hide delete button based on template type
+        // Builtin templates can't be edited - lock the fields and hide Save/Delete
+        const nameInput = document.getElementById('template-detail-name');
+        const categoryInput = document.getElementById('template-detail-category');
+        const iconInput = document.getElementById('template-detail-icon');
+        const descriptionInput = document.getElementById('template-detail-description');
+        [nameInput, categoryInput, iconInput, descriptionInput].forEach(el => {
+            el.disabled = !!template.is_builtin;
+        });
+
+        // Show/hide save and delete buttons based on template type
+        const saveBtn = document.getElementById('save-template-btn');
+        saveBtn.style.display = template.is_builtin ? 'none' : 'block';
         const deleteBtn = document.getElementById('delete-template-btn');
         deleteBtn.style.display = template.is_builtin ? 'none' : 'block';
 
@@ -1026,9 +1038,43 @@ async function deleteTemplate() {
     }
 }
 
+async function saveTemplateChanges() {
+    const templateId = document.getElementById('template-detail-id').value;
+    const name = document.getElementById('template-detail-name').value.trim();
+    const category = document.getElementById('template-detail-category').value;
+    const icon = document.getElementById('template-detail-icon').value;
+    const description = document.getElementById('template-detail-description').value.trim();
+
+    if (!name) {
+        showError('Please enter a template name');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/device-templates/${templateId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, category, icon, description })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showSuccess('Template updated successfully');
+            loadTemplates();
+            loadDevices();
+        } else {
+            showError('Failed to update template: ' + (result.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error updating template:', error);
+        showError('Network error while updating template');
+    }
+}
+
 async function cloneTemplate() {
     const templateId = document.getElementById('template-detail-id').value;
-    const templateName = document.getElementById('template-detail-name').textContent;
+    const templateName = document.getElementById('template-detail-name').value;
 
     // Prompt for new name
     const newName = prompt('Enter name for the cloned template:', `${templateName} (My Copy)`);

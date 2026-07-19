@@ -394,6 +394,42 @@ class DeviceClassifier:
                 return device_type
         return None
 
+    def _infer_smartphone_platform(self, hostname: Optional[str]) -> Optional[str]:
+        """
+        Heuristic iOS/Android detection for devices already classified as 'mobile'.
+
+        Uses the DHCP/mDNS hostname rather than MAC vendor OUI: phones with MAC-
+        randomization (privacy mode) often report a vendor that has nothing to do
+        with the actual manufacturer (e.g. an iPhone showing up as "Tuya Smart Inc."),
+        while the hostname ("iPhone.local", "Galaxy-S25.local") stays descriptive.
+        """
+        if not hostname:
+            return None
+
+        hostname_lower = hostname.lower()
+
+        # Other device types that share phone-like vendor/model naming
+        # (smartwatches, tablets, TVs, sensors) - don't call these a smartphone.
+        exclude_patterns = [
+            'watch', 'tablet', 'tab-', 'ipad', 'tv', 'sensor',
+            'buds', 'earbuds', 'macbook', 'imac',
+        ]
+        if any(p in hostname_lower for p in exclude_patterns):
+            return None
+
+        if 'iphone' in hostname_lower:
+            return 'ios'
+
+        android_patterns = [
+            'galaxy', 'sm-', 'pixel', 'redmi', 'xiaomi', 'oneplus',
+            'huawei', 'honor', 'oppo', 'vivo', 'realme', 'moto-',
+            'motorola', 'nokia', 'xperia', 'android',
+        ]
+        if any(p in hostname_lower for p in android_patterns):
+            return 'android'
+
+        return None
+
     def _infer_label_from_template(self, template_name: str) -> Optional[str]:
         """Infer device type from assigned template name."""
         if not template_name:
@@ -434,6 +470,8 @@ class DeviceClassifier:
             'smart light': 'iot_sensor',
             'home automation': 'iot_sensor',
             'power switch': 'iot_sensor',  # bv. "iOT smart power switch" - relais, geen netwerk-switch
+            'smart switch/dimmer': 'iot_sensor',  # Shelly-achtige schakel-/dimmodule, geen netwerk-switch
+            'dimmer': 'iot_sensor',
             'mobile': 'mobile',
             'phone': 'mobile',
             'tablet': 'mobile',
@@ -762,6 +800,19 @@ class DeviceClassifier:
                             template_id = None
                             device_type = classification['device_type']
                             template_name = DEVICE_CATEGORIES.get(device_type, {}).get('template_name')
+
+                            # Refine generic "mobile" into a platform-specific
+                            # smartphone template when the hostname gives it away.
+                            if device_type == 'mobile':
+                                platform = self._infer_smartphone_platform(device.get('hostname'))
+                                if platform == 'ios':
+                                    template_name = 'Smartphone (iOS)'
+                                    result_reasoning = classification.setdefault('reasoning', [])
+                                    result_reasoning.append("Hostname suggests iOS ('iPhone' pattern)")
+                                elif platform == 'android':
+                                    template_name = 'Smartphone (Android)'
+                                    result_reasoning = classification.setdefault('reasoning', [])
+                                    result_reasoning.append("Hostname suggests Android (model-name pattern)")
 
                             if template_name:
                                 # Check cache first
