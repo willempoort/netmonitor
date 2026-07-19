@@ -112,6 +112,34 @@ const THREAT_INFO = {
         impact: 'HOOG - Bekend malicious IP. Scanners, brute force attacks, spam.',
         icon: 'bi-database-exclamation',
         color: '#fd7e14'
+    },
+    'BASELINE_NEW_DESTINATION': {
+        name: 'Nieuwe Bestemming (Baseline)',
+        description: 'Apparaat verbindt met een bestemming die niet voorkomt in het geleerde gedragsprofiel van dit specifieke apparaat.',
+        impact: 'MEDIUM - Mogelijk gecompromitteerd apparaat of nieuw legitiem gebruik. Vergelijk met bekende bestemmingen.',
+        icon: 'bi-signpost-split',
+        color: '#ffc107'
+    },
+    'BASELINE_NEW_PORT': {
+        name: 'Nieuwe Poort (Baseline)',
+        description: 'Apparaat gebruikt een poort die niet eerder is gezien in het geleerde gedragsprofiel van dit specifieke apparaat.',
+        impact: 'MEDIUM - Mogelijk nieuwe dienst of ongeautoriseerd gebruik van het apparaat.',
+        icon: 'bi-plug',
+        color: '#ffc107'
+    },
+    'BASELINE_NEW_PROTOCOL': {
+        name: 'Nieuw Protocol (Baseline)',
+        description: 'Apparaat gebruikt een protocol dat niet eerder is gezien in het geleerde gedragsprofiel van dit specifieke apparaat.',
+        impact: 'MEDIUM - Afwijkend protocolgebruik t.o.v. de eigen historie van het apparaat.',
+        icon: 'bi-diagram-2',
+        color: '#ffc107'
+    },
+    'BASELINE_VOLUME_INCREASE': {
+        name: 'Volumetoename (Baseline)',
+        description: 'Apparaat verstuurt aanzienlijk meer data dan gebruikelijk t.o.v. de eigen geleerde baseline (niet een vast globaal threshold).',
+        impact: 'MEDIUM - Mogelijke data exfiltratie of ongebruikelijk zwaar gebruik.',
+        icon: 'bi-graph-up-arrow',
+        color: '#ffc107'
     }
 };
 

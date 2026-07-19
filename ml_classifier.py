@@ -947,6 +947,31 @@ class AnomalyDetector:
     """
     Detects anomalous behavior based on learned device baselines.
     Uses Isolation Forest for unsupervised anomaly detection.
+
+    STATUS (2026-07-19): update_baseline() is not called anywhere, so
+    device_models never gets populated and detect_anomaly() only ever
+    reaches the global-model/none path. Per-device anomaly detection
+    for "deviation from this device's own normal behavior" was instead
+    built as an explicit, interpretable rule-based check in
+    baseline_detector.py (BaselineDeviationDetector - new destination/
+    port/protocol, volume spike vs. this device's own learned_behavior),
+    wired into detector.py. That was a deliberate choice over wiring up
+    this class: this class only yields an opaque anomaly score, not a
+    reason, and the intended input (DeviceFeatureExtractor.extract_features()
+    via learned_behavior) is a set of CUMULATIVE all-time counters
+    (total_packets/total_bytes only grow). Feeding successive snapshots
+    of that into update_baseline() would train the IsolationForest on a
+    monotonic trend rather than real behavioral variance, so it wouldn't
+    produce a meaningful baseline as-is.
+
+    To make this useful later (e.g. as a supplementary confidence score
+    alongside baseline_detector.py's alerts, or to catch deviations the
+    explicit rules miss), extract_features() would first need a WINDOWED
+    variant (e.g. "last 24h" instead of "since first_seen") - most likely
+    via a new method in device_discovery.py alongside generate_learned_behavior().
+    Only then would periodically calling update_baseline(device_id, features)
+    (e.g. from the same 5-min cycle that refreshes learned_behavior) produce
+    a baseline that reflects actual behavioral spread instead of a trend line.
     """
 
     def __init__(self, db_manager=None, contamination: float = 0.1):
