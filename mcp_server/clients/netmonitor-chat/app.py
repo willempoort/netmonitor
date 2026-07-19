@@ -124,6 +124,12 @@ QUICK_INTENTS: List[Tuple[str, str, Dict[str, Any], str]] = [
     (r"(wie|welke).*(meeste|grootste).*(bandwidth|traffic|data)",
      "get_top_talkers", {"hours": 1, "limit": 10}, "top talkers ophalen"),
 
+    # Device templates - MOET voor de generieke device-patronen staan,
+    # anders matcht "hoeveel device templates" al op het device-patroon
+    # (bevat immers "device") en komt de query nooit bij dit patroon.
+    (r"(hoeveel|aantal|toon|show|geef|list|welke|wat zijn).*(device.?template|template)",
+     "get_device_templates", {}, "device templates ophalen"),
+
     # Devices
     (r"(toon|show|geef|list).*(device|devices|apparaat|apparaten)",
      "get_devices", {"limit": 50}, "devices ophalen"),
