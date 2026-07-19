@@ -58,7 +58,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 27  # Increment this when schema changes (v27: fix v26 migration - sync Smartphone (overig) description on rename)
+        SCHEMA_VERSION = 28  # Increment this when schema changes (v28: ml_classification_task table for cross-worker status)
 
         # Schema initialisatie met automatisch herstel bij TimescaleDB versie-mismatch na apt upgrade
         for _attempt in range(2):
@@ -179,6 +179,96 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
+    # ==================== Background Task Status ====================
+    # DB-backed status for long-running background tasks (e.g. ML classify-all,
+    # ML training), keyed by task_name. Needed because the dashboard runs as
+    # multiple gunicorn worker processes with separate memory - an in-memory
+    # global only reflects the worker that handled the start request, so a
+    # different worker handling a later status poll would wrongly see "idle".
+
+    def try_start_background_task(self, task_name: str) -> bool:
+        """
+        Atomically claim a background task slot.
+
+        Returns:
+            True if this call claimed the task (caller should proceed),
+            False if another worker already has it running.
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO background_task_status (task_name, status, started_at, result, error, updated_at)
+                VALUES (%s, 'running', NOW(), NULL, NULL, NOW())
+                ON CONFLICT (task_name) DO UPDATE
+                    SET status = 'running', started_at = NOW(), result = NULL, error = NULL, updated_at = NOW()
+                    WHERE background_task_status.status != 'running'
+                RETURNING task_name
+            ''', (task_name,))
+            claimed = cursor.fetchone() is not None
+            conn.commit()
+            return claimed
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error claiming background task '{task_name}': {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    def complete_background_task(self, task_name: str, result: Dict) -> None:
+        """Mark a background task as completed with its result."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE background_task_status
+                SET status = 'completed', result = %s, error = NULL, updated_at = NOW()
+                WHERE task_name = %s
+            ''', (json.dumps(result), task_name))
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error completing background task '{task_name}': {e}")
+        finally:
+            self._return_connection(conn)
+
+    def fail_background_task(self, task_name: str, error: str) -> None:
+        """Mark a background task as failed with an error message."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE background_task_status
+                SET status = 'error', error = %s, updated_at = NOW()
+                WHERE task_name = %s
+            ''', (error, task_name))
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error failing background task '{task_name}': {e}")
+        finally:
+            self._return_connection(conn)
+
+    def get_background_task_status(self, task_name: str) -> Dict:
+        """Get the current status of a background task (idle if never started)."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute('''
+                SELECT status, started_at, result, error
+                FROM background_task_status
+                WHERE task_name = %s
+            ''', (task_name,))
+            row = cursor.fetchone()
+            if not row:
+                return {'status': 'idle', 'started_at': None, 'result': None, 'error': None}
+            return dict(row)
+        except Exception as e:
+            self.logger.error(f"Error getting background task status '{task_name}': {e}")
+            return {'status': 'idle', 'started_at': None, 'result': None, 'error': None}
+        finally:
+            self._return_connection(conn)
+
     def _get_connection(self):
         """Get connection from pool"""
         return self.connection_pool.getconn()
@@ -273,6 +363,24 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS schema_version (
                     component VARCHAR(50) PRIMARY KEY,
                     version INTEGER NOT NULL DEFAULT 1,
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            ''')
+
+            # Keyed background-task status table (one row per task_name, e.g.
+            # 'ml_classify_all', 'ml_train'). Needed because the dashboard runs
+            # as multiple gunicorn worker processes (each with its own memory) -
+            # an in-memory global for "is this task running" only reflects the
+            # one worker that happened to handle the start request, so status
+            # polls that land on a different worker would wrongly report idle.
+            # A DB row is visible to all workers regardless of which one is hit.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS background_task_status (
+                    task_name VARCHAR(50) PRIMARY KEY,
+                    status VARCHAR(20) NOT NULL DEFAULT 'idle',
+                    started_at TIMESTAMPTZ,
+                    result JSONB,
+                    error TEXT,
                     updated_at TIMESTAMPTZ DEFAULT NOW()
                 );
             ''')

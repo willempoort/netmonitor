@@ -1491,41 +1491,34 @@ async function trainMLModel() {
             return;
         }
 
-        // Requirements met - actually train
+        // Requirements met - start training (runs in background on server;
+        // see pollMLTrainingStatus for why this isn't a single blocking call)
         if (btn) {
             btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Model wordt getraind...';
+        }
+        if (statusDiv) {
+            statusDiv.innerHTML = `
+                <div class="alert alert-info mb-0">
+                    <i class="bi bi-hourglass-split me-2"></i>
+                    <strong>Training gestart...</strong>
+                </div>
+            `;
+            statusDiv.style.display = 'block';
         }
 
         const trainResponse = await fetch('/api/ml/train', { method: 'POST' });
         const trainResult = await trainResponse.json();
-        const classifierResult = trainResult.result?.classifier || {};
 
-        if (trainResult.success && classifierResult.success !== false) {
-            if (statusDiv) {
-                statusDiv.innerHTML = `
-                    <div class="alert alert-success mb-0">
-                        <i class="bi bi-check-circle me-2"></i>
-                        <strong>Model getraind!</strong> ${classifierResult.message || ''}
-                    </div>
-                `;
-                statusDiv.style.display = 'block';
-                setTimeout(() => { statusDiv.style.display = 'none'; }, 10000);
-            }
-            showSuccess('ML-model succesvol getraind');
-            loadMLStatus();
-        } else {
-            const errorMsg = classifierResult.error || trainResult.error || 'Onbekende fout';
-            if (statusDiv) {
-                statusDiv.innerHTML = `
-                    <div class="alert alert-danger mb-0">
-                        <i class="bi bi-x-circle me-2"></i>
-                        <strong>Training mislukt:</strong> ${errorMsg}
-                    </div>
-                `;
-                statusDiv.style.display = 'block';
-            }
-            showError('Training mislukt: ' + errorMsg);
+        if (!trainResult.success && trainResult.status !== 'already_running') {
+            throw new Error(trainResult.error || 'Failed to start training');
         }
+
+        // Poll for completion - a direct response here would only reflect
+        // whichever gunicorn worker handled this request; polling reads
+        // DB-backed status instead, so it's correct regardless of which
+        // worker answers the poll.
+        pollMLTrainingStatus(btn, statusDiv);
+        return;
 
     } catch (error) {
         console.error('Error training ML model:', error);
@@ -1539,8 +1532,80 @@ async function trainMLModel() {
             statusDiv.style.display = 'block';
         }
         showError('Training fout: ' + error.message);
-    } finally {
         resetTrainButton(btn);
+    }
+}
+
+async function pollMLTrainingStatus(btn, statusDiv) {
+    try {
+        const response = await fetch('/api/ml/train/status');
+        const result = await response.json();
+
+        if (result.status === 'running') {
+            if (statusDiv) {
+                statusDiv.innerHTML = `
+                    <div class="alert alert-info mb-0">
+                        <i class="bi bi-hourglass-split me-2"></i>
+                        <strong>Model wordt getraind...</strong> Even geduld.
+                    </div>
+                `;
+            }
+            setTimeout(() => pollMLTrainingStatus(btn, statusDiv), 2000);
+
+        } else if (result.status === 'completed' && result.result) {
+            const classifierResult = result.result.classifier || {};
+
+            if (classifierResult.success !== false) {
+                if (statusDiv) {
+                    statusDiv.innerHTML = `
+                        <div class="alert alert-success mb-0">
+                            <i class="bi bi-check-circle me-2"></i>
+                            <strong>Model getraind!</strong> ${classifierResult.message || ''}
+                        </div>
+                    `;
+                    setTimeout(() => { statusDiv.style.display = 'none'; }, 10000);
+                }
+                showSuccess('ML-model succesvol getraind');
+            } else {
+                const errorMsg = classifierResult.error || 'Onbekende fout';
+                if (statusDiv) {
+                    statusDiv.innerHTML = `
+                        <div class="alert alert-danger mb-0">
+                            <i class="bi bi-x-circle me-2"></i>
+                            <strong>Training mislukt:</strong> ${errorMsg}
+                        </div>
+                    `;
+                }
+                showError('Training mislukt: ' + errorMsg);
+            }
+            loadMLStatus();
+            resetTrainButton(btn);
+
+        } else if (result.status === 'error') {
+            if (statusDiv) {
+                statusDiv.innerHTML = `
+                    <div class="alert alert-danger mb-0">
+                        <i class="bi bi-x-circle me-2"></i>
+                        <strong>Training mislukt:</strong> ${result.error || 'Onbekende fout'}
+                    </div>
+                `;
+            }
+            showError('Training mislukt: ' + (result.error || 'Onbekende fout'));
+            resetTrainButton(btn);
+
+        } else {
+            // Idle/unknown - training may have finished before we started polling
+            if (result.result) {
+                showSuccess('ML-model succesvol getraind');
+                loadMLStatus();
+            }
+            resetTrainButton(btn);
+            if (statusDiv) statusDiv.style.display = 'none';
+        }
+
+    } catch (error) {
+        console.error('Error polling ML training status:', error);
+        setTimeout(() => pollMLTrainingStatus(btn, statusDiv), 3000);
     }
 }
 
