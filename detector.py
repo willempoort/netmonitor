@@ -61,6 +61,12 @@ try:
 except ImportError:
     EncryptedTrafficAnalyzer = None
 
+# Import Baseline Deviation Detector for learned per-device anomaly detection
+try:
+    from baseline_detector import BaselineDeviationDetector
+except ImportError:
+    BaselineDeviationDetector = None
+
 
 class ThreatDetector:
     """Detecteert verschillende soorten verdacht netwerkverkeer"""
@@ -129,6 +135,17 @@ class ThreatDetector:
                 self.logger.info("EncryptedTrafficAnalyzer initialized for advanced TLS analysis")
             except Exception as e:
                 self.logger.warning(f"Could not initialize EncryptedTrafficAnalyzer: {e}")
+
+        # Initialize Baseline Deviation Detector - flags traffic that deviates from
+        # a device's own learned behavior (new destination/port/protocol, volume spike),
+        # as opposed to BehaviorMatcher which checks against the generic device-type template
+        self.baseline_detector = None
+        if BaselineDeviationDetector and config.get('thresholds', {}).get('baseline_deviation', {}).get('enabled', True):
+            try:
+                self.baseline_detector = BaselineDeviationDetector(config, db_manager=db_manager)
+                self.logger.info("BaselineDeviationDetector initialized for per-device baseline anomaly detection")
+            except Exception as e:
+                self.logger.warning(f"Could not initialize BaselineDeviationDetector: {e}")
 
         # Precompute internal networks for directional brute force detection
         self._internal_networks = []
@@ -709,6 +726,12 @@ class ThreatDetector:
         # Advanced threat detection (cryptomining, phishing, Tor, cloud metadata, DNS anomaly)
         advanced_threats = self._detect_advanced_threats(packet)
         threats.extend(advanced_threats)
+
+        # Baseline deviation detection (new destination/port/protocol, volume spike
+        # relative to this specific device's own learned behavior)
+        if self.baseline_detector:
+            baseline_threats = self.baseline_detector.analyze_packet(packet)
+            threats.extend(baseline_threats)
 
         # Apply template-based alert suppression
         # This filters out alerts for expected device behavior

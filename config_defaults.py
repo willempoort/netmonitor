@@ -50,6 +50,13 @@ BEST_PRACTICE_CONFIG = {
             "unique_targets": 5,        # Number of internal IPs scanned
             "time_window": 300          # Within 5 minutes
         },
+        "baseline_deviation": {
+            "enabled": True,
+            "min_observation_hours": 24,    # Minimum learning period before baseline is trusted
+            "stable_destination_max": 15,   # Only check new-destination for devices with a small, stable set
+            "volume_multiplier": 3.0,       # Alert at Nx the device's own normal bytes/hour
+            "volume_time_window": 300       # 5 minute window
+        },
         "brute_force": {
             "enabled": True,
             "attempts_threshold": 5,    # Failed login attempts
@@ -770,6 +777,12 @@ PARAMETER_DESCRIPTIONS = {
     "thresholds.lateral_movement.unique_targets": "Number of internal IPs scanned that triggers alert",
     "thresholds.lateral_movement.time_window": "Time window (seconds) for lateral movement detection",
 
+    "thresholds.baseline_deviation.enabled": "Enable per-device baseline deviation detection (learned behavior)",
+    "thresholds.baseline_deviation.min_observation_hours": "Minimum hours of learned behavior before baseline is trusted",
+    "thresholds.baseline_deviation.stable_destination_max": "Max unique destinations for a device to get new-destination checks",
+    "thresholds.baseline_deviation.volume_multiplier": "Traffic multiplier over the device's own baseline that triggers alert",
+    "thresholds.baseline_deviation.volume_time_window": "Time window (seconds) for baseline volume comparison",
+
     "thresholds.brute_force.enabled": "Enable brute force detection",
     "thresholds.brute_force.attempts_threshold": "Failed attempts that trigger brute force alert",
     "thresholds.brute_force.time_window": "Time window (seconds) for brute force detection",
@@ -1177,6 +1190,7 @@ PARAMETER_CATEGORIES = {
         "thresholds.beaconing",
         "thresholds.outbound_volume",
         "thresholds.lateral_movement",
+        "thresholds.baseline_deviation",
         "thresholds.brute_force",
         "thresholds.modern_protocols",
         "thresholds.protocol_mismatch",

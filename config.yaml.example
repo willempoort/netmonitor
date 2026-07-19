@@ -132,6 +132,16 @@ thresholds:
     unique_targets: 5
     time_window: 300
 
+  # Baseline deviation detection - compares live traffic against each
+  # device's own learned behavior profile (new destination/port/protocol,
+  # volume spike relative to its own baseline)
+  baseline_deviation:
+    enabled: true
+    min_observation_hours: 24
+    stable_destination_max: 15
+    volume_multiplier: 3.0
+    volume_time_window: 300
+
 # Whitelist (trusted IPs that should not trigger alerts)
 whitelist:
   - 127.0.0.1
