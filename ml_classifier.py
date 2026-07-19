@@ -498,29 +498,20 @@ class DeviceClassifier:
 
         return None
 
-    def train(self, min_samples_per_class: int = 3) -> Dict:
-        """
-        Train the classifier on labeled device data.
+    # Requirements enforced by both train() and get_training_readiness() -
+    # keep these two in sync, they describe the same gate from two angles.
+    MIN_LABELED_DEVICES = 10
+    MIN_CLASSES = 4
 
-        Uses devices with:
+    def _collect_labeled_devices(self) -> tuple:
+        """
+        Collect devices with an inferable label, from:
         1. Manually assigned templates (strongest signal)
         2. Vendor hints (weaker signal, used for bootstrap)
 
-        Args:
-            min_samples_per_class: Minimum samples needed per device type
-
         Returns:
-            Training results dictionary
+            (labeled_devices, labels) - parallel lists
         """
-        if not SKLEARN_AVAILABLE:
-            return {'success': False, 'error': 'scikit-learn not installed'}
-
-        if not self.db:
-            return {'success': False, 'error': 'Database not available'}
-
-        self.logger.info("Starting ML classifier training...")
-
-        # Collect labeled devices
         devices = self.db.get_devices(include_inactive=False)
         labeled_devices = []
         labels = []
@@ -546,10 +537,80 @@ class DeviceClassifier:
                 labeled_devices.append(device)
                 labels.append(label)
 
-        if len(labeled_devices) < 10:
+        return labeled_devices, labels
+
+    def get_training_readiness(self, min_samples_per_class: int = 3) -> Dict:
+        """
+        Check whether there's enough labeled data to train the classifier,
+        without actually training. Mirrors the gate in train() so the UI can
+        tell the user what to do first instead of just "training failed".
+        """
+        if not self.db:
+            return {'ready': False, 'reason': 'Database not available', 'missing': []}
+
+        labeled_devices, labels = self._collect_labeled_devices()
+
+        class_counts = defaultdict(int)
+        for label in labels:
+            class_counts[label] += 1
+
+        valid_labels = {lbl for lbl, count in class_counts.items() if count >= min_samples_per_class}
+        ready = len(labeled_devices) >= self.MIN_LABELED_DEVICES and len(valid_labels) >= self.MIN_CLASSES
+
+        missing = []
+        if len(labeled_devices) < self.MIN_LABELED_DEVICES:
+            missing.append(
+                f"Wijs bij nog {self.MIN_LABELED_DEVICES - len(labeled_devices)} apparaten handmatig "
+                f"een device-template toe, of wacht tot vendor-herkenning meer apparaten labelt "
+                f"(nu {len(labeled_devices)} van de {self.MIN_LABELED_DEVICES} benodigde gelabelde apparaten)."
+            )
+        if len(valid_labels) < self.MIN_CLASSES:
+            covered = ', '.join(sorted(valid_labels)) if valid_labels else 'geen'
+            missing.append(
+                f"Zorg voor meer diversiteit: nog {self.MIN_CLASSES - len(valid_labels)} device-typen nodig "
+                f"met elk minstens {min_samples_per_class} apparaten (nu {len(valid_labels)} van de "
+                f"{self.MIN_CLASSES} benodigde typen gedekt: {covered})."
+            )
+
+        return {
+            'ready': ready,
+            'labeled_devices': len(labeled_devices),
+            'min_labeled_devices': self.MIN_LABELED_DEVICES,
+            'class_distribution': dict(class_counts),
+            'valid_classes': len(valid_labels),
+            'min_classes': self.MIN_CLASSES,
+            'min_samples_per_class': min_samples_per_class,
+            'missing': missing,
+        }
+
+    def train(self, min_samples_per_class: int = 3) -> Dict:
+        """
+        Train the classifier on labeled device data.
+
+        Uses devices with:
+        1. Manually assigned templates (strongest signal)
+        2. Vendor hints (weaker signal, used for bootstrap)
+
+        Args:
+            min_samples_per_class: Minimum samples needed per device type
+
+        Returns:
+            Training results dictionary
+        """
+        if not SKLEARN_AVAILABLE:
+            return {'success': False, 'error': 'scikit-learn not installed'}
+
+        if not self.db:
+            return {'success': False, 'error': 'Database not available'}
+
+        self.logger.info("Starting ML classifier training...")
+
+        labeled_devices, labels = self._collect_labeled_devices()
+
+        if len(labeled_devices) < self.MIN_LABELED_DEVICES:
             return {
                 'success': False,
-                'error': f'Insufficient labeled data ({len(labeled_devices)} devices, need at least 10)',
+                'error': f'Insufficient labeled data ({len(labeled_devices)} devices, need at least {self.MIN_LABELED_DEVICES})',
                 'devices_found': len(labeled_devices)
             }
 
@@ -586,12 +647,11 @@ class DeviceClassifier:
         # "unknown category" problem (still a forced choice among known classes),
         # but avoids the degenerate 2-class case where that forced choice is
         # essentially a coin flip dressed up as high confidence.
-        MIN_CLASSES = 4
-        if len(valid_labels) < MIN_CLASSES:
+        if len(valid_labels) < self.MIN_CLASSES:
             return {
                 'success': False,
                 'error': (
-                    f'Need at least {MIN_CLASSES} device types with {min_samples_per_class}+ '
+                    f'Need at least {self.MIN_CLASSES} device types with {min_samples_per_class}+ '
                     f'samples each (have {len(valid_labels)}) - a model trained on too few '
                     f'categories forces every device into whichever known category it is '
                     f'marginally closest to, regardless of fit'
@@ -1188,6 +1248,10 @@ class MLClassifierManager:
             'is_anomalous': anomaly['is_anomalous'],
             'anomaly_score': anomaly['anomaly_score']
         }
+
+    def get_training_readiness(self) -> Dict:
+        """Check whether there's enough labeled data to train the classifier."""
+        return self.classifier.get_training_readiness()
 
     def train_models(self) -> Dict:
         """

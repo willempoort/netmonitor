@@ -4872,6 +4872,26 @@ def api_ml_status():
     })
 
 
+@app.route('/api/ml/training-readiness')
+@login_required
+def api_ml_training_readiness():
+    """Check whether there's enough labeled data to train the ML model."""
+    ml = get_ml_classifier()
+    if not ml:
+        return jsonify({
+            'success': False,
+            'error': 'ML classification not available'
+        }), 400
+
+    try:
+        readiness = ml.get_training_readiness()
+        return jsonify({'success': True, 'readiness': readiness})
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"Error checking ML training readiness: {e}\n{error_trace}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/ml/train', methods=['POST'])
 @login_required
 def api_ml_train():
