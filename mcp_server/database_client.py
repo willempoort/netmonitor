@@ -93,7 +93,7 @@ class MCPDatabaseClient:
                         metadata,
                         acknowledged
                     FROM alerts
-                    WHERE (source_ip::text = %s OR destination_ip::text = %s)
+                    WHERE (source_ip = %s::inet OR destination_ip = %s::inet)
                       AND timestamp > %s
                     ORDER BY timestamp DESC
                 ''', (ip_address, ip_address, cutoff_time))
@@ -196,7 +196,7 @@ class MCPDatabaseClient:
                 params = [cutoff_time]
 
                 if source_ip:
-                    query += ' AND source_ip::text = %s'
+                    query += ' AND source_ip = %s::inet'
                     params.append(source_ip)
 
                 query += ' ORDER BY timestamp ASC'  # Chronological order
