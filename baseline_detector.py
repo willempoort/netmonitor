@@ -189,16 +189,23 @@ class BaselineDeviationDetector:
             if dst_ip not in baseline['destinations']:
                 key = (src_ip, 'BASELINE_NEW_DESTINATION', dst_ip)
                 if self._should_alert(key):
+                    proto_name = PROTOCOL_NAMES.get(proto, proto)
+                    port_suffix = f':{dst_port}' if dst_port else ''
                     threats.append({
                         'type': 'BASELINE_NEW_DESTINATION',
                         'severity': 'MEDIUM',
                         'source_ip': src_ip,
                         'destination_ip': dst_ip,
                         'description': (
-                            f'{src_ip} verbindt met nieuwe bestemming {dst_ip}, buiten de '
-                            f'geleerde baseline van {len(baseline["destinations"])} bekende bestemmingen'
+                            f'{src_ip} verbindt met nieuwe bestemming {dst_ip}{port_suffix} ({proto_name}), '
+                            f'buiten de geleerde baseline van {len(baseline["destinations"])} bekende bestemmingen'
                         ),
-                        'metadata': {'device_id': device_id, 'baseline_destination_count': len(baseline['destinations'])}
+                        'metadata': {
+                            'device_id': device_id,
+                            'baseline_destination_count': len(baseline['destinations']),
+                            'destination_port': dst_port,
+                            'protocol': proto
+                        }
                     })
 
         if dst_port and baseline['outbound_ports'] and dst_port not in baseline['outbound_ports']:
