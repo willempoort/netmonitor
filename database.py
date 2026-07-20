@@ -58,7 +58,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 30  # Increment this when schema changes (v30: devices.fingerprint + Smartwatch template)
+        SCHEMA_VERSION = 31  # Increment this when schema changes (v31: alerts acknowledged/severity indexes for All Alerts browser)
 
         # Schema initialisatie met automatisch herstel bij TimescaleDB versie-mismatch na apt upgrade
         for _attempt in range(2):
@@ -1126,6 +1126,26 @@ class DatabaseManager:
                 END $$;
             """)
 
+            # Migration v31: Add indexes for the all-alerts browser (filtering
+            # on acknowledged/severity across the full table, not just the
+            # last 20 rows like the dashboard widget does).
+            cursor.execute("""
+                DO $$
+                BEGIN
+                    CREATE INDEX idx_alerts_acknowledged_timestamp ON alerts(acknowledged, timestamp DESC);
+                EXCEPTION WHEN duplicate_table THEN
+                    -- Index already exists, ignore
+                END $$;
+            """)
+            cursor.execute("""
+                DO $$
+                BEGIN
+                    CREATE INDEX idx_alerts_severity ON alerts(severity);
+                EXCEPTION WHEN duplicate_table THEN
+                    -- Index already exists, ignore
+                END $$;
+            """)
+
             conn.commit()
 
         except Exception as e:
@@ -1703,15 +1723,17 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
-    def get_recent_alerts(self, limit: int = 100, hours: int = 24) -> List[Dict]:
+    def get_recent_alerts(self, limit: int = 100, hours: int = 24,
+                           exclude_acknowledged: bool = False) -> List[Dict]:
         """Get recent alerts"""
         conn = self._get_connection()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
 
             cutoff_time = datetime.now() - timedelta(hours=hours)
+            ack_filter = 'AND a.acknowledged = FALSE' if exclude_acknowledged else ''
 
-            cursor.execute('''
+            cursor.execute(f'''
                 SELECT
                     a.id,
                     a.timestamp,
@@ -1735,42 +1757,162 @@ class DatabaseManager:
                     WHERE ip_address = a.destination_ip AND hostname IS NOT NULL
                     ORDER BY timestamp DESC LIMIT 1
                 ) dst_tt ON true
-                WHERE a.timestamp > %s
+                WHERE a.timestamp > %s {ack_filter}
                 ORDER BY a.timestamp DESC
                 LIMIT %s
             ''', (cutoff_time, limit))
 
             alerts = [dict(row) for row in cursor.fetchall()]
-
-            # Fallback: resolve missing hostnames from devices table
-            missing_ips = set()
-            for alert in alerts:
-                if alert['source_ip'] and not alert.get('source_hostname'):
-                    missing_ips.add(alert['source_ip'])
-                if alert['destination_ip'] and not alert.get('destination_hostname'):
-                    missing_ips.add(alert['destination_ip'])
-
-            if missing_ips:
-                cursor.execute('''
-                    SELECT DISTINCT ON (ip_address) ip_address::text, hostname
-                    FROM devices
-                    WHERE ip_address = ANY(%s::inet[])
-                      AND hostname IS NOT NULL
-                    ORDER BY ip_address, last_seen DESC
-                ''', (list(missing_ips),))
-                device_hostnames = {row['ip_address']: row['hostname'] for row in cursor.fetchall()}
-
-                for alert in alerts:
-                    if alert['source_ip'] and not alert.get('source_hostname'):
-                        alert['source_hostname'] = device_hostnames.get(alert['source_ip'])
-                    if alert['destination_ip'] and not alert.get('destination_hostname'):
-                        alert['destination_hostname'] = device_hostnames.get(alert['destination_ip'])
-
+            self._resolve_alert_hostnames(alerts, cursor)
             return alerts
 
         except Exception as e:
             self.logger.error(f"Error getting recent alerts: {e}")
             return []
+        finally:
+            self._return_connection(conn)
+
+    def _resolve_alert_hostnames(self, alerts: List[Dict], cursor) -> None:
+        """Fallback: resolve hostnames missing from the top_talkers join via devices table (in place)."""
+        missing_ips = set()
+        for alert in alerts:
+            if alert['source_ip'] and not alert.get('source_hostname'):
+                missing_ips.add(alert['source_ip'])
+            if alert['destination_ip'] and not alert.get('destination_hostname'):
+                missing_ips.add(alert['destination_ip'])
+
+        if not missing_ips:
+            return
+
+        cursor.execute('''
+            SELECT DISTINCT ON (ip_address) ip_address::text, hostname
+            FROM devices
+            WHERE ip_address = ANY(%s::inet[])
+              AND hostname IS NOT NULL
+            ORDER BY ip_address, last_seen DESC
+        ''', (list(missing_ips),))
+        device_hostnames = {row['ip_address']: row['hostname'] for row in cursor.fetchall()}
+
+        for alert in alerts:
+            if alert['source_ip'] and not alert.get('source_hostname'):
+                alert['source_hostname'] = device_hostnames.get(alert['source_ip'])
+            if alert['destination_ip'] and not alert.get('destination_hostname'):
+                alert['destination_hostname'] = device_hostnames.get(alert['destination_ip'])
+
+    def get_distinct_threat_types(self) -> List[str]:
+        """All threat_type values ever seen (for the All Alerts filter dropdown), not just recent ones."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('SELECT DISTINCT threat_type FROM alerts ORDER BY threat_type')
+            return [row[0] for row in cursor.fetchall()]
+        except Exception as e:
+            self.logger.error(f"Error getting distinct threat types: {e}")
+            return []
+        finally:
+            self._return_connection(conn)
+
+    def search_alerts(self, severity: str = None, threat_type: str = None,
+                       acknowledged: bool = None, ip_search: str = None,
+                       start_time: datetime = None, end_time: datetime = None,
+                       limit: int = 50, offset: int = 0) -> Dict:
+        """
+        Search/browse all alerts with optional filters and pagination, for the
+        full "All Alerts" browser (unlike get_recent_alerts, which is hard-capped
+        to the last 20 rows for the dashboard widget).
+
+        Returns: {'alerts': [...], 'total_count': int}
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            where_clauses = ['1=1']
+            params = []
+
+            if severity:
+                where_clauses.append('a.severity = %s')
+                params.append(severity)
+
+            if threat_type:
+                where_clauses.append('a.threat_type = %s')
+                params.append(threat_type)
+
+            if acknowledged is not None:
+                where_clauses.append('a.acknowledged = %s')
+                params.append(acknowledged)
+
+            if start_time:
+                where_clauses.append('a.timestamp >= %s')
+                params.append(start_time)
+
+            if end_time:
+                where_clauses.append('a.timestamp <= %s')
+                params.append(end_time)
+
+            if ip_search:
+                where_clauses.append('''(
+                    a.source_ip::text ILIKE %s OR
+                    a.destination_ip::text ILIKE %s OR
+                    src_tt.hostname ILIKE %s OR
+                    dst_tt.hostname ILIKE %s
+                )''')
+                like_term = f'%{ip_search}%'
+                params.extend([like_term, like_term, like_term, like_term])
+
+            where_sql = ' AND '.join(where_clauses)
+
+            base_from = '''
+                FROM alerts a
+                LEFT JOIN LATERAL (
+                    SELECT hostname FROM top_talkers
+                    WHERE ip_address = a.source_ip AND hostname IS NOT NULL
+                    ORDER BY timestamp DESC LIMIT 1
+                ) src_tt ON true
+                LEFT JOIN LATERAL (
+                    SELECT hostname FROM top_talkers
+                    WHERE ip_address = a.destination_ip AND hostname IS NOT NULL
+                    ORDER BY timestamp DESC LIMIT 1
+                ) dst_tt ON true
+                WHERE {where_sql}
+            '''.format(where_sql=where_sql)
+
+            cursor.execute(f'SELECT COUNT(*) as total_count {base_from}', params)
+            total_count = cursor.fetchone()['total_count']
+
+            cursor.execute(f'''
+                SELECT
+                    a.id,
+                    a.timestamp,
+                    a.severity,
+                    a.threat_type,
+                    a.source_ip::text as source_ip,
+                    a.destination_ip::text as destination_ip,
+                    a.description,
+                    a.metadata,
+                    a.acknowledged,
+                    src_tt.hostname as source_hostname,
+                    dst_tt.hostname as destination_hostname
+                {base_from}
+                ORDER BY a.timestamp DESC
+                LIMIT %s OFFSET %s
+            ''', params + [limit, offset])
+
+            alerts = [dict(row) for row in cursor.fetchall()]
+            self._resolve_alert_hostnames(alerts, cursor)
+
+            for alert in alerts:
+                if alert['metadata']:
+                    try:
+                        alert['metadata_parsed'] = json.loads(alert['metadata'])
+                    except (TypeError, ValueError):
+                        alert['metadata_parsed'] = {}
+
+            return {'alerts': alerts, 'total_count': total_count}
+
+        except Exception as e:
+            self.logger.error(f"Error searching alerts: {e}")
+            return {'alerts': [], 'total_count': 0}
         finally:
             self._return_connection(conn)
 
@@ -2345,7 +2487,7 @@ class DatabaseManager:
 
         # Fetch fresh data
         data = {
-            'recent_alerts': self.get_recent_alerts(limit=20, hours=24),
+            'recent_alerts': self.get_recent_alerts(limit=20, hours=24, exclude_acknowledged=True),
             'alert_stats': self.get_alert_statistics(hours=24),
             'traffic_history': self.get_traffic_history(hours=24, limit=100),
             'top_talkers': self.get_top_talkers(limit=10),

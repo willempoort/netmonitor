@@ -15,6 +15,16 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.5.0] - 2026-07-20
+
+### Added
+- **"Alle Alerts"-venster: volledig doorzoekbaar alertoverzicht.** Nieuwe knop in de navbar opent een full-screen modal met alle alerts (niet beperkt tot de laatste 20 zoals de dashboardwidget), met filters op severity, bevestigd/onbevestigd, threat type (autocomplete uit alle 44 ooit voorgekomen typen), IP/hostname en periode, plus paginering en per-rij bevestigen/whitelisten. Backend: `db.search_alerts()` met dynamische filters + `total_count`, nieuwe endpoints `/api/alerts/search` en `/api/alerts/threat_types`, en nieuwe indexes `idx_alerts_acknowledged_timestamp`/`idx_alerts_severity` (schema v31) voor performante filtering op de volledige tabel.
+
+### Fixed
+- **Bevestigde alerts bleven zichtbaar in "Recent Alerts".** De widget haalde alerts op zonder op `acknowledged` te filteren, dus bevestigen veranderde niets aan de lijst totdat het item toevallig uit de laatste-20-vensterperiode viel. `get_recent_alerts()` sluit bevestigde alerts nu uit voor deze widget (andere aanroepers ongewijzigd), en bevestigen in de UI verwijdert het item direct uit de feed.
+- **Labels en placeholder-tekst onleesbaar in het "Alle Alerts"-venster.** De bestaande contrastfix voor `.text-muted` gold alleen binnen `.card`-elementen, niet binnen modals; toegevoegd voor `#allAlertsModal` plus een algemene fix voor placeholder-tekst in donkere invoervelden.
+- **Threat type-filter toonde maar 4 opties.** De lijst kwam uit de 24-uursstatistiek (top 10 op basis van recente counts) i.p.v. alle ooit voorgekomen typen; nu gevuld via het nieuwe `/api/alerts/threat_types`-endpoint.
+
 ## [2.4.3] - 2026-07-19
 
 ### Fixed
