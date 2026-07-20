@@ -1146,6 +1146,23 @@ class DatabaseManager:
                 END $$;
             """)
 
+            # Migration v32: Add composite (ip_address, timestamp) index on
+            # top_talkers. The all-alerts browser resolves source/destination
+            # hostnames via a LATERAL "ORDER BY timestamp DESC LIMIT 1" lookup
+            # per alert row; without this index Postgres/TimescaleDB has to
+            # chunk-append-scan the whole hypertable for every lookup, which
+            # made /api/alerts/search take minutes once top_talkers grew large
+            # enough (timing out the eventlet worker and surfacing as an empty
+            # result or a nginx 504).
+            cursor.execute("""
+                DO $$
+                BEGIN
+                    CREATE INDEX idx_top_talkers_ip_timestamp ON top_talkers(ip_address, timestamp DESC);
+                EXCEPTION WHEN duplicate_table THEN
+                    -- Index already exists, ignore
+                END $$;
+            """)
+
             conn.commit()
 
         except Exception as e:
@@ -1912,7 +1929,7 @@ class DatabaseManager:
 
         except Exception as e:
             self.logger.error(f"Error searching alerts: {e}")
-            return {'alerts': [], 'total_count': 0}
+            raise
         finally:
             self._return_connection(conn)
 
