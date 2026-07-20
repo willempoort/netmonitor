@@ -58,7 +58,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 31  # Increment this when schema changes (v31: alerts acknowledged/severity indexes for All Alerts browser)
+        SCHEMA_VERSION = 32  # Increment this when schema changes (v32: top_talkers(ip_address, timestamp) index for All Alerts hostname lookup)
 
         # Schema initialisatie met automatisch herstel bij TimescaleDB versie-mismatch na apt upgrade
         for _attempt in range(2):
