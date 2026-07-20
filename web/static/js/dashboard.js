@@ -706,6 +706,7 @@ function addGroupedAlertToFeed(group) {
 
     const alertDiv = document.createElement('div');
     alertDiv.className = `alert-item ${group.severity}`;
+    alertDiv.dataset.ids = group.alerts.map(a => a.id).filter(id => id !== undefined).join(',');
     alertDiv.style.cursor = 'pointer';
 
     const timestamp = new Date(group.last_seen).toLocaleString('nl-NL');
@@ -767,6 +768,7 @@ function addAlertToFeed(alert, prepend = false) {
 
     const alertDiv = document.createElement('div');
     alertDiv.className = `alert-item ${alert.severity}`;
+    alertDiv.dataset.ids = alert.id !== undefined ? String(alert.id) : '';
     if (prepend) alertDiv.classList.add('new');
     alertDiv.style.cursor = 'pointer';
 
@@ -815,6 +817,7 @@ function addAlertToFeed(alert, prepend = false) {
 }
 
 let currentAlertGroup = null;
+let allAlertsState = { page: 1, pageSize: 50 };
 
 function showAlertDetails(group) {
     currentAlertGroup = group;
@@ -1038,6 +1041,7 @@ function acknowledgeCurrentAlert() {
             if (failed === 0) {
                 showToast(alertIds.length > 1 ? `${alertIds.length} meldingen bevestigd` : 'Melding bevestigd', 'success');
                 group.alerts.forEach(a => { a.acknowledged = true; });
+                removeAcknowledgedFeedItems(alertIds);
                 bootstrap.Modal.getInstance(document.getElementById('alertDetailsModal')).hide();
             } else {
                 showToast(`${failed} van ${alertIds.length} meldingen konden niet bevestigd worden`, 'danger');
@@ -1048,6 +1052,38 @@ function acknowledgeCurrentAlert() {
             ackBtn.disabled = false;
             showToast(`Fout: ${error.message}`, 'danger');
         });
+}
+
+function removeAcknowledgedFeedItems(alertIds) {
+    const idSet = new Set(alertIds.map(String));
+    let removedCount = 0;
+
+    document.querySelectorAll('#alert-feed .alert-item').forEach(item => {
+        const itemIds = (item.dataset.ids || '').split(',').filter(Boolean);
+        if (itemIds.length === 0) return;
+
+        const remaining = itemIds.filter(id => !idSet.has(id));
+        removedCount += itemIds.length - remaining.length;
+
+        if (remaining.length === 0) {
+            item.remove();
+        } else if (remaining.length !== itemIds.length) {
+            item.dataset.ids = remaining.join(',');
+        }
+    });
+
+    if (removedCount === 0) return;
+
+    const feed = document.getElementById('alert-feed');
+    if (feed && !feed.querySelector('.alert-item')) {
+        feed.innerHTML = '<div class="text-center text-muted p-4">No alerts</div>';
+    }
+
+    const countEl = document.getElementById('alert-count');
+    if (countEl) {
+        const current = parseInt(countEl.textContent, 10) || 0;
+        countEl.textContent = Math.max(0, current - removedCount);
+    }
 }
 
 function openWhitelistFromAlert() {
@@ -1731,6 +1767,177 @@ function acknowledgeAlertCard(alertId, btnEl) {
             btnEl.innerHTML = originalContent;
             showToast(`Fout: ${error.message}`, 'danger');
         });
+}
+
+// ==================== All Alerts Browser ====================
+
+function openAllAlertsModal() {
+    fetch('/api/alerts/threat_types')
+        .then(r => r.json())
+        .then(result => {
+            if (!result.success) return;
+            const datalist = document.getElementById('aa-threat-type-options');
+            datalist.innerHTML = result.data.map(t => `<option value="${t}">`).join('');
+        });
+
+    allAlertsState.page = 1;
+    loadAllAlerts(1);
+}
+
+function resetAllAlertsFilters() {
+    document.getElementById('aa-filter-severity').value = '';
+    document.getElementById('aa-filter-acknowledged').value = '';
+    document.getElementById('aa-filter-threat-type').value = '';
+    document.getElementById('aa-filter-ip').value = '';
+    document.getElementById('aa-filter-start').value = '';
+    document.getElementById('aa-filter-end').value = '';
+    loadAllAlerts(1);
+}
+
+function loadAllAlerts(page) {
+    allAlertsState.page = page;
+
+    const params = new URLSearchParams();
+    params.set('page', page);
+    params.set('page_size', allAlertsState.pageSize);
+
+    const severity = document.getElementById('aa-filter-severity').value;
+    const acknowledged = document.getElementById('aa-filter-acknowledged').value;
+    const threatType = document.getElementById('aa-filter-threat-type').value.trim();
+    const ip = document.getElementById('aa-filter-ip').value.trim();
+    const start = document.getElementById('aa-filter-start').value;
+    const end = document.getElementById('aa-filter-end').value;
+
+    if (severity) params.set('severity', severity);
+    if (acknowledged) params.set('acknowledged', acknowledged);
+    if (threatType) params.set('threat_type', threatType);
+    if (ip) params.set('ip', ip);
+    if (start) params.set('start', start);
+    if (end) params.set('end', end);
+
+    const container = document.getElementById('aa-alerts-container');
+    container.innerHTML = '<div class="text-center text-muted p-4"><span class="spinner-border spinner-border-sm"></span> Laden...</div>';
+
+    fetch(`/api/alerts/search?${params.toString()}`)
+        .then(r => r.json())
+        .then(result => {
+            if (!result.success) {
+                container.innerHTML = `<div class="alert alert-danger">Fout: ${result.error}</div>`;
+                return;
+            }
+            renderAllAlertsResults(result);
+        })
+        .catch(error => {
+            container.innerHTML = `<div class="alert alert-danger">Fout: ${error.message}</div>`;
+        });
+}
+
+function renderAllAlertsResults(result) {
+    const container = document.getElementById('aa-alerts-container');
+    const summary = document.getElementById('aa-result-summary');
+    allAlertsState.alerts = result.data;
+
+    if (!result.data || result.data.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted p-4">Geen alerts gevonden voor deze filters</div>';
+        summary.textContent = '0 resultaten';
+        document.getElementById('aa-pagination-nav').style.display = 'none';
+        return;
+    }
+
+    container.innerHTML = `<div class="alert-list">${result.data.map(alert => renderAllAlertsRow(alert)).join('')}</div>`;
+
+    const totalPages = Math.max(1, Math.ceil(result.total_count / result.page_size));
+    const start = (result.page - 1) * result.page_size + 1;
+    const end = Math.min(result.page * result.page_size, result.total_count);
+    summary.textContent = `${start}-${end} van ${result.total_count} resultaten`;
+
+    renderAllAlertsPagination(result.page, totalPages);
+}
+
+function renderAllAlertsRow(alert) {
+    return renderAlertCard(alert, alert.threat_type).replace(
+        `onclick="acknowledgeAlertCard(${alert.id}, this)"`,
+        `onclick="acknowledgeAllAlertsRow(${alert.id}, this)"`
+    ).replace(
+        `onclick="openWhitelistFromThreatAlert(${alert.id})"`,
+        `onclick="openWhitelistFromAllAlertsRow(${alert.id})"`
+    );
+}
+
+function renderAllAlertsPagination(currentPage, totalPages) {
+    const nav = document.getElementById('aa-pagination-nav');
+    const pagination = document.getElementById('aa-pagination');
+
+    if (totalPages <= 1) {
+        nav.style.display = 'none';
+        return;
+    }
+    nav.style.display = '';
+
+    const pageItem = (page, label, disabled, active) => `
+        <li class="page-item ${disabled ? 'disabled' : ''} ${active ? 'active' : ''}">
+            <button type="button" class="page-link bg-dark text-light border-secondary" ${disabled ? 'tabindex="-1"' : `onclick="loadAllAlerts(${page})"`}>${label}</button>
+        </li>
+    `;
+
+    let html = pageItem(currentPage - 1, '&laquo;', currentPage <= 1, false);
+
+    const windowStart = Math.max(1, currentPage - 2);
+    const windowEnd = Math.min(totalPages, currentPage + 2);
+    for (let p = windowStart; p <= windowEnd; p++) {
+        html += pageItem(p, p, false, p === currentPage);
+    }
+
+    html += pageItem(currentPage + 1, '&raquo;', currentPage >= totalPages, false);
+    pagination.innerHTML = html;
+}
+
+function acknowledgeAllAlertsRow(alertId, btnEl) {
+    btnEl.disabled = true;
+    const originalContent = btnEl.innerHTML;
+    btnEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+    fetch(`/api/alerts/${alertId}/acknowledge`, { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const card = document.getElementById(`alert-card-${alertId}`);
+                if (card) {
+                    const statusEl = card.querySelector('.alert-card-ack-status');
+                    if (statusEl) statusEl.innerHTML = '<span class="badge bg-success">Acknowledged</span>';
+                    btnEl.remove();
+                }
+                removeAcknowledgedFeedItems([alertId]);
+                showToast('Melding bevestigd', 'success');
+            } else {
+                btnEl.disabled = false;
+                btnEl.innerHTML = originalContent;
+                showToast(data.error || 'Bevestigen mislukt', 'danger');
+            }
+        })
+        .catch(error => {
+            btnEl.disabled = false;
+            btnEl.innerHTML = originalContent;
+            showToast(`Fout: ${error.message}`, 'danger');
+        });
+}
+
+function openWhitelistFromAllAlertsRow(alertId) {
+    const alert = (allAlertsState.alerts || []).find(a => a.id === alertId);
+    if (!alert) return;
+
+    currentAlertGroup = {
+        threat_type: alert.threat_type,
+        source_ip: alert.source_ip,
+        destination_ip: alert.destination_ip,
+        alerts: [alert]
+    };
+
+    const allAlertsModalEl = document.getElementById('allAlertsModal');
+    const allAlertsModal = bootstrap.Modal.getInstance(allAlertsModalEl);
+    if (allAlertsModal) allAlertsModal.hide();
+
+    openWhitelistFromAlert();
 }
 
 function openWhitelistFromThreatAlert(alertId) {

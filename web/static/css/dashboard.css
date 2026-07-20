@@ -611,8 +611,16 @@ canvas {
 }
 
 .card.bg-secondary small.text-muted,
-#alertDetailsBody .text-muted {
+#alertDetailsBody .text-muted,
+#allAlertsModal .text-muted {
     color: #aaa !important;
+}
+
+/* Placeholder text on dark inputs defaults to Bootstrap's near-black
+   secondary color, which is unreadable against bg-dark form fields. */
+.form-control.bg-dark::placeholder {
+    color: #888;
+    opacity: 1;
 }
 
 .param-type-badge {

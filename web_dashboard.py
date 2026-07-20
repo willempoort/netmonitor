@@ -1095,6 +1095,65 @@ def api_alert_stats():
         logger.error(f"Error getting alert stats: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/alerts/threat_types')
+@login_required
+def api_alerts_threat_types():
+    """All distinct threat_type values ever recorded, for the All Alerts filter dropdown."""
+    try:
+        return jsonify({'success': True, 'data': db.get_distinct_threat_types()})
+    except Exception as e:
+        logger.error(f"Error getting distinct threat types: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/alerts/search')
+@login_required
+def api_alerts_search():
+    """Browse/filter all alerts (not limited to the last 20 like /api/alerts), with pagination."""
+    try:
+        severity = request.args.get('severity') or None
+        threat_type = request.args.get('threat_type') or None
+        ip_search = request.args.get('ip') or None
+
+        acknowledged_param = request.args.get('acknowledged')
+        acknowledged = None
+        if acknowledged_param in ('true', 'false'):
+            acknowledged = acknowledged_param == 'true'
+
+        start_time = None
+        if request.args.get('start'):
+            start_time = datetime.fromisoformat(request.args.get('start'))
+
+        end_time = None
+        if request.args.get('end'):
+            end_time = datetime.fromisoformat(request.args.get('end'))
+
+        page = max(1, int(request.args.get('page', 1)))
+        page_size = min(200, max(1, int(request.args.get('page_size', 50))))
+
+        result = db.search_alerts(
+            severity=severity,
+            threat_type=threat_type,
+            acknowledged=acknowledged,
+            ip_search=ip_search,
+            start_time=start_time,
+            end_time=end_time,
+            limit=page_size,
+            offset=(page - 1) * page_size
+        )
+
+        return jsonify({
+            'success': True,
+            'data': result['alerts'],
+            'total_count': result['total_count'],
+            'page': page,
+            'page_size': page_size
+        })
+    except ValueError as e:
+        return jsonify({'success': False, 'error': f'Invalid filter value: {e}'}), 400
+    except Exception as e:
+        logger.error(f"Error searching alerts: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/alerts/<int:alert_id>/acknowledge', methods=['POST'])
 @local_or_role_required('admin', 'operator')
 def api_acknowledge_alert(alert_id):
