@@ -15,6 +15,11 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.5.1] - 2026-07-20
+
+### Fixed
+- **"Alle Alerts"-venster gaf op servers met veel `top_talkers`-data een lege lijst of een timeout-fout ("Unexpected token '<'").** `search_alerts()` doet per alert-rij een LATERAL-lookup naar `top_talkers` om de source/destination-hostname te vinden, maar had geen index op `(ip_address, timestamp)`. Zodra `top_talkers` groot genoeg werd, moest TimescaleDB alle chunks scannen per lookup, wat de query minutenlang liet duren, de eventlet gunicorn-worker deed timeouten (`WORKER TIMEOUT`) en resulteerde in een nginx 504 (HTML-response i.p.v. JSON) of - erger - een stilzwijgend leeg resultaat doordat `search_alerts()` alle fouten ving en `{'alerts': [], 'total_count': 0}` teruggaf. Nieuwe index `idx_top_talkers_ip_timestamp` (schema v32) lost de traagheid op; `search_alerts()` geeft fouten nu door in plaats van ze te maskeren als "geen resultaten".
+
 ## [2.5.0] - 2026-07-20
 
 ### Added
