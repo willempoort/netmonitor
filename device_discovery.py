@@ -31,6 +31,12 @@ try:
 except ImportError:
     SCAPY_AVAILABLE = False
 
+# Ephemeral ports (>32767) niet leren als poort van het apparaat zelf: dit zijn
+# doorgaans tijdelijke source-poorten van de andere kant van de verbinding (o.a.
+# reply-verkeer naar een client), geen stabiele service-poorten. Zelfde conventie
+# als detector.py's _detect_port_scan().
+EPHEMERAL_PORT_THRESHOLD = 32767
+
 
 class DeviceDiscovery:
     """
@@ -849,15 +855,19 @@ class DeviceDiscovery:
             if packet.haslayer(TCP):
                 tcp = packet[TCP]
                 if direction == 'outbound':
-                    stats['ports_seen'].add(('TCP', tcp.dport, 'dst'))
+                    if tcp.dport <= EPHEMERAL_PORT_THRESHOLD:
+                        stats['ports_seen'].add(('TCP', tcp.dport, 'dst'))
                 else:
-                    stats['ports_seen'].add(('TCP', tcp.sport, 'src'))
+                    if tcp.sport <= EPHEMERAL_PORT_THRESHOLD:
+                        stats['ports_seen'].add(('TCP', tcp.sport, 'src'))
             elif packet.haslayer(UDP):
                 udp = packet[UDP]
                 if direction == 'outbound':
-                    stats['ports_seen'].add(('UDP', udp.dport, 'dst'))
+                    if udp.dport <= EPHEMERAL_PORT_THRESHOLD:
+                        stats['ports_seen'].add(('UDP', udp.dport, 'dst'))
                 else:
-                    stats['ports_seen'].add(('UDP', udp.sport, 'src'))
+                    if udp.sport <= EPHEMERAL_PORT_THRESHOLD:
+                        stats['ports_seen'].add(('UDP', udp.sport, 'src'))
 
         # Track communication partners
         if direction == 'outbound' and dst_ip:

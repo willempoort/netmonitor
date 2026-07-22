@@ -15,6 +15,11 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.5.2] - 2026-07-22
+
+### Fixed
+- **`BASELINE_NEW_PORT` sloeg alarm op de dynamische/ephemere poort van de andere kant van een verbinding, bv. bij elke nieuwe SSH-sessie.** `device_discovery.py` (leerfase) en `baseline_detector.py` (detectiefase) bepaalden de richting van een poort puur op basis van "is dit apparaat src of dst van dít pakket", zonder te weten wie de sessie initieert. Een reply-pakket van een interne server terug naar een client kreeg daardoor de willekeurige, per verbinding wisselende clientpoort toegekend als was het een nieuwe uitgaande poort van de server, wat bij elke nieuwe sessie een nieuwe `BASELINE_NEW_PORT`-alert opleverde. Ephemere poorten (>32767) worden nu genegeerd bij zowel het leren als het controleren van baseline-poorten (zelfde conventie als `detector.py`'s `_detect_port_scan`), wat ook meteen werkt op reeds vervuilde, eerder geleerde baselines.
+
 ## [2.5.1] - 2026-07-20
 
 ### Fixed
