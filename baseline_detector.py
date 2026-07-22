@@ -25,6 +25,13 @@ from scapy.layers.inet import IP, TCP, UDP
 
 PROTOCOL_NAMES = {1: 'ICMP', 6: 'TCP', 17: 'UDP'}
 
+# Ephemeral ports (>32767) niet als baseline-afwijking behandelen: dit zijn
+# doorgaans tijdelijke source-poorten van de andere kant van de verbinding
+# (o.a. reply-verkeer van een server terug naar een client), geen stabiele
+# service-poorten van het gemonitorde apparaat. Zelfde conventie als
+# detector.py's _detect_port_scan() en device_discovery.py.
+EPHEMERAL_PORT_THRESHOLD = 32767
+
 
 class BaselineDeviationDetector:
     """Signaleert afwijkingen van het geleerde gedragsprofiel per apparaat."""
@@ -208,7 +215,8 @@ class BaselineDeviationDetector:
                         }
                     })
 
-        if dst_port and baseline['outbound_ports'] and dst_port not in baseline['outbound_ports']:
+        if (dst_port and dst_port <= EPHEMERAL_PORT_THRESHOLD
+                and baseline['outbound_ports'] and dst_port not in baseline['outbound_ports']):
             key = (src_ip, 'BASELINE_NEW_PORT', dst_port)
             if self._should_alert(key):
                 threats.append({
@@ -249,7 +257,8 @@ class BaselineDeviationDetector:
         # eerder inbound verkeer geaccepteerd) - anders is elke inbound
         # connectie "nieuw" en levert dit alleen ruis op naast port scan/
         # connection flood detectie die dat al dekt.
-        if baseline['inbound_ports'] and src_port and src_port not in baseline['inbound_ports']:
+        if (baseline['inbound_ports'] and src_port and src_port <= EPHEMERAL_PORT_THRESHOLD
+                and src_port not in baseline['inbound_ports']):
             key = (dst_ip, 'BASELINE_NEW_PORT', src_port)
             if self._should_alert(key):
                 threats.append({
