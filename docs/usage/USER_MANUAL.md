@@ -1545,7 +1545,7 @@ wireshark alert_malicious_ja3_fingerprint_*.pcap
 ## Next Steps
 
 **Learn More:**
-- [DETECTION_FEATURES.md](DETECTION_FEATURES.md) - All detection capabilities
+- [DETECTION_FEATURES.md](../features/DETECTION_FEATURES.md) - All detection capabilities
 - [DASHBOARD.md](DASHBOARD.md) - Dashboard features in detail
 - [CONFIG_GUIDE.md](CONFIG_GUIDE.md) - Configuration reference
 

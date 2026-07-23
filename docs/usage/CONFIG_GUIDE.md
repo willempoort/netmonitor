@@ -532,6 +532,6 @@ sudo systemctl restart netmonitor
 ## 📚 Additional Resources
 
 - **Full Installation Guide**: `COMPLETE_INSTALLATION.md`
-- **Remote Sensor Setup**: `REMOTE_SENSORS.md`
+- **Remote Sensor Setup**: `../deployment/SENSOR_DEPLOYMENT.md`
 - **Detection Features**: `DETECTION_FEATURES.md`
 - **Sensor Authentication**: `setup_sensor_auth.py`

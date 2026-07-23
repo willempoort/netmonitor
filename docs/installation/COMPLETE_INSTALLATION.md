@@ -1080,11 +1080,11 @@ sudo nano /etc/logrotate.d/netmonitor
 
 ## 📚 **Additional Documentation**
 
-- **Detection Features**: [DETECTION_FEATURES.md](DETECTION_FEATURES.md)
-- **Remote Sensors**: [REMOTE_SENSORS.md](REMOTE_SENSORS.md)
-- **Dashboard Guide**: [DASHBOARD.md](DASHBOARD.md)
-- **MCP API**: [MCP_HTTP_API.md](MCP_HTTP_API.md)
-- **Production**: [PRODUCTION.md](PRODUCTION.md)
+- **Detection Features**: [DETECTION_FEATURES.md](../features/DETECTION_FEATURES.md)
+- **Remote Sensors**: [SENSOR_DEPLOYMENT.md](../deployment/SENSOR_DEPLOYMENT.md)
+- **Dashboard Guide**: [DASHBOARD.md](../usage/DASHBOARD.md)
+- **MCP API**: [mcp_server/README.md](../../mcp_server/README.md)
+- **Production**: [PRODUCTION.md](../deployment/PRODUCTION.md)
 
 ---
 

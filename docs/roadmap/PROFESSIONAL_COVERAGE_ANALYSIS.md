@@ -2,12 +2,12 @@
 
 **IMPORTANT:** This is a **development roadmap and planning document**, not a current status report.
 
-**For actual current status, see:** [../STATUS_VERIFICATIE.md](../STATUS_VERIFICATIE.md)
+**For actual current status, see the "Actual status (verified)" section below.**
 
 **What this document describes:**
 - ✅ Development phases (9 phases planned and implemented)
 - ✅ Target capabilities (where we want to be)
-- ⚠️ NOT all features enabled by default (see STATUS_VERIFICATIE.md)
+- ⚠️ NOT all features enabled by default (see below)
 
 **Actual status (verified):**
 - MITRE Coverage: ~8% (15 techniques, not 92%)

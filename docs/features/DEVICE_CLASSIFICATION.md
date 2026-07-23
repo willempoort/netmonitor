@@ -922,7 +922,7 @@ Use the add_template_behavior tool via Claude Code or other MCP clients
 ## 📚 Gerelateerde Documentatie
 
 - [Detection Features](DETECTION_FEATURES.md) - Threat detection capabilities
-- [MCP HTTP API](MCP_HTTP_API.md) - API documentatie
+- [MCP Server](../../mcp_server/README.md) - API documentatie
 - [Config Guide](../usage/CONFIG_GUIDE.md) - Configuratie opties
 - [Admin Manual](../usage/ADMIN_MANUAL.md) - Beheer en troubleshooting
 

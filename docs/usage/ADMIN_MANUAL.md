@@ -144,7 +144,7 @@ The installation script will:
 
 ### Manual Installation
 
-See [COMPLETE_INSTALLATION.md](COMPLETE_INSTALLATION.md) for step-by-step manual installation.
+See [COMPLETE_INSTALLATION.md](../installation/COMPLETE_INSTALLATION.md) for step-by-step manual installation.
 
 ### Post-Installation
 
@@ -206,7 +206,7 @@ The script will prompt for:
 
 ### Manual Sensor Setup
 
-See [SENSOR_DEPLOYMENT.md](SENSOR_DEPLOYMENT.md) for manual sensor configuration.
+See [SENSOR_DEPLOYMENT.md](../deployment/SENSOR_DEPLOYMENT.md) for manual sensor configuration.
 
 ### Minimal Sensor Configuration
 
@@ -2394,7 +2394,7 @@ Before deploying to production:
    - Use reverse proxy (nginx/Apache) for HTTPS
    - Get free SSL cert from Let's Encrypt
    - Terminate SSL at proxy for both dashboard and MCP API
-   - Example nginx config in [PRODUCTION.md](PRODUCTION.md)
+   - Example nginx config in [PRODUCTION.md](../deployment/PRODUCTION.md)
 
 ### Access Control
 
@@ -2910,7 +2910,7 @@ For production environments:
 - Deploy multiple SOC servers with load balancer
 - Implement database failover
 - Deploy redundant MCP API instances
-- See [PRODUCTION.md](PRODUCTION.md) for details
+- See [PRODUCTION.md](../deployment/PRODUCTION.md) for details
 
 ### Integration
 
@@ -2929,7 +2929,7 @@ For production environments:
 - Query alerts via natural language
 - Automated security analysis and response
 - Custom AI workflows via API
-- See [mcp_server/README.md](mcp_server/README.md)
+- See [mcp_server/README.md](../../mcp_server/README.md)
 
 **SIEM Integration:**
 - Export alerts via MCP API
@@ -2956,10 +2956,10 @@ See [USER_MANUAL.md](USER_MANUAL.md) for daily usage guide.
 
 **For Detailed Topics:**
 - [DASHBOARD.md](DASHBOARD.md) - Dashboard features
-- [DETECTION_FEATURES.md](DETECTION_FEATURES.md) - Detection capabilities
+- [DETECTION_FEATURES.md](../features/DETECTION_FEATURES.md) - Detection capabilities
 - [CONFIG_GUIDE.md](CONFIG_GUIDE.md) - Configuration reference
-- [PRODUCTION.md](PRODUCTION.md) - Production deployment
-- [mcp_server/README.md](mcp_server/README.md) - MCP server documentation
+- [PRODUCTION.md](../deployment/PRODUCTION.md) - Production deployment
+- [mcp_server/README.md](../../mcp_server/README.md) - MCP server documentation
 
 ---
 
