@@ -218,4 +218,4 @@ Grow at your pace            →    NetMonitor (21→74 detections) ✅✅
 **Remember: NetMonitor is the AI Scout that makes your existing tools smarter.**
 **Not a replacement. A force multiplier.**
 
-*Voor details: docs/STATUS_VERIFICATIE.md | willem@awimax.nl*
+*Voor details: willem@awimax.nl*

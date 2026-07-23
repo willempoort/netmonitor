@@ -437,7 +437,7 @@ Alle configuration changes via dashboard → automatisch naar sensors.
 Dashboard → Config tab → Wijzig parameter → Opslaan → Auto-sync naar sensors
 ```
 
-Zie [DASHBOARD.md](DASHBOARD.md) voor complete management guide.
+Zie [DASHBOARD.md](../usage/DASHBOARD.md) voor complete management guide.
 
 ## 📈 Production Best Practices
 

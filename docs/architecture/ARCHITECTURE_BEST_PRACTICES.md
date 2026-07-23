@@ -461,10 +461,10 @@ Location A (HQ)                Location B (Branch)
 
 ## 📚 Gerelateerde Documentatie
 
-- **[SENSOR_DEPLOYMENT.md](SENSOR_DEPLOYMENT.md)** - Sensor installatie stap-voor-stap
-- **[CONFIG_GUIDE.md](CONFIG_GUIDE.md)** - Configuratie opties
-- **[ADMIN_MANUAL.md](ADMIN_MANUAL.md)** - SOC server beheer
-- **[README.md](README.md)** - Algemene documentatie
+- **[SENSOR_DEPLOYMENT.md](../deployment/SENSOR_DEPLOYMENT.md)** - Sensor installatie stap-voor-stap
+- **[CONFIG_GUIDE.md](../usage/CONFIG_GUIDE.md)** - Configuratie opties
+- **[ADMIN_MANUAL.md](../usage/ADMIN_MANUAL.md)** - SOC server beheer
+- **[README.md](../../README.md)** - Algemene documentatie
 
 ---
 

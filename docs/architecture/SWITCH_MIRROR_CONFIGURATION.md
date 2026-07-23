@@ -506,9 +506,9 @@ tcpdump -r /tmp/test.pcap -n | head -50
 ---
 
 **Gerelateerd:**
-- [ARCHITECTURE_BEST_PRACTICES.md](../ARCHITECTURE_BEST_PRACTICES.md) - Netwerk architectuur
-- [SENSOR_DEPLOYMENT.md](../SENSOR_DEPLOYMENT.md) - Sensor installatie
-- [README.md](../README.md) - Hoofddocumentatie
+- [ARCHITECTURE_BEST_PRACTICES.md](ARCHITECTURE_BEST_PRACTICES.md) - Netwerk architectuur
+- [SENSOR_DEPLOYMENT.md](../deployment/SENSOR_DEPLOYMENT.md) - Sensor installatie
+- [README.md](../../README.md) - Hoofddocumentatie
 
 **Versie:** 1.0
 **Datum:** 2024-12-15

@@ -1077,7 +1077,6 @@ Onze experts helpen bij productie-implementatie.
 - **Email:** [willem@awimax.nl]
 - **GitHub:** [github.com/willempoort/netmonitor]
 - **Documentatie:** [docs/ folder]
-- **Actuele Status:** [docs/STATUS_VERIFICATIE.md]
 
 ---
 
