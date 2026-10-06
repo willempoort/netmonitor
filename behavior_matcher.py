@@ -460,6 +460,9 @@ class BehaviorMatcher:
             if params.get('high_bandwidth') or params.get('receives_streams'):
                 if threat_type in ('HIGH_INBOUND_VOLUME', 'UNUSUAL_PACKET_SIZE', 'BANDWIDTH_SATURATION'):
                     return True, "High inbound bandwidth is expected"
+            if params.get('voice_traffic'):
+                if threat_type == 'UNUSUAL_PACKET_SIZE':
+                    return True, "Small fixed-size RTP/SIP packets are expected for voice traffic"
 
         # Explicit alert type suppression (for management interfaces, etc.)
         elif behavior_type == 'suppress_alert_types':
@@ -589,6 +592,9 @@ class BehaviorMatcher:
             if params.get('continuous'):
                 if threat_type in ('BEACONING', 'HIGH_OUTBOUND_VOLUME'):
                     return True, "Continuous streaming is expected"
+            if params.get('voice_traffic'):
+                if threat_type == 'UNUSUAL_PACKET_SIZE':
+                    return True, "Small fixed-size RTP/SIP packets are expected for voice traffic"
 
         # Connection behavior matching
         elif behavior_type == 'connection_behavior':
