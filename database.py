@@ -694,7 +694,8 @@ class DatabaseManager:
                     CONSTRAINT valid_behavior_type CHECK (behavior_type IN (
                         'allowed_ports', 'allowed_protocols', 'allowed_sources',
                         'expected_destinations', 'traffic_pattern', 'connection_behavior',
-                        'dns_behavior', 'time_restrictions', 'bandwidth_limit'
+                        'dns_behavior', 'time_restrictions', 'bandwidth_limit',
+                        'suppress_alert_types'
                     )),
                     CONSTRAINT valid_action CHECK (action IN ('allow', 'alert', 'suppress'))
                 );
@@ -943,6 +944,29 @@ class DatabaseManager:
                                 'allowed_ports', 'allowed_protocols', 'allowed_sources',
                                 'expected_destinations', 'traffic_pattern', 'connection_behavior',
                                 'dns_behavior', 'time_restrictions', 'bandwidth_limit'
+                            )
+                        );
+                    END IF;
+                END $$;
+            """)
+
+            # Migration: Update valid_behavior_type constraint to include suppress_alert_types
+            # This is needed for templates that explicitly suppress specific alert types
+            cursor.execute("""
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.check_constraints
+                        WHERE constraint_name = 'valid_behavior_type'
+                        AND check_clause NOT LIKE '%suppress_alert_types%'
+                    ) THEN
+                        ALTER TABLE template_behaviors DROP CONSTRAINT valid_behavior_type;
+                        ALTER TABLE template_behaviors ADD CONSTRAINT valid_behavior_type CHECK (
+                            behavior_type IN (
+                                'allowed_ports', 'allowed_protocols', 'allowed_sources',
+                                'expected_destinations', 'traffic_pattern', 'connection_behavior',
+                                'dns_behavior', 'time_restrictions', 'bandwidth_limit',
+                                'suppress_alert_types'
                             )
                         );
                     END IF;
@@ -5155,6 +5179,7 @@ class DatabaseManager:
                     {'type': 'allowed_ports', 'params': {'ports': [80, 443, 5060, 5061, 5080, 5443, 8089, 10000, 20000]}, 'action': 'allow'},
                     {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'SIP', 'RTP', 'SRTP']}, 'action': 'allow'},
                     {'type': 'traffic_pattern', 'params': {'continuous': True, 'voice_traffic': True}, 'action': 'allow'},
+                    {'type': 'suppress_alert_types', 'params': {'alert_types': ['UNUSUAL_PACKET_SIZE']}, 'action': 'allow'},
                 ]
             },
             {
@@ -5167,6 +5192,7 @@ class DatabaseManager:
                     {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP', 'SIP', 'RTP', 'SRTP']}, 'action': 'allow'},
                     {'type': 'connection_behavior', 'params': {'periodic': True, 'continuous': True}, 'action': 'allow'},
                     {'type': 'traffic_pattern', 'params': {'low_bandwidth': True, 'voice_traffic': True}, 'action': 'allow'},
+                    {'type': 'suppress_alert_types', 'params': {'alert_types': ['UNUSUAL_PACKET_SIZE']}, 'action': 'allow'},
                 ]
             },
             {
@@ -5267,6 +5293,20 @@ class DatabaseManager:
                     {'type': 'allowed_ports', 'params': {'ports': [80, 443, 8080, 8123, 8443, 21063], 'direction': 'inbound'}, 'action': 'allow'},
                     {'type': 'allowed_sources', 'params': {'internal': True}, 'action': 'allow'},
                     {'type': 'connection_behavior', 'params': {'high_connection_rate': True, 'accepts_connections': True, 'api_server': True}, 'action': 'allow'},
+                ]
+            },
+            {
+                'name': 'HPE iLO',
+                'description': 'HPE Integrated Lights-Out remote management controller',
+                'icon': 'server',
+                'category': 'infrastructure',
+                'behaviors': [
+                    # Inbound - services iLO listens on
+                    {'type': 'allowed_ports', 'params': {'ports': [22, 80, 161, 443, 623, 1900, 17988, 17990], 'direction': 'inbound'}, 'action': 'allow'},
+                    # Outbound - services iLO connects to
+                    {'type': 'allowed_ports', 'params': {'ports': [25, 53, 67, 68, 88, 123, 137, 443, 514, 547, 636, 1900, 7906], 'direction': 'outbound'}, 'action': 'allow'},
+                    {'type': 'allowed_protocols', 'params': {'protocols': ['TCP', 'UDP']}, 'action': 'allow'},
+                    {'type': 'allowed_sources', 'params': {'internal': True}, 'action': 'allow'},
                 ]
             },
         ]
