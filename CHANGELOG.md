@@ -15,6 +15,11 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.6.1] - 2026-10-06
+
+### Added
+- **Remote sensors rapporteren nu ontdekte devices aan de SOC-server.** `sensor_client.py` houdt per packet een lichtgewicht device-cache bij (IP, MAC, first/last seen) voor alle interne IPs. Elke 300 seconden (configureerbaar via `performance.device_sync_interval`) worden de devices gesynchroniseerd via het nieuwe `POST /api/sensors/<id>/devices` endpoint. Hierdoor verschijnen devices op afgelegen netwerksegmenten (bijv. VoIP/172.16.x.x) automatisch in Device Classification en kunnen device-templates worden toegewezen voor alert-suppressie.
+
 ## [2.6.0] - 2026-10-06
 
 ### Added

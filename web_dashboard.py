@@ -1493,6 +1493,59 @@ def api_submit_sensor_traffic(sensor_id):
         logger.error(f"Error submitting traffic metrics from sensor {sensor_id}: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/sensors/<sensor_id>/devices', methods=['POST'])
+def api_submit_sensor_devices(sensor_id):
+    """Register devices discovered by a remote sensor
+
+    Expected JSON format:
+    {
+        "devices": [
+            {
+                "ip": "172.16.4.77",
+                "mac": "aa:bb:cc:dd:ee:ff",
+                "hostname": "sip-phone-01",
+                "first_seen": "2026-10-06T12:00:00",
+                "last_seen": "2026-10-06T12:05:00"
+            }
+        ]
+    }
+    """
+    try:
+        data = request.get_json()
+        devices = data.get('devices', []) if data else []
+
+        if not isinstance(devices, list):
+            return jsonify({'success': False, 'error': 'devices must be an array'}), 400
+
+        db.update_sensor_heartbeat(sensor_id)
+
+        registered = 0
+        updated = 0
+        for dev in devices:
+            ip = dev.get('ip')
+            if not ip:
+                continue
+            existing = db.get_device_by_ip(ip, sensor_id=sensor_id)
+            if existing:
+                updated += 1
+            else:
+                result = db.register_device(
+                    ip_address=ip,
+                    sensor_id=sensor_id,
+                    mac_address=dev.get('mac'),
+                    hostname=dev.get('hostname'),
+                    created_by='sensor'
+                )
+                if result:
+                    registered += 1
+
+        return jsonify({'success': True, 'registered': registered, 'updated': updated})
+
+    except Exception as e:
+        logger.error(f"Error submitting devices from sensor {sensor_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/sensors/<sensor_id>/alerts', methods=['POST'])
 def api_submit_sensor_alerts(sensor_id):
     """Submit alerts from remote sensor (batch)
