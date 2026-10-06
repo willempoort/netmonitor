@@ -15,6 +15,16 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.6.0] - 2026-10-06
+
+### Added
+- **HPE iLO builtin device-template.** Nieuw template voor HPE Integrated Lights-Out remote management controllers, met correcte poortdefinities: inbound (SSH 22, HTTP 80, HTTPS 443, SNMP 161, IPMI 623, SSDP 1900, Virtual Media 17988, Remote Console 17990) en outbound (SMTP 25, DNS 53, DHCP 67/68, Kerberos 88, NTP 123, NetBIOS 137, HTTPS 443, Syslog 514, DHCPv6 547, LDAP SSL 636, SSDP 1900, Remote Support 7906).
+- **`suppress_alert_types` als nieuw behavior-type voor device-templates.** Maakt het mogelijk om specifieke alert-typen expliciet te onderdrukken per template (bijv. `UNUSUAL_PACKET_SIZE` voor VoIP-devices). Schema v33 voegt het type toe aan de `valid_behavior_type` constraint inclusief automatische migratie voor bestaande installaties.
+- **PBX Server en SIP Phone templates krijgen `suppress_alert_types: [UNUSUAL_PACKET_SIZE]`.** Kleine, gelijkmatige RTP/SIP-pakketten (G.711: 160–320 bytes, G.729: 33 bytes) worden nu niet meer als verdacht gemarkeerd.
+
+### Fixed
+- **`UNUSUAL_PACKET_SIZE` vals positief voor SIP/VoIP-devices.** `behavior_matcher` onderdrukte `UNUSUAL_PACKET_SIZE` niet voor `traffic_pattern`-behaviors met `voice_traffic: true`, waardoor SIP-telefoons en PBX-servers structureel valse alarmen genereerden ondanks correct toegewezen template.
+
 ## [2.5.2] - 2026-07-22
 
 ### Fixed
