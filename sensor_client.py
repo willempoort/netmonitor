@@ -248,6 +248,10 @@ class SensorClient:
         # Per-IP statistics for top talkers (reset after each send)
         self.ip_stats = {}
 
+        # Discovered devices cache: ip -> {ip, mac, hostname, first_seen, last_seen}
+        self.discovered_devices = {}
+        self._device_lock = __import__('threading').Lock()
+
         # Bandwidth tracking
         self.bytes_received = 0
         self.bytes_sent = 0
@@ -1461,6 +1465,32 @@ class SensorClient:
             for alert in reversed(alerts):
                 self.alert_buffer.appendleft(alert)
 
+    def _upload_devices(self):
+        """Upload discovered devices to SOC server for device classification"""
+        with self._device_lock:
+            if not self.discovered_devices:
+                return
+            devices = list(self.discovered_devices.values())
+
+        try:
+            response = requests.post(
+                f"{self.server_url}/api/sensors/{self.sensor_id}/devices",
+                headers=self._get_headers(),
+                json={'devices': devices},
+                timeout=30,
+                verify=self.ssl_verify
+            )
+            if response.status_code == 200:
+                result = response.json()
+                self.logger.info(
+                    f"✓ Devices synced: {result.get('registered', 0)} new, "
+                    f"{result.get('updated', 0)} updated ({len(devices)} total)"
+                )
+            else:
+                self.logger.warning(f"Failed to upload devices: {response.text}")
+        except Exception as e:
+            self.logger.error(f"Error uploading devices: {e}")
+
     def _handle_packet(self, packet):
         """Process captured packet"""
         try:
@@ -1533,6 +1563,33 @@ class SensorClient:
                     self.pcap_exporter.add_packet(packet)
                 except Exception:
                     pass  # Don't log every packet error
+
+            # Track discovered devices (internal IPs only)
+            if packet.haslayer(IP):
+                from scapy.layers.l2 import Ether
+                ip_layer = packet[IP]
+                now_ts = datetime.now().isoformat()
+                for tracked_ip in (ip_layer.src, ip_layer.dst):
+                    if self.is_internal_ip(tracked_ip):
+                        mac = None
+                        if packet.haslayer(Ether):
+                            candidate = packet[Ether].src if tracked_ip == ip_layer.src else packet[Ether].dst
+                            if candidate and candidate not in ('ff:ff:ff:ff:ff:ff', '00:00:00:00:00:00'):
+                                mac = candidate
+                        with self._device_lock:
+                            if tracked_ip not in self.discovered_devices:
+                                self.discovered_devices[tracked_ip] = {
+                                    'ip': tracked_ip,
+                                    'mac': mac,
+                                    'hostname': None,
+                                    'first_seen': now_ts,
+                                    'last_seen': now_ts,
+                                }
+                            else:
+                                entry = self.discovered_devices[tracked_ip]
+                                entry['last_seen'] = now_ts
+                                if mac and not entry['mac']:
+                                    entry['mac'] = mac
 
             # Detect threats
             threats = self.detector.analyze_packet(packet)
@@ -1634,6 +1691,7 @@ class SensorClient:
             last_command_poll = time.time()
             last_whitelist_update = time.time()
             last_config_update = time.time()
+            last_device_sync = time.time()
 
             while self.running:
                 now = time.time()
@@ -1678,6 +1736,12 @@ class SensorClient:
                 if now - last_config_update >= config_interval:
                     self._update_config()
                     last_config_update = now
+
+                # Sync discovered devices every X seconds (configurable, default 300s)
+                device_sync_interval = self.config.get('performance', {}).get('device_sync_interval', 300)
+                if now - last_device_sync >= device_sync_interval:
+                    self._upload_devices()
+                    last_device_sync = now
 
                 time.sleep(1)
 
