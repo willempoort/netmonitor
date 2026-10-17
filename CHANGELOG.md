@@ -15,6 +15,12 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.6.3] - 2026-10-17
+
+### Fixed
+- **Remote sensor `update` command faalde altijd met "Read-only file system".** De sensor-service draait met `ProtectSystem=strict` en zonder `CAP_SYS_ADMIN`, waardoor `/opt/netmonitor` binnen de service read-only is en `mount -o remount,rw /` stil faalde. De git pull draait nu via `systemd-run --wait --pipe` als transient unit buiten de sandbox (fallback: direct, zoals voorheen).
+- **`update` command zette een beschrijfbaar root-filesystem na afloop op read-only.** De remount naar `ro` gebeurt nu alleen als `/` vóór de update ook al read-only was.
+
 ## [2.6.2] - 2026-10-17
 
 ### Fixed
