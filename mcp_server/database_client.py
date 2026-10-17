@@ -348,20 +348,32 @@ class MCPDatabaseClient:
                     direction_filter = "AND direction = %s"
                     params.insert(1, direction)
 
+                # Per IP alleen de sensor met het meeste verkeer: hetzelfde IP wordt
+                # vaak door meerdere sensors gezien en zou anders dubbel tellen
                 cursor.execute(f'''
-                    SELECT
-                        ip_address::text as ip_address,
-                        hostname,
-                        direction,
-                        SUM(packet_count) as total_packets,
-                        SUM(byte_count) as total_bytes,
-                        COUNT(*) as observation_count,
-                        MAX(timestamp) as last_seen,
-                        MIN(timestamp) as first_seen
-                    FROM top_talkers
-                    WHERE timestamp > %s
-                    {direction_filter}
-                    GROUP BY ip_address, hostname, direction
+                    WITH per_sensor AS (
+                        SELECT
+                            ip_address,
+                            sensor_id,
+                            MAX(MAX(hostname)) OVER (PARTITION BY ip_address) as hostname,
+                            MAX(direction) as direction,
+                            SUM(packet_count) as total_packets,
+                            SUM(byte_count) as total_bytes,
+                            COUNT(*) as observation_count,
+                            MAX(timestamp) as last_seen,
+                            MIN(timestamp) as first_seen
+                        FROM top_talkers
+                        WHERE timestamp > %s
+                        {direction_filter}
+                        GROUP BY ip_address, sensor_id
+                    )
+                    SELECT ip_address::text as ip_address, hostname, direction, sensor_id,
+                           total_packets, total_bytes, observation_count, last_seen, first_seen
+                    FROM (
+                        SELECT DISTINCT ON (ip_address) *
+                        FROM per_sensor
+                        ORDER BY ip_address, total_bytes DESC
+                    ) best
                     ORDER BY total_bytes DESC
                     LIMIT %s
                 ''', params)

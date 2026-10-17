@@ -2176,20 +2176,41 @@ class DatabaseManager:
             # Use PostgreSQL NOW() instead of Python datetime to avoid timezone issues
             # Calculate bandwidth in Mbps from total bytes over time period
             # Formula: (bytes * 8 / 1000000) / (minutes * 60) = Mbps
+            # Hetzelfde IP wordt vaak door meerdere sensors gezien (mirror ports op
+            # verschillende segmenten). Optellen over sensors telt dat verkeer dubbel;
+            # neem per IP daarom alleen de sensor die het meeste verkeer zag.
             cursor.execute('''
+                WITH per_sensor AS (
+                    SELECT
+                        ip_address,
+                        sensor_id,
+                        MAX(MAX(hostname)) OVER (PARTITION BY ip_address) as hostname,
+                        SUM(packet_count) as packets,
+                        SUM(byte_count) as bytes,
+                        SUM(outbound_byte_count) as outbound_bytes,
+                        SUM(inbound_byte_count) as inbound_bytes,
+                        MAX(direction) as direction
+                    FROM top_talkers
+                    WHERE timestamp > NOW() - INTERVAL '%s minutes'
+                    GROUP BY ip_address, sensor_id
+                ),
+                best AS (
+                    SELECT DISTINCT ON (ip_address) *
+                    FROM per_sensor
+                    ORDER BY ip_address, bytes DESC
+                )
                 SELECT
                     ip_address::text as ip,
-                    MAX(hostname) as hostname,
-                    SUM(packet_count) as packets,
-                    SUM(byte_count) as bytes,
-                    ROUND((SUM(byte_count) * 8.0 / 1000000.0 / %s / 60.0)::numeric, 2) as mbps,
-                    ROUND((SUM(byte_count) / 1048576.0)::numeric, 2) as total_mb,
-                    ROUND((SUM(outbound_byte_count) / 1048576.0)::numeric, 2) as outbound_mb,
-                    ROUND((SUM(inbound_byte_count) / 1048576.0)::numeric, 2) as inbound_mb,
-                    MAX(direction) as direction
-                FROM top_talkers
-                WHERE timestamp > NOW() - INTERVAL '%s minutes'
-                GROUP BY ip_address
+                    hostname,
+                    sensor_id,
+                    packets,
+                    bytes,
+                    ROUND((bytes * 8.0 / 1000000.0 / %s / 60.0)::numeric, 2) as mbps,
+                    ROUND((bytes / 1048576.0)::numeric, 2) as total_mb,
+                    ROUND((outbound_bytes / 1048576.0)::numeric, 2) as outbound_mb,
+                    ROUND((inbound_bytes / 1048576.0)::numeric, 2) as inbound_mb,
+                    direction
+                FROM best
                 ORDER BY bytes DESC
                 LIMIT %s
             ''', (minutes, minutes, limit))
