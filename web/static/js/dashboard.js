@@ -2152,7 +2152,7 @@ function updateSensorsTable(sensors) {
             <td>${statusBadge}</td>
             <td>
                 <strong>${sensor.hostname}</strong><br>
-                <small class="text-muted">${sensor.sensor_id}</small>
+                <small class="text-muted">${sensor.sensor_id}${sensor.version ? ` · v${sensor.version}` : ''}</small>
             </td>
             <td>
                 ${sensor.location || '<span class="text-muted">-</span>'}<br>

@@ -15,6 +15,11 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.7.0] - 2026-10-17
+
+### Added
+- **Versienummer per sensor in het dashboard.** In de sensorlijst staat nu onder de naam naast de sensor-ID ook de versie die de sensor draait (bijv. `sensor-fb2430 · v2.7.0`). Remote sensors rapporteren hun echte versie uit `version.py` (voorheen hardcoded `1.0.0`), en de SOC-server registreert zichzelf nu ook met versie. Sensors die nog `v1.0.0` tonen draaien code van vóór deze release.
+
 ## [2.6.3] - 2026-10-17
 
 ### Fixed

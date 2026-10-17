@@ -24,6 +24,7 @@ except ImportError:
     print("Error: scapy is niet geïnstalleerd. Installeer met: pip install -r requirements.txt")
     sys.exit(1)
 
+from version import __version__
 from detector import ThreatDetector
 from config_loader import load_config
 from alerts import AlertManager
@@ -1038,6 +1039,7 @@ class NetworkMonitor:
                     hostname=hostname,
                     location=location,
                     ip_address=ip_address,
+                    version=__version__,
                     config=sensor_config
                     # Note: status is automatically set to 'online' by register_sensor()
                 )
