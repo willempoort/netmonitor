@@ -15,6 +15,11 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.7.3] - 2026-10-17
+
+### Fixed
+- **Top Talkers telde verkeer dubbel als meerdere sensors hetzelfde IP zagen.** Verkeer van een IP dat op meerdere mirror ports langskomt (bijv. SOC-server + remote sensors) werd over alle sensors opgeteld. Per IP wordt nu alleen de sensor meegenomen die het meeste verkeer zag; IN + OUT tellen daardoor weer op tot het totaal. Geldt voor het dashboard (`get_top_talkers()`) en de MCP-tool `get_top_talkers`, die nu ook `sensor_id` teruggeven.
+
 ## [2.7.2] - 2026-10-17
 
 ### Fixed
