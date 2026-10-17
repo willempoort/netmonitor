@@ -682,6 +682,52 @@ class SensorClient:
             self.logger.warning(f"Failed to update whitelist from server: {e}")
             self.logger.info("Continuing with config-only whitelist...")
 
+    def _detect_ip_address(self):
+        """Huidig IPv4-adres van de monitoring-interface (fallback: eerste non-loopback)"""
+        # Get IP address from the monitoring interface (not loopback)
+        ip_address = None
+        try:
+            interface_config = self.config.get('interface', 'eth0')
+            net_addrs = psutil.net_if_addrs()
+
+            # Parse interface (handle comma-separated list)
+            interfaces_to_check = []
+            if interface_config in ('any', 'all') or interface_config is None:
+                # Will use fallback logic below
+                pass
+            elif isinstance(interface_config, str) and ',' in interface_config:
+                # Multiple interfaces - use first one
+                interfaces_to_check = [iface.strip() for iface in interface_config.split(',')]
+            else:
+                # Single interface
+                interfaces_to_check = [interface_config]
+
+            # Try to get IP from specified interfaces
+            for iface in interfaces_to_check:
+                if iface in net_addrs:
+                    for addr in net_addrs[iface]:
+                        if addr.family == socket.AF_INET:  # IPv4
+                            ip_address = addr.address
+                            break
+                if ip_address:
+                    break
+
+            # Fallback: try to get any non-loopback IP
+            if not ip_address:
+                for iface, addrs in net_addrs.items():
+                    if iface.startswith('lo'):  # Skip loopback
+                        continue
+                    for addr in addrs:
+                        if addr.family == socket.AF_INET:
+                            ip_address = addr.address
+                            break
+                    if ip_address:
+                        break
+        except Exception as e:
+            self.logger.warning(f"Could not detect IP address: {e}")
+            ip_address = None
+        return ip_address
+
     def _register_sensor(self):
         """Register sensor with central SOC server"""
         self.logger.info("Registering sensor with SOC server...")
@@ -690,48 +736,7 @@ class SensorClient:
             # Get sensor information
             hostname = socket.gethostname()
 
-            # Get IP address from the monitoring interface (not loopback)
-            ip_address = None
-            try:
-                interface_config = self.config.get('interface', 'eth0')
-                net_addrs = psutil.net_if_addrs()
-
-                # Parse interface (handle comma-separated list)
-                interfaces_to_check = []
-                if interface_config in ('any', 'all') or interface_config is None:
-                    # Will use fallback logic below
-                    pass
-                elif isinstance(interface_config, str) and ',' in interface_config:
-                    # Multiple interfaces - use first one
-                    interfaces_to_check = [iface.strip() for iface in interface_config.split(',')]
-                else:
-                    # Single interface
-                    interfaces_to_check = [interface_config]
-
-                # Try to get IP from specified interfaces
-                for iface in interfaces_to_check:
-                    if iface in net_addrs:
-                        for addr in net_addrs[iface]:
-                            if addr.family == socket.AF_INET:  # IPv4
-                                ip_address = addr.address
-                                break
-                    if ip_address:
-                        break
-
-                # Fallback: try to get any non-loopback IP
-                if not ip_address:
-                    for iface, addrs in net_addrs.items():
-                        if iface.startswith('lo'):  # Skip loopback
-                            continue
-                        for addr in addrs:
-                            if addr.family == socket.AF_INET:
-                                ip_address = addr.address
-                                break
-                        if ip_address:
-                            break
-            except Exception as e:
-                self.logger.warning(f"Could not detect IP address: {e}")
-                ip_address = None
+            ip_address = self._detect_ip_address()
 
             # Get version
             try:
@@ -823,9 +828,11 @@ class SensorClient:
     def _send_heartbeat(self):
         """Send heartbeat to server"""
         try:
+            # IP meesturen: DHCP-wijzigingen tijdens runtime anders pas zichtbaar na herstart
             response = requests.post(
                 f"{self.server_url}/api/sensors/{self.sensor_id}/heartbeat",
                 headers=self._get_headers(),
+                json={'ip_address': self._detect_ip_address()},
                 timeout=5,
                 verify=self.ssl_verify
             )
@@ -1197,7 +1204,8 @@ class SensorClient:
                     'packets_captured': self.packets_captured,
                     'alerts_sent': self.alerts_sent,
                     'network_interface': self.config.get('interface', 'unknown'),
-                    'bandwidth_mbps': round(mbps, 2)  # Add bandwidth in Mbps
+                    'bandwidth_mbps': round(mbps, 2),  # Add bandwidth in Mbps
+                    'ip_address': self._detect_ip_address()
                 },
                 timeout=10,
                 verify=self.ssl_verify

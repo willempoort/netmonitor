@@ -1396,7 +1396,8 @@ def api_delete_sensor(sensor_id):
 def api_sensor_heartbeat(sensor_id):
     """Update sensor heartbeat"""
     try:
-        success = db.update_sensor_heartbeat(sensor_id)
+        data = request.get_json(silent=True) or {}
+        success = db.update_sensor_heartbeat(sensor_id, ip_address=data.get('ip_address'))
         if success:
             return jsonify({'success': True})
         else:
@@ -1412,7 +1413,7 @@ def api_submit_sensor_metrics(sensor_id):
         data = request.get_json()
 
         # Update heartbeat
-        db.update_sensor_heartbeat(sensor_id)
+        db.update_sensor_heartbeat(sensor_id, ip_address=data.get('ip_address'))
 
         # Save metrics
         success = db.save_sensor_metrics(
