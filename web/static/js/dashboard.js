@@ -1979,7 +1979,7 @@ function updateTopTalkers(talkers) {
     const tbody = document.getElementById('top-talkers-table');
 
     if (!talkers || talkers.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No data</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No data</td></tr>';
         return;
     }
 
@@ -1988,8 +1988,13 @@ function updateTopTalkers(talkers) {
     talkers.forEach(talker => {
         const row = document.createElement('tr');
 
-        const inMb = parseFloat(talker.inbound_mb || 0).toFixed(2);
-        const outMb = parseFloat(talker.outbound_mb || 0).toFixed(2);
+        const inVal = parseFloat(talker.inbound_mb || 0);
+        const outVal = parseFloat(talker.outbound_mb || 0);
+        const totalMb = parseFloat(talker.total_mb ?? talker.mb ?? (inVal + outVal)).toFixed(2);
+        // Oudere sensors leveren alleen totalen: toon dan '–' i.p.v. misleidende 0.00
+        const hasSplit = inVal > 0 || outVal > 0;
+        const inMb = hasSplit ? `${inVal.toFixed(2)} MB` : '–';
+        const outMb = hasSplit ? `${outVal.toFixed(2)} MB` : '–';
 
         // Support both 'ip' and 'ip_address' for backwards compatibility
         const ipAddress = talker.ip || talker.ip_address || 'unknown';
@@ -2000,8 +2005,9 @@ function updateTopTalkers(talkers) {
                 ${talker.hostname && talker.hostname !== ipAddress ?
                   `<br><small class="text-muted">${talker.hostname}</small>` : ''}
             </td>
-            <td class="text-end text-info"><small>${inMb} MB</small></td>
-            <td class="text-end text-warning"><small>${outMb} MB</small></td>
+            <td class="text-end text-info"><small>${inMb}</small></td>
+            <td class="text-end text-warning"><small>${outMb}</small></td>
+            <td class="text-end"><small>${totalMb} MB</small></td>
         `;
 
         tbody.appendChild(row);

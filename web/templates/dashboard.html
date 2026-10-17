@@ -951,11 +951,12 @@
                                         <th>IP/Hostname</th>
                                         <th class="text-end"><i class="bi bi-arrow-down text-info"></i> IN</th>
                                         <th class="text-end"><i class="bi bi-arrow-up text-warning"></i> OUT</th>
+                                        <th class="text-end">Totaal</th>
                                     </tr>
                                 </thead>
                                 <tbody id="top-talkers-table">
                                     <tr>
-                                        <td colspan="3" class="text-center text-muted">Loading...</td>
+                                        <td colspan="4" class="text-center text-muted">Loading...</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -2596,7 +2597,7 @@
     </script>
 
     <!-- Custom JS - Load last with defer -->
-    <script src="{{ url_for('static', filename='js/dashboard.js') }}?v=14" defer></script>
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}?v=15" defer></script>
     <script src="{{ url_for('static', filename='js/config-management.js')}}?v=7" defer></script>
     <script src="{{ url_for('static', filename='js/device-classification.js') }}?v=12" defer></script>
 
