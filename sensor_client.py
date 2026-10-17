@@ -734,7 +734,10 @@ class SensorClient:
                 ip_address = None
 
             # Get version
-            version = "1.0.0"  # TODO: Get from package
+            try:
+                from version import __version__ as version
+            except ImportError:
+                version = None
 
             # Get available network interfaces with PROMISC mode status
             available_interfaces = []
