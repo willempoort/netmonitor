@@ -13,6 +13,8 @@ import sys
 import time
 import logging
 import socket
+import shlex
+import shutil
 import psutil
 import requests
 import argparse
@@ -1015,35 +1017,45 @@ class SensorClient:
                     # Set GIT_SSH_COMMAND to use specific key (needed when running as systemd service)
                     ssh_cmd = f'export GIT_SSH_COMMAND="ssh -i {ssh_key} -o StrictHostKeyChecking=accept-new"; ' if ssh_key else ''
 
-                    # Build git command with remount for read-only filesystems
                     if branch:
-                        git_cmd = (
-                            f'mount -o remount,rw / 2>/dev/null; '
-                            f'{url_override}'
-                            f'{ssh_cmd}'
-                            f'cd {install_dir} && git fetch origin && git checkout {branch} && git pull origin {branch}; '
-                            f'git_status=$?; '
-                            f'mount -o remount,ro / 2>/dev/null; '
-                            f'exit $git_status'
-                        )
+                        pull_cmd = (f'git fetch origin && git checkout {shlex.quote(branch)} '
+                                    f'&& git pull origin {shlex.quote(branch)}')
                     else:
-                        git_cmd = (
-                            f'mount -o remount,rw / 2>/dev/null; '
-                            f'{url_override}'
-                            f'{ssh_cmd}'
-                            f'cd {install_dir} && git pull; '
-                            f'git_status=$?; '
-                            f'mount -o remount,ro / 2>/dev/null; '
-                            f'exit $git_status'
-                        )
+                        pull_cmd = 'git pull'
+
+                    # Remount alleen als / read-only is, en zet het daarna alleen
+                    # dan weer terug - anders zou een rw-sensor na update ro worden
+                    git_cmd = (
+                        f'was_ro=0; '
+                        f'case "$(findmnt -no OPTIONS / 2>/dev/null)" in ro,*|ro) was_ro=1;; esac; '
+                        f'[ $was_ro = 1 ] && mount -o remount,rw /; '
+                        f'{url_override}'
+                        f'{ssh_cmd}'
+                        f'cd {install_dir} && {pull_cmd}; '
+                        f'git_status=$?; '
+                        f'[ $was_ro = 1 ] && mount -o remount,ro /; '
+                        f'exit $git_status'
+                    )
+
+                    # De service-sandbox (ProtectSystem=strict, geen CAP_SYS_ADMIN)
+                    # maakt /opt/netmonitor read-only en blokkeert remount. Voer de
+                    # git pull daarom uit als transient unit buiten de sandbox.
+                    if shutil.which('systemd-run') and os.path.isdir('/run/systemd/system'):
+                        run_args = [
+                            'systemd-run', '--wait', '--pipe', '--collect', '--quiet',
+                            f'--unit=netmonitor-sensor-update-{command_id}',
+                            'bash', '-c', git_cmd
+                        ]
+                    else:
+                        run_args = ['bash', '-c', git_cmd]
 
                     # Execute git pull
                     git_result = subprocess.run(
-                        git_cmd,
-                        shell=True,
+                        run_args,
                         capture_output=True,
+                        stdin=subprocess.DEVNULL,
                         text=True,
-                        timeout=30
+                        timeout=60
                     )
 
                     if git_result.returncode == 0:
@@ -1076,7 +1088,7 @@ class SensorClient:
                 except subprocess.TimeoutExpired:
                     result = {
                         'success': False,
-                        'message': 'Git pull timed out after 30 seconds'
+                        'message': 'Git pull timed out after 60 seconds'
                     }
                 except Exception as e:
                     result = {
