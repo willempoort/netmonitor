@@ -15,6 +15,11 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.7.2] - 2026-10-17
+
+### Fixed
+- **Dashboard toonde verouderde IP-adressen van sensors.** Het IP werd alleen bij registratie (opstart van de sensor) opgeslagen; kreeg een sensor tijdens runtime via DHCP een nieuw adres, dan bleef het oude in het dashboard staan tot de volgende herstart. Sensors sturen hun actuele IP nu mee met elke heartbeat en metrics-upload, en de server werkt het bij (alleen bij een geldig IP; oudere sensors zonder IP behouden het bestaande adres).
+
 ## [2.7.1] - 2026-10-17
 
 ### Fixed

@@ -8,6 +8,7 @@ Optimized for time-series security data with hypertables and continuous aggregat
 import psycopg2
 from psycopg2 import pool, errors
 from psycopg2.extras import RealDictCursor
+import ipaddress
 import logging
 import json
 import subprocess
@@ -2608,16 +2609,23 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
-    def update_sensor_heartbeat(self, sensor_id: str) -> bool:
-        """Update sensor last_seen timestamp"""
+    def update_sensor_heartbeat(self, sensor_id: str, ip_address: str = None) -> bool:
+        """Update sensor last_seen timestamp (en IP-adres als meegegeven en geldig)"""
+        if ip_address:
+            try:
+                ipaddress.ip_address(ip_address)
+            except ValueError:
+                ip_address = None
+
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute('''
                 UPDATE sensors
-                SET last_seen = NOW(), status = 'online'
+                SET last_seen = NOW(), status = 'online',
+                    ip_address = COALESCE(%s::inet, ip_address)
                 WHERE sensor_id = %s
-            ''', (sensor_id,))
+            ''', (ip_address, sensor_id))
             conn.commit()
             return True
         except Exception as e:
