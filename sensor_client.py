@@ -311,6 +311,11 @@ class SensorClient:
 
         return networks
 
+    @staticmethod
+    def _new_ip_stats(direction: str) -> dict:
+        """Lege per-IP top talker statistieken"""
+        return {'packets': 0, 'bytes': 0, 'inbound_bytes': 0, 'outbound_bytes': 0, 'direction': direction}
+
     def is_internal_ip(self, ip_str: str) -> bool:
         """Check if IP is in internal network"""
         import ipaddress
@@ -1242,6 +1247,8 @@ class SensorClient:
                         'hostname': hostname,
                         'packets': stats['packets'],
                         'bytes': stats['bytes'],
+                        'inbound_bytes': stats['inbound_bytes'],
+                        'outbound_bytes': stats['outbound_bytes'],
                         'direction': stats['direction']
                     })
 
@@ -1524,9 +1531,10 @@ class SensorClient:
 
                     # Track source IP for top talkers
                     if src_ip not in self.ip_stats:
-                        self.ip_stats[src_ip] = {'packets': 0, 'bytes': 0, 'direction': 'outbound'}
+                        self.ip_stats[src_ip] = self._new_ip_stats('outbound')
                     self.ip_stats[src_ip]['packets'] += 1
                     self.ip_stats[src_ip]['bytes'] += packet_size
+                    self.ip_stats[src_ip]['outbound_bytes'] += packet_size
 
                 elif not src_internal and dst_internal:
                     # Inbound
@@ -1535,21 +1543,24 @@ class SensorClient:
 
                     # Track destination IP for top talkers
                     if dst_ip not in self.ip_stats:
-                        self.ip_stats[dst_ip] = {'packets': 0, 'bytes': 0, 'direction': 'inbound'}
+                        self.ip_stats[dst_ip] = self._new_ip_stats('inbound')
                     self.ip_stats[dst_ip]['packets'] += 1
                     self.ip_stats[dst_ip]['bytes'] += packet_size
+                    self.ip_stats[dst_ip]['inbound_bytes'] += packet_size
 
                 elif src_internal and dst_internal:
                     # Internal-to-internal traffic - track both
                     if src_ip not in self.ip_stats:
-                        self.ip_stats[src_ip] = {'packets': 0, 'bytes': 0, 'direction': 'internal'}
+                        self.ip_stats[src_ip] = self._new_ip_stats('internal')
                     self.ip_stats[src_ip]['packets'] += 1
                     self.ip_stats[src_ip]['bytes'] += packet_size
+                    self.ip_stats[src_ip]['outbound_bytes'] += packet_size
 
                     if dst_ip not in self.ip_stats:
-                        self.ip_stats[dst_ip] = {'packets': 0, 'bytes': 0, 'direction': 'internal'}
+                        self.ip_stats[dst_ip] = self._new_ip_stats('internal')
                     self.ip_stats[dst_ip]['packets'] += 1
                     self.ip_stats[dst_ip]['bytes'] += packet_size
+                    self.ip_stats[dst_ip]['inbound_bytes'] += packet_size
 
             # Debug: log high packet rates (every 1000 packets)
             if self.packets_captured % 1000 == 0:

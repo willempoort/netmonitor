@@ -15,6 +15,11 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.6.2] - 2026-10-17
+
+### Fixed
+- **Top Talkers toonde 0.00 MB IN/OUT voor alle IPs.** Remote sensors (`sensor_client.py`) hielden per IP alleen totaal-bytes bij en stuurden geen inbound/outbound-splitsing mee, waardoor `inbound_byte_count`/`outbound_byte_count` altijd 0 waren. Daarnaast rondde de SOC-server (`metrics_collector.py`) de waarden eerst af op MB met 2 decimalen, waardoor elk interval onder ~5 KB als 0 werd opgeslagen. Sensors en SOC-server sturen nu ruwe `inbound_bytes`/`outbound_bytes`; `update_top_talkers()` gebruikt die bij voorkeur en valt alleen voor oudere sensors terug op `*_mb`.
+
 ## [2.6.1] - 2026-10-06
 
 ### Added
