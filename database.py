@@ -2125,6 +2125,13 @@ class DatabaseManager:
 
     def update_top_talkers(self, talkers: List[Dict], sensor_id: str = 'central'):
         """Batch insert top talkers with sensor identification"""
+        def _dir_bytes(talker: Dict, direction: str) -> int:
+            # Ruwe bytes hebben voorkeur; *_mb (afgerond op 2 decimalen) alleen
+            # als fallback voor oudere sensors - kleine waarden worden daar 0
+            if f'{direction}_bytes' in talker:
+                return int(talker.get(f'{direction}_bytes') or 0)
+            return int((talker.get(f'{direction}_mb') or 0) * 1024 * 1024)
+
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
@@ -2138,8 +2145,8 @@ class DatabaseManager:
                     talker.get('packets', 0),
                     talker.get('bytes', 0),
                     talker.get('direction', 'unknown'),
-                    int(talker.get('outbound_mb', 0) * 1024 * 1024),
-                    int(talker.get('inbound_mb', 0) * 1024 * 1024),
+                    _dir_bytes(talker, 'outbound'),
+                    _dir_bytes(talker, 'inbound'),
                 )
                 for talker in talkers
             ]

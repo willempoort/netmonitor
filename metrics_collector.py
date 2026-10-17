@@ -260,6 +260,8 @@ class MetricsCollector:
                 'hostname': hostname,
                 'packets': stats['packets'],
                 'bytes': stats['bytes'],
+                'inbound_bytes': stats['inbound_bytes'],
+                'outbound_bytes': stats['outbound_bytes'],
                 'mb': round(stats['bytes'] / (1024 * 1024), 2),
                 'outbound_mb': round(stats['outbound_bytes'] / (1024 * 1024), 2),
                 'inbound_mb': round(stats['inbound_bytes'] / (1024 * 1024), 2),

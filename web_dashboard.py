@@ -1459,6 +1459,8 @@ def api_submit_sensor_traffic(sensor_id):
                 "hostname": "server.local",
                 "packets": 1234,
                 "bytes": 567890,
+                "inbound_bytes": 500000,
+                "outbound_bytes": 67890,
                 "direction": "inbound"
             }
         ]
