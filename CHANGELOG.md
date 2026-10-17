@@ -15,6 +15,12 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.7.1] - 2026-10-17
+
+### Fixed
+- **Top Talkers-volgorde leek willekeurig.** De lijst wordt gesorteerd op totaal bytes, maar toonde alleen IN/OUT. Sensors op oude code leveren geen IN/OUT-splitsing, waardoor IPs met veel verkeer bovenaan stonden met `0.00 / 0.00 MB`. Er is nu een kolom **Totaal** (waarop gesorteerd wordt), en IN/OUT tonen `–` als de splitsing onbekend is.
+- Cache-buster van `dashboard.js` verhoogd zodat browsers de nieuwe versie laden.
+
 ## [2.7.0] - 2026-10-17
 
 ### Added

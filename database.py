@@ -2182,6 +2182,7 @@ class DatabaseManager:
                     SUM(packet_count) as packets,
                     SUM(byte_count) as bytes,
                     ROUND((SUM(byte_count) * 8.0 / 1000000.0 / %s / 60.0)::numeric, 2) as mbps,
+                    ROUND((SUM(byte_count) / 1048576.0)::numeric, 2) as total_mb,
                     ROUND((SUM(outbound_byte_count) / 1048576.0)::numeric, 2) as outbound_mb,
                     ROUND((SUM(inbound_byte_count) / 1048576.0)::numeric, 2) as inbound_mb,
                     MAX(direction) as direction
@@ -2198,6 +2199,7 @@ class DatabaseManager:
             for row in results:
                 r = dict(row)
                 # Decimal→float voor JSON-serialisatie (ROUND() geeft numeric terug)
+                r['total_mb'] = float(r['total_mb'] or 0)
                 r['outbound_mb'] = float(r['outbound_mb'] or 0)
                 r['inbound_mb'] = float(r['inbound_mb'] or 0)
                 rows.append(r)
