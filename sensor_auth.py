@@ -61,6 +61,14 @@ class SensorAuthManager:
         self.db = db_manager
         self.logger = logging.getLogger('NetMonitor.SensorAuth')
 
+    def _safe_rollback(self, conn):
+        """Rollback die zelf niet faalt op een al gesloten verbinding."""
+        try:
+            if not conn.closed:
+                conn.rollback()
+        except Exception as e:
+            self.logger.debug(f"Rollback mislukt: {e}")
+
     def generate_token(self, sensor_id: str, token_name: Optional[str] = None,
                        expires_days: Optional[int] = None,
                        permissions: Optional[Dict] = None) -> str:
@@ -118,7 +126,7 @@ class SensorAuthManager:
             return token  # Return plaintext token (only time it's available!)
 
         except Exception as e:
-            conn.rollback()
+            self._safe_rollback(conn)
             self.logger.error(f"Error generating token: {e}")
             raise
         finally:
@@ -212,7 +220,7 @@ class SensorAuthManager:
             }
 
         except Exception as e:
-            conn.rollback()
+            self._safe_rollback(conn)
             self.logger.error(f"Error validating token: {e}")
             return None
         finally:
@@ -242,7 +250,7 @@ class SensorAuthManager:
             return cursor.rowcount > 0
 
         except Exception as e:
-            conn.rollback()
+            self._safe_rollback(conn)
             self.logger.error(f"Error revoking token: {e}")
             return False
         finally:
@@ -338,7 +346,7 @@ class SensorAuthManager:
             return count
 
         except Exception as e:
-            conn.rollback()
+            self._safe_rollback(conn)
             self.logger.error(f"Error cleaning expired tokens: {e}")
             return 0
         finally:
@@ -415,7 +423,7 @@ class SensorAuthManager:
         except EnrollmentError:
             raise
         except Exception as e:
-            conn.rollback()
+            self._safe_rollback(conn)
             # Gelijktijdig verzoek voor dezelfde sensor -> unieke index
             if 'idx_sensor_enrollments_one_pending' in str(e):
                 raise EnrollmentError('already_pending',
@@ -456,7 +464,7 @@ class SensorAuthManager:
                 cursor.execute('UPDATE sensor_enrollments SET last_poll = NOW() WHERE id = %s', (row[0],))
             conn.commit()
         except Exception:
-            conn.rollback()
+            self._safe_rollback(conn)
             raise
         finally:
             self.db._return_connection(conn)
@@ -556,7 +564,7 @@ class SensorAuthManager:
             ''', (approved_by, token_id, enrollment_id))
             conn.commit()
         except Exception as e:
-            conn.rollback()
+            self._safe_rollback(conn)
             self.logger.error(f"Error approving enrollment #{enrollment_id}: {e}")
             raise
         finally:
@@ -583,7 +591,7 @@ class SensorAuthManager:
             row = cursor.fetchone()
             conn.commit()
         except Exception:
-            conn.rollback()
+            self._safe_rollback(conn)
             raise
         finally:
             self.db._return_connection(conn)

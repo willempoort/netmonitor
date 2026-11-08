@@ -15,6 +15,13 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.8.2] - 2026-11-08
+
+### Fixed
+- **Dode databaseverbindingen uit de pool.** PostgreSQL sluit verbindingen die 10 minuten niets doen (`idle_session_timeout` uit `tune_postgresql.sh`). De pool in `database.py` gaf zo'n verbinding toch uit, waardoor het eerstvolgende request faalde met `terminating connection due to idle-session timeout` / `connection already closed` (375x in 3 dagen: vooral sensor-heartbeats, metrics en commando's, dus verloren data). Een verbinding die langer dan 60 s ongebruikt was, wordt nu eerst getest en zo nodig vervangen; gesloten verbindingen gaan niet terug de pool in.
+- `sensor_auth`: een rollback op een al gesloten verbinding gaf een tweede fout (500) in plaats van een nette weigering.
+- MCP-server (`token_auth.py`): het eerste MCP-verzoek na een stille periode werd geweigerd om dezelfde reden. De verbinding wordt nu getest en zo nodig opnieuw opgezet, en `validate_token` laat geen open lees-transactie meer staan.
+
 ## [2.8.1] - 2026-11-08
 
 ### Changed

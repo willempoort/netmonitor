@@ -54,11 +54,24 @@ class TokenAuthManager:
             raise
 
     def _ensure_connection(self):
-        """Ensure database connection is alive"""
+        """
+        Ensure database connection is alive. PostgreSQL sluit idle verbindingen
+        na idle_session_timeout (10 min); conn.closed ziet dat pas na een
+        mislukte query, dus eerst testen.
+        """
         try:
-            if self.conn.closed:
+            if self.conn is None or self.conn.closed:
                 self._connect()
-        except Exception:
+                return
+            with self.conn.cursor() as cursor:
+                cursor.execute("SELECT 1")
+            self.conn.rollback()  # geen open transactie laten staan
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+            logger.info(f"Token auth database connection lost ({type(e).__name__}), reconnecting")
+            try:
+                self.conn.close()
+            except Exception:
+                pass
             self._connect()
 
     def generate_token(self) -> str:
@@ -179,6 +192,11 @@ class TokenAuthManager:
             return None
         finally:
             cursor.close()
+            try:
+                if not self.conn.closed:
+                    self.conn.rollback()  # no-op na commit; sluit de lees-transactie
+            except Exception:
+                pass
 
     def check_rate_limit(self, token_id: int, token_details: Dict[str, Any]) -> bool:
         """

@@ -15,6 +15,7 @@ import subprocess
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 import threading
+import time
 
 
 class DatabaseManager:
@@ -291,12 +292,62 @@ class DatabaseManager:
         finally:
             self._return_connection(conn)
 
+    # Een verbinding die langer dan dit (seconden) ongebruikt in de pool lag,
+    # wordt eerst getest. PostgreSQL sluit idle verbindingen na
+    # idle_session_timeout (tune_postgresql.sh: 10 min); zonder test kreeg het
+    # eerstvolgende request "terminating connection due to idle-session timeout"
+    # of "connection already closed". Ruim onder die 10 minuten houden.
+    POOL_PING_AFTER = 60
+
+    def _discard_connection(self, conn):
+        self._conn_last_used.pop(id(conn), None)
+        try:
+            self.connection_pool.putconn(conn, close=True)
+        except Exception:
+            pass
+
     def _get_connection(self):
-        """Get connection from pool"""
+        """
+        Get connection from pool. Dode verbindingen (gesloten door de server,
+        bv. idle_session_timeout of een herstart) worden weggegooid en
+        vervangen door een nieuwe.
+        """
+        if not hasattr(self, '_conn_last_used'):
+            self._conn_last_used = {}
+        for _ in range(self._db_max_conn + 1):
+            conn = self.connection_pool.getconn()
+            if conn.closed:
+                self._discard_connection(conn)
+                continue
+            last_used = self._conn_last_used.pop(id(conn), None)
+            if last_used is not None and time.time() - last_used < self.POOL_PING_AFTER:
+                return conn
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute('SELECT 1')
+                if not conn.autocommit:
+                    conn.rollback()  # geen open transactie achterlaten
+                return conn
+            except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                self.logger.info(
+                    f"Dode databaseverbinding uit de pool verwijderd "
+                    f"({type(e).__name__}: {str(e).strip().splitlines()[0] if str(e).strip() else ''})"
+                )
+                self._discard_connection(conn)
+        # Alles dood (bv. database net herstart): laat de fout van een
+        # nieuwe verbinding zien in plaats van een dode terug te geven.
         return self.connection_pool.getconn()
 
     def _return_connection(self, conn):
         """Return connection to pool"""
+        if conn is None:
+            return
+        if conn.closed:
+            self._discard_connection(conn)
+            return
+        if not hasattr(self, '_conn_last_used'):
+            self._conn_last_used = {}
+        self._conn_last_used[id(conn)] = time.time()
         self.connection_pool.putconn(conn)
 
     def _update_retention_policies(self, cursor):
