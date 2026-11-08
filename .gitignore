@@ -63,3 +63,10 @@ web/static/fonts/bootstrap-icons.woff2
 
 # Lokale backups van sync_config/sync_env (bevatten secrets - nooit committen)
 *.backup.*
+
+# Lokale kopieën van .env met echte secrets (audit K2, 2026-11-08) - nooit committen
+env_settings.txt
+env_new_settings.txt
+*.env
+.env.*
+!.env.example

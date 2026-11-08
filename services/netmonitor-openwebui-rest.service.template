@@ -6,6 +6,9 @@ Requires=postgresql.service
 [Service]
 Type=simple
 User=root
+# DB-credentials uit .env (anders valt de wrapper terug op een hardcoded default)
+EnvironmentFile=-INSTALL_DIR/.env
+EnvironmentFile=-/etc/netmonitor/netmonitor.env
 WorkingDirectory=INSTALL_DIR
 Environment="PATH=INSTALL_DIR/venv/bin:/usr/bin:/bin"
 Environment="OPENWEBUI_REST_HOST=127.0.0.1"

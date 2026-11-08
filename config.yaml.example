@@ -328,3 +328,11 @@ fingerprinting:
 #   - Full defaults: config_defaults.py
 #   - Documentation: docs/CONFIG_MIGRATION.md
 # ============================================================================
+
+# Sensor-API authenticatie
+# Sensors moeten een token sturen (SENSOR_TOKEN, aan te maken met setup_sensor_auth.py).
+# allow_missing_token: true laat bestaande sensors tijdelijk zonder token toe
+# (alleen voor hun eigen endpoints; commando's aanmaken vereist altijd een login).
+# Alleen gebruiken als overgang, met een waarschuwing per sensor in de log.
+sensor_auth:
+  allow_missing_token: false

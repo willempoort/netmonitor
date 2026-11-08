@@ -13,12 +13,12 @@ import sys
 import time
 import logging
 import socket
-import shlex
 import shutil
 import psutil
 import requests
 import argparse
 import signal
+import re
 from datetime import datetime
 from collections import deque
 from pathlib import Path
@@ -31,6 +31,10 @@ from detector import ThreatDetector
 from threat_feeds import ThreatFeedManager
 from behavior_detector import BehaviorDetector
 from abuseipdb_client import AbuseIPDBClient
+
+# Geldige git-branchnaam voor het 'update'-commando (zelfde regel als
+# web_dashboard.GIT_BRANCH_RE): geen leidende '-', geen shell-tekens.
+GIT_BRANCH_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9._/-]{0,99}')
 
 # Optional PCAP exporter (may not be needed on lightweight sensors)
 try:
@@ -877,6 +881,7 @@ class SensorClient:
             # Update status to executing
             requests.put(
                 f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
+                headers=self._get_headers(),
                 json={'status': 'executing'},
                 timeout=10,
                 verify=self.ssl_verify
@@ -894,13 +899,14 @@ class SensorClient:
                 # Update status before restarting
                 requests.put(
                     f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
+                    headers=self._get_headers(),
                     json={'status': 'completed', 'result': result},
                     timeout=10,
                     verify=self.ssl_verify
                 )
                 # Schedule restart
                 import subprocess
-                subprocess.Popen(['sleep', '5', '&&', 'systemctl', 'restart', 'netmonitor-sensor'])
+                subprocess.Popen(['bash', '-c', 'sleep 5 && systemctl restart netmonitor-sensor'])
                 return
 
             elif command_type == 'change_interval':
@@ -980,6 +986,7 @@ class SensorClient:
                 # Update status before rebooting
                 requests.put(
                     f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
+                    headers=self._get_headers(),
                     json={'status': 'completed', 'result': result},
                     timeout=10,
                     verify=self.ssl_verify
@@ -1006,9 +1013,15 @@ class SensorClient:
                             ssh_key = key_path
                             break
 
+                    # SECURITY: 'branch' komt van de server en wordt als git-argument
+                    # gebruikt. Alleen geldige refnamen (geen leidende '-', geen
+                    # shell-tekens) en nooit via een shell uitvoeren.
+                    if branch and not (isinstance(branch, str) and GIT_BRANCH_RE.fullmatch(branch)):
+                        raise ValueError(f"Invalid branch name rejected: {branch!r}")
+
                     # Check if remote is SSH and convert to HTTPS if no SSH key available
                     # This allows updates on customer systems without SSH keys configured
-                    url_override = ''
+                    https_url = None
                     if not ssh_key:
                         try:
                             remote_result = subprocess.run(
@@ -1019,33 +1032,32 @@ class SensorClient:
                             # Convert git@github.com:user/repo.git to https://github.com/user/repo.git
                             if remote_url.startswith('git@github.com:'):
                                 https_url = remote_url.replace('git@github.com:', 'https://github.com/')
-                                url_override = f'git remote set-url origin {https_url}; '
                                 self.logger.info(f"No SSH key found, using HTTPS for git pull")
                         except Exception:
                             pass
 
-                    # Set GIT_SSH_COMMAND to use specific key (needed when running as systemd service)
-                    ssh_cmd = f'export GIT_SSH_COMMAND="ssh -i {ssh_key} -o StrictHostKeyChecking=accept-new"; ' if ssh_key else ''
-
-                    if branch:
-                        pull_cmd = (f'git fetch origin && git checkout {shlex.quote(branch)} '
-                                    f'&& git pull origin {shlex.quote(branch)}')
-                    else:
-                        pull_cmd = 'git pull'
-
+                    # Vaste bash-scriptregels; alle variabelen (branch, URL, key, map)
+                    # gaan als positionele argumenten mee ("$1".."$4") en worden dus
+                    # nooit als shellcode geparsed (audit K1).
                     # Remount alleen als / read-only is, en zet het daarna alleen
                     # dan weer terug - anders zou een rw-sensor na update ro worden
-                    git_cmd = (
-                        f'was_ro=0; '
-                        f'case "$(findmnt -no OPTIONS / 2>/dev/null)" in ro,*|ro) was_ro=1;; esac; '
-                        f'[ $was_ro = 1 ] && mount -o remount,rw /; '
-                        f'{url_override}'
-                        f'{ssh_cmd}'
-                        f'cd {install_dir} && {pull_cmd}; '
-                        f'git_status=$?; '
-                        f'[ $was_ro = 1 ] && mount -o remount,ro /; '
-                        f'exit $git_status'
+                    git_script = (
+                        'branch="$1"; https_url="$2"; ssh_key="$3"; install_dir="$4"; '
+                        'was_ro=0; '
+                        'case "$(findmnt -no OPTIONS / 2>/dev/null)" in ro,*|ro) was_ro=1;; esac; '
+                        '[ $was_ro = 1 ] && mount -o remount,rw /; '
+                        '[ -n "$https_url" ] && git -C "$install_dir" remote set-url origin "$https_url"; '
+                        '[ -n "$ssh_key" ] && export GIT_SSH_COMMAND="ssh -i $ssh_key -o StrictHostKeyChecking=accept-new"; '
+                        'cd "$install_dir" && '
+                        'if [ -n "$branch" ]; then '
+                        'git fetch origin && git checkout "$branch" -- && git pull origin "$branch"; '
+                        'else git pull; fi; '
+                        'git_status=$?; '
+                        '[ $was_ro = 1 ] && mount -o remount,ro /; '
+                        'exit $git_status'
                     )
+                    script_args = ['bash', '-c', git_script, 'netmonitor-update',
+                                   branch or '', https_url or '', ssh_key or '', install_dir]
 
                     # De service-sandbox (ProtectSystem=strict, geen CAP_SYS_ADMIN)
                     # maakt /opt/netmonitor read-only en blokkeert remount. Voer de
@@ -1054,10 +1066,9 @@ class SensorClient:
                         run_args = [
                             'systemd-run', '--wait', '--pipe', '--collect', '--quiet',
                             f'--unit=netmonitor-sensor-update-{command_id}',
-                            'bash', '-c', git_cmd
-                        ]
+                        ] + script_args
                     else:
-                        run_args = ['bash', '-c', git_cmd]
+                        run_args = script_args
 
                     # Execute git pull
                     git_result = subprocess.run(
@@ -1079,6 +1090,7 @@ class SensorClient:
                         # Update status before restarting
                         requests.put(
                             f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
+                            headers=self._get_headers(),
                             json={'status': 'completed', 'result': result},
                             timeout=10,
                             verify=self.ssl_verify
@@ -1113,6 +1125,7 @@ class SensorClient:
             # Report result
             requests.put(
                 f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
+                headers=self._get_headers(),
                 json={'status': 'completed', 'result': result},
                 timeout=10,
                 verify=self.ssl_verify
@@ -1126,6 +1139,7 @@ class SensorClient:
             try:
                 requests.put(
                     f"{self.server_url}/api/sensors/{self.sensor_id}/commands/{command_id}",
+                    headers=self._get_headers(),
                     json={'status': 'failed', 'result': {'error': str(e)}},
                     timeout=10,
                     verify=self.ssl_verify

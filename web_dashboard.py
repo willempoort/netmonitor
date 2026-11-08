@@ -14,6 +14,7 @@ import threading
 import hashlib
 import json
 import traceback
+import re
 from pathlib import Path
 from datetime import datetime
 
@@ -248,6 +249,40 @@ def require_role(*roles):
     return decorator
 
 
+_tokenless_warned = {}
+TOKENLESS_WARN_INTERVAL = 3600  # seconden; één waarschuwing per sensor per uur
+
+
+def _tokenless_sensor_id(view_kwargs):
+    """
+    Geeft het sensor_id terug als een request zonder token toegelaten mag worden
+    (overgangsmodus actief en de sensor bestaat), anders None.
+
+    Bedoeld om sensors zonder SENSOR_TOKEN niet in één klap af te sluiten bij
+    het invoeren van token-auth (audit K1). Zet `sensor_auth.allow_missing_token`
+    weer op false zodra alle sensors een token sturen.
+    """
+    if not (config or {}).get('sensor_auth', {}).get('allow_missing_token', False):
+        return None
+
+    sensor_id = view_kwargs.get('sensor_id')
+    if sensor_id is None and request.path == '/api/sensors/register':
+        sensor_id = (request.get_json(silent=True) or {}).get('sensor_id')
+
+    # Alleen bestaande sensors: een nieuwe sensor registreren vereist altijd een token
+    if not sensor_id or not isinstance(sensor_id, str) or not db.get_sensor_by_id(sensor_id):
+        return None
+
+    now = time.time()
+    if now - _tokenless_warned.get(sensor_id, 0) > TOKENLESS_WARN_INTERVAL:
+        _tokenless_warned[sensor_id] = now
+        logger.warning(
+            f"SECURITY: sensor {sensor_id} ({request.remote_addr}) gebruikt de sensor-API zonder token "
+            f"(sensor_auth.allow_missing_token=true). Geef deze sensor een SENSOR_TOKEN."
+        )
+    return sensor_id
+
+
 def require_sensor_token(required_permission=None):
     """
     Decorator to require sensor token authentication
@@ -264,6 +299,16 @@ def require_sensor_token(required_permission=None):
             auth_header = request.headers.get('Authorization', '')
 
             if not auth_header.startswith('Bearer '):
+                # Overgangsmodus (sensor_auth.allow_missing_token in config.yaml):
+                # sensors zonder token tijdelijk toelaten voor hun EIGEN endpoints.
+                # Een fout token wordt altijd geweigerd (zie hieronder) en
+                # commando's aanmaken vereist altijd een login (require_role).
+                tokenless_id = _tokenless_sensor_id(kwargs)
+                if tokenless_id:
+                    from flask import g
+                    g.sensor_details = {'sensor_id': tokenless_id, 'unauthenticated': True}
+                    return f(*args, **kwargs)
+
                 logger.warning(f"Missing or invalid Authorization header from {request.remote_addr}")
                 return jsonify({
                     'success': False,
@@ -283,11 +328,22 @@ def require_sensor_token(required_permission=None):
                 logger.warning(f"Invalid token attempted from {request.remote_addr}")
                 return jsonify({'success': False, 'error': 'Invalid or expired token'}), 403
 
+            # Een token geldt alleen voor de eigen sensor: zonder deze check kan
+            # sensor A met zijn eigen token data/commando's van sensor B lezen of
+            # wijzigen via /api/sensors/<sensor_id>/...
+            path_sensor_id = kwargs.get('sensor_id')
+            if path_sensor_id is not None and path_sensor_id != sensor_details['sensor_id']:
+                logger.warning(
+                    f"Sensor token for {sensor_details['sensor_id']} used for sensor "
+                    f"{path_sensor_id} from {request.remote_addr}"
+                )
+                return jsonify({'success': False, 'error': 'Token not valid for this sensor'}), 403
+
             # Add sensor details to Flask's g object for use in route
             from flask import g
             g.sensor_details = sensor_details
 
-            logger.info(f"Authenticated sensor: {sensor_details['sensor_id']} ({sensor_details['hostname']})")
+            logger.debug(f"Authenticated sensor: {sensor_details['sensor_id']} ({sensor_details['hostname']})")
 
             return f(*args, **kwargs)
 
@@ -349,6 +405,14 @@ def require_sensor_token_or_login():
 
         return decorated_function
     return decorator
+
+
+# Commando's die sensor_client.py ondersteunt (zie _execute_command daar)
+SENSOR_COMMAND_TYPES = frozenset({
+    'restart', 'reboot', 'update', 'update_config', 'update_whitelist',
+    'change_interval', 'get_status', 'flush_buffer',
+})
+GIT_BRANCH_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9._/-]{0,99}')
 
 
 def is_local_request():
@@ -1328,6 +1392,7 @@ def api_get_sensors():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/sensors/register', methods=['POST'])
+@require_sensor_token()
 def api_register_sensor():
     """Register a new sensor or update existing one"""
     try:
@@ -1338,6 +1403,15 @@ def api_register_sensor():
         for field in required:
             if field not in data:
                 return jsonify({'success': False, 'error': f'Missing required field: {field}'}), 400
+
+        # Het token moet bij deze sensor horen (tokens worden server-side
+        # aangemaakt met setup_sensor_auth.py, dat ook de sensor-rij aanmaakt)
+        if data['sensor_id'] != g.sensor_details['sensor_id']:
+            logger.warning(
+                f"Sensor token for {g.sensor_details['sensor_id']} used to register "
+                f"sensor {data['sensor_id']} from {request.remote_addr}"
+            )
+            return jsonify({'success': False, 'error': 'Token not valid for this sensor'}), 403
 
         # Register sensor
         success = db.register_sensor(
@@ -1393,6 +1467,7 @@ def api_delete_sensor(sensor_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/sensors/<sensor_id>/heartbeat', methods=['POST'])
+@require_sensor_token()
 def api_sensor_heartbeat(sensor_id):
     """Update sensor heartbeat"""
     try:
@@ -1407,6 +1482,7 @@ def api_sensor_heartbeat(sensor_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/sensors/<sensor_id>/metrics', methods=['POST'])
+@require_sensor_token('metrics')
 def api_submit_sensor_metrics(sensor_id):
     """Submit sensor performance metrics"""
     try:
@@ -1438,6 +1514,7 @@ def api_submit_sensor_metrics(sensor_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/sensors/<sensor_id>/traffic', methods=['POST'])
+@require_sensor_token('metrics')
 def api_submit_sensor_traffic(sensor_id):
     """Submit traffic metrics from remote sensor
 
@@ -1497,6 +1574,7 @@ def api_submit_sensor_traffic(sensor_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/sensors/<sensor_id>/devices', methods=['POST'])
+@require_sensor_token('metrics')
 def api_submit_sensor_devices(sensor_id):
     """Register devices discovered by a remote sensor
 
@@ -1550,6 +1628,7 @@ def api_submit_sensor_devices(sensor_id):
 
 
 @app.route('/api/sensors/<sensor_id>/alerts', methods=['POST'])
+@require_sensor_token('alerts')
 def api_submit_sensor_alerts(sensor_id):
     """Submit alerts from remote sensor (batch)
 
@@ -1716,6 +1795,7 @@ def api_submit_sensor_alerts(sensor_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/sensors/<sensor_id>', methods=['GET'])
+@login_required
 def api_get_sensor(sensor_id):
     """Get specific sensor details"""
     try:
@@ -1731,15 +1811,31 @@ def api_get_sensor(sensor_id):
 # ==================== Sensor Command Endpoints ====================
 
 @app.route('/api/sensors/<sensor_id>/commands', methods=['POST'])
+@require_role('admin', 'operator')
 def api_create_sensor_command(sensor_id):
     """Create a command for a sensor"""
     try:
         data = request.get_json()
         command_type = data.get('command_type')
-        parameters = data.get('parameters', {})
+        parameters = data.get('parameters') or {}
 
         if not command_type:
             return jsonify({'success': False, 'error': 'command_type required'}), 400
+
+        if command_type not in SENSOR_COMMAND_TYPES:
+            return jsonify({
+                'success': False,
+                'error': f"Invalid command_type. Must be one of: {', '.join(sorted(SENSOR_COMMAND_TYPES))}"
+            }), 400
+
+        if not isinstance(parameters, dict):
+            return jsonify({'success': False, 'error': 'parameters must be an object'}), 400
+
+        # De sensor gebruikt 'branch' in een git-commando; alleen geldige
+        # git-refnamen toestaan (de sensor valideert dit zelf ook)
+        branch = parameters.get('branch')
+        if branch is not None and not (isinstance(branch, str) and GIT_BRANCH_RE.fullmatch(branch)):
+            return jsonify({'success': False, 'error': 'Invalid branch name'}), 400
 
         # Verify sensor exists
         sensor = db.get_sensor_by_id(sensor_id)
@@ -1764,6 +1860,7 @@ def api_create_sensor_command(sensor_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/sensors/<sensor_id>/commands', methods=['GET'])
+@require_sensor_token('commands')
 def api_get_sensor_commands(sensor_id):
     """Get pending commands for a sensor (used by sensor for polling)"""
     try:
@@ -1775,6 +1872,7 @@ def api_get_sensor_commands(sensor_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/sensors/<sensor_id>/commands/<int:command_id>', methods=['PUT'])
+@require_sensor_token('commands')
 def api_update_command_status(sensor_id, command_id):
     """Update command execution status (used by sensor to report results)"""
     try:
@@ -1798,6 +1896,7 @@ def api_update_command_status(sensor_id, command_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/sensors/<sensor_id>/commands/history', methods=['GET'])
+@login_required
 def api_get_command_history(sensor_id):
     """Get command history for a sensor (for dashboard)"""
     try:

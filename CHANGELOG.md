@@ -15,6 +15,22 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.7.4] - 2026-11-08
+
+### Security
+- **Sensor-API was zonder authenticatie bereikbaar, met remote root-RCE op sensors als gevolg.** `/api/sensors/register`, `heartbeat`, `metrics`, `traffic`, `alerts`, `devices`, `GET /api/sensors/<id>` en alle `commands`-routes hadden geen auth-check. Via het `update`-commando kwam de `branch`-parameter ongefilterd in een `shell=True`-commando op de sensor (die als root draait). Nu:
+  - Sensor-routes vereisen een geldig sensortoken (`Authorization: Bearer`) **voor dezelfde sensor** als in de URL/body. Per route geldt de permissie `metrics`, `alerts` of `commands`.
+  - Commando's aanmaken vereist een login met rol admin/operator. `GET /api/sensors/<id>` en de command-history vereisen een login.
+  - `command_type` moet in een allowlist staan. `branch` wordt op server én sensor gevalideerd, en de sensor geeft branch/URL/key als argumenten aan het update-script mee in plaats van ze in de shellcode te plakken (de `systemd-run`-aanpak van 2.6.3 blijft).
+  - **Let op bij upgraden:** elke sensor moet een `SENSOR_TOKEN` hebben (`setup_sensor_auth.py` op de SOC-server). Sensors zonder token krijgen `401`.
+  - Overgang: met `sensor_auth.allow_missing_token: true` in `config.yaml` worden bestaande sensors tijdelijk zonder token toegelaten voor hun eigen endpoints, met één waarschuwing per sensor per uur. Een fout token wordt altijd geweigerd, en commando's aanmaken vereist altijd een login. Standaard staat de optie uit.
+  - `nginx-*.conf.example`: sensor-endpoints beperken tot de sensor-IP's (`SENSOR_NETWORK`).
+- `netmonitor-openwebui-rest`-service laadt nu `.env`. Daarvoor viel hij terug op een hardcoded DB-wachtwoord.
+- Productie-secrets stonden in git (`env_settings.txt`, `env_new_settings.txt`). Die bestanden zijn uit git gehaald en worden nu genegeerd. Vervang alle secrets die erin stonden.
+
+### Fixed
+- Sensor: statusupdates van commando's (`PUT .../commands/<id>`) stuurden het token niet mee.
+- Sensor: het `restart`-commando herstartte de service nooit (`sleep 5 && ...` werd zonder shell uitgevoerd).
 ## [2.7.3] - 2026-10-17
 
 ### Fixed

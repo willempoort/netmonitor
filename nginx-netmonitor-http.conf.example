@@ -115,6 +115,41 @@ server {
     # ==================== SENSOR API ENDPOINTS (POORT 8080) ====================
     # Flask dashboard sensor endpoints met sensor token authenticatie
 
+    # SECURITY: sensor-zijde endpoints alleen vanaf de sensors toestaan.
+    # Vervang SENSOR_NETWORK door de sensor-IP's of het sensorsubnet (bv. 10.100.0.57).
+    # Sensors authenticeren daarnaast met een token (SENSOR_TOKEN).
+    location ~ ^/api/sensors/(register|[^/]+/(heartbeat|metrics|traffic|alerts|devices|commands/[0-9]+))$ {
+        allow SENSOR_NETWORK;
+        allow 127.0.0.1;
+        deny all;
+        proxy_pass http://netmonitor_dashboard;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+        proxy_buffering off;
+        proxy_redirect off;
+    }
+
+    # Commando-queue: POST = dashboard (login vereist), GET = sensor -> alleen sensors.
+    location ~ ^/api/sensors/[^/]+/commands$ {
+        limit_except POST {
+            allow SENSOR_NETWORK;
+            allow 127.0.0.1;
+            deny all;
+        }
+        proxy_pass http://netmonitor_dashboard;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header Cookie $http_cookie;
+        proxy_buffering off;
+        proxy_redirect off;
+    }
+
     location /api/sensors/ {
         proxy_pass http://netmonitor_dashboard;
         proxy_set_header Host $host;
