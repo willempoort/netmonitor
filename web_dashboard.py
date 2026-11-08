@@ -24,7 +24,7 @@ eventlet.monkey_patch()
 
 from flask import Flask, render_template, jsonify, request, session, g, redirect, url_for, send_from_directory
 from werkzeug.middleware.proxy_fix import ProxyFix
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, disconnect
 from flask_cors import CORS
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 
@@ -127,7 +127,10 @@ def api_extend_session():
 # Initialize SocketIO with eventlet for production
 socketio = SocketIO(
     app,
-    cors_allowed_origins="*",
+    # SECURITY (audit H2): alleen de eigen origin (engine.io gebruikt
+    # X-Forwarded-Proto/Host van nginx). Was "*": elke website kon via de
+    # browser van een ingelogde gebruiker meeluisteren (cross-site WebSocket).
+    cors_allowed_origins=None,
     async_mode='eventlet',
     logger=True,
     engineio_logger=False
@@ -5722,9 +5725,12 @@ def api_threat_feeds_update():
 # ==================== WebSocket Events ====================
 
 @socketio.on('connect')
-def handle_connect():
-    """Handle client connection"""
-    logger.info(f"Client connected: {request.sid}")
+def handle_connect(auth=None):
+    """Handle client connection - alleen voor ingelogde gebruikers (audit H2)"""
+    if not current_user.is_authenticated:
+        logger.warning(f"Socket.IO connection refused (not logged in) from {request.remote_addr}")
+        return False  # weigert de verbinding; client krijgt connect_error
+    logger.info(f"Client connected: {request.sid} ({current_user.username})")
     emit('connected', {'status': 'connected', 'timestamp': datetime.now().isoformat()})
 
 @socketio.on('disconnect')
@@ -5735,6 +5741,10 @@ def handle_disconnect():
 @socketio.on('request_update')
 def handle_request_update():
     """Handle client request for data update"""
+    # Sessie kan verlopen zijn terwijl de socket nog open staat
+    if not current_user.is_authenticated:
+        disconnect()
+        return
     try:
         data = db.get_dashboard_data()
         emit('dashboard_update', data)
