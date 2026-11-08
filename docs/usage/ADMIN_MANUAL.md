@@ -222,7 +222,7 @@ INTERFACE=eth0
 # Optional settings (can be set via dashboard)
 SENSOR_ID=office-vlan10-01
 SENSOR_LOCATION=Building A - VLAN 10
-SENSOR_SECRET_KEY=your-secret-key-here
+SENSOR_TOKEN=<token van setup_sensor_auth.py>
 ```
 
 **Centralized Configuration:**
@@ -2385,9 +2385,9 @@ Before deploying to production:
    - Use VPN for remote access
 
 2. **Authentication:**
-   - Enable sensor authentication (SENSOR_SECRET_KEY)
-   - Use strong random keys: `openssl rand -hex 32`
-   - Rotate keys periodically
+   - Give every sensor its own SENSOR_TOKEN (`setup_sensor_auth.py` on the SOC server)
+   - Set `sensor_auth.allow_missing_token: false` once all sensors send a token
+   - Rotate tokens periodically
    - Secure MCP tokens with appropriate scopes
 
 3. **HTTPS:**

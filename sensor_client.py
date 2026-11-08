@@ -136,6 +136,11 @@ def _load_bash_config(config_file):
                 elif key == 'SENSOR_TOKEN':
                     if value:  # Only set if not empty
                         config.setdefault('server', {})['token'] = value
+                elif key == 'SENSOR_SECRET_KEY':
+                    # Oude naam uit setup_sensor.sh; werd nooit als token verstuurd.
+                    # Alleen onthouden om er een waarschuwing over te geven.
+                    if value:
+                        config['_legacy_secret_key'] = True
                 elif key == 'SSL_VERIFY':
                     config.setdefault('server', {})['ssl_verify'] = value.lower() in ('true', 'yes', '1')
                 elif key == 'SENSOR_WHITELIST':
@@ -221,6 +226,17 @@ class SensorClient:
             self.config.get('server', {}).get('token') or
             self.config.get('sensor', {}).get('token')
         )
+        if not self.token:
+            if self.config.get('_legacy_secret_key'):
+                self.logger.warning(
+                    "SENSOR_SECRET_KEY staat in de config maar wordt niet gebruikt. "
+                    "Zet het token uit setup_sensor_auth.py als SENSOR_TOKEN=... in de config."
+                )
+            else:
+                self.logger.warning(
+                    "Geen SENSOR_TOKEN geconfigureerd - de SOC-server weigert deze sensor "
+                    "zodra sensor_auth.allow_missing_token uit staat."
+                )
 
         # SSL verification setting
         self.ssl_verify = self.config.get('server', {}).get('ssl_verify', True)

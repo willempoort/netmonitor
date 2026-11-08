@@ -152,18 +152,14 @@ echo "   Example: http://soc.example.com:8080"
 prompt_with_default "   SOC Server URL" "" SOC_SERVER_URL
 echo ""
 
-# Authentication (optional)
-echo "3. Authentication Secret Key (optional)"
-echo "   Leave empty if not using authentication"
-echo "   Generate random key? [y/N]"
-read -p "   " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    SENSOR_SECRET_KEY=$(openssl rand -hex 32 2>/dev/null || cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 64 | head -n 1)
-    echo "   Generated: $SENSOR_SECRET_KEY"
-else
-    read -p "   Secret Key (or press Enter to skip): " SENSOR_SECRET_KEY
-fi
+# Authentication
+echo "3. Sensor Token"
+echo "   Genereer het token op de SOC-server met:"
+echo "     python3 setup_sensor_auth.py"
+echo "   en plak het hier. Leeg laten = later toevoegen als SENSOR_TOKEN=... in $CONF_FILE"
+echo "   (zonder token weigert de SOC-server de sensor, tenzij"
+echo "    sensor_auth.allow_missing_token=true tijdelijk aan staat)."
+read -p "   SENSOR_TOKEN: " SENSOR_TOKEN
 echo ""
 
 # SSL Verification
@@ -203,9 +199,10 @@ SOC_SERVER_URL=$SOC_SERVER_URL
 # Set to false only for testing with self-signed certificates
 SSL_VERIFY=$SSL_VERIFY
 
-# Authentication Secret Key (OPTIONAL)
-# For secure sensor-to-server communication
-SENSOR_SECRET_KEY=$SENSOR_SECRET_KEY
+# Sensor Token (REQUIRED)
+# Aan te maken op de SOC-server met setup_sensor_auth.py.
+# Let op: de oude naam SENSOR_SECRET_KEY wordt NIET gebruikt.
+SENSOR_TOKEN=$SENSOR_TOKEN
 
 # ============================================
 # PCAP Forensics (NIS2 Compliance)
@@ -362,7 +359,7 @@ echo "Sensor Configuration:"
 echo "  Interface:        $INTERFACE"
 echo "  SOC Server:       $SOC_SERVER_URL"
 echo "  SSL Verify:       $SSL_VERIFY"
-echo "  Auth Key:         $([ -n "$SENSOR_SECRET_KEY" ] && echo "Configured" || echo "Not configured")"
+echo "  Sensor Token:     $([ -n "$SENSOR_TOKEN" ] && echo "Configured" || echo "NOT configured - add SENSOR_TOKEN to $CONF_FILE")"
 echo ""
 echo "Additional configuration (managed via SOC Dashboard):"
 echo "  • Sensor ID & Location"

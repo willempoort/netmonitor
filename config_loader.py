@@ -103,7 +103,9 @@ def _build_sensor_config(conf_dict):
         # Sensor mode configuration
         'sensor': {
             'id': conf_dict.get('SENSOR_ID'),  # Optional - will use hostname if not set
-            'auth_token': conf_dict.get('SENSOR_SECRET_KEY', ''),
+            # SENSOR_TOKEN uit setup_sensor_auth.py (SENSOR_SECRET_KEY is een
+            # oude, nooit gebruikte naam en wordt bewust niet als token gelezen)
+            'token': conf_dict.get('SENSOR_TOKEN') or None,
             'location': conf_dict.get('SENSOR_LOCATION', 'Unknown'),  # Optional with default
         },
 

@@ -402,7 +402,7 @@ Sensors only need minimal local configuration:
 INTERFACE=eth0
 SOC_SERVER_URL=http://soc.example.com:8080
 SSL_VERIFY=true
-SENSOR_SECRET_KEY=optional-secret-key
+SENSOR_TOKEN=<token van setup_sensor_auth.py>
 ```
 
 **Centrally Managed Settings:**
