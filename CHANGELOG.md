@@ -15,6 +15,19 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.7.7] - 2026-11-08
+
+### Security
+- **Gegevens zonder login leesbaar (audit M1).**
+  - `GET /api/config/parameters` (alle detectie-instellingen) vereist nu een login, of localhost voor de MCP-server.
+  - `GET /api/threat-details/<type>` (alerts met IP's en beschrijvingen) vereist een login.
+  - `require_sensor_token_or_login` liet elke `?sensor_id=<willekeurig>` zonder login de config en whitelist lezen. Dat werkt nu alleen nog voor een bestaande sensor in de overgangsmodus (`sensor_auth.allow_missing_token`).
+  - Een sensortoken geeft alleen toegang tot de config en whitelist van de eigen sensor.
+- **Schrijvende routes zonder rolcheck (audit M2).** 23 routes die apparaten, templates, service-providers, pcap's, ML-training en integratietests wijzigen, vereisen nu de rol admin of operator. `POST /api/data-retention/cleanup` (wist oude alerts en metrics) is alleen voor admin. Alleen de eigen-account-routes (`/api/auth/*`) en de read-only `suppression/test` blijven voor elke ingelogde gebruiker.
+
+### Fixed
+- Tests: de volledige suite bleef hangen zodra een test `web_dashboard` importeerde vóór `test_detector`, door `eventlet.monkey_patch()` bij het importeren. `conftest.py` zet nu `NETMONITOR_NO_MONKEY_PATCH=1` en `NETMONITOR_DISABLE_AUTOLOAD_ENV=1`, zodat tests ook nooit de productie-`.env` laden.
+
 ## [2.7.6] - 2026-11-08
 
 ### Fixed

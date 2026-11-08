@@ -19,8 +19,11 @@ from pathlib import Path
 from datetime import datetime
 
 # Import eventlet first and monkey patch
+# (NETMONITOR_NO_MONKEY_PATCH=1 alleen in tests/conftest.py: monkey_patch vervangt
+# threading/socket in het hele proces en laat andere tests daarna hangen)
 import eventlet
-eventlet.monkey_patch()
+if os.environ.get('NETMONITOR_NO_MONKEY_PATCH') != '1':
+    eventlet.monkey_patch()
 
 from flask import Flask, render_template, jsonify, request, session, g, redirect, url_for, send_from_directory
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -376,6 +379,14 @@ def require_sensor_token_or_login():
                     sensor_details = sensor_auth.validate_token(token, None)
 
                     if sensor_details:
+                        # Een sensortoken geeft alleen toegang tot de eigen config/whitelist
+                        asked = request.args.get('sensor_id')
+                        if asked and asked != sensor_details['sensor_id']:
+                            logger.warning(
+                                f"Sensor token for {sensor_details['sensor_id']} used for sensor_id={asked} "
+                                f"from {request.remote_addr}"
+                            )
+                            return jsonify({'success': False, 'error': 'Token not valid for this sensor'}), 403
                         # Valid sensor token - add to g object
                         from flask import g
                         g.sensor_details = sensor_details
@@ -391,8 +402,10 @@ def require_sensor_token_or_login():
                 logger.debug(f"API access via web session: {current_user.username}")
                 return f(*args, **kwargs)
 
-            # Special case: Allow GET requests with sensor_id parameter (for sensor registration flow)
-            if request.method == 'GET' and request.args.get('sensor_id'):
+            # Sensors zonder token (overgangsmodus, audit K1/M1): alleen GET, alleen voor een
+            # bestaande sensor, en alleen zolang sensor_auth.allow_missing_token aan staat.
+            # Voorheen gaf ELKE ?sensor_id=<willekeurig> zonder login de config en whitelist vrij.
+            if request.method == 'GET' and _tokenless_sensor_id({'sensor_id': request.args.get('sensor_id')}):
                 from flask import g
                 g.auth_method = 'sensor_registration'
                 g.sensor_id = request.args.get('sensor_id')
@@ -859,7 +872,7 @@ def api_integrations_status():
 
 
 @app.route('/api/integrations/test/<integration_name>', methods=['POST'])
-@login_required
+@require_role('admin', 'operator')
 def api_integration_test(integration_name):
     """Test connection to a specific integration"""
     try:
@@ -1300,6 +1313,7 @@ def api_top_talkers():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/threat-details/<threat_type>')
+@login_required
 def api_threat_details(threat_type):
     """Get detailed information for a specific threat type"""
     try:
@@ -2369,11 +2383,11 @@ def api_get_config():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/config/parameters', methods=['GET'])
+@local_or_login_required
 def api_get_config_parameters():
     """Get all configuration parameters with metadata
 
-    Public endpoint for MCP server integration (localhost only).
-    Production deployments should firewall this endpoint.
+    Voor de dashboard-UI (login) en de MCP-server (localhost, zie local_or_login_required).
     """
     try:
         sensor_id = request.args.get('sensor_id')
@@ -2989,7 +3003,7 @@ def api_get_device(ip_address):
 
 
 @app.route('/api/devices/<path:ip_address>/template', methods=['PUT'])
-@login_required
+@require_role('admin', 'operator')
 def api_assign_device_template(ip_address):
     """Assign a template to a device"""
     try:
@@ -3024,7 +3038,7 @@ def api_assign_device_template(ip_address):
 
 
 @app.route('/api/devices/<path:ip_address>/inherit', methods=['POST'])
-@login_required
+@require_role('admin', 'operator')
 def api_inherit_device_settings(ip_address):
     """
     Inherit settings from another device.
@@ -3078,7 +3092,7 @@ def api_inherit_device_settings(ip_address):
 
 
 @app.route('/api/devices/<path:ip_address>', methods=['DELETE'])
-@login_required
+@require_role('admin', 'operator')
 def api_delete_device(ip_address):
     """Delete a device from the database"""
     try:
@@ -3093,7 +3107,7 @@ def api_delete_device(ip_address):
 
 
 @app.route('/api/devices/<path:ip_address>/touch', methods=['POST'])
-@login_required
+@require_role('admin', 'operator')
 def api_touch_device(ip_address):
     """
     Update a device's last_seen timestamp to NOW.
@@ -3116,7 +3130,7 @@ def api_touch_device(ip_address):
 
 
 @app.route('/api/devices/touch', methods=['POST'])
-@login_required
+@require_role('admin', 'operator')
 def api_touch_devices_bulk():
     """
     Update last_seen for multiple devices at once.
@@ -3146,7 +3160,7 @@ def api_touch_devices_bulk():
 
 
 @app.route('/api/data-retention/cleanup', methods=['POST'])
-@login_required
+@require_role('admin')
 def api_data_retention_cleanup():
     """
     Manually trigger data retention cleanup.
@@ -3260,7 +3274,7 @@ def api_data_retention_config():
 
 
 @app.route('/api/devices/cleanup-duplicates', methods=['POST'])
-@login_required
+@require_role('admin', 'operator')
 def api_cleanup_duplicate_devices():
     """
     Manually trigger cleanup of duplicate device entries with same MAC address.
@@ -3471,7 +3485,7 @@ def api_get_device_classification_hints(ip_address):
 
 
 @app.route('/api/devices/<path:ip_address>/save-learned-behavior', methods=['POST'])
-@login_required
+@require_role('admin', 'operator')
 def api_save_device_learned_behavior(ip_address):
     """
     Save learned behavior to the database.
@@ -3506,7 +3520,7 @@ def api_save_device_learned_behavior(ip_address):
 
 
 @app.route('/api/devices/update-vendors', methods=['POST'])
-@login_required
+@require_role('admin', 'operator')
 def api_update_device_vendors():
     """
     Update vendor information for all devices that have a MAC address but no vendor.
@@ -3603,7 +3617,7 @@ def api_get_device_learning_status(ip_address):
 
 
 @app.route('/api/device-templates/from-device', methods=['POST'])
-@login_required
+@require_role('admin', 'operator')
 def api_create_template_from_device():
     """
     Create a new device template based on the learned behavior of a specific device.
@@ -4387,7 +4401,7 @@ def api_download_sensor_pcap(filename):
 
 
 @app.route('/api/pcap/sensors/<filename>', methods=['DELETE'])
-@login_required
+@require_role('admin', 'operator')
 def api_delete_sensor_pcap(filename):
     """
     Delete a sensor PCAP file (admin only).
@@ -4542,7 +4556,7 @@ def api_get_device_template(template_id):
 
 
 @app.route('/api/device-templates', methods=['POST'])
-@login_required
+@require_role('admin', 'operator')
 def api_create_device_template():
     """Create a new device template"""
     try:
@@ -4635,7 +4649,7 @@ def api_clone_device_template(template_id):
 
 
 @app.route('/api/device-templates/<int:template_id>', methods=['PUT'])
-@login_required
+@require_role('admin', 'operator')
 def api_update_device_template(template_id):
     """Update an existing device template"""
     try:
@@ -4667,7 +4681,7 @@ def api_update_device_template(template_id):
 
 
 @app.route('/api/device-templates/<int:template_id>', methods=['DELETE'])
-@login_required
+@require_role('admin', 'operator')
 def api_delete_device_template(template_id):
     """Delete a device template"""
     try:
@@ -4690,7 +4704,7 @@ def api_delete_device_template(template_id):
 
 
 @app.route('/api/device-templates/<int:template_id>/behaviors', methods=['POST'])
-@login_required
+@require_role('admin', 'operator')
 def api_add_template_behavior(template_id):
     """Add a behavior rule to a template"""
     try:
@@ -4727,7 +4741,7 @@ def api_add_template_behavior(template_id):
 
 
 @app.route('/api/device-templates/behaviors/<int:behavior_id>', methods=['DELETE'])
-@login_required
+@require_role('admin', 'operator')
 def api_delete_template_behavior(behavior_id):
     """Delete a behavior rule from a template"""
     try:
@@ -4785,7 +4799,7 @@ def api_get_service_provider(provider_id):
 
 
 @app.route('/api/service-providers', methods=['POST'])
-@login_required
+@require_role('admin', 'operator')
 def api_create_service_provider():
     """Create a new service provider"""
     try:
@@ -4821,7 +4835,7 @@ def api_create_service_provider():
 
 
 @app.route('/api/service-providers/<int:provider_id>', methods=['PUT'])
-@login_required
+@require_role('admin', 'operator')
 def api_update_service_provider(provider_id):
     """Update a service provider"""
     try:
@@ -4855,7 +4869,7 @@ def api_update_service_provider(provider_id):
 
 
 @app.route('/api/service-providers/<int:provider_id>', methods=['DELETE'])
-@login_required
+@require_role('admin', 'operator')
 def api_delete_service_provider(provider_id):
     """Delete a service provider"""
     try:
@@ -5186,7 +5200,7 @@ def _run_ml_training_background(ml):
 
 
 @app.route('/api/ml/train', methods=['POST'])
-@login_required
+@require_role('admin', 'operator')
 def api_ml_train():
     """Train ML classification models (runs in background)."""
     ml = get_ml_classifier()
@@ -5305,7 +5319,7 @@ def _run_ml_classification_background(ml, update_db):
 
 
 @app.route('/api/ml/classify-all', methods=['POST'])
-@login_required
+@require_role('admin', 'operator')
 def api_ml_classify_all():
     """Classify all devices using ML (runs in background)."""
     ml = get_ml_classifier()
@@ -5411,7 +5425,7 @@ def _run_ml_fingerprint_background(ml):
 
 
 @app.route('/api/ml/fingerprint-scan', methods=['POST'])
-@login_required
+@require_role('admin', 'operator')
 def api_ml_fingerprint_scan():
     """Actively fingerprint devices (mDNS/SSDP/NetBIOS/SNMP) and re-classify."""
     ml = get_ml_classifier()
@@ -5483,7 +5497,7 @@ def api_ml_fingerprint_scan_status():
 
 
 @app.route('/api/ml/start-background-training', methods=['POST'])
-@login_required
+@require_role('admin', 'operator')
 def api_ml_start_background_training():
     """Start background ML training thread."""
     ml = get_ml_classifier()

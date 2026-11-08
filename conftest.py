@@ -12,6 +12,13 @@ Dit bestand bevat:
 
 import pytest
 import os
+
+# Test-isolatie (moet vóór andere project-imports):
+# - geen productie-.env laden (echte DB-wachtwoorden/API-keys) via env_loader
+# - geen eventlet.monkey_patch() bij import van web_dashboard (laat o.a.
+#   test_detector hangen als web_dashboard eerder in de sessie is geïmporteerd)
+os.environ.setdefault('NETMONITOR_DISABLE_AUTOLOAD_ENV', '1')
+os.environ.setdefault('NETMONITOR_NO_MONKEY_PATCH', '1')
 import sys
 import tempfile
 import yaml
