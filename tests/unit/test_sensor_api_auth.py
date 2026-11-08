@@ -271,3 +271,60 @@ def test_transition_disabled_by_default(dash):
         client = web_dashboard.app.test_client()
         resp = client.post(f'/api/sensors/{SENSOR_ID}/heartbeat', json={})
     assert resp.status_code == 401
+
+
+# ------------------------------------------- sensor-IP (APIPA op mirror-poort)
+
+@pytest.mark.unit
+@pytest.mark.parametrize('reported,remote,expected', [
+    ('169.254.11.57', '10.100.0.111', '10.100.0.111'),   # APIPA -> bron-IP
+    (None, '10.100.0.111', '10.100.0.111'),               # niets gemeld
+    ('garbage', '10.100.0.111', '10.100.0.111'),          # ongeldig
+    ('10.100.0.110', '10.100.0.111', '10.100.0.110'),     # geldig gemeld (bv. NAT) wint
+    ('169.254.1.1', '127.0.0.1', None),                   # niets bruikbaars
+])
+def test_heartbeat_stores_usable_sensor_ip(dash_transition, reported, remote, expected):
+    web_dashboard, fake_db, _ = dash_transition
+    client = web_dashboard.app.test_client()
+    body = {'ip_address': reported} if reported is not None else {}
+    resp = client.post(f'/api/sensors/{SENSOR_ID}/heartbeat', json=body,
+                       environ_base={'REMOTE_ADDR': remote})
+    assert resp.status_code == 200
+    fake_db.update_sensor_heartbeat.assert_called_once_with(SENSOR_ID, ip_address=expected)
+
+
+def _fake_addr(ip):
+    a = MagicMock()
+    a.family = __import__('socket').AF_INET
+    a.address = ip
+    return a
+
+
+@pytest.mark.unit
+def test_sensor_ip_skips_apipa_on_mirror_interface():
+    sensor_client, client = _bare_sensor_client()
+    client.config = {'interface': 'eth1'}               # mirror-poort
+    addrs = {'lo': [_fake_addr('127.0.0.1')], 'eth1': [_fake_addr('169.254.11.57')],
+             'eth0': [_fake_addr('10.100.0.111')]}
+    with patch.object(client, '_route_ip_to_server', return_value=None), \
+            patch.object(sensor_client.psutil, 'net_if_addrs', return_value=addrs):
+        assert client._detect_ip_address() == '10.100.0.111'
+
+
+@pytest.mark.unit
+def test_sensor_ip_prefers_route_to_server():
+    sensor_client, client = _bare_sensor_client()
+    client.config = {'interface': 'eth0'}
+    with patch.object(client, '_route_ip_to_server', return_value='10.100.0.111'), \
+            patch.object(sensor_client.psutil, 'net_if_addrs', return_value={'eth0': [_fake_addr('192.168.5.5')]}):
+        assert client._detect_ip_address() == '10.100.0.111'
+
+
+@pytest.mark.unit
+def test_sensor_route_ip_uses_real_socket_lookup():
+    sensor_client, client = _bare_sensor_client()
+    client.server_url = 'https://127.0.0.1:443'
+    # loopback is niet bruikbaar als beheeradres -> None (maar geen exceptie)
+    assert client._route_ip_to_server() is None
+    assert sensor_client.SensorClient._usable_ipv4('169.254.11.57') is None
+    assert sensor_client.SensorClient._usable_ipv4('10.100.0.111') == '10.100.0.111'

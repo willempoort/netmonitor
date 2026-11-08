@@ -15,6 +15,13 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.7.6] - 2026-11-08
+
+### Fixed
+- **Dashboard toonde een APIPA-adres (169.254.x.x) als sensor-IP**, bijvoorbeeld bij sensor-a0b65. De sensor meldde het IP van zijn monitoring-interface, en dat is vaak een mirror-poort zonder DHCP-adres.
+  - Server: is het gemelde IP leeg, ongeldig, link-local of loopback, dan wordt het bron-IP van het request opgeslagen. Dit werkt ook voor sensors met oude client-code.
+  - Sensor: meldt nu het bronadres richting de SOC-server, en slaat daarna link-local- en loopback-adressen op alle interfaces over.
+
 ## [2.7.5] - 2026-11-08
 
 ### Security

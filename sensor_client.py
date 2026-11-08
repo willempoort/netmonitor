@@ -686,51 +686,66 @@ class SensorClient:
             self.logger.warning(f"Failed to update whitelist from server: {e}")
             self.logger.info("Continuing with config-only whitelist...")
 
-    def _detect_ip_address(self):
-        """Huidig IPv4-adres van de monitoring-interface (fallback: eerste non-loopback)"""
-        # Get IP address from the monitoring interface (not loopback)
-        ip_address = None
+    @staticmethod
+    def _usable_ipv4(value):
+        """IPv4-adres als string als het bruikbaar is als beheeradres, anders None.
+        Link-local (169.254/16, APIPA op een mirror-poort zonder DHCP), loopback
+        en unspecified tellen niet."""
+        import ipaddress
         try:
+            addr = ipaddress.ip_address(value)
+        except (ValueError, TypeError):
+            return None
+        if addr.version != 4 or addr.is_link_local or addr.is_loopback or addr.is_unspecified:
+            return None
+        return str(addr)
+
+    def _route_ip_to_server(self):
+        """Bronadres dat de kernel kiest om de SOC-server te bereiken (UDP connect
+        verstuurt geen pakketten). Dit is het adres waarop de SOC de sensor ziet."""
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(self.server_url)
+            host = parsed.hostname
+            if not host:
+                return None
+            port = parsed.port or (443 if parsed.scheme == 'https' else 80)
+            family, _, _, _, sockaddr = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_DGRAM)[0]
+            with socket.socket(family, socket.SOCK_DGRAM) as s:
+                s.connect(sockaddr)
+                return self._usable_ipv4(s.getsockname()[0])
+        except (OSError, ValueError, IndexError):
+            return None
+
+    def _detect_ip_address(self):
+        """
+        Beheer-IP van deze sensor:
+        1. het bronadres richting de SOC-server (betrouwbaarst; de monitoring-
+           interface is vaak een mirror-poort zonder (bruikbaar) IP)
+        2. IPv4 van de geconfigureerde monitoring-interface(s)
+        3. eerste bruikbare IPv4 op een andere interface
+        Link-local/APIPA en loopback worden overgeslagen.
+        """
+        try:
+            ip_address = self._route_ip_to_server()
+            if ip_address:
+                return ip_address
+
             interface_config = self.config.get('interface', 'eth0')
             net_addrs = psutil.net_if_addrs()
 
-            # Parse interface (handle comma-separated list)
             interfaces_to_check = []
-            if interface_config in ('any', 'all') or interface_config is None:
-                # Will use fallback logic below
-                pass
-            elif isinstance(interface_config, str) and ',' in interface_config:
-                # Multiple interfaces - use first one
-                interfaces_to_check = [iface.strip() for iface in interface_config.split(',')]
-            else:
-                # Single interface
-                interfaces_to_check = [interface_config]
+            if isinstance(interface_config, str) and interface_config not in ('any', 'all'):
+                interfaces_to_check = [iface.strip() for iface in interface_config.split(',') if iface.strip()]
 
-            # Try to get IP from specified interfaces
-            for iface in interfaces_to_check:
-                if iface in net_addrs:
-                    for addr in net_addrs[iface]:
-                        if addr.family == socket.AF_INET:  # IPv4
-                            ip_address = addr.address
-                            break
-                if ip_address:
-                    break
-
-            # Fallback: try to get any non-loopback IP
-            if not ip_address:
-                for iface, addrs in net_addrs.items():
-                    if iface.startswith('lo'):  # Skip loopback
-                        continue
-                    for addr in addrs:
-                        if addr.family == socket.AF_INET:
-                            ip_address = addr.address
-                            break
-                    if ip_address:
-                        break
+            others = [iface for iface in net_addrs if iface not in interfaces_to_check and not iface.startswith('lo')]
+            for iface in interfaces_to_check + others:
+                for addr in net_addrs.get(iface, []):
+                    if addr.family == socket.AF_INET and self._usable_ipv4(addr.address):
+                        return addr.address
         except Exception as e:
             self.logger.warning(f"Could not detect IP address: {e}")
-            ip_address = None
-        return ip_address
+        return None
 
     def _register_sensor(self):
         """Register sensor with central SOC server"""

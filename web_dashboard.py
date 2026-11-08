@@ -1394,6 +1394,28 @@ def api_get_sensors():
         logger.error(f"Error getting sensors: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+def _effective_sensor_ip(reported):
+    """
+    IP-adres om voor een sensor op te slaan. Het door de sensor gemelde adres
+    heeft voorrang (klopt ook achter NAT), behalve als het onbruikbaar is:
+    leeg, ongeldig, link-local (169.254/16, APIPA op een mirror-poort zonder
+    DHCP), loopback of unspecified. Dan het bron-IP van het request (via
+    ProxyFix het echte client-IP achter nginx).
+    """
+    import ipaddress as _ip
+
+    def usable(value):
+        try:
+            addr = _ip.ip_address(str(value).strip())
+        except (ValueError, TypeError):
+            return None
+        if addr.is_link_local or addr.is_loopback or addr.is_unspecified or addr.is_multicast:
+            return None
+        return str(addr)
+
+    return usable(reported) or usable(request.remote_addr)
+
+
 @app.route('/api/sensors/register', methods=['POST'])
 @require_sensor_token()
 def api_register_sensor():
@@ -1421,7 +1443,7 @@ def api_register_sensor():
             sensor_id=data['sensor_id'],
             hostname=data['hostname'],
             location=data.get('location'),
-            ip_address=data.get('ip_address'),
+            ip_address=_effective_sensor_ip(data.get('ip_address')),
             version=data.get('version'),
             config=data.get('config')
         )
@@ -1475,7 +1497,7 @@ def api_sensor_heartbeat(sensor_id):
     """Update sensor heartbeat"""
     try:
         data = request.get_json(silent=True) or {}
-        success = db.update_sensor_heartbeat(sensor_id, ip_address=data.get('ip_address'))
+        success = db.update_sensor_heartbeat(sensor_id, ip_address=_effective_sensor_ip(data.get('ip_address')))
         if success:
             return jsonify({'success': True})
         else:
@@ -1492,7 +1514,7 @@ def api_submit_sensor_metrics(sensor_id):
         data = request.get_json()
 
         # Update heartbeat
-        db.update_sensor_heartbeat(sensor_id, ip_address=data.get('ip_address'))
+        db.update_sensor_heartbeat(sensor_id, ip_address=_effective_sensor_ip(data.get('ip_address')))
 
         # Save metrics
         success = db.save_sensor_metrics(
