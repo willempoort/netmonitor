@@ -115,13 +115,14 @@ server {
     # ==================== SENSOR API ENDPOINTS (POORT 8080) ====================
     # Flask dashboard sensor endpoints met sensor token authenticatie
 
-    # SECURITY: sensor-zijde endpoints alleen vanaf de sensors toestaan.
-    # Vervang SENSOR_NETWORK door de sensor-IP's of het sensorsubnet (bv. 10.100.0.57).
-    # Sensors authenticeren daarnaast met een token (SENSOR_TOKEN).
+    # Sensor-zijde endpoints. Geen IP-allowlist nodig: elke sensor authenticeert
+    # met een eigen token (SENSOR_TOKEN of .sensor_token); Flask controleert dat
+    # het token bij de sensor in de URL hoort. Nieuwe sensors melden zich aan via
+    # /api/sensors/enroll en worden goedgekeurd in het dashboard, dus sensors
+    # mogen via DHCP en vanuit elk subnet komen.
+    # Let op: automatisch aanmelden (/api/sensors/enroll) werkt alleen via HTTPS;
+    # met deze HTTP-only config eerst certbot draaien (zie boven).
     location ~ ^/api/sensors/(register|[^/]+/(heartbeat|metrics|traffic|alerts|devices|commands/[0-9]+))$ {
-        allow SENSOR_NETWORK;
-        allow 127.0.0.1;
-        deny all;
         proxy_pass http://netmonitor_dashboard;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -132,13 +133,9 @@ server {
         proxy_redirect off;
     }
 
-    # Commando-queue: POST = dashboard (login vereist), GET = sensor -> alleen sensors.
+    # Commando-queue: POST = dashboard (login + rol admin/operator),
+    # GET = sensor haalt eigen commando's op (token van die sensor).
     location ~ ^/api/sensors/[^/]+/commands$ {
-        limit_except POST {
-            allow SENSOR_NETWORK;
-            allow 127.0.0.1;
-            deny all;
-        }
         proxy_pass http://netmonitor_dashboard;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
