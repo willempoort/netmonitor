@@ -16,6 +16,11 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, List, Tuple
 
+# Laadt .env in os.environ (zonder bestaande variabelen te overschrijven), zodat
+# ook CLI-scripts (setup_sensor_auth.py e.d.) DB_PASSWORD/FLASK_SECRET_KEY uit
+# .env krijgen; services krijgen ze al via systemd EnvironmentFile.
+import env_loader  # noqa: F401
+
 # Import defaults - uses try/except to handle import from different contexts
 try:
     from config_defaults import BEST_PRACTICE_CONFIG
