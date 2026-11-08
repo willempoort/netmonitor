@@ -136,6 +136,9 @@ def _load_bash_config(config_file):
                 elif key == 'SENSOR_TOKEN':
                     if value:  # Only set if not empty
                         config.setdefault('server', {})['token'] = value
+                elif key == 'SENSOR_TOKEN_FILE':
+                    if value:
+                        config.setdefault('sensor', {})['token_file'] = value
                 elif key == 'SENSOR_SECRET_KEY':
                     # Oude naam uit setup_sensor.sh; werd nooit als token verstuurd.
                     # Alleen onthouden om er een waarschuwing over te geven.
@@ -220,23 +223,30 @@ class SensorClient:
         # Config ETag for caching (prevents unnecessary config downloads)
         self.config_etag = None
 
-        # Authentication token
+        # Authentication token: SENSOR_TOKEN (env/config) > tokenbestand van
+        # de automatische aanmelding (enrollment)
+        self.token_file = (
+            os.environ.get('SENSOR_TOKEN_FILE') or
+            self.config.get('sensor', {}).get('token_file') or
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), '.sensor_token')
+        )
         self.token = (
             os.environ.get('SENSOR_TOKEN') or
             self.config.get('server', {}).get('token') or
             self.config.get('sensor', {}).get('token')
         )
-        if not self.token:
-            if self.config.get('_legacy_secret_key'):
-                self.logger.warning(
-                    "SENSOR_SECRET_KEY staat in de config maar wordt niet gebruikt. "
-                    "Zet het token uit setup_sensor_auth.py als SENSOR_TOKEN=... in de config."
-                )
-            else:
-                self.logger.warning(
-                    "Geen SENSOR_TOKEN geconfigureerd - de SOC-server weigert deze sensor "
-                    "zodra sensor_auth.allow_missing_token uit staat."
-                )
+        self.token_source = 'config' if self.token else None
+        # Token van een nog niet goedgekeurd aanmeldverzoek. Wordt bewust NIET
+        # als Authorization meegestuurd: de server zou het weigeren (403),
+        # terwijl de sensor zonder token nog binnenkomt zolang de SOC-server
+        # sensor_auth.allow_missing_token=true heeft.
+        self._pending_token = None
+        self.enrollment_state = None  # None | pending | approved | rejected | blocked
+        if not self.token and self.config.get('_legacy_secret_key'):
+            self.logger.warning(
+                "SENSOR_SECRET_KEY staat in de config maar wordt niet gebruikt; "
+                "de sensor meldt zich automatisch aan (of zet SENSOR_TOKEN=...)."
+            )
 
         # SSL verification setting
         self.ssl_verify = self.config.get('server', {}).get('ssl_verify', True)
@@ -298,6 +308,10 @@ class SensorClient:
 
         # Initialize components
         self._init_components()
+
+        # Geen token: automatisch aanmelden en wachten op goedkeuring
+        if not self.token:
+            self._init_enrollment()
 
         # Register with server
         self._register_sensor()
@@ -400,6 +414,183 @@ class SensorClient:
         ))
 
         return normalized
+
+    # ==================== Aanmelden (enrollment) ====================
+
+    def _read_token_file(self):
+        try:
+            with open(self.token_file, 'r') as f:
+                return f.read().strip() or None
+        except FileNotFoundError:
+            return None
+        except Exception as e:
+            self.logger.error(f"Kan tokenbestand {self.token_file} niet lezen: {e}")
+            return None
+
+    def _write_token_file(self, token):
+        directory = os.path.dirname(self.token_file) or '.'
+        os.makedirs(directory, exist_ok=True)
+        tmp = f"{self.token_file}.tmp"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, 'w') as f:
+            f.write(token + '\n')
+        os.replace(tmp, self.token_file)
+
+    def _remove_token_file(self):
+        try:
+            os.remove(self.token_file)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            self.logger.error(f"Kan tokenbestand {self.token_file} niet verwijderen: {e}")
+
+    @staticmethod
+    def _token_fingerprint(token):
+        import hashlib
+        digest = hashlib.sha256(token.encode()).hexdigest()[:16]
+        return '-'.join(digest[i:i + 4] for i in range(0, 16, 4))
+
+    def _enrollment_status(self, token):
+        """Vraag de status van een aanmeldverzoek op. None bij een netwerkfout."""
+        try:
+            response = requests.get(
+                f"{self.server_url}/api/sensors/enroll/status",
+                headers={'Authorization': f'Bearer {token}'},
+                timeout=10,
+                verify=self.ssl_verify
+            )
+        except Exception as e:
+            self.logger.warning(f"Aanmeldstatus opvragen mislukt: {e}")
+            return None
+        if response.status_code == 404:
+            return 'unknown'
+        try:
+            return response.json().get('status')
+        except ValueError:
+            self.logger.warning(f"Onverwacht antwoord op aanmeldstatus: HTTP {response.status_code}")
+            return None
+
+    def _request_enrollment(self):
+        """Dien een aanmeldverzoek in. True als er een (pending) token is."""
+        if not str(self.server_url).lower().startswith('https://'):
+            self.logger.error(
+                "Automatisch aanmelden kan alleen via HTTPS (het token gaat mee in het antwoord). "
+                "Zet SOC_SERVER_URL op https://... of configureer SENSOR_TOKEN handmatig."
+            )
+            self.enrollment_state = 'blocked'
+            return False
+        try:
+            from version import __version__ as version
+        except ImportError:
+            version = None
+        try:
+            response = requests.post(
+                f"{self.server_url}/api/sensors/enroll",
+                json={
+                    'sensor_id': self.sensor_id,
+                    'hostname': socket.gethostname(),
+                    'location': self.location,
+                    'ip_address': self._detect_ip_address(),
+                    'version': version,
+                },
+                timeout=10,
+                verify=self.ssl_verify
+            )
+        except Exception as e:
+            self.logger.warning(f"Aanmeldverzoek versturen mislukt: {e}")
+            return False
+
+        try:
+            data = response.json()
+        except ValueError:
+            data = {}
+        if response.status_code == 202 and data.get('token'):
+            token = data['token']
+            try:
+                self._write_token_file(token)
+            except Exception as e:
+                self.logger.error(f"Kan token niet opslaan in {self.token_file}: {e}")
+                return False
+            self._pending_token = token
+            self.enrollment_state = 'pending'
+            self.logger.warning("=" * 60)
+            self.logger.warning(f"Aanmeldverzoek ingediend voor sensor {self.sensor_id}")
+            self.logger.warning(f"Vingerafdruk: {self._token_fingerprint(token)}")
+            self.logger.warning("Keur deze sensor goed in het SOC-dashboard (Remote Sensors)")
+            self.logger.warning("en controleer daar dezelfde vingerafdruk.")
+            self.logger.warning("=" * 60)
+            return True
+
+        self.logger.warning(
+            f"Aanmeldverzoek geweigerd (HTTP {response.status_code}): {data.get('error', response.text[:200])}"
+        )
+        return False
+
+    def _accept_enrolled_token(self, token):
+        self.token = token
+        self.token_source = 'enrollment'
+        self._pending_token = None
+        self.enrollment_state = 'approved'
+
+    def _check_enrollment(self):
+        """
+        Eén stap van de aanmeldprocedure. Geeft het aantal seconden terug tot
+        de volgende stap, of None als er niets meer te doen is.
+        """
+        token = self._pending_token or self._read_token_file()
+        if not token:
+            if self._request_enrollment():
+                return 60
+            return None if self.enrollment_state == 'blocked' else 300
+
+        status = self._enrollment_status(token)
+        if status == 'approved':
+            self._accept_enrolled_token(token)
+            self.logger.info(f"✓ Sensor {self.sensor_id} is goedgekeurd; token actief")
+            return None
+        if status == 'pending':
+            self._pending_token = token
+            self.enrollment_state = 'pending'
+            return 60
+        if status in ('rejected', 'revoked'):
+            self.logger.error(
+                f"Aanmeldverzoek voor {self.sensor_id} is {'afgewezen' if status == 'rejected' else 'ingetrokken'}. "
+                f"Tokenbestand verwijderd; herstart de sensor om opnieuw aan te melden."
+            )
+            self._remove_token_file()
+            self._pending_token = None
+            self.enrollment_state = 'rejected'
+            return None
+        if status in ('unknown', 'expired'):
+            self.logger.warning("Aanmeldverzoek onbekend of verlopen; nieuw verzoek indienen")
+            self._remove_token_file()
+            self._pending_token = None
+            return 0
+        return 60  # netwerkfout: later opnieuw
+
+    def _init_enrollment(self):
+        """Bij het opstarten: token uit bestand gebruiken of aanmelden."""
+        delay = self._check_enrollment()
+        if delay == 0:
+            delay = self._check_enrollment()
+        self._enrollment_next = None if delay is None else time.time() + delay
+        if self.enrollment_state == 'pending':
+            self.logger.warning(
+                f"Sensor wacht op goedkeuring in het dashboard (vingerafdruk "
+                f"{self._token_fingerprint(self._pending_token)}); "
+                f"tot dan zonder token (werkt alleen als de SOC-server dat tijdelijk toestaat)"
+            )
+
+    def _enrollment_tick(self):
+        """Aangeroepen vanuit de upload-loop zolang de aanmelding loopt."""
+        next_at = getattr(self, '_enrollment_next', None)
+        if next_at is None or time.time() < next_at:
+            return
+        delay = self._check_enrollment()
+        self._enrollment_next = None if delay is None else time.time() + delay
+        if self.enrollment_state == 'approved':
+            # Opnieuw registreren, nu met token
+            self._register_sensor()
 
     def _get_headers(self):
         """Get HTTP headers with authentication token if available"""
@@ -1774,6 +1965,10 @@ class SensorClient:
 
             while self.running:
                 now = time.time()
+
+                # Aanmelding afronden (alleen actief zolang er geen token is)
+                if not self.token:
+                    self._enrollment_tick()
 
                 # Upload alerts every batch_interval
                 if now - last_upload >= self.batch_interval:

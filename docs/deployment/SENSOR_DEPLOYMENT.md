@@ -187,9 +187,33 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Stap 4: Generate Sensor Token
+### Stap 4: Sensor Token (automatisch aanmelden)
 
-**Op de SOC Server:**
+**Aanbevolen: niets doen.** Laat `SENSOR_TOKEN` leeg. Bij de eerste start vraagt de
+sensor zelf een token aan bij de SOC-server (`POST /api/sensors/enroll`, alleen via
+HTTPS) en bewaart het in `/opt/netmonitor/.sensor_token` (rechten 0600). In de
+sensor-log staat een vingerafdruk:
+
+```
+Aanmeldverzoek ingediend voor sensor nano-office-dmz-01
+Vingerafdruk: 38c3-7a97-8771-54b5
+```
+
+In het dashboard verschijnt bij **Remote Sensors** een blok *Wachtend op goedkeuring*.
+Controleer dat de vingerafdruk gelijk is en klik **Toestaan** (alleen admin). Binnen
+een minuut gebruikt de sensor het token. Tot die tijd stuurt de sensor geen token
+(dat werkt alleen als `sensor_auth.allow_missing_token` tijdelijk aan staat).
+
+- Er kan per sensor-ID één verzoek tegelijk openstaan; een verzoek vervalt na 7 dagen.
+- Bij een bestaand sensor-ID toont het dashboard een waarschuwing: alleen toestaan
+  als je zeker weet dat het de echte sensor is.
+- Afgewezen of ingetrokken: de sensor verwijdert het tokenbestand en meldt zich na
+  een herstart opnieuw aan.
+- Omdat elke sensor een eigen token heeft, is een IP-allowlist in nginx niet nodig;
+  sensors mogen via DHCP en vanuit elk subnet komen.
+
+**Alternatief: handmatig token** (bijv. als de sensor niet via HTTPS kan aanmelden).
+Op de SOC Server:
 
 ```bash
 cd /opt/netmonitor
@@ -197,20 +221,8 @@ source venv/bin/activate
 python3 setup_sensor_auth.py
 ```
 
-Volg de prompts:
-```
-Sensor ID (e.g., nano-vlan10-01): nano-office-dmz-01
-Token name (optional): DMZ Sensor Main Token
-Expires in days (leave empty for no expiration): <Enter>
-Allow remote commands? (y/N): N
-```
-
-Output:
-```
-TOKEN: abcd1234efgh5678ijkl9012mnop3456qrst7890uvwx
-```
-
-**⚠️ SAVE THIS TOKEN - IT WILL NOT BE SHOWN AGAIN!**
+Zet het getoonde token als `SENSOR_TOKEN=...` in `sensor.conf`.
+**⚠️ Het token wordt maar één keer getoond.**
 
 ### Stap 5: Configure Sensor
 
@@ -346,12 +358,8 @@ python3 setup_sensor_auth.py
 python3 -c "from sensor_auth import SensorAuthManager; from database import DatabaseManager; from config_loader import load_config; config=load_config('config.yaml'); db=DatabaseManager(**config['database']['postgresql']); auth=SensorAuthManager(db); tokens=auth.list_tokens(); print('\n'.join([f'{t[\"sensor_id\"]}: {t[\"token_name\"]}' for t in tokens]))"
 ```
 
-**Revoke token:**
-```bash
-# Via database
-psql -U netmonitor -d netmonitor
-DELETE FROM sensor_tokens WHERE sensor_id = 'nano-office-dmz-01';
-```
+**Revoke token:** Dashboard > Remote Sensors > *Edit* (tandwiel) > **Tokens** > *Intrekken*
+(alleen admin). Daar zie je ook per token wanneer het voor het laatst is gebruikt.
 
 ### Security Best Practices
 

@@ -34,24 +34,26 @@ INTERFACE=eth0
 
 # SOC Server URL (REQUIRED)
 # The URL of your central SOC server dashboard
-# Format: http://hostname:port or https://hostname:port
+# Format: https://hostname:port  (altijd HTTPS: het sensor-token gaat mee)
 #
 # IMPORTANT: Always specify the port explicitly!
 # - For standard HTTPS (port 443): https://soc.example.com:443
 # - For custom port (e.g., 8080): https://soc.example.com:8080
 # - If no port is specified, defaults are: HTTPS=443, HTTP=80
 #
-SOC_SERVER_URL=http://soc.example.com:8080
+SOC_SERVER_URL=https://soc.example.com:443
 
 # SSL Certificate Verification (OPTIONAL)
 # Set to false only for testing with self-signed certificates
 # Default: true
 SSL_VERIFY=true
 
-# Authentication Token (OPTIONAL)
-# For secure sensor-to-server communication
-# Generate on SOC server with: python3 setup_sensor_auth.py
-# Leave empty if SOC server doesn't require authentication
+# Sensor Token (OPTIONAL)
+# Leeg laten = automatisch aanmelden: de sensor vraagt bij de eerste start
+# zelf een token aan en wacht tot een admin hem goedkeurt in het dashboard
+# (Remote Sensors > Wachtend op goedkeuring). Het token wordt bewaard in
+# SENSOR_TOKEN_FILE (standaard <installatiemap>/.sensor_token).
+# Alternatief: token aanmaken op de SOC-server met setup_sensor_auth.py.
 SENSOR_TOKEN=
 
 # Local Whitelist (OPTIONAL)

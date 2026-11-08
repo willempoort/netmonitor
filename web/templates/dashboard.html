@@ -275,11 +275,39 @@
                             <i class="bi bi-broadcast"></i> Remote Sensors
                             <span class="badge bg-info ms-2" id="sensors-count">0</span>
                             <span class="badge bg-success ms-1" id="sensors-online">0</span>
+                            <span class="badge bg-warning text-dark ms-1" id="sensors-pending-badge" style="display: none;"
+                                  title="Sensors die wachten op goedkeuring"></span>
                         </h5>
                         <i class="bi bi-chevron-down"></i>
                     </div>
                     <div class="collapse show" id="sensorsCollapse">
                         <div class="card-body p-0">
+                            <!-- Aanmeldverzoeken van nieuwe sensors -->
+                            <div id="sensor-enrollments" class="border-bottom border-warning p-3" style="display: none;">
+                                <h6 class="text-warning mb-2">
+                                    <i class="bi bi-person-plus"></i> Wachtend op goedkeuring
+                                </h6>
+                                <p class="small text-muted mb-2">
+                                    Deze sensors hebben zich aangemeld. Controleer of de vingerafdruk gelijk is aan
+                                    die in de log van de sensor (<code>journalctl -u netmonitor-sensor</code>)
+                                    voordat je toestaat.
+                                </p>
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-sm mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Sensor</th>
+                                                <th>IP</th>
+                                                <th>Versie</th>
+                                                <th>Aangevraagd</th>
+                                                <th>Vingerafdruk</th>
+                                                <th>Acties</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="sensor-enrollments-table"></tbody>
+                                    </table>
+                                </div>
+                            </div>
                             <div class="table-responsive">
                                 <table class="table table-dark table-sm table-hover mb-0">
                                     <thead>
@@ -1440,6 +1468,12 @@
                         <small class="form-text text-muted">Local directory for PCAP file storage</small>
                     </div>
 
+                    <!-- Sensor tokens (alleen admin) -->
+                    <div class="mb-3">
+                        <label class="form-label"><i class="bi bi-key"></i> Tokens</label>
+                        <div id="edit-sensor-tokens" class="small text-muted">Laden...</div>
+                    </div>
+
                     <div class="alert alert-info">
                         <i class="bi bi-info-circle"></i>
                         <strong>Note:</strong> Changes will be picked up automatically within the configured sync interval.
@@ -2598,7 +2632,7 @@
     </script>
 
     <!-- Custom JS - Load last with defer -->
-    <script src="{{ url_for('static', filename='js/dashboard.js') }}?v=16" defer></script>
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}?v=17" defer></script>
     <script src="{{ url_for('static', filename='js/config-management.js')}}?v=8" defer></script>
     <script src="{{ url_for('static', filename='js/device-classification.js') }}?v=13" defer></script>
 

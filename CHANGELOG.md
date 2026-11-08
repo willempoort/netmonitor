@@ -15,6 +15,22 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.8.0] - 2026-11-08
+
+### Added
+- **Sensors melden zich zelf aan, een admin keurt goed in het dashboard.** Een sensor zonder `SENSOR_TOKEN` vraagt bij de eerste start een token aan (`POST /api/sensors/enroll`) en bewaart het in `.sensor_token`. Het token werkt pas na goedkeuring.
+  - Dashboard: blok *Wachtend op goedkeuring* bij Remote Sensors, met hostname, IP, versie en een vingerafdruk die ook in de sensor-log staat. Toestaan of weigeren is alleen voor admins. Bij een al bestaand sensor-ID verschijnt een waarschuwing.
+  - Dashboard: tokens per sensor bekijken en intrekken (Edit sensor > Tokens).
+  - Beveiliging: alleen via HTTPS; maximaal 10 verzoeken per IP per uur; maximaal 50 openstaande verzoeken; per sensor-ID één open verzoek; verzoeken vervallen na 7 dagen. Een verzoek maakt geen sensor-rij aan, dus komt niet binnen via `allow_missing_token`.
+  - Daardoor is een IP-allowlist voor sensors in nginx niet meer nodig (DHCP, meerdere subnetten).
+  - Schema v34: tabel `sensor_enrollments`.
+
+### Changed
+- `sensor.conf.template` en `setup_sensor.sh`: `SOC_SERVER_URL` standaard `https://`; `SENSOR_TOKEN` is optioneel (leeg = automatisch aanmelden).
+
+### Fixed
+- `setup_sensor.sh` schreef `SENSOR_SECRET_KEY`, die nooit als token werd verstuurd. Alleen `SENSOR_TOKEN` telt.
+
 ## [2.7.7] - 2026-11-08
 
 ### Security

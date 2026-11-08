@@ -36,7 +36,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config_loader import load_config
 from database import DatabaseManager
-from sensor_auth import SensorAuthManager
+from sensor_auth import SensorAuthManager, EnrollmentError
 from web_auth import WebAuthManager, WebUser
 from functools import wraps
 from version import __version__
@@ -90,7 +90,7 @@ _CHAIN_ALERT_TYPES = frozenset(['HIGH_RISK_ATTACK_CHAIN', 'KILL_CHAIN_PROGRESSIO
 
 # Auto-refresh endpoints tellen niet als gebruikersactiviteit
 _AUTO_REFRESH_PATHS = frozenset([
-    '/api/dashboard', '/api/sensors', '/api/sensors/',
+    '/api/dashboard', '/api/sensors', '/api/sensors/', '/api/sensors/enrollments',
     '/api/whitelist', '/api/integrations/status', '/api/disk-usage',
     '/api/auth/session-status',
 ])
@@ -1470,6 +1470,162 @@ def api_register_sensor():
     except Exception as e:
         logger.error(f"Error registering sensor: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+# ==================== Sensor-aanmelding (enrollment) ====================
+# Een sensor zonder token vraagt zelf een token aan; een admin keurt het
+# verzoek goed in het dashboard. Daardoor is geen IP-allowlist in nginx nodig.
+
+ENROLL_RATE_LIMIT = 10          # verzoeken per IP ...
+ENROLL_RATE_WINDOW = 3600       # ... per uur (per gunicorn-worker)
+_enroll_attempts = {}
+_enroll_lock = threading.Lock()
+
+
+def _enroll_rate_limited(ip):
+    now = time.time()
+    with _enroll_lock:
+        attempts = [t for t in _enroll_attempts.get(ip, []) if now - t < ENROLL_RATE_WINDOW]
+        limited = len(attempts) >= ENROLL_RATE_LIMIT
+        if not limited:
+            attempts.append(now)
+        _enroll_attempts[ip] = attempts
+        # Oude IP's opruimen zodat de dict niet onbeperkt groeit
+        if len(_enroll_attempts) > 10000:
+            for key in [k for k, v in _enroll_attempts.items() if not v or now - v[-1] >= ENROLL_RATE_WINDOW]:
+                del _enroll_attempts[key]
+    return limited
+
+
+def _request_is_local():
+    return request.remote_addr in ('127.0.0.1', '::1')
+
+
+@app.route('/api/sensors/enroll', methods=['POST'])
+def api_sensor_enroll():
+    """
+    Aanmeldverzoek van een sensor (geen authenticatie). Het teruggegeven
+    token werkt pas nadat een admin het verzoek heeft goedgekeurd.
+    """
+    if not request.is_secure and not _request_is_local():
+        # Het token gaat in de response mee; nooit over plain HTTP
+        return jsonify({'success': False, 'error': 'Enrollment requires HTTPS'}), 403
+    if not sensor_auth:
+        return jsonify({'success': False, 'error': 'Authentication system not available'}), 500
+    if _enroll_rate_limited(request.remote_addr):
+        logger.warning(f"Enrollment rate limit hit by {request.remote_addr}")
+        return jsonify({'success': False, 'error': 'Too many enrollment requests'}), 429
+
+    data = request.get_json(silent=True) or {}
+    try:
+        result = sensor_auth.request_enrollment(
+            sensor_id=data.get('sensor_id'),
+            hostname=data.get('hostname'),
+            location=data.get('location'),
+            ip_address=_effective_sensor_ip(data.get('ip_address')),
+            version=data.get('version'),
+        )
+    except EnrollmentError as e:
+        return jsonify({'success': False, 'error': e.message, 'code': e.code}), e.http_status
+    except Exception as e:
+        logger.error(f"Error handling enrollment from {request.remote_addr}: {e}")
+        return jsonify({'success': False, 'error': 'Enrollment failed'}), 500
+
+    socketio.emit('sensor_enrollment', {'sensor_id': data.get('sensor_id')})
+    return jsonify({
+        'success': True,
+        'status': result['status'],
+        'token': result['token'],
+        'fingerprint': result['fingerprint'],
+        'poll_interval': 60,
+    }), 202
+
+
+@app.route('/api/sensors/enroll/status', methods=['GET'])
+def api_sensor_enroll_status():
+    """Status van het eigen aanmeldverzoek (Authorization: Bearer <token>)."""
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return jsonify({'success': False, 'error': 'Missing Authorization header'}), 401
+    if not sensor_auth:
+        return jsonify({'success': False, 'error': 'Authentication system not available'}), 500
+    try:
+        status = sensor_auth.get_enrollment_status(auth_header[7:].strip())
+    except Exception as e:
+        logger.error(f"Error getting enrollment status: {e}")
+        return jsonify({'success': False, 'error': 'Status lookup failed'}), 500
+    if not status:
+        return jsonify({'success': False, 'error': 'Unknown enrollment', 'status': 'unknown'}), 404
+    return jsonify({'success': True, 'status': status['status'], 'sensor_id': status['sensor_id']})
+
+
+@app.route('/api/sensors/enrollments', methods=['GET'])
+@require_role('admin', 'operator')
+def api_list_enrollments():
+    status = request.args.get('status', 'pending')
+    if status == 'all':
+        status = None
+    elif status not in ('pending', 'approved', 'rejected', 'expired'):
+        return jsonify({'success': False, 'error': 'Invalid status'}), 400
+    try:
+        return jsonify({'success': True, 'data': sensor_auth.list_enrollments(status)})
+    except Exception as e:
+        logger.error(f"Error listing enrollments: {e}")
+        return jsonify({'success': False, 'error': 'Failed to list enrollments'}), 500
+
+
+@app.route('/api/sensors/enrollments/<int:enrollment_id>/approve', methods=['POST'])
+@require_role('admin')
+def api_approve_enrollment(enrollment_id):
+    data = request.get_json(silent=True) or {}
+    try:
+        result = sensor_auth.approve_enrollment(
+            enrollment_id, approved_by=current_user.username,
+            allow_commands=bool(data.get('allow_commands', True)))
+    except Exception as e:
+        logger.error(f"Error approving enrollment #{enrollment_id}: {e}")
+        return jsonify({'success': False, 'error': 'Approval failed'}), 500
+    if not result:
+        return jsonify({'success': False, 'error': 'Enrollment not found or no longer pending'}), 404
+    return jsonify({'success': True, 'data': result})
+
+
+@app.route('/api/sensors/enrollments/<int:enrollment_id>/reject', methods=['POST'])
+@require_role('admin')
+def api_reject_enrollment(enrollment_id):
+    try:
+        sensor_id = sensor_auth.reject_enrollment(enrollment_id, rejected_by=current_user.username)
+    except Exception as e:
+        logger.error(f"Error rejecting enrollment #{enrollment_id}: {e}")
+        return jsonify({'success': False, 'error': 'Reject failed'}), 500
+    if not sensor_id:
+        return jsonify({'success': False, 'error': 'Enrollment not found or no longer pending'}), 404
+    return jsonify({'success': True, 'sensor_id': sensor_id})
+
+
+@app.route('/api/sensors/<sensor_id>/tokens', methods=['GET'])
+@require_role('admin')
+def api_list_sensor_tokens(sensor_id):
+    try:
+        return jsonify({'success': True, 'data': sensor_auth.list_tokens(sensor_id=sensor_id)})
+    except Exception as e:
+        logger.error(f"Error listing tokens for {sensor_id}: {e}")
+        return jsonify({'success': False, 'error': 'Failed to list tokens'}), 500
+
+
+@app.route('/api/sensors/<sensor_id>/tokens/<int:token_id>', methods=['DELETE'])
+@require_role('admin')
+def api_revoke_sensor_token(sensor_id, token_id):
+    try:
+        if not any(t['id'] == token_id for t in sensor_auth.list_tokens(sensor_id=sensor_id)):
+            return jsonify({'success': False, 'error': 'Token not found for this sensor'}), 404
+        if not sensor_auth.revoke_token(token_id):
+            return jsonify({'success': False, 'error': 'Revoke failed'}), 500
+    except Exception as e:
+        logger.error(f"Error revoking token {token_id} for {sensor_id}: {e}")
+        return jsonify({'success': False, 'error': 'Revoke failed'}), 500
+    logger.warning(f"Token #{token_id} van sensor {sensor_id} ingetrokken door {current_user.username}")
+    return jsonify({'success': True})
+
 
 @app.route('/api/sensors/<sensor_id>', methods=['DELETE'])
 @require_role('admin', 'operator')

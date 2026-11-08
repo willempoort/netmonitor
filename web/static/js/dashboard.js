@@ -299,6 +299,10 @@ function initWebSocket() {
         console.log('Server confirmed connection:', data);
     });
 
+    socket.on('sensor_enrollment', function() {
+        loadSensorEnrollments();
+    });
+
     socket.on('new_alert', function(alert) {
         console.log('New alert received:', alert);
         addAlertToFeed(alert, true);
@@ -2089,9 +2093,175 @@ async function loadSensors() {
         if (result.success) {
             updateSensorsTable(result.data);
         }
+        loadSensorEnrollments();
     } catch (error) {
         console.error('[SENSORS] Error loading sensors:', error);
     }
+}
+
+// ==================== Sensor-aanmelding (enrollment) ====================
+
+async function loadSensorEnrollments() {
+    const container = document.getElementById('sensor-enrollments');
+    const badge = document.getElementById('sensors-pending-badge');
+    if (!container) return;
+    try {
+        const response = await fetch('/api/sensors/enrollments');
+        if (response.status === 401 || response.status === 403) {
+            // Alleen admin/operator zien aanmeldverzoeken
+            container.style.display = 'none';
+            badge.style.display = 'none';
+            return;
+        }
+        const result = await response.json();
+        if (!result.success) return;
+        renderSensorEnrollments(result.data || []);
+    } catch (error) {
+        console.error('[SENSORS] Error loading enrollments:', error);
+    }
+}
+
+function renderSensorEnrollments(enrollments) {
+    const container = document.getElementById('sensor-enrollments');
+    const tbody = document.getElementById('sensor-enrollments-table');
+    const badge = document.getElementById('sensors-pending-badge');
+
+    if (enrollments.length === 0) {
+        container.style.display = 'none';
+        badge.style.display = 'none';
+        return;
+    }
+    badge.textContent = `${enrollments.length} wachtend`;
+    badge.style.display = '';
+    container.style.display = '';
+
+    tbody.innerHTML = enrollments.map(e => {
+        let warning = '';
+        if (e.existing_sensor) {
+            warning = `<div class="text-warning small"><i class="bi bi-exclamation-triangle"></i>
+                Sensor bestaat al (laatst bekend IP ${escapeHtml(e.existing_ip || '?')},
+                ${escapeHtml(e.existing_active_tokens)} actief token(s)). Alleen toestaan als je zeker weet
+                dat dit de echte sensor is.</div>`;
+        }
+        const requested = e.requested_at ? new Date(e.requested_at).toLocaleString() : '-';
+        const lastPoll = e.last_poll ? `<br><small class="text-muted">laatst gezien ${escapeHtml(new Date(e.last_poll).toLocaleTimeString())}</small>` : '';
+        return `<tr>
+            <td><strong>${escapeHtml(e.sensor_id)}</strong><br>
+                <small class="text-muted">${escapeHtml(e.hostname || '')}${e.location ? ' &middot; ' + escapeHtml(e.location) : ''}</small>
+                ${warning}</td>
+            <td>${escapeHtml(e.ip_address || '-')}</td>
+            <td>${escapeHtml(e.version || '-')}</td>
+            <td>${escapeHtml(requested)}${lastPoll}</td>
+            <td><code>${escapeHtml(e.fingerprint)}</code></td>
+            <td class="text-nowrap">
+                <button class="btn btn-sm btn-success" onclick="approveSensorEnrollment(${jsArg(e.id)}, ${jsArg(e.sensor_id)}, ${jsArg(e.fingerprint)})">
+                    <i class="bi bi-check-lg"></i> Toestaan
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="rejectSensorEnrollment(${jsArg(e.id)}, ${jsArg(e.sensor_id)})">
+                    <i class="bi bi-x-lg"></i> Weigeren
+                </button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+async function approveSensorEnrollment(enrollmentId, sensorId, fingerprint) {
+    if (!confirm(`Sensor "${sensorId}" toestaan?\n\nVingerafdruk: ${fingerprint}\n` +
+                 `Controleer dat de sensor-log dezelfde vingerafdruk toont.`)) {
+        return;
+    }
+    const allowCommands = confirm(
+        `Mag "${sensorId}" commando's uit het dashboard uitvoeren (update, restart, buffer flush)?\n\n` +
+        `OK = ja (aanbevolen), Annuleren = nee`
+    );
+    try {
+        const response = await fetch(`/api/sensors/enrollments/${encodeURIComponent(enrollmentId)}/approve`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({allow_commands: allowCommands})
+        });
+        const result = await response.json();
+        if (!result.success) {
+            alert(`Toestaan mislukt: ${result.error || response.status}`);
+        }
+    } catch (error) {
+        alert(`Toestaan mislukt: ${error.message}`);
+    }
+    loadSensorEnrollments();
+    loadSensors();
+}
+
+async function rejectSensorEnrollment(enrollmentId, sensorId) {
+    if (!confirm(`Aanmeldverzoek van "${sensorId}" weigeren?`)) return;
+    try {
+        const response = await fetch(`/api/sensors/enrollments/${encodeURIComponent(enrollmentId)}/reject`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        const result = await response.json();
+        if (!result.success) {
+            alert(`Weigeren mislukt: ${result.error || response.status}`);
+        }
+    } catch (error) {
+        alert(`Weigeren mislukt: ${error.message}`);
+    }
+    loadSensorEnrollments();
+}
+
+async function loadSensorTokens(sensorId) {
+    const container = document.getElementById('edit-sensor-tokens');
+    if (!container) return;
+    container.textContent = 'Laden...';
+    try {
+        const response = await fetch(`/api/sensors/${encodeURIComponent(sensorId)}/tokens`);
+        if (response.status === 403) {
+            container.textContent = 'Alleen zichtbaar voor admins.';
+            return;
+        }
+        const result = await response.json();
+        if (!result.success) {
+            container.textContent = `Tokens laden mislukt: ${result.error || response.status}`;
+            return;
+        }
+        const tokens = result.data || [];
+        if (tokens.length === 0) {
+            container.innerHTML = '<span class="text-warning">Geen actief token. De sensor kan zich opnieuw aanmelden ' +
+                '(herstart de sensor zonder SENSOR_TOKEN) of maak een token met setup_sensor_auth.py.</span>';
+            return;
+        }
+        container.innerHTML = `<table class="table table-dark table-sm mb-0">
+            <thead><tr><th>#</th><th>Naam</th><th>Aangemaakt</th><th>Laatst gebruikt</th><th>Commands</th><th></th></tr></thead>
+            <tbody>${tokens.map(t => `<tr>
+                <td>${escapeHtml(t.id)}</td>
+                <td>${escapeHtml(t.token_name || '-')}</td>
+                <td>${escapeHtml(t.created_at ? new Date(t.created_at).toLocaleString() : '-')}</td>
+                <td>${t.last_used ? escapeHtml(new Date(t.last_used).toLocaleString()) : '<span class="text-muted">nooit</span>'}</td>
+                <td>${t.permissions && t.permissions.commands ? 'ja' : 'nee'}</td>
+                <td><button type="button" class="btn btn-sm btn-outline-danger"
+                        onclick="revokeSensorToken(${jsArg(sensorId)}, ${jsArg(t.id)})">Intrekken</button></td>
+            </tr>`).join('')}</tbody></table>`;
+    } catch (error) {
+        container.textContent = `Tokens laden mislukt: ${error.message}`;
+    }
+}
+
+async function revokeSensorToken(sensorId, tokenId) {
+    if (!confirm(`Token #${tokenId} van "${sensorId}" intrekken?\n\n` +
+                 `Een sensor die dit token gebruikt kan daarna niet meer aanmelden.`)) {
+        return;
+    }
+    try {
+        const response = await fetch(`/api/sensors/${encodeURIComponent(sensorId)}/tokens/${encodeURIComponent(tokenId)}`, {
+            method: 'DELETE'
+        });
+        const result = await response.json();
+        if (!result.success) {
+            alert(`Intrekken mislukt: ${result.error || response.status}`);
+        }
+    } catch (error) {
+        alert(`Intrekken mislukt: ${error.message}`);
+    }
+    loadSensorTokens(sensorId);
 }
 
 function updateSensorsTable(sensors) {
@@ -2461,6 +2631,7 @@ async function editSensorSettings(sensorId, sensorName, currentLocation) {
     document.getElementById('edit-sensor-name').textContent = sensorName;
     document.getElementById('edit-sensor-id-display').textContent = sensorId;
     document.getElementById('edit-sensor-location').value = currentLocation || '';
+    loadSensorTokens(sensorId);
 
     // Store merged config to use for interface selection later
     let mergedConfig = null;

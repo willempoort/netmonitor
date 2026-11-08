@@ -59,7 +59,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 33  # Increment this when schema changes (v33: suppress_alert_types toegevoegd als geldig behavior-type)
+        SCHEMA_VERSION = 34  # Increment this when schema changes (v34: sensor_enrollments voor aanmelden met goedkeuring)
 
         # Schema initialisatie met automatisch herstel bij TimescaleDB versie-mismatch na apt upgrade
         for _attempt in range(2):
@@ -614,6 +614,32 @@ class DatabaseManager:
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_sensor_tokens_sensor
                 ON sensor_tokens(sensor_id, is_active);
+            ''')
+
+            # Aanmeldverzoeken van nieuwe sensors (goedkeuren in het dashboard).
+            # Bewust geen FK naar sensors: een verzoek maakt GEEN sensor-rij aan,
+            # anders zou een onbekende partij via allow_missing_token binnenkomen.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS sensor_enrollments (
+                    id SERIAL PRIMARY KEY,
+                    sensor_id TEXT NOT NULL,
+                    hostname TEXT,
+                    location TEXT,
+                    ip_address INET,
+                    version TEXT,
+                    token_hash TEXT UNIQUE NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'approved', 'rejected', 'expired')),
+                    requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    last_poll TIMESTAMPTZ,
+                    decided_at TIMESTAMPTZ,
+                    decided_by TEXT,
+                    token_id INTEGER
+                );
+            ''')
+            cursor.execute('''
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_sensor_enrollments_one_pending
+                ON sensor_enrollments(sensor_id) WHERE status = 'pending';
             ''')
 
             # Web users table with 2FA support

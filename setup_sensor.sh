@@ -148,18 +148,21 @@ echo ""
 
 # SOC Server URL
 echo "2. SOC Server URL"
-echo "   Example: http://soc.example.com:8080"
+echo "   Example: https://soc.example.com:443  (altijd https://)"
 prompt_with_default "   SOC Server URL" "" SOC_SERVER_URL
+if [[ ! "$SOC_SERVER_URL" =~ ^https:// ]]; then
+    echo "   ⚠️  SOC_SERVER_URL moet met https:// beginnen (het sensor-token gaat mee)."
+    echo "      Automatisch aanmelden werkt niet over http://."
+fi
 echo ""
 
 # Authentication
-echo "3. Sensor Token"
-echo "   Genereer het token op de SOC-server met:"
-echo "     python3 setup_sensor_auth.py"
-echo "   en plak het hier. Leeg laten = later toevoegen als SENSOR_TOKEN=... in $CONF_FILE"
-echo "   (zonder token weigert de SOC-server de sensor, tenzij"
-echo "    sensor_auth.allow_missing_token=true tijdelijk aan staat)."
-read -p "   SENSOR_TOKEN: " SENSOR_TOKEN
+echo "3. Sensor Token (optioneel)"
+echo "   Leeg laten = automatisch aanmelden: de sensor vraagt bij de eerste start"
+echo "   zelf een token aan; keur hem daarna goed in het SOC-dashboard"
+echo "   (Remote Sensors > Wachtend op goedkeuring)."
+echo "   Of plak een token dat je op de SOC-server maakte met setup_sensor_auth.py."
+read -p "   SENSOR_TOKEN (Enter = automatisch aanmelden): " SENSOR_TOKEN
 echo ""
 
 # SSL Verification
@@ -199,8 +202,9 @@ SOC_SERVER_URL=$SOC_SERVER_URL
 # Set to false only for testing with self-signed certificates
 SSL_VERIFY=$SSL_VERIFY
 
-# Sensor Token (REQUIRED)
-# Aan te maken op de SOC-server met setup_sensor_auth.py.
+# Sensor Token (OPTIONAL)
+# Leeg = automatisch aanmelden en goedkeuren in het dashboard; het token
+# wordt dan bewaard in .sensor_token. Of een token van setup_sensor_auth.py.
 # Let op: de oude naam SENSOR_SECRET_KEY wordt NIET gebruikt.
 SENSOR_TOKEN=$SENSOR_TOKEN
 
@@ -359,7 +363,7 @@ echo "Sensor Configuration:"
 echo "  Interface:        $INTERFACE"
 echo "  SOC Server:       $SOC_SERVER_URL"
 echo "  SSL Verify:       $SSL_VERIFY"
-echo "  Sensor Token:     $([ -n "$SENSOR_TOKEN" ] && echo "Configured" || echo "NOT configured - add SENSOR_TOKEN to $CONF_FILE")"
+echo "  Sensor Token:     $([ -n "$SENSOR_TOKEN" ] && echo "Configured" || echo "Automatisch aanmelden - keur de sensor goed in het dashboard")"
 echo ""
 echo "Additional configuration (managed via SOC Dashboard):"
 echo "  • Sensor ID & Location"

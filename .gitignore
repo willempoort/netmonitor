@@ -70,3 +70,7 @@ env_new_settings.txt
 *.env
 .env.*
 !.env.example
+
+# Token van automatische sensor-aanmelding
+.sensor_token
+.sensor_token.tmp
