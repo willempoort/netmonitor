@@ -15,6 +15,14 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.8.1] - 2026-11-08
+
+### Changed
+- **Sensor valt terug op aanmelden bij een geweigerd token.** Weigert de SOC-server het token 3x achter elkaar op heartbeat of register (ongeldig, verlopen, ingetrokken of van een andere sensor), dan dient de sensor een nieuw aanmeldverzoek in. Een admin moet dat nog steeds goedkeuren. Een ingetrokken token leidt één keer per sensorproces tot een nieuw verzoek; een afgewezen verzoek stopt het aanmelden tot een herstart.
+
+### Fixed
+- Sensor stuurde de heartbeat elke seconde in de periode tussen 30 en 60 seconden na de laatste metrics, in plaats van één keer per `heartbeat_interval`.
+
 ## [2.8.0] - 2026-11-08
 
 ### Added

@@ -122,3 +122,76 @@ class TestClientEnrollment:
                           return_value=_response(409, {'error': 'pending', 'code': 'already_pending'})):
             assert client._check_enrollment() == 300
         assert client.token is None
+
+
+@pytest.mark.unit
+class TestRejectedTokenFallback:
+    def _setup(self, client, source='config'):
+        client.token = 'bad-token'
+        client.token_source = source
+        client._auth_failures = 0
+
+    def test_three_rejections_fall_back_to_enrollment(self, client):
+        self._setup(client)
+        bad = _response(403, {'error': 'Invalid or expired token'})
+        client._check_auth_response(bad)
+        client._check_auth_response(bad)
+        assert client.token == 'bad-token', 'niet bij de eerste weigeringen al terugvallen'
+        client._check_auth_response(bad)
+        assert client.token is None
+        assert client._enrollment_next is not None
+        with patch.object(sensor_client.requests, 'post',
+                          return_value=_response(202, {'token': 'tok-new'})):
+            client._enrollment_tick()
+        assert client.enrollment_state == 'pending'
+        assert open(client.token_file).read().strip() == 'tok-new'
+
+    def test_success_resets_counter(self, client):
+        self._setup(client)
+        bad = _response(403, {'error': 'Invalid or expired token'})
+        client._check_auth_response(bad)
+        client._check_auth_response(bad)
+        client._check_auth_response(_response(200, {'success': True}))
+        client._check_auth_response(bad)
+        assert client.token == 'bad-token'
+
+    def test_other_errors_do_not_trigger_fallback(self, client):
+        self._setup(client)
+        for r in [_response(500, {'error': 'db down'}),
+                  _response(403, {'error': 'Insufficient permissions'}),
+                  _response(401, {'error': 'Missing or invalid Authorization header'})]:
+            for _ in range(5):
+                client._check_auth_response(r)
+        assert client.token == 'bad-token'
+
+    def test_wrong_sensor_token_triggers_fallback(self, client):
+        self._setup(client)
+        for _ in range(3):
+            client._check_auth_response(_response(403, {'error': 'Token not valid for this sensor'}))
+        assert client.token is None
+
+    def test_approved_file_token_used_after_config_token_rejected(self, client):
+        client._write_token_file('tok-approved')
+        self._setup(client)
+        for _ in range(3):
+            client._check_auth_response(_response(403, {'error': 'Invalid or expired token'}))
+        with patch.object(sensor_client.requests, 'get',
+                          return_value=_response(200, {'status': 'approved'})):
+            client._enrollment_tick()
+        assert client.token == 'tok-approved'
+        client._register_sensor.assert_called_once()
+
+    def test_revoked_file_token_reenrolls_once(self, client):
+        client._write_token_file('tok-revoked')
+        with patch.object(sensor_client.requests, 'get',
+                          return_value=_response(200, {'status': 'revoked'})), \
+             patch.object(sensor_client.requests, 'post',
+                          return_value=_response(202, {'token': 'tok-2'})):
+            client._init_enrollment()
+        assert client.enrollment_state == 'pending'
+        assert open(client.token_file).read().strip() == 'tok-2'
+        # tweede keer ingetrokken in hetzelfde proces: stoppen
+        with patch.object(sensor_client.requests, 'get',
+                          return_value=_response(200, {'status': 'revoked'})):
+            assert client._check_enrollment() is None
+        assert client.enrollment_state == 'rejected'

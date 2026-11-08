@@ -207,8 +207,11 @@ een minuut gebruikt de sensor het token. Tot die tijd stuurt de sensor geen toke
 - Er kan per sensor-ID één verzoek tegelijk openstaan; een verzoek vervalt na 7 dagen.
 - Bij een bestaand sensor-ID toont het dashboard een waarschuwing: alleen toestaan
   als je zeker weet dat het de echte sensor is.
-- Afgewezen of ingetrokken: de sensor verwijdert het tokenbestand en meldt zich na
-  een herstart opnieuw aan.
+- Weigert de server een ingesteld token (3x achter elkaar ongeldig, verlopen,
+  ingetrokken of van een andere sensor), dan dient de sensor zelf een nieuw
+  aanmeldverzoek in. Haal na goedkeuring `SENSOR_TOKEN` uit `sensor.conf`.
+- Ingetrokken token: de sensor meldt zich één keer opnieuw aan (nieuw verzoek in
+  het dashboard). Afgewezen verzoek: de sensor stopt met aanmelden tot een herstart.
 - Omdat elke sensor een eigen token heeft, is een IP-allowlist in nginx niet nodig;
   sensors mogen via DHCP en vanuit elk subnet komen.
 

@@ -242,6 +242,7 @@ class SensorClient:
         # sensor_auth.allow_missing_token=true heeft.
         self._pending_token = None
         self.enrollment_state = None  # None | pending | approved | rejected | blocked
+        self._auth_failures = 0  # opeenvolgende 403's op heartbeat/register
         if not self.token and self.config.get('_legacy_secret_key'):
             self.logger.warning(
                 "SENSOR_SECRET_KEY staat in de config maar wordt niet gebruikt; "
@@ -526,6 +527,17 @@ class SensorClient:
         )
         return False
 
+    def _fallback_reenroll_allowed(self):
+        """
+        Na een ingetrokken token één keer per sensorproces opnieuw aanmelden.
+        Een afgewezen verzoek stopt wel definitief (tot herstart), zodat een
+        geweigerde sensor het dashboard niet blijft vullen.
+        """
+        if getattr(self, '_reenrolled_after_revoke', False):
+            return False
+        self._reenrolled_after_revoke = True
+        return True
+
     def _accept_enrolled_token(self, token):
         self.token = token
         self.token_source = 'enrollment'
@@ -552,6 +564,11 @@ class SensorClient:
             self._pending_token = token
             self.enrollment_state = 'pending'
             return 60
+        if status == 'revoked' and self._fallback_reenroll_allowed():
+            self.logger.warning("Token is ingetrokken; nieuw aanmeldverzoek indienen")
+            self._remove_token_file()
+            self._pending_token = None
+            return 0
         if status in ('rejected', 'revoked'):
             self.logger.error(
                 f"Aanmeldverzoek voor {self.sensor_id} is {'afgewezen' if status == 'rejected' else 'ingetrokken'}. "
@@ -591,6 +608,56 @@ class SensorClient:
         if self.enrollment_state == 'approved':
             # Opnieuw registreren, nu met token
             self._register_sensor()
+
+    AUTH_FAILURE_THRESHOLD = 3
+    _AUTH_REJECT_ERRORS = ('Invalid or expired token', 'Token not valid for this sensor')
+
+    def _check_auth_response(self, response):
+        """
+        Fallback bij een geweigerd token. Alleen aanroepen voor endpoints
+        zonder extra permissie (heartbeat, register): daar betekent 403 met
+        deze foutmelding echt dat het token ongeldig, verlopen, ingetrokken of
+        van een andere sensor is. Na een paar keer achter elkaar valt de sensor
+        terug op automatisch aanmelden; een admin moet het nieuwe verzoek
+        nog steeds goedkeuren.
+        """
+        if not self.token:
+            return
+        rejected = False
+        if response.status_code == 403:
+            try:
+                rejected = (response.json() or {}).get('error') in self._AUTH_REJECT_ERRORS
+            except ValueError:
+                rejected = False
+        if not rejected:
+            if response.status_code < 400:
+                self._auth_failures = 0
+            return
+
+        self._auth_failures += 1
+        if self._auth_failures < self.AUTH_FAILURE_THRESHOLD:
+            return
+
+        source = self.token_source
+        self.logger.error("=" * 60)
+        if source == 'config':
+            self.logger.error("SENSOR_TOKEN uit de config wordt door de SOC-server geweigerd")
+            self.logger.error("(ongeldig, verlopen, ingetrokken of van een andere sensor).")
+            self.logger.error("Terugval: nieuw aanmeldverzoek indienen. Haal SENSOR_TOKEN na")
+            self.logger.error("goedkeuring uit de config, anders herhaalt dit zich na elke herstart.")
+        else:
+            self.logger.error("Token uit het aanmeldbestand wordt door de SOC-server geweigerd.")
+        self.logger.error("=" * 60)
+
+        self.token = None
+        self.token_source = None
+        self._auth_failures = 0
+        self._pending_token = None
+        self.enrollment_state = None
+        # Een token uit config staat los van het aanmeldbestand: dat bestand
+        # (bv. al goedgekeurd na een eerdere terugval) gewoon proberen. Is het
+        # bestandstoken zelf geweigerd, dan meldt de status dat (revoked).
+        self._enrollment_next = time.time()
 
     def _get_headers(self):
         """Get HTTP headers with authentication token if available"""
@@ -1039,6 +1106,7 @@ class SensorClient:
                 verify=self.ssl_verify
             )
 
+            self._check_auth_response(response)
             if response.status_code == 200:
                 self.logger.info("✓ Sensor registered successfully")
                 return True
@@ -1062,6 +1130,7 @@ class SensorClient:
                 timeout=5,
                 verify=self.ssl_verify
             )
+            self._check_auth_response(response)
             if response.status_code == 200:
                 return True
             else:
@@ -1962,6 +2031,7 @@ class SensorClient:
             last_whitelist_update = time.time()
             last_config_update = time.time()
             last_device_sync = time.time()
+            last_heartbeat = time.time()
 
             while self.running:
                 now = time.time()
@@ -1981,9 +2051,11 @@ class SensorClient:
                 if now - last_metrics >= metrics_interval:
                     self._send_metrics()
                     last_metrics = now
+                    last_heartbeat = now  # metrics tellen ook als teken van leven
                 # Send heartbeat every X seconds (configurable)
-                elif now - last_metrics >= heartbeat_interval:
+                elif now - last_metrics >= heartbeat_interval and now - last_heartbeat >= heartbeat_interval:
                     self._send_heartbeat()
+                    last_heartbeat = now
 
                 # Send traffic metrics every X seconds (configurable, default 30s)
                 traffic_interval = self.config.get('performance', {}).get('traffic_metrics_interval', 30)
