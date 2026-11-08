@@ -2224,6 +2224,11 @@ async function loadSensorTokens(sensorId) {
             return;
         }
         const tokens = result.data || [];
+        if (tokens.length === 0 && result.self_monitor) {
+            container.textContent = 'Niet nodig: de SOC-server monitort zichzelf en schrijft rechtstreeks ' +
+                'in de database, niet via de sensor-API.';
+            return;
+        }
         if (tokens.length === 0) {
             container.innerHTML = '<span class="text-warning">Geen actief token. De sensor kan zich opnieuw aanmelden ' +
                 '(herstart de sensor zonder SENSOR_TOKEN) of maak een token met setup_sensor_auth.py.</span>';

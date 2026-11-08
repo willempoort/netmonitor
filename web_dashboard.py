@@ -1606,7 +1606,13 @@ def api_reject_enrollment(enrollment_id):
 @require_role('admin')
 def api_list_sensor_tokens(sensor_id):
     try:
-        return jsonify({'success': True, 'data': sensor_auth.list_tokens(sensor_id=sensor_id)})
+        # De SOC-server zelf (netmonitor.py, self_monitor) schrijft rechtstreeks
+        # in de database en gebruikt de sensor-API niet: geen token nodig.
+        self_monitor = config.get('self_monitor', {})
+        is_self_monitor = (self_monitor.get('enabled', True)
+                           and sensor_id == self_monitor.get('sensor_id', 'soc-server'))
+        return jsonify({'success': True, 'self_monitor': bool(is_self_monitor),
+                        'data': sensor_auth.list_tokens(sensor_id=sensor_id)})
     except Exception as e:
         logger.error(f"Error listing tokens for {sensor_id}: {e}")
         return jsonify({'success': False, 'error': 'Failed to list tokens'}), 500
