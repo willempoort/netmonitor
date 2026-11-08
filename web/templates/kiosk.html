@@ -6,6 +6,7 @@
     <title>NetMonitor SOC - Kiosk Mode</title>
     <!-- Chart.js for traffic visualization -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='js/escape.js') }}?v=1"></script>
     <style>
         /* ==================== CSS Variables for Theming ==================== */
         :root[data-theme="dark"] {
@@ -1122,7 +1123,7 @@
                 'down': '↘️',
                 'stable': '➡️'
             };
-            return `<span class="trend-indicator trend-${trend}">${icons[trend]}</span>`;
+            return `<span class="trend-indicator trend-${escapeHtml(trend)}">${escapeHtml(icons[trend])}</span>`;
         }
 
         // ==================== Data Fetching ====================
@@ -1183,7 +1184,7 @@
                         <span class="card-icon">📊</span>
                     </div>
                     <div class="card-value">
-                        ${formatNumber(metrics.bandwidth_mbps || 0)}
+                        ${escapeHtml(formatNumber(metrics.bandwidth_mbps || 0))}
                         ${getTrendIndicator(bandwidthTrend)}
                     </div>
                     <div class="card-label">Mbps Total</div>
@@ -1195,7 +1196,7 @@
                         <span class="card-icon">📦</span>
                     </div>
                     <div class="card-value">
-                        ${formatNumber(metrics.packets_per_sec || 0)}
+                        ${escapeHtml(formatNumber(metrics.packets_per_sec || 0))}
                         ${getTrendIndicator(packetsTrend)}
                     </div>
                     <div class="card-label">per second</div>
@@ -1206,8 +1207,8 @@
                         <span class="card-title">Alerts</span>
                         <span class="card-icon">⚠️</span>
                     </div>
-                    <div class="card-value status-${getAlertColor(metrics.alerts_per_min || 0)}">
-                        ${formatNumber(metrics.alerts_per_min || 0, 2)}
+                    <div class="card-value status-${escapeHtml(getAlertColor(metrics.alerts_per_min || 0))}">
+                        ${escapeHtml(formatNumber(metrics.alerts_per_min || 0, 2))}
                         ${getTrendIndicator(alertsTrend)}
                     </div>
                     <div class="card-label">per minute</div>
@@ -1218,8 +1219,8 @@
                         <span class="card-title">Sensors</span>
                         <span class="card-icon">📡</span>
                     </div>
-                    <div class="card-value status-${getSensorHealthColor(sensorHealth)}">
-                        ${metrics.active_sensors || '0/0'}
+                    <div class="card-value status-${escapeHtml(getSensorHealthColor(sensorHealth))}">
+                        ${escapeHtml(metrics.active_sensors || '0/0')}
                     </div>
                     <div class="card-label">Online / Total</div>
                 </div>`,
@@ -1229,8 +1230,8 @@
                         <span class="card-title">CPU Average</span>
                         <span class="card-icon">💻</span>
                     </div>
-                    <div class="card-value status-${getResourceColor(metrics.avg_cpu_percent || 0)}">
-                        ${formatNumber(metrics.avg_cpu_percent || 0, 1)}%
+                    <div class="card-value status-${escapeHtml(getResourceColor(metrics.avg_cpu_percent || 0))}">
+                        ${escapeHtml(formatNumber(metrics.avg_cpu_percent || 0, 1))}%
                         ${getTrendIndicator(cpuTrend)}
                     </div>
                     <div class="card-label">Across all sensors</div>
@@ -1241,8 +1242,8 @@
                         <span class="card-title">Memory Average</span>
                         <span class="card-icon">🧠</span>
                     </div>
-                    <div class="card-value status-${getResourceColor(metrics.avg_memory_percent || 0)}">
-                        ${formatNumber(metrics.avg_memory_percent || 0, 1)}%
+                    <div class="card-value status-${escapeHtml(getResourceColor(metrics.avg_memory_percent || 0))}">
+                        ${escapeHtml(formatNumber(metrics.avg_memory_percent || 0, 1))}%
                         ${getTrendIndicator(memoryTrend)}
                     </div>
                     <div class="card-label">Across all sensors</div>
@@ -1253,10 +1254,10 @@
                         <span class="card-title">Disk Usage</span>
                         <span class="card-icon">💾</span>
                     </div>
-                    <div class="card-value status-${getResourceColor(metrics.disk_percent || 0)}">
-                        ${formatNumber(metrics.disk_percent || 0, 1)}%
+                    <div class="card-value status-${escapeHtml(getResourceColor(metrics.disk_percent || 0))}">
+                        ${escapeHtml(formatNumber(metrics.disk_percent || 0, 1))}%
                     </div>
-                    <div class="card-label">${metrics.disk_used || '0 GB'} / ${metrics.disk_total || '0 GB'}</div>
+                    <div class="card-label">${escapeHtml(metrics.disk_used || '0 GB')} / ${escapeHtml(metrics.disk_total || '0 GB')}</div>
                 </div>`,
                 // Card 8: Database & Storage Size
                 `<div class="card">
@@ -1265,8 +1266,8 @@
                         <span class="card-icon">🗄️</span>
                     </div>
                     <div class="card-value" style="font-size: 1rem; line-height: 1.6;">
-                        DB: ${formatNumber(metrics.db_alerts_count || 0)} alerts • ${metrics.db_size_human || '0 MB'}<br>
-                        PCAP: ${formatNumber(metrics.pcap_file_count || 0)} files • ${metrics.pcap_size_human || '0 MB'}
+                        DB: ${escapeHtml(formatNumber(metrics.db_alerts_count || 0))} alerts • ${escapeHtml(metrics.db_size_human || '0 MB')}<br>
+                        PCAP: ${escapeHtml(formatNumber(metrics.pcap_file_count || 0))} files • ${escapeHtml(metrics.pcap_size_human || '0 MB')}
                     </div>
                     <div class="card-label"></div>
                 </div>`,
@@ -1277,9 +1278,9 @@
                         <span class="card-icon">🕐</span>
                     </div>
                     <div class="card-value">
-                        ${metrics.data_age_days || 0} days
+                        ${escapeHtml(metrics.data_age_days || 0)} days
                     </div>
-                    <div class="card-label">Alerts: ${metrics.retention_alerts || 365}d | Metrics: ${metrics.retention_metrics || 90}d</div>
+                    <div class="card-label">Alerts: ${escapeHtml(metrics.retention_alerts || 365)}d | Metrics: ${escapeHtml(metrics.retention_metrics || 90)}d</div>
                 </div>`
             ];
 
@@ -1391,15 +1392,15 @@
                 }
 
                 return `
-                    <div class="alert-item severity-${alert.severity}">
+                    <div class="alert-item severity-${escapeHtml(alert.severity)}">
                         <div class="alert-header">
                             <span class="alert-type">${escapeHtml(alertType)}</span>
-                            <span class="alert-severity ${alert.severity}">${alert.severity}</span>
+                            <span class="alert-severity ${escapeHtml(alert.severity)}">${escapeHtml(alert.severity)}</span>
                         </div>
                         <div class="alert-description">${escapeHtml(alert.description || 'No description')}</div>
                         <div class="alert-meta">
                             <span>📡 ${escapeHtml(alert.sensor_id || 'N/A')}</span>
-                            <span>🕐 ${formatTimestamp(alert.timestamp)}</span>
+                            <span>🕐 ${escapeHtml(formatTimestamp(alert.timestamp))}</span>
                             ${alert.source_ip ? `<span>🌐 ${escapeHtml(alert.source_ip)}</span>` : ''}
                         </div>
                     </div>
@@ -1432,30 +1433,30 @@
             // Build HTML for location groups
             const locationsHTML = Object.entries(sensorsByLocation).map(([location, locationSensors]) => {
                 const sensorsHTML = locationSensors.map(sensor => `
-                    <div class="sensor-card ${sensor.status}">
+                    <div class="sensor-card ${escapeHtml(sensor.status)}">
                         <div class="sensor-name">${escapeHtml(sensor.name)}</div>
                         <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-                            <div class="bg-${sensor.status}" style="width: 8px; height: 8px; border-radius: 50%;"></div>
+                            <div class="bg-${escapeHtml(sensor.status)}" style="width: 8px; height: 8px; border-radius: 50%;"></div>
                             <span style="font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">
-                                ${sensor.status}
+                                ${escapeHtml(sensor.status)}
                             </span>
                         </div>
                         <div class="sensor-stats">
                             <div class="sensor-stat">
                                 <span class="sensor-stat-label">CPU</span>
-                                <span class="sensor-stat-value">${formatNumber(sensor.cpu || 0, 1)}%</span>
+                                <span class="sensor-stat-value">${escapeHtml(formatNumber(sensor.cpu || 0, 1))}%</span>
                             </div>
                             <div class="sensor-stat">
                                 <span class="sensor-stat-label">Memory</span>
-                                <span class="sensor-stat-value">${formatNumber(sensor.memory || 0, 1)}%</span>
+                                <span class="sensor-stat-value">${escapeHtml(formatNumber(sensor.memory || 0, 1))}%</span>
                             </div>
                             <div class="sensor-stat">
                                 <span class="sensor-stat-label">Bandwidth</span>
-                                <span class="sensor-stat-value">${formatNumber(sensor.bandwidth || 0, 1)} Mbps</span>
+                                <span class="sensor-stat-value">${escapeHtml(formatNumber(sensor.bandwidth || 0, 1))} Mbps</span>
                             </div>
                             <div class="sensor-stat">
                                 <span class="sensor-stat-label">Alerts 24h</span>
-                                <span class="sensor-stat-value">${sensor.alerts_24h || 0}</span>
+                                <span class="sensor-stat-value">${escapeHtml(sensor.alerts_24h || 0)}</span>
                             </div>
                         </div>
                     </div>
@@ -1465,7 +1466,7 @@
                     <div class="location-group">
                         <div class="location-group-header">
                             <span class="location-name">📍 ${escapeHtml(location)}</span>
-                            <span class="location-count">${locationSensors.length} sensor${locationSensors.length !== 1 ? 's' : ''}</span>
+                            <span class="location-count">${escapeHtml(locationSensors.length)} sensor${escapeHtml(locationSensors.length !== 1 ? 's' : '')}</span>
                         </div>
                         <div class="sensors-grid">
                             ${sensorsHTML}
@@ -1516,15 +1517,15 @@
                 return `
                     <div class="threat-item">
                         <div class="threat-info">
-                            <div class="threat-icon">${icon}</div>
+                            <div class="threat-icon">${escapeHtml(icon)}</div>
                             <div class="threat-details">
                                 <div class="threat-name">${escapeHtml(displayName)}</div>
                                 <div class="threat-bar">
-                                    <div class="threat-bar-fill" style="width: ${barWidth}%;"></div>
+                                    <div class="threat-bar-fill" style="width: ${escapeHtml(barWidth)}%;"></div>
                                 </div>
                             </div>
                         </div>
-                        <div class="threat-count">${threat.count}</div>
+                        <div class="threat-count">${escapeHtml(threat.count)}</div>
                     </div>
                 `;
             }).join('');
@@ -1574,12 +1575,12 @@
                     <div class="location-group">
                         <div class="location-group-header">
                             <div class="location-name">📍 ${escapeHtml(location)}</div>
-                            <div class="location-count" style="color: ${statusColor}; font-weight: 600;">
-                                ${stats.online}/${stats.total}
+                            <div class="location-count" style="color: ${escapeHtml(statusColor)}; font-weight: 600;">
+                                ${escapeHtml(stats.online)}/${escapeHtml(stats.total)}
                             </div>
                         </div>
                         <div style="font-size: 0.75rem; color: var(--text-muted);">
-                            ${statusText}
+                            ${escapeHtml(statusText)}
                         </div>
                     </div>
                 `;
@@ -1605,11 +1606,7 @@
             return date.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
         }
 
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
+        // escapeHtml() komt uit static/js/escape.js (escapet ook quotes, nodig in attributen)
 
         function getAlertColor(rate) {
             if (rate === 0) return 'online';

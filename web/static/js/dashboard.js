@@ -711,19 +711,19 @@ function addGroupedAlertToFeed(group) {
 
     const timestamp = new Date(group.last_seen).toLocaleString('nl-NL');
     const countBadge = group.count > 1 ?
-        `<span class="badge bg-warning text-dark ms-2">${group.count}x</span>` : '';
+        `<span class="badge bg-warning text-dark ms-2">${escapeHtml(group.count)}x</span>` : '';
 
     const port = getAlertPort(group.alerts[0]);
 
     let metaInfo = '';
     if (group.source_ip) {
-        metaInfo += `<i class="bi bi-arrow-right-circle"></i> ${group.source_ip}`;
-        if (group.source_hostname) metaInfo += ` <small class="text-muted">(${group.source_hostname})</small>`;
+        metaInfo += `<i class="bi bi-arrow-right-circle"></i> ${escapeHtml(group.source_ip)}`;
+        if (group.source_hostname) metaInfo += ` <small class="text-muted">(${escapeHtml(group.source_hostname)})</small>`;
     }
     if (group.destination_ip) {
         metaInfo += ` → ${group.destination_ip}`;
         if (port) metaInfo += `:${port}`;
-        if (group.destination_hostname) metaInfo += ` <small class="text-muted">(${group.destination_hostname})</small>`;
+        if (group.destination_hostname) metaInfo += ` <small class="text-muted">(${escapeHtml(group.destination_hostname)})</small>`;
     }
 
     // Use first alert's description
@@ -733,11 +733,11 @@ function addGroupedAlertToFeed(group) {
         <div class="d-flex justify-content-between align-items-start">
             <div class="flex-grow-1">
                 <div>
-                    <span class="alert-severity ${group.severity}">${group.severity}</span>
-                    <strong>${group.threat_type}</strong>${countBadge}
-                    <span class="alert-timestamp">${timestamp}</span>
+                    <span class="alert-severity ${escapeHtml(group.severity)}">${escapeHtml(group.severity)}</span>
+                    <strong>${escapeHtml(group.threat_type)}</strong>${countBadge}
+                    <span class="alert-timestamp">${escapeHtml(timestamp)}</span>
                 </div>
-                <div class="alert-description">${description}</div>
+                <div class="alert-description">${escapeHtml(description)}</div>
                 ${metaInfo ? `<div class="alert-meta">${metaInfo}</div>` : ''}
             </div>
             ${group.count > 1 ? '<i class="bi bi-chevron-right ms-2"></i>' : ''}
@@ -778,24 +778,24 @@ function addAlertToFeed(alert, prepend = false) {
 
     let metaInfo = '';
     if (alert.source_ip) {
-        metaInfo += `<i class="bi bi-arrow-right-circle"></i> ${alert.source_ip}`;
-        if (alert.source_hostname) metaInfo += ` <small class="text-muted">(${alert.source_hostname})</small>`;
+        metaInfo += `<i class="bi bi-arrow-right-circle"></i> ${escapeHtml(alert.source_ip)}`;
+        if (alert.source_hostname) metaInfo += ` <small class="text-muted">(${escapeHtml(alert.source_hostname)})</small>`;
     }
     if (alert.destination_ip) {
         metaInfo += ` → ${alert.destination_ip}`;
         if (port) metaInfo += `:${port}`;
-        if (alert.destination_hostname) metaInfo += ` <small class="text-muted">(${alert.destination_hostname})</small>`;
+        if (alert.destination_hostname) metaInfo += ` <small class="text-muted">(${escapeHtml(alert.destination_hostname)})</small>`;
     }
 
     alertDiv.innerHTML = `
         <div class="d-flex justify-content-between align-items-start">
             <div class="flex-grow-1">
                 <div>
-                    <span class="alert-severity ${alert.severity}">${alert.severity}</span>
-                    <strong>${alert.threat_type}</strong>
-                    <span class="alert-timestamp">${timestamp}</span>
+                    <span class="alert-severity ${escapeHtml(alert.severity)}">${escapeHtml(alert.severity)}</span>
+                    <strong>${escapeHtml(alert.threat_type)}</strong>
+                    <span class="alert-timestamp">${escapeHtml(timestamp)}</span>
                 </div>
-                <div class="alert-description">${alert.description}</div>
+                <div class="alert-description">${escapeHtml(alert.description)}</div>
                 ${metaInfo ? `<div class="alert-meta">${metaInfo}</div>` : ''}
             </div>
         </div>
@@ -829,8 +829,8 @@ function showAlertDetails(group) {
     const countText = group.count > 1 ? ` (${group.count} occurrences)` : '';
     modalTitle.innerHTML = `
         <i class="bi bi-info-circle"></i>
-        <span class="alert-severity ${group.severity}">${group.severity}</span>
-        ${group.threat_type}${countText}
+        <span class="alert-severity ${escapeHtml(group.severity)}">${escapeHtml(group.severity)}</span>
+        ${escapeHtml(group.threat_type)}${escapeHtml(countText)}
     `;
 
     // Build alert details
@@ -846,7 +846,7 @@ function showAlertDetails(group) {
             try {
                 const meta = typeof alert.metadata === 'string' ? JSON.parse(alert.metadata) : alert.metadata;
                 const rows = Object.entries(meta)
-                    .map(([k, v]) => `<tr><td class="text-muted pe-3"><strong>${k}</strong></td><td>${v}</td></tr>`)
+                    .map(([k, v]) => `<tr><td class="text-muted pe-3"><strong>${escapeHtml(k)}</strong></td><td>${escapeHtml(v)}</td></tr>`)
                     .join('');
                 metadataHTML = `
                 <div class="alert-detail-section">
@@ -857,7 +857,7 @@ function showAlertDetails(group) {
                 metadataHTML = `
                 <div class="alert-detail-section">
                     <h6><i class="bi bi-code-square"></i> Additional Information</h6>
-                    <pre class="bg-secondary p-2 rounded"><code>${alert.metadata}</code></pre>
+                    <pre class="bg-secondary p-2 rounded"><code>${escapeHtml(alert.metadata)}</code></pre>
                 </div>`;
             }
         }
@@ -865,31 +865,31 @@ function showAlertDetails(group) {
         detailsHTML = `
             <div class="alert-detail-section">
                 <h6><i class="bi bi-clock"></i> Timestamp</h6>
-                <p>${new Date(alert.timestamp).toLocaleString('nl-NL')}</p>
+                <p>${escapeHtml(new Date(alert.timestamp).toLocaleString('nl-NL'))}</p>
             </div>
 
             <div class="alert-detail-section">
                 <h6><i class="bi bi-shield-exclamation"></i> Threat Type</h6>
-                <p>${alert.threat_type}</p>
+                <p>${escapeHtml(alert.threat_type)}</p>
             </div>
 
             ${alert.source_ip ? `
             <div class="alert-detail-section">
                 <h6><i class="bi bi-hdd-network"></i> Source IP</h6>
-                <p><code>${alert.source_ip}</code>${alert.source_hostname ? ` <small class="text-muted">(${alert.source_hostname})</small>` : ''}</p>
+                <p><code>${escapeHtml(alert.source_ip)}</code>${alert.source_hostname ? ` <small class="text-muted">(${escapeHtml(alert.source_hostname)})</small>` : ''}</p>
             </div>
             ` : ''}
 
             ${alert.destination_ip ? `
             <div class="alert-detail-section">
                 <h6><i class="bi bi-hdd-network-fill"></i> Destination IP</h6>
-                <p><code>${alert.destination_ip}${port ? ':' + port : ''}</code>${alert.destination_hostname ? ` <small class="text-muted">(${alert.destination_hostname})</small>` : ''}</p>
+                <p><code>${escapeHtml(alert.destination_ip)}${escapeHtml(port ? ':' + port : '')}</code>${alert.destination_hostname ? ` <small class="text-muted">(${escapeHtml(alert.destination_hostname)})</small>` : ''}</p>
             </div>
             ` : ''}
 
             <div class="alert-detail-section">
                 <h6><i class="bi bi-file-text"></i> Description</h6>
-                <p>${alert.description}</p>
+                <p>${escapeHtml(alert.description)}</p>
             </div>
 
             ${metadataHTML}
@@ -902,41 +902,41 @@ function showAlertDetails(group) {
             <div class="alert-detail-section">
                 <h6><i class="bi bi-calendar-range"></i> Time Range</h6>
                 <p>
-                    First seen: ${new Date(group.first_seen).toLocaleString('nl-NL')}<br>
-                    Last seen: ${new Date(group.last_seen).toLocaleString('nl-NL')}
+                    First seen: ${escapeHtml(new Date(group.first_seen).toLocaleString('nl-NL'))}<br>
+                    Last seen: ${escapeHtml(new Date(group.last_seen).toLocaleString('nl-NL'))}
                 </p>
             </div>
 
             ${group.source_ip ? `
             <div class="alert-detail-section">
                 <h6><i class="bi bi-hdd-network"></i> Source IP</h6>
-                <p><code>${group.source_ip}</code>${group.source_hostname ? ` <small class="text-muted">(${group.source_hostname})</small>` : ''}</p>
+                <p><code>${escapeHtml(group.source_ip)}</code>${group.source_hostname ? ` <small class="text-muted">(${escapeHtml(group.source_hostname)})</small>` : ''}</p>
             </div>
             ` : ''}
 
             ${group.destination_ip ? `
             <div class="alert-detail-section">
                 <h6><i class="bi bi-hdd-network-fill"></i> Destination IP</h6>
-                <p><code>${group.destination_ip}${groupPort ? ':' + groupPort : ''}</code>${group.destination_hostname ? ` <small class="text-muted">(${group.destination_hostname})</small>` : ''}</p>
+                <p><code>${escapeHtml(group.destination_ip)}${escapeHtml(groupPort ? ':' + groupPort : '')}</code>${group.destination_hostname ? ` <small class="text-muted">(${escapeHtml(group.destination_hostname)})</small>` : ''}</p>
             </div>
             ` : ''}
 
             <div class="alert-detail-section">
-                <h6><i class="bi bi-list-ul"></i> All Occurrences (${group.count})</h6>
+                <h6><i class="bi bi-list-ul"></i> All Occurrences (${escapeHtml(group.count)})</h6>
                 <div class="list-group">
         `;
 
         group.alerts.forEach((alert, index) => {
             const alertPort = getAlertPort(alert);
-            const portInfo = alertPort ? ` <span class="badge bg-info text-dark">:${alertPort}</span>` : '';
+            const portInfo = alertPort ? ` <span class="badge bg-info text-dark">:${escapeHtml(alertPort)}</span>` : '';
             detailsHTML += `
                 <div class="list-group-item bg-secondary text-light mb-2">
                     <div class="d-flex justify-content-between">
-                        <strong>#${index + 1}${portInfo}</strong>
-                        <small>${new Date(alert.timestamp).toLocaleString('nl-NL')}</small>
+                        <strong>#${escapeHtml(index + 1)}${portInfo}</strong>
+                        <small>${escapeHtml(new Date(alert.timestamp).toLocaleString('nl-NL'))}</small>
                     </div>
-                    <p class="mb-1 mt-2">${alert.description}</p>
-                    ${alert.metadata ? `<small class="text-muted">${alert.metadata}</small>` : ''}
+                    <p class="mb-1 mt-2">${escapeHtml(alert.description)}</p>
+                    ${alert.metadata ? `<small class="text-muted">${escapeHtml(alert.metadata)}</small>` : ''}
                 </div>
             `;
         });
@@ -978,9 +978,9 @@ function loadIpInfoInto(elementId, ip) {
             }
 
             if (data.cloud_provider) {
-                parts.push(`<span class="badge bg-info text-dark">${data.cloud_provider}</span>`);
+                parts.push(`<span class="badge bg-info text-dark">${escapeHtml(data.cloud_provider)}</span>`);
             } else if (data.asn_name) {
-                parts.push(data.asn_name);
+                parts.push(escapeHtml(data.asn_name));
             } else if (data.asn) {
                 parts.push(`AS${data.asn}`);
             }
@@ -991,7 +991,7 @@ function loadIpInfoInto(elementId, ip) {
                 if (data.abuse_score >= 80) scoreClass = 'danger';
                 else if (data.abuse_score >= 50) scoreClass = 'warning';
                 else if (data.abuse_score >= 20) scoreClass = 'warning';
-                scoreHTML = ` <span class="badge bg-${scoreClass}">AbuseIPDB: ${data.abuse_score}%` +
+                scoreHTML = ` <span class="badge bg-${escapeHtml(scoreClass)}">AbuseIPDB: ${escapeHtml(data.abuse_score)}%` +
                     (data.abuse_reports ? ` (${data.abuse_reports} reports)` : '') + `</span>`;
             } else {
                 scoreHTML = ' <span class="badge bg-secondary">Geen AbuseIPDB data</span>';
@@ -1007,7 +1007,7 @@ function loadIpInfoInto(elementId, ip) {
 
             el.innerHTML = `
                 <div>${parts.join(' &middot; ') || '<span class="text-muted">Geen locatie/ASN gevonden</span>'}${scoreHTML}</div>
-                ${flags.length ? `<div class="mt-1">${flags.join(' ')}</div>` : ''}
+                ${flags.length ? `<div class="mt-1">${escapeHtml(flags.join(' '))}</div>` : ''}
                 <a href="https://www.abuseipdb.com/check/${encodeURIComponent(ip)}" target="_blank" rel="noopener" class="small">
                     <i class="bi bi-box-arrow-up-right"></i> Bekijk op AbuseIPDB
                 </a>
@@ -1235,20 +1235,20 @@ function updateAlertStats(stats) {
             item.setAttribute('data-bs-html', 'true');
             item.setAttribute('title', `
                 <div class="text-start">
-                    <strong>${threatInfo.name}</strong><br/>
-                    <small>${threatInfo.description}</small><br/>
+                    <strong>${escapeHtml(threatInfo.name)}</strong><br/>
+                    <small>${escapeHtml(threatInfo.description)}</small><br/>
                     <br/>
                     <strong>Impact:</strong><br/>
-                    <small>${threatInfo.impact}</small>
+                    <small>${escapeHtml(threatInfo.impact)}</small>
                 </div>
             `);
 
             item.innerHTML = `
                 <span>
-                    <i class="bi ${threatInfo.icon} me-2"></i>
-                    ${threatInfo.name}
+                    <i class="bi ${escapeHtml(threatInfo.icon)} me-2"></i>
+                    ${escapeHtml(threatInfo.name)}
                 </span>
-                <span class="badge bg-danger rounded-pill">${count}</span>
+                <span class="badge bg-danger rounded-pill">${escapeHtml(count)}</span>
             `;
 
             // Add click handler to show threat details
@@ -1309,8 +1309,8 @@ async function showThreatTypeDetails(threatType) {
     // Update modal title
     const modalTitle = document.getElementById('threatDetailsModalLabel');
     modalTitle.innerHTML = `
-        <i class="bi ${threatInfo.icon}"></i>
-        ${threatInfo.name}
+        <i class="bi ${escapeHtml(threatInfo.icon)}"></i>
+        ${escapeHtml(threatInfo.name)}
     `;
 
     // Show modal
@@ -1395,7 +1395,7 @@ function displayThreatDetails(data, threatInfo) {
             <div class="card bg-secondary">
                 <div class="card-body text-center">
                     <h6 class="text-muted">Total Alerts</h6>
-                    <h3 class="text-danger">${stats.total_count || 0}</h3>
+                    <h3 class="text-danger">${escapeHtml(stats.total_count || 0)}</h3>
                 </div>
             </div>
         </div>
@@ -1403,7 +1403,7 @@ function displayThreatDetails(data, threatInfo) {
             <div class="card bg-secondary">
                 <div class="card-body text-center">
                     <h6 class="text-muted">Unique Sources</h6>
-                    <h3 class="text-warning">${stats.unique_sources || 0}</h3>
+                    <h3 class="text-warning">${escapeHtml(stats.unique_sources || 0)}</h3>
                 </div>
             </div>
         </div>
@@ -1411,7 +1411,7 @@ function displayThreatDetails(data, threatInfo) {
             <div class="card bg-secondary">
                 <div class="card-body text-center">
                     <h6 class="text-muted">Unique Targets</h6>
-                    <h3 class="text-info">${stats.unique_targets || 0}</h3>
+                    <h3 class="text-info">${escapeHtml(stats.unique_targets || 0)}</h3>
                 </div>
             </div>
         </div>
@@ -1419,7 +1419,7 @@ function displayThreatDetails(data, threatInfo) {
             <div class="card bg-secondary">
                 <div class="card-body text-center">
                     <h6 class="text-muted">First Seen</h6>
-                    <p class="mb-0"><small>${stats.first_seen ? new Date(stats.first_seen).toLocaleString('nl-NL') : 'N/A'}</small></p>
+                    <p class="mb-0"><small>${escapeHtml(stats.first_seen ? new Date(stats.first_seen).toLocaleString('nl-NL') : 'N/A')}</small></p>
                 </div>
             </div>
         </div>
@@ -1459,7 +1459,7 @@ function displayThreatDetails(data, threatInfo) {
                 <div class="card bg-secondary mt-3">
                     <div class="card-body">
                         <h6><i class="bi bi-hdd-network"></i> Gescande Poorten</h6>
-                        <p><strong>Totaal aantal unieke poorten:</strong> ${allPorts.size}</p>
+                        <p><strong>Totaal aantal unieke poorten:</strong> ${escapeHtml(allPorts.size)}</p>
 
                         <div class="mt-3">
                             <strong>Top 10 meest gescande poorten:</strong>
@@ -1467,8 +1467,8 @@ function displayThreatDetails(data, threatInfo) {
                                 ${topPorts.map(p => `
                                     <div class="d-inline-block me-2 mb-2">
                                         <span class="badge bg-danger" style="font-size: 0.9rem;">
-                                            Port ${p.port}
-                                            <span class="badge bg-dark ms-1">${p.count}x</span>
+                                            Port ${escapeHtml(p.port)}
+                                            <span class="badge bg-dark ms-1">${escapeHtml(p.count)}x</span>
                                         </span>
                                     </div>
                                 `).join('')}
@@ -1480,14 +1480,14 @@ function displayThreatDetails(data, threatInfo) {
                                 <strong>Alle gescande poorten:</strong>
                                 <div class="mt-2" style="max-height: 200px; overflow-y: auto;">
                                     ${sortedPorts.map(port =>
-                                        `<span class="badge bg-secondary me-1 mb-1">${port}</span>`
+                                        `<span class="badge bg-secondary me-1 mb-1">${escapeHtml(port)}</span>`
                                     ).join('')}
                                 </div>
                             </div>
                         ` : `
                             <div class="mt-3">
                                 <p class="text-muted mb-0">
-                                    <small>Eerste 50 poorten: ${sortedPorts.slice(0, 50).join(', ')}...</small>
+                                    <small>Eerste 50 poorten: ${escapeHtml(sortedPorts.slice(0, 50).join(', '))}...</small>
                                 </p>
                             </div>
                         `}
@@ -1515,7 +1515,7 @@ function displayThreatDetails(data, threatInfo) {
                         <p><strong>Gedetecteerde intervals:</strong></p>
                         <div class="mt-2">
                             ${Array.from(intervals).sort((a, b) => a - b).map(interval =>
-                                `<span class="badge bg-warning text-dark me-2 mb-2" style="font-size: 0.9rem;">${interval}s</span>`
+                                `<span class="badge bg-warning text-dark me-2 mb-2" style="font-size: 0.9rem;">${escapeHtml(interval)}s</span>`
                             ).join('')}
                         </div>
                     </div>
@@ -1527,18 +1527,18 @@ function displayThreatDetails(data, threatInfo) {
     overviewContent.innerHTML = `
         <div class="alert alert-info">
             <h6><i class="bi bi-info-circle"></i> Beschrijving</h6>
-            <p class="mb-2">${threatInfo.description}</p>
+            <p class="mb-2">${escapeHtml(threatInfo.description)}</p>
             <h6 class="mt-3"><i class="bi bi-exclamation-triangle"></i> Impact</h6>
-            <p class="mb-0">${threatInfo.impact}</p>
+            <p class="mb-0">${escapeHtml(threatInfo.impact)}</p>
         </div>
 
         <h6 class="mt-3">Recente Activiteit</h6>
         <div class="row">
             <div class="col-md-6">
-                <p><strong>Eerste detectie:</strong> ${stats.first_seen ? new Date(stats.first_seen).toLocaleString('nl-NL') : 'N/A'}</p>
+                <p><strong>Eerste detectie:</strong> ${escapeHtml(stats.first_seen ? new Date(stats.first_seen).toLocaleString('nl-NL') : 'N/A')}</p>
             </div>
             <div class="col-md-6">
-                <p><strong>Laatste detectie:</strong> ${stats.last_seen ? new Date(stats.last_seen).toLocaleString('nl-NL') : 'N/A'}</p>
+                <p><strong>Laatste detectie:</strong> ${escapeHtml(stats.last_seen ? new Date(stats.last_seen).toLocaleString('nl-NL') : 'N/A')}</p>
             </div>
         </div>
 
@@ -1550,10 +1550,10 @@ function displayThreatDetails(data, threatInfo) {
     if (data.top_sources && data.top_sources.length > 0) {
         sourcesTable.innerHTML = data.top_sources.map(source => `
             <tr>
-                <td><code>${source.ip}</code></td>
-                <td>${source.hostname || '<span class="text-muted">N/A</span>'}</td>
-                <td>${source.country || '<span class="text-muted">Unknown</span>'}</td>
-                <td><span class="badge bg-danger">${source.count}</span></td>
+                <td><code>${escapeHtml(source.ip)}</code></td>
+                <td>${escapeHtml(source.hostname) || '<span class="text-muted">N/A</span>'}</td>
+                <td>${escapeHtml(source.country) || '<span class="text-muted">Unknown</span>'}</td>
+                <td><span class="badge bg-danger">${escapeHtml(source.count)}</span></td>
             </tr>
         `).join('');
     } else {
@@ -1565,10 +1565,10 @@ function displayThreatDetails(data, threatInfo) {
     if (data.top_targets && data.top_targets.length > 0) {
         targetsTable.innerHTML = data.top_targets.map(target => `
             <tr>
-                <td><code>${target.ip}</code></td>
-                <td>${target.hostname || '<span class="text-muted">N/A</span>'}</td>
-                <td>${target.country || '<span class="text-muted">Unknown</span>'}</td>
-                <td><span class="badge bg-danger">${target.count}</span></td>
+                <td><code>${escapeHtml(target.ip)}</code></td>
+                <td>${escapeHtml(target.hostname) || '<span class="text-muted">N/A</span>'}</td>
+                <td>${escapeHtml(target.country) || '<span class="text-muted">Unknown</span>'}</td>
+                <td><span class="badge bg-danger">${escapeHtml(target.count)}</span></td>
             </tr>
         `).join('');
     } else {
@@ -1609,7 +1609,7 @@ function renderAlertsList(data) {
                 <button class="btn btn-outline-info" id="loadMoreAlertsBtn" onclick="loadMoreAlerts()">
                     <span class="btn-text">
                         <i class="bi bi-arrow-down-circle"></i>
-                        Laad ${Math.min(20, remainingCount)} meer alerts (${remainingCount} remaining)
+                        Laad ${escapeHtml(Math.min(20, remainingCount))} meer alerts (${escapeHtml(remainingCount)} remaining)
                     </span>
                     <span class="btn-spinner" style="display: none;">
                         <span class="spinner-border spinner-border-sm" role="status"></span>
@@ -1619,7 +1619,7 @@ function renderAlertsList(data) {
             </div>
         ` : `
             <div class="text-center mt-3" style="color: #aaa;">
-                <small>Alle ${totalCount} alerts getoond</small>
+                <small>Alle ${escapeHtml(totalCount)} alerts getoond</small>
             </div>
         `}
     `;
@@ -1653,12 +1653,12 @@ function renderAlertsIncremental() {
         const btnText = loadMoreBtn.querySelector('.btn-text');
         btnText.innerHTML = `
             <i class="bi bi-arrow-down-circle"></i>
-            Laad ${Math.min(20, remainingCount)} meer alerts (${remainingCount} remaining)
+            Laad ${escapeHtml(Math.min(20, remainingCount))} meer alerts (${escapeHtml(remainingCount)} remaining)
         `;
     } else if (loadMoreBtn) {
         loadMoreBtn.parentElement.innerHTML = `
             <div class="text-center mt-3" style="color: #aaa;">
-                <small>Alle ${totalCount} alerts getoond</small>
+                <small>Alle ${escapeHtml(totalCount)} alerts getoond</small>
             </div>
         `;
     }
@@ -1675,10 +1675,10 @@ function renderAlertCard(alert, threatType) {
                 <strong>Gescande poorten:</strong>
                 <div class="mt-1">
                     ${metadata.ports.slice(0, 20).map(port =>
-                        `<span class="badge bg-secondary me-1">${port}</span>`
+                        `<span class="badge bg-secondary me-1">${escapeHtml(port)}</span>`
                     ).join('')}
                     ${metadata.ports.length > 20 ?
-                        `<span class="badge bg-info">+${metadata.ports.length - 20} more</span>` : ''}
+                        `<span class="badge bg-info">+${escapeHtml(metadata.ports.length - 20)} more</span>` : ''}
                 </div>
             </div>
         `;
@@ -1688,48 +1688,48 @@ function renderAlertCard(alert, threatType) {
     if (threatType === 'BEACONING_DETECTED' && metadata.interval) {
         extraInfo = `
             <div class="mt-2">
-                <strong>Beacon interval:</strong> ${metadata.interval}s
+                <strong>Beacon interval:</strong> ${escapeHtml(metadata.interval)}s
             </div>
         `;
     }
 
     return `
-        <div class="card bg-secondary mb-2" id="alert-card-${alert.id}">
+        <div class="card bg-secondary mb-2" id="alert-card-${escapeHtml(alert.id)}">
             <div class="card-body">
                 <div class="d-flex justify-content-between">
                     <div>
-                        <span class="badge bg-${alert.severity === 'CRITICAL' ? 'danger' : alert.severity === 'HIGH' ? 'warning' : 'info'}">${alert.severity}</span>
-                        <small class="text-muted ms-2">${new Date(alert.timestamp).toLocaleString('nl-NL')}</small>
+                        <span class="badge bg-${escapeHtml(alert.severity === 'CRITICAL' ? 'danger' : alert.severity === 'HIGH' ? 'warning' : 'info')}">${escapeHtml(alert.severity)}</span>
+                        <small class="text-muted ms-2">${escapeHtml(new Date(alert.timestamp).toLocaleString('nl-NL'))}</small>
                     </div>
                     <div class="alert-card-ack-status">
                         ${alert.acknowledged ? '<span class="badge bg-success">Acknowledged</span>' : ''}
                     </div>
                 </div>
-                <p class="mb-1 mt-2">${alert.description}</p>
+                <p class="mb-1 mt-2">${escapeHtml(alert.description)}</p>
                 ${alert.source_ip ? `
                     <div class="mt-2">
                         <i class="bi bi-arrow-right-circle text-danger"></i>
-                        <code>${alert.source_ip}</code>
-                        ${alert.source_hostname ? `<small class="text-muted">(${alert.source_hostname})</small>` : ''}
-                        ${alert.source_country ? `<small class="text-muted"> - ${alert.source_country}</small>` : ''}
+                        <code>${escapeHtml(alert.source_ip)}</code>
+                        ${alert.source_hostname ? `<small class="text-muted">(${escapeHtml(alert.source_hostname)})</small>` : ''}
+                        ${alert.source_country ? `<small class="text-muted"> - ${escapeHtml(alert.source_country)}</small>` : ''}
                     </div>
                 ` : ''}
                 ${alert.destination_ip ? `
                     <div class="mt-1">
                         <i class="bi bi-arrow-down-circle text-info"></i>
-                        <code>${alert.destination_ip}</code>
-                        ${alert.destination_hostname ? `<small class="text-muted">(${alert.destination_hostname})</small>` : ''}
-                        ${alert.destination_country ? `<small class="text-muted"> - ${alert.destination_country}</small>` : ''}
+                        <code>${escapeHtml(alert.destination_ip)}</code>
+                        ${alert.destination_hostname ? `<small class="text-muted">(${escapeHtml(alert.destination_hostname)})</small>` : ''}
+                        ${alert.destination_country ? `<small class="text-muted"> - ${escapeHtml(alert.destination_country)}</small>` : ''}
                     </div>
                 ` : ''}
                 ${extraInfo}
                 <div class="mt-2 d-flex gap-2 alert-card-actions">
                     ${alert.acknowledged ? '' : `
-                    <button type="button" class="btn btn-sm btn-outline-light" onclick="acknowledgeAlertCard(${alert.id}, this)" title="Bevestigen">
+                    <button type="button" class="btn btn-sm btn-outline-light" onclick="acknowledgeAlertCard(${jsArg(alert.id)}, this)" title="Bevestigen">
                         <i class="bi bi-check2-circle"></i> Bevestigen
                     </button>
                     `}
-                    <button type="button" class="btn btn-sm btn-outline-light" onclick="openWhitelistFromThreatAlert(${alert.id})" title="Toevoegen aan whitelist">
+                    <button type="button" class="btn btn-sm btn-outline-light" onclick="openWhitelistFromThreatAlert(${jsArg(alert.id)})" title="Toevoegen aan whitelist">
                         <i class="bi bi-shield-check"></i> Whitelist
                     </button>
                 </div>
@@ -1777,7 +1777,7 @@ function openAllAlertsModal() {
         .then(result => {
             if (!result.success) return;
             const datalist = document.getElementById('aa-threat-type-options');
-            datalist.innerHTML = result.data.map(t => `<option value="${t}">`).join('');
+            datalist.innerHTML = result.data.map(t => `<option value="${escapeHtml(t)}">`).join('');
         });
 
     allAlertsState.page = 1;
@@ -1822,13 +1822,13 @@ function loadAllAlerts(page) {
         .then(r => r.json())
         .then(result => {
             if (!result.success) {
-                container.innerHTML = `<div class="alert alert-danger">Fout: ${result.error}</div>`;
+                container.innerHTML = `<div class="alert alert-danger">Fout: ${escapeHtml(result.error)}</div>`;
                 return;
             }
             renderAllAlertsResults(result);
         })
         .catch(error => {
-            container.innerHTML = `<div class="alert alert-danger">Fout: ${error.message}</div>`;
+            container.innerHTML = `<div class="alert alert-danger">Fout: ${escapeHtml(error.message)}</div>`;
         });
 }
 
@@ -1844,7 +1844,7 @@ function renderAllAlertsResults(result) {
         return;
     }
 
-    container.innerHTML = `<div class="alert-list">${result.data.map(alert => renderAllAlertsRow(alert)).join('')}</div>`;
+    container.innerHTML = `<div class="alert-list">${escapeHtml(result.data.map(alert => renderAllAlertsRow(alert)).join(''))}</div>`;
 
     const totalPages = Math.max(1, Math.ceil(result.total_count / result.page_size));
     const start = (result.page - 1) * result.page_size + 1;
@@ -1856,11 +1856,11 @@ function renderAllAlertsResults(result) {
 
 function renderAllAlertsRow(alert) {
     return renderAlertCard(alert, alert.threat_type).replace(
-        `onclick="acknowledgeAlertCard(${alert.id}, this)"`,
-        `onclick="acknowledgeAllAlertsRow(${alert.id}, this)"`
+        `onclick="acknowledgeAlertCard(${jsArg(alert.id)}, this)"`,
+        `onclick="acknowledgeAllAlertsRow(${jsArg(alert.id)}, this)"`
     ).replace(
-        `onclick="openWhitelistFromThreatAlert(${alert.id})"`,
-        `onclick="openWhitelistFromAllAlertsRow(${alert.id})"`
+        `onclick="openWhitelistFromThreatAlert(${jsArg(alert.id)})"`,
+        `onclick="openWhitelistFromAllAlertsRow(${jsArg(alert.id)})"`
     );
 }
 
@@ -1875,8 +1875,8 @@ function renderAllAlertsPagination(currentPage, totalPages) {
     nav.style.display = '';
 
     const pageItem = (page, label, disabled, active) => `
-        <li class="page-item ${disabled ? 'disabled' : ''} ${active ? 'active' : ''}">
-            <button type="button" class="page-link bg-dark text-light border-secondary" ${disabled ? 'tabindex="-1"' : `onclick="loadAllAlerts(${page})"`}>${label}</button>
+        <li class="page-item ${escapeHtml(disabled ? 'disabled' : '')} ${escapeHtml(active ? 'active' : '')}">
+            <button type="button" class="page-link bg-dark text-light border-secondary" ${disabled ? 'tabindex="-1"' : `onclick="loadAllAlerts(${jsArg(page)})"`}>${escapeHtml(label)}</button>
         </li>
     `;
 
@@ -1968,7 +1968,7 @@ function showThreatDetailsError(error) {
     overviewContent.innerHTML = `
         <div class="alert alert-danger">
             <h6><i class="bi bi-exclamation-triangle"></i> Error Loading Threat Details</h6>
-            <p class="mb-0">${error}</p>
+            <p class="mb-0">${escapeHtml(error)}</p>
         </div>
     `;
 }
@@ -2001,13 +2001,13 @@ function updateTopTalkers(talkers) {
 
         row.innerHTML = `
             <td>
-                <small>${ipAddress}</small>
+                <small>${escapeHtml(ipAddress)}</small>
                 ${talker.hostname && talker.hostname !== ipAddress ?
-                  `<br><small class="text-muted">${talker.hostname}</small>` : ''}
+                  `<br><small class="text-muted">${escapeHtml(talker.hostname)}</small>` : ''}
             </td>
-            <td class="text-end text-info"><small>${inMb}</small></td>
-            <td class="text-end text-warning"><small>${outMb}</small></td>
-            <td class="text-end"><small>${totalMb} MB</small></td>
+            <td class="text-end text-info"><small>${escapeHtml(inMb)}</small></td>
+            <td class="text-end text-warning"><small>${escapeHtml(outMb)}</small></td>
+            <td class="text-end"><small>${escapeHtml(totalMb)} MB</small></td>
         `;
 
         tbody.appendChild(row);
@@ -2157,62 +2157,62 @@ function updateSensorsTable(sensors) {
         row.innerHTML = `
             <td>${statusBadge}</td>
             <td>
-                <strong>${sensor.hostname}</strong><br>
-                <small class="text-muted">${sensor.sensor_id}${sensor.version ? ` · v${sensor.version}` : ''}</small>
+                <strong>${escapeHtml(sensor.hostname)}</strong><br>
+                <small class="text-muted">${escapeHtml(sensor.sensor_id)}${sensor.version ? ` · v${sensor.version}` : ''}</small>
             </td>
             <td>
-                ${sensor.location || '<span class="text-muted">-</span>'}<br>
-                <small class="text-muted"><i class="bi bi-hdd-network"></i> ${sensor.ip_address || 'No IP'}</small>
+                ${escapeHtml(sensor.location) || '<span class="text-muted">-</span>'}<br>
+                <small class="text-muted"><i class="bi bi-hdd-network"></i> ${escapeHtml(sensor.ip_address || 'No IP')}</small>
             </td>
-            <td class="${cpuClass}">
-                ${sensor.cpu_percent != null ? sensor.cpu_percent.toFixed(1) + '%' : '<span class="text-muted">-</span>'}
+            <td class="${escapeHtml(cpuClass)}">
+                ${sensor.cpu_percent != null ? escapeHtml(sensor.cpu_percent.toFixed(1) + '%') : '<span class="text-muted">-</span>'}
             </td>
-            <td class="${ramClass}">
-                ${sensor.memory_percent != null ? sensor.memory_percent.toFixed(1) + '%' : '<span class="text-muted">-</span>'}
+            <td class="${escapeHtml(ramClass)}">
+                ${sensor.memory_percent != null ? escapeHtml(sensor.memory_percent.toFixed(1) + '%') : '<span class="text-muted">-</span>'}
             </td>
-            <td class="${bwClass}">
-                ${sensor.bandwidth_mbps != null ? sensor.bandwidth_mbps.toFixed(1) + ' Mbps' : '<span class="text-muted">-</span>'}
-            </td>
-            <td>
-                ${sensor.packets_captured != null ? sensor.packets_captured.toLocaleString() : '<span class="text-muted">-</span>'}
+            <td class="${escapeHtml(bwClass)}">
+                ${sensor.bandwidth_mbps != null ? escapeHtml(sensor.bandwidth_mbps.toFixed(1) + ' Mbps') : '<span class="text-muted">-</span>'}
             </td>
             <td>
-                <span class="badge ${sensor.alerts_24h > 0 ? 'bg-danger' : 'bg-secondary'}">
-                    ${sensor.alerts_24h || 0}
+                ${sensor.packets_captured != null ? escapeHtml(sensor.packets_captured.toLocaleString()) : '<span class="text-muted">-</span>'}
+            </td>
+            <td>
+                <span class="badge ${escapeHtml(sensor.alerts_24h > 0 ? 'bg-danger' : 'bg-secondary')}">
+                    ${escapeHtml(sensor.alerts_24h || 0)}
                 </span>
             </td>
-            <td><small>${lastSeen}</small></td>
+            <td><small>${escapeHtml(lastSeen)}</small></td>
             <td>
                 <div class="btn-group btn-group-sm" role="group">
                     <button class="btn btn-outline-primary update-sensor-btn"
-                            data-sensor-id="${sensor.sensor_id}"
-                            data-sensor-name="${sensor.hostname}"
-                            data-git-branch="${sensor.config?.git_branch || ''}"
-                            title="Update sensor software${sensor.config?.git_branch ? ' (branch: ' + sensor.config.git_branch + ')' : ''}">
+                            data-sensor-id="${escapeHtml(sensor.sensor_id)}"
+                            data-sensor-name="${escapeHtml(sensor.hostname)}"
+                            data-git-branch="${escapeHtml(sensor.config?.git_branch || '')}"
+                            title="Update sensor software${escapeHtml(sensor.config?.git_branch ? ' (branch: ' + sensor.config.git_branch + ')' : '')}">
                         <i class="bi bi-arrow-clockwise"></i>
                     </button>
                     <button class="btn btn-outline-warning reboot-sensor-btn"
-                            data-sensor-id="${sensor.sensor_id}"
-                            data-sensor-name="${sensor.hostname}"
+                            data-sensor-id="${escapeHtml(sensor.sensor_id)}"
+                            data-sensor-name="${escapeHtml(sensor.hostname)}"
                             title="Reboot sensor">
                         <i class="bi bi-power"></i>
                     </button>
                     <button class="btn btn-outline-info edit-settings-btn"
-                            data-sensor-id="${sensor.sensor_id}"
-                            data-sensor-name="${sensor.hostname}"
-                            data-sensor-location="${sensor.location || ''}"
+                            data-sensor-id="${escapeHtml(sensor.sensor_id)}"
+                            data-sensor-name="${escapeHtml(sensor.hostname)}"
+                            data-sensor-location="${escapeHtml(sensor.location || '')}"
                             title="Edit sensor settings">
                         <i class="bi bi-sliders"></i>
                     </button>
                     <button class="btn btn-outline-secondary flush-buffer-btn"
-                            data-sensor-id="${sensor.sensor_id}"
-                            data-sensor-name="${sensor.hostname}"
+                            data-sensor-id="${escapeHtml(sensor.sensor_id)}"
+                            data-sensor-name="${escapeHtml(sensor.hostname)}"
                             title="Flush alert buffer">
                         <i class="bi bi-arrow-repeat"></i>
                     </button>
                     <button class="btn btn-outline-danger delete-sensor-btn"
-                            data-sensor-id="${sensor.sensor_id}"
-                            data-sensor-name="${sensor.hostname}"
+                            data-sensor-id="${escapeHtml(sensor.sensor_id)}"
+                            data-sensor-name="${escapeHtml(sensor.hostname)}"
                             title="Delete sensor">
                         <i class="bi bi-trash"></i>
                     </button>
@@ -2594,7 +2594,7 @@ async function editSensorSettings(sensorId, sensorName, currentLocation) {
             const interfaceContainer = document.getElementById('edit-sensor-interface');
             interfaceContainer.innerHTML = `
                 <div class="alert alert-warning">
-                    ❌ Could not load interface list. Error: ${sensorResult.error || 'Unknown error'}
+                    ❌ Could not load interface list. Error: ${escapeHtml(sensorResult.error || 'Unknown error')}
                     <br><small>Check browser console for details.</small>
                 </div>
             `;
@@ -2605,7 +2605,7 @@ async function editSensorSettings(sensorId, sensorName, currentLocation) {
         if (interfaceContainer) {
             interfaceContainer.innerHTML = `
                 <div class="alert alert-danger">
-                    ❌ Network error loading interfaces: ${error.message}
+                    ❌ Network error loading interfaces: ${escapeHtml(error.message)}
                     <br><small>Check browser console and network tab for details.</small>
                 </div>
             `;
@@ -2934,23 +2934,23 @@ function updateWhitelistTable(entries) {
             : '<span class="badge bg-info">Sensor</span>';
 
         // Fall back to ip_cidr for legacy entries that haven't been migrated
-        const sourceIp = entry.source_ip || (entry.ip_cidr && entry.direction !== 'inbound' ? entry.ip_cidr : null) || '<span class="text-muted">all</span>';
-        const targetIp = entry.target_ip || (entry.ip_cidr && entry.direction !== 'outbound' ? entry.ip_cidr : null) || '<span class="text-muted">all</span>';
-        const portFilter = entry.port_filter || '<span class="text-muted">all</span>';
+        const sourceIp = escapeHtml(entry.source_ip || (entry.ip_cidr && entry.direction !== 'inbound' ? entry.ip_cidr : null)) || '<span class="text-muted">all</span>';
+        const targetIp = escapeHtml(entry.target_ip || (entry.ip_cidr && entry.direction !== 'outbound' ? entry.ip_cidr : null)) || '<span class="text-muted">all</span>';
+        const portFilter = escapeHtml(entry.port_filter) || '<span class="text-muted">all</span>';
 
         row.innerHTML = `
             <td><code>${sourceIp}</code></td>
             <td><code>${targetIp}</code></td>
             <td><code>${portFilter}</code></td>
-            <td>${entry.description || '<span class="text-muted">-</span>'}</td>
+            <td>${escapeHtml(entry.description) || '<span class="text-muted">-</span>'}</td>
             <td>${scopeBadge}</td>
-            <td>${entry.sensor_id || '<span class="text-muted">-</span>'}</td>
-            <td><small>${new Date(entry.created_at).toLocaleString()}</small></td>
+            <td>${escapeHtml(entry.sensor_id) || '<span class="text-muted">-</span>'}</td>
+            <td><small>${escapeHtml(new Date(entry.created_at).toLocaleString())}</small></td>
             <td>
-                <button class="btn btn-sm btn-outline-primary me-1" onclick="editWhitelistEntry(${entry.id})" title="Edit">
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="editWhitelistEntry(${jsArg(entry.id)})" title="Edit">
                     <i class="bi bi-pencil"></i>
                 </button>
-                <button class="btn btn-sm btn-danger" onclick="deleteWhitelistEntry(${entry.id})" title="Delete">
+                <button class="btn btn-sm btn-danger" onclick="deleteWhitelistEntry(${jsArg(entry.id)})" title="Delete">
                     <i class="bi bi-trash"></i>
                 </button>
             </td>
@@ -3173,11 +3173,11 @@ function renderIntegrationCard(integration, type) {
 
     let details = '';
     if (integration.url) {
-        details = `<small class="text-light opacity-75">${integration.url}</small>`;
+        details = `<small class="text-light opacity-75">${escapeHtml(integration.url)}</small>`;
     } else if (integration.host) {
-        details = `<small class="text-light opacity-75">${integration.host}:${integration.port} (${integration.format})</small>`;
+        details = `<small class="text-light opacity-75">${escapeHtml(integration.host)}:${escapeHtml(integration.port)} (${escapeHtml(integration.format)})</small>`;
     } else if (integration.api_url) {
-        details = `<small class="text-light opacity-75">${integration.api_url}</small>`;
+        details = `<small class="text-light opacity-75">${escapeHtml(integration.api_url)}</small>`;
     }
 
     // Check if this is AbuseIPDB - make it clickable for stats
@@ -3187,15 +3187,15 @@ function renderIntegrationCard(integration, type) {
     const clickHint = isAbuseIPDB ? '<small class="text-info d-block"><i class="bi bi-bar-chart"></i> Click for statistics</small>' : '';
 
     return `
-        <div class="d-flex align-items-center justify-content-between mb-2 p-2 bg-dark rounded border border-secondary ${clickableClass}" ${clickHandler}>
+        <div class="d-flex align-items-center justify-content-between mb-2 p-2 bg-dark rounded border border-secondary ${escapeHtml(clickableClass)}" ${clickHandler}>
             <div>
-                <strong class="text-white">${integration.display_name}</strong><br>
+                <strong class="text-white">${escapeHtml(integration.display_name)}</strong><br>
                 ${details}
                 ${clickHint}
             </div>
             <div class="text-end">
-                <i class="bi ${statusIcon}" title="${statusText}"></i>
-                <button class="btn btn-sm btn-outline-light ms-2" onclick="event.stopPropagation(); testIntegration('${integration.name}')" title="Test connection">
+                <i class="bi ${escapeHtml(statusIcon)}" title="${escapeHtml(statusText)}"></i>
+                <button class="btn btn-sm btn-outline-light ms-2" onclick="event.stopPropagation(); testIntegration(${jsArg(integration.name)})" title="Test connection">
                     <i class="bi bi-arrow-repeat"></i>
                 </button>
             </div>
@@ -3278,9 +3278,9 @@ window.showAbuseIPDBStats = function() {
             if (data.top_malicious && data.top_malicious.length > 0) {
                 topMaliciousBody.innerHTML = data.top_malicious.map(ip => `
                     <tr>
-                        <td><code>${ip.ip}</code></td>
-                        <td><span class="badge ${getScoreBadgeClass(ip.score)}">${ip.score}</span></td>
-                        <td>${ip.reports || 0}</td>
+                        <td><code>${escapeHtml(ip.ip)}</code></td>
+                        <td><span class="badge ${escapeHtml(getScoreBadgeClass(ip.score))}">${escapeHtml(ip.score)}</span></td>
+                        <td>${escapeHtml(ip.reports || 0)}</td>
                     </tr>
                 `).join('');
             } else {
@@ -3292,9 +3292,9 @@ window.showAbuseIPDBStats = function() {
             if (data.recent_lookups && data.recent_lookups.length > 0) {
                 recentLookupsBody.innerHTML = data.recent_lookups.map(ip => `
                     <tr>
-                        <td><code>${ip.ip}</code></td>
-                        <td><span class="badge ${getScoreBadgeClass(ip.score)}">${ip.score}</span></td>
-                        <td><small>${formatTimeAgo(ip.last_updated)}</small></td>
+                        <td><code>${escapeHtml(ip.ip)}</code></td>
+                        <td><span class="badge ${escapeHtml(getScoreBadgeClass(ip.score))}">${escapeHtml(ip.score)}</span></td>
+                        <td><small>${escapeHtml(formatTimeAgo(ip.last_updated))}</small></td>
                     </tr>
                 `).join('');
             } else {
@@ -3309,7 +3309,7 @@ window.showAbuseIPDBStats = function() {
             console.error('Error loading AbuseIPDB stats:', error);
             document.getElementById('abuseipdbLoading').innerHTML = `
                 <div class="text-danger">
-                    <i class="bi bi-exclamation-circle"></i> Failed to load statistics: ${error.message}
+                    <i class="bi bi-exclamation-circle"></i> Failed to load statistics: ${escapeHtml(error.message)}
                 </div>
             `;
         });
@@ -3347,7 +3347,7 @@ function showToast(message, type = 'info') {
     toast.className = `alert alert-${type} position-fixed`;
     toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
     toast.innerHTML = `
-        ${message}
+        ${escapeHtml(message)}
         <button type="button" class="btn-close" onclick="this.parentElement.remove()"></button>
     `;
     document.body.appendChild(toast);

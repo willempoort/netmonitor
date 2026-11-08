@@ -18,6 +18,11 @@ Gelezen door de globale `code-audit` skill (`~/.claude/skills/code-audit/`). Hie
 - Auth-decorators: `login_required`, `require_role`, `require_sensor_token(perm)`, `require_sensor_token_or_login`, `local_or_login_required`, `local_or_role_required`.
 - Sensors draaien als root (`services/netmonitor-sensor.service.template`) en voeren commando's van de server uit (`sensor_client.py`, `command_type`).
 
+## Frontend-conventie (sinds audit H1, 2026-11-08)
+- Data in `innerHTML` altijd via `escapeHtml()` uit `web/static/js/escape.js`; waarden in inline `onclick` via `jsArg()`. Elke `${...}` in een HTML-template zonder een van deze twee is een bevinding, tenzij het een bewust HTML-fragment is waarvan de inhoud al ge-escaped is.
+- Regressietest: `tests/js/xss_render_test.js` (node). Breid die uit bij nieuwe render-functies.
+- `/static/` wordt door nginx met `immutable` gecached: bump `?v=` in de templates bij elke JS-wijziging.
+
 ## Entry points en dynamische dispatch
 - Flask-routes en `@socketio.on` in `web_dashboard.py`. Frontend-aanroepen staan in `web/static/js/*.js`.
 - MCP: `streamable_http_server.py` en `openwebui_rest_wrapper.py` gebruiken `getattr(self.tools, name)`. Elke tool-methode in `mcp_server/shared_tools.py` is dus in gebruik als de naam in de tool-definities staat.

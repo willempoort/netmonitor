@@ -15,6 +15,16 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.7.5] - 2026-11-08
+
+### Security
+- **Stored XSS in het dashboard via netwerkverkeer (audit H1).** Velden als alert-`description`, `threat_type`, hostnamen, landen, metadata (o.a. TLS SNI en DNS-namen), apparaat- en templatenamen gingen zonder escaping in `innerHTML`. Wie verkeer langs een sensor kon sturen, of een alert kon posten, kon zo JavaScript laten draaien in de sessie van een beheerder.
+  - Nieuw `web/static/js/escape.js` met `escapeHtml()`, `jsArg()` (voor waarden in inline `onclick`-handlers) en `safeUrl()`. Het wordt geladen in `dashboard.html`, `login.html` en `kiosk.html`.
+  - Alle interpolaties in HTML-templates in `dashboard.js`, `device-classification.js`, `config-management.js` en de inline scripts zijn ge-escaped, behalve bewuste HTML-fragmenten (die zelf ge-escapete data bevatten).
+  - De kiosk-versie van `escapeHtml` escapete geen quotes (onveilig in attributen) en is vervangen door de gedeelde helper.
+  - Regressietest: `tests/js/xss_render_test.js` (via pytest, vereist `node`).
+- **Socket.IO zonder authenticatie (audit H2).** Iedereen kon verbinden en live alerts en dashboarddata ontvangen (`cors_allowed_origins="*"`). De verbinding vereist nu een login, `request_update` controleert de sessie opnieuw, en alleen de eigen origin is toegestaan.
+
 ## [2.7.4] - 2026-11-08
 
 ### Security

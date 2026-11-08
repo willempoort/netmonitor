@@ -264,7 +264,7 @@ function renderCategoryParams(categoryId, params, prefix) {
 
         if (typeof value === 'object' && !Array.isArray(value)) {
             // Nested object - render as subsection
-            html += `<div class="col-12"><h6 class="text-info mt-3">${formatParamName(key)}</h6></div>`;
+            html += `<div class="col-12"><h6 class="text-info mt-3">${escapeHtml(formatParamName(key))}</h6></div>`;
 
             // Sort entries so 'enabled' comes first
             const sortedEntries = Object.entries(value).sort(([keyA], [keyB]) => {
@@ -301,20 +301,20 @@ function renderParameterCard(path, name, value) {
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start mb-2">
                         <div>
-                            <h6 class="card-title mb-1">${formatParamName(name)}</h6>
-                            <small class="text-muted">${description}</small>
+                            <h6 class="card-title mb-1">${escapeHtml(formatParamName(name))}</h6>
+                            <small class="text-muted">${escapeHtml(description)}</small>
                         </div>
-                        <span class="badge bg-secondary">${paramType}</span>
+                        <span class="badge bg-secondary">${escapeHtml(paramType)}</span>
                     </div>
                     ${inputHtml}
-                    <div class="param-example text-muted small mt-2" style="display: ${document.getElementById('config-show-defaults')?.checked ? 'block' : 'none'}">
+                    <div class="param-example text-muted small mt-2" style="display: ${escapeHtml(document.getElementById('config-show-defaults')?.checked ? 'block' : 'none')}">
                         <i class="bi bi-lightbulb"></i> Default: <code>${formatValue(defaultValue)}</code>
                     </div>
                     <div class="mt-3">
-                        <button class="btn btn-sm btn-success save-param-btn" data-param-path="${path}">
+                        <button class="btn btn-sm btn-success save-param-btn" data-param-path="${escapeHtml(path)}">
                             <i class="bi bi-check-circle"></i> Save
                         </button>
-                        <button class="btn btn-sm btn-outline-secondary reset-param-btn" data-param-path="${path}">
+                        <button class="btn btn-sm btn-outline-secondary reset-param-btn" data-param-path="${escapeHtml(path)}">
                             <i class="bi bi-arrow-counterclockwise"></i> Reset
                         </button>
                     </div>
@@ -331,10 +331,10 @@ function renderParameterInput(path, value, type) {
         case 'bool':
             return `
                 <div class="form-check form-switch mt-2">
-                    <input class="form-check-input param-input" type="checkbox" id="${inputId}"
-                           ${value ? 'checked' : ''} data-param-path="${path}">
-                    <label class="form-check-label" for="${inputId}">
-                        ${value ? 'Enabled' : 'Disabled'}
+                    <input class="form-check-input param-input" type="checkbox" id="${escapeHtml(inputId)}"
+                           ${escapeHtml(value ? 'checked' : '')} data-param-path="${escapeHtml(path)}">
+                    <label class="form-check-label" for="${escapeHtml(inputId)}">
+                        ${escapeHtml(value ? 'Enabled' : 'Disabled')}
                     </label>
                 </div>
             `;
@@ -343,14 +343,14 @@ function renderParameterInput(path, value, type) {
         case 'float':
             return `
                 <input type="number" class="form-control bg-dark text-light border-secondary param-input mt-2"
-                       id="${inputId}" value="${value}" step="${type === 'float' ? '0.1' : '1'}"
-                       data-param-path="${path}">
+                       id="${escapeHtml(inputId)}" value="${escapeHtml(value)}" step="${escapeHtml(type === 'float' ? '0.1' : '1')}"
+                       data-param-path="${escapeHtml(path)}">
             `;
 
         case 'list':
             return `
                 <textarea class="form-control bg-dark text-light border-secondary param-input mt-2"
-                          id="${inputId}" rows="3" data-param-path="${path}">${Array.isArray(value) ? value.join('\n') : value}</textarea>
+                          id="${escapeHtml(inputId)}" rows="3" data-param-path="${escapeHtml(path)}">${escapeHtml(Array.isArray(value) ? value.join('\n') : value)}</textarea>
                 <small class="text-muted">One item per line</small>
             `;
 
@@ -358,7 +358,7 @@ function renderParameterInput(path, value, type) {
         default:
             return `
                 <input type="text" class="form-control bg-dark text-light border-secondary param-input mt-2"
-                       id="${inputId}" value="${value}" data-param-path="${path}">
+                       id="${escapeHtml(inputId)}" value="${escapeHtml(value)}" data-param-path="${escapeHtml(path)}">
             `;
     }
 }
@@ -379,11 +379,11 @@ function renderAllParameters(config) {
         const type = detectParamType(value);
         html += `
             <tr>
-                <td><code>${path}</code></td>
+                <td><code>${escapeHtml(path)}</code></td>
                 <td><strong>${formatValue(value)}</strong></td>
-                <td><span class="badge bg-secondary">${type}</span></td>
+                <td><span class="badge bg-secondary">${escapeHtml(type)}</span></td>
                 <td>
-                    <button class="btn btn-sm btn-outline-primary edit-param-btn" data-param-path="${path}">
+                    <button class="btn btn-sm btn-outline-primary edit-param-btn" data-param-path="${escapeHtml(path)}">
                         <i class="bi bi-pencil"></i>
                     </button>
                 </td>
@@ -662,8 +662,9 @@ function formatParamName(name) {
 function formatValue(value) {
     if (value === null || value === undefined) return '<em>not set</em>';
     if (typeof value === 'boolean') return value ? '✓ Yes' : '✗ No';
-    if (Array.isArray(value)) return value.join(', ');
-    return value.toString();
+    // Resultaat wordt als HTML ingevoegd: waarden escapen (audit H1)
+    if (Array.isArray(value)) return value.map(escapeHtml).join(', ');
+    return escapeHtml(value.toString());
 }
 
 function getDefaultValue(path) {
@@ -711,7 +712,7 @@ function countParameters(obj) {
 
 function showConfigError(error) {
     document.querySelectorAll('.config-category-content').forEach(el => {
-        el.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> Error: ${error}</div>`;
+        el.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> Error: ${escapeHtml(error)}</div>`;
     });
 }
 
@@ -719,8 +720,8 @@ function showToast(title, message, type = 'info') {
     // Simple toast notification (you can enhance this with Bootstrap Toast)
     const alertClass = `alert-${type}`;
     const toastHtml = `
-        <div class="alert ${alertClass} alert-dismissible fade show position-fixed top-0 end-0 m-3" role="alert" style="z-index: 9999;">
-            <strong>${title}:</strong> ${message}
+        <div class="alert ${escapeHtml(alertClass)} alert-dismissible fade show position-fixed top-0 end-0 m-3" role="alert" style="z-index: 9999;">
+            <strong>${escapeHtml(title)}:</strong> ${escapeHtml(message)}
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
     `;
@@ -780,11 +781,11 @@ function loadThreatFeedStats() {
             if (data.success) {
                 renderThreatFeedStats(data.stats);
             } else {
-                content.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                content.innerHTML = `<div class="alert alert-danger">${escapeHtml(data.error)}</div>`;
             }
         })
         .catch(e => {
-            content.innerHTML = `<div class="alert alert-danger">Fout: ${e.message}</div>`;
+            content.innerHTML = `<div class="alert alert-danger">Fout: ${escapeHtml(e.message)}</div>`;
         });
 }
 
@@ -803,39 +804,39 @@ function renderThreatFeedStats(stats) {
     const lastUpdates = stats.last_update || {};
     const feedRows = Object.entries(lastUpdates).map(([name, ts]) => {
         const date = new Date(ts).toLocaleString('nl-NL');
-        return `<tr><td>${name}</td><td><span class="badge bg-success">Actief</span></td><td class="text-muted small">${date}</td></tr>`;
+        return `<tr><td>${escapeHtml(name)}</td><td><span class="badge bg-success">Actief</span></td><td class="text-muted small">${escapeHtml(date)}</td></tr>`;
     }).join('') || '<tr><td colspan="3" class="text-muted">Nog geen feeds geladen</td></tr>';
 
     content.innerHTML = `
         <div class="row g-3 mb-4">
             <div class="col-6 col-md-3">
                 <div class="card bg-secondary text-white text-center p-3">
-                    <div class="fs-3 fw-bold text-danger">${stats.malicious_ips.toLocaleString()}</div>
+                    <div class="fs-3 fw-bold text-danger">${escapeHtml(stats.malicious_ips.toLocaleString())}</div>
                     <div class="small">Malicious IPs</div>
                 </div>
             </div>
             <div class="col-6 col-md-3">
                 <div class="card bg-secondary text-white text-center p-3">
-                    <div class="fs-3 fw-bold text-warning">${stats.malicious_domains.toLocaleString()}</div>
+                    <div class="fs-3 fw-bold text-warning">${escapeHtml(stats.malicious_domains.toLocaleString())}</div>
                     <div class="small">Malicious Domeinen</div>
                 </div>
             </div>
             <div class="col-6 col-md-3">
                 <div class="card bg-secondary text-white text-center p-3">
-                    <div class="fs-3 fw-bold text-info">${stats.malicious_urls.toLocaleString()}</div>
+                    <div class="fs-3 fw-bold text-info">${escapeHtml(stats.malicious_urls.toLocaleString())}</div>
                     <div class="small">Malicious URLs</div>
                 </div>
             </div>
             <div class="col-6 col-md-3">
                 <div class="card bg-secondary text-white text-center p-3">
-                    <div class="fs-3 fw-bold text-light">${stats.c2_servers.toLocaleString()}</div>
+                    <div class="fs-3 fw-bold text-light">${escapeHtml(stats.c2_servers.toLocaleString())}</div>
                     <div class="small">C2 Servers</div>
                 </div>
             </div>
         </div>
 
         <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="mb-0 text-info"><i class="bi bi-rss"></i> Feeds (${stats.feeds_loaded} geladen)</h6>
+            <h6 class="mb-0 text-info"><i class="bi bi-rss"></i> Feeds (${escapeHtml(stats.feeds_loaded)} geladen)</h6>
             <button class="btn btn-sm btn-outline-info text-info" id="update-feeds-btn" onclick="triggerFeedUpdate()">
                 <i class="bi bi-arrow-clockwise"></i> Nu bijwerken
             </button>

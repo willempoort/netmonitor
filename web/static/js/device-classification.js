@@ -176,18 +176,18 @@ function renderDevicesTable(devices) {
 
             // Add confirm button for auto-assigned templates
             const confirmBtn = isAutoAssigned
-                ? `<button class="btn btn-sm btn-outline-success ms-1" onclick="event.stopPropagation(); confirmDeviceTemplate('${device.ip_address}', ${device.template_id}, '${device.template_name}')" title="Confirm this template (make it permanent)"><i class="bi bi-check-circle"></i></button>`
+                ? `<button class="btn btn-sm btn-outline-success ms-1" onclick="event.stopPropagation(); confirmDeviceTemplate(${jsArg(device.ip_address)}, ${jsArg(device.template_id)}, ${jsArg(device.template_name)})" title="Confirm this template (make it permanent)"><i class="bi bi-check-circle"></i></button>`
                 : '';
 
-            templateBadge = `<span class="badge bg-${badgeColor}" title="${isAutoAssigned ? 'Auto-assigned by ML - click ✓ to confirm' : 'Manually assigned'}">${device.template_name}${confidenceText}</span>${confirmBtn}`;
+            templateBadge = `<span class="badge bg-${escapeHtml(badgeColor)}" title="${escapeHtml(isAutoAssigned ? 'Auto-assigned by ML - click ✓ to confirm' : 'Manually assigned')}">${escapeHtml(device.template_name)}${escapeHtml(confidenceText)}</span>${confirmBtn}`;
         } else if (device.suggested_template_name && device.suggested_template_id) {
             // Classifier suggestion below the auto-assign confidence threshold:
             // not applied to the device, but shown so the user can confirm it
             const suggestConfidence = device.classification_confidence
                 ? ` (${Math.round(device.classification_confidence * 100)}%)`
                 : '';
-            const acceptBtn = `<button class="btn btn-sm btn-outline-success ms-1" onclick="event.stopPropagation(); confirmDeviceTemplate('${device.ip_address}', ${device.suggested_template_id}, '${device.suggested_template_name}')" title="Accept this suggestion (assign template)"><i class="bi bi-check-circle"></i></button>`;
-            templateBadge = `<span class="badge bg-info text-dark" title="Suggested by classifier (${device.classification_method || 'unknown'}) - click ✓ to accept">Suggested: ${device.suggested_template_name}${suggestConfidence}</span>${acceptBtn}`;
+            const acceptBtn = `<button class="btn btn-sm btn-outline-success ms-1" onclick="event.stopPropagation(); confirmDeviceTemplate(${jsArg(device.ip_address)}, ${jsArg(device.suggested_template_id)}, ${jsArg(device.suggested_template_name)})" title="Accept this suggestion (assign template)"><i class="bi bi-check-circle"></i></button>`;
+            templateBadge = `<span class="badge bg-info text-dark" title="Suggested by classifier (${escapeHtml(device.classification_method || 'unknown')}) - click ✓ to accept">Suggested: ${escapeHtml(device.suggested_template_name)}${escapeHtml(suggestConfidence)}</span>${acceptBtn}`;
         } else {
             templateBadge = `<span class="badge bg-secondary">Unclassified</span>`;
         }
@@ -202,16 +202,16 @@ function renderDevicesTable(devices) {
             : '';
 
         return `
-            <tr class="${rowClass}" style="cursor: pointer;" onclick="showDeviceDetails('${device.ip_address}')">
-                <td><code>${device.ip_address}</code></td>
-                <td>${device.hostname || '-'}</td>
-                <td><code>${device.mac_address || '-'}</code>${duplicateIndicator}</td>
-                <td>${device.vendor || '-'}</td>
+            <tr class="${escapeHtml(rowClass)}" style="cursor: pointer;" onclick="showDeviceDetails(${jsArg(device.ip_address)})">
+                <td><code>${escapeHtml(device.ip_address)}</code></td>
+                <td>${escapeHtml(device.hostname || '-')}</td>
+                <td><code>${escapeHtml(device.mac_address || '-')}</code>${duplicateIndicator}</td>
+                <td>${escapeHtml(device.vendor || '-')}</td>
                 <td>${templateBadge}</td>
                 <td>${learningStatus}</td>
-                <td>${lastSeen}</td>
+                <td>${escapeHtml(lastSeen)}</td>
                 <td>
-                    <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); showDeviceDetails('${device.ip_address}')">
+                    <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); showDeviceDetails(${jsArg(device.ip_address)})">
                         <i class="bi bi-eye"></i>
                     </button>
                 </td>
@@ -230,7 +230,7 @@ function getLearningStatusBadge(device) {
     if (packetCount === 0) {
         return `<span class="badge bg-secondary">Not Started</span>`;
     } else if (packetCount < 100) {
-        return `<span class="badge bg-warning">Learning (${packetCount})</span>`;
+        return `<span class="badge bg-warning">Learning (${escapeHtml(packetCount)})</span>`;
     } else {
         return `<span class="badge bg-success">Ready</span>`;
     }
@@ -487,7 +487,7 @@ async function loadDeviceClassificationHints(ipAddress) {
 
         if (result.success && result.hints && result.hints.suggested_templates && result.hints.suggested_templates.length > 0) {
             hintsList.innerHTML = result.hints.suggested_templates.map(hint =>
-                `<li><strong>${hint.name}</strong> - ${hint.reason}</li>`
+                `<li><strong>${escapeHtml(hint.name)}</strong> - ${escapeHtml(hint.reason)}</li>`
             ).join('');
             hintsContainer.style.display = 'block';
         } else {
@@ -829,19 +829,19 @@ function renderTemplatesGrid(templates) {
         const typeBadge = template.is_builtin
             ? `<span class="badge bg-info">Built-in</span>`
             : `<span class="badge bg-secondary">Custom</span>`;
-        const categoryBadge = `<span class="badge bg-outline-secondary">${template.category}</span>`;
+        const categoryBadge = `<span class="badge bg-outline-secondary">${escapeHtml(template.category)}</span>`;
 
         return `
             <div class="col-md-4 col-lg-3 mb-3">
-                <div class="card bg-dark border-secondary h-100" style="cursor: pointer;" onclick="showTemplateDetails(${template.id})">
+                <div class="card bg-dark border-secondary h-100" style="cursor: pointer;" onclick="showTemplateDetails(${jsArg(template.id)})">
                     <div class="card-body text-center">
-                        <div class="fs-2 mb-2">${icon}</div>
-                        <h6 class="card-title">${template.name}</h6>
+                        <div class="fs-2 mb-2">${escapeHtml(icon)}</div>
+                        <h6 class="card-title">${escapeHtml(template.name)}</h6>
                         <div class="mb-2">
                             ${typeBadge}
                             ${categoryBadge}
                         </div>
-                        <small class="text-muted">${template.device_count || 0} devices</small>
+                        <small class="text-muted">${escapeHtml(template.device_count || 0)} devices</small>
                     </div>
                 </div>
             </div>
@@ -1002,7 +1002,7 @@ async function loadTemplateDevices(templateId) {
 
         if (result.success && result.devices && result.devices.length > 0) {
             container.innerHTML = result.devices.map(d =>
-                `<span class="badge bg-secondary me-1 mb-1">${d.ip_address} ${d.hostname ? '(' + d.hostname + ')' : ''}</span>`
+                `<span class="badge bg-secondary me-1 mb-1">${escapeHtml(d.ip_address)} ${escapeHtml(d.hostname ? '(' + d.hostname + ')' : '')}</span>`
             ).join('');
         } else {
             container.innerHTML = '<span class="text-muted">No devices assigned to this template.</span>';
@@ -1160,14 +1160,14 @@ function renderProvidersTable(providers) {
 
         return `
             <tr>
-                <td><strong>${provider.name}</strong></td>
-                <td><span class="badge bg-outline-secondary">${provider.category}</span></td>
-                <td><small>${ipRanges.slice(0, 3).join(', ')}${ipRanges.length > 3 ? '...' : ''}</small></td>
-                <td><small>${domains.slice(0, 3).join(', ')}${domains.length > 3 ? '...' : ''}</small></td>
+                <td><strong>${escapeHtml(provider.name)}</strong></td>
+                <td><span class="badge bg-outline-secondary">${escapeHtml(provider.category)}</span></td>
+                <td><small>${escapeHtml(ipRanges.slice(0, 3).join(', '))}${escapeHtml(ipRanges.length > 3 ? '...' : '')}</small></td>
+                <td><small>${escapeHtml(domains.slice(0, 3).join(', '))}${escapeHtml(domains.length > 3 ? '...' : '')}</small></td>
                 <td>${typeBadge}</td>
                 <td>
                     ${!provider.is_builtin ? `
-                        <button class="btn btn-sm btn-outline-danger" onclick="deleteProvider(${provider.id})">
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteProvider(${jsArg(provider.id)})">
                             <i class="bi bi-trash"></i>
                         </button>
                     ` : ''}
@@ -1295,8 +1295,8 @@ async function loadClassificationStats() {
                     .slice(0, 10)
                     .map(([name, count]) => `
                         <div class="d-flex justify-content-between mb-1">
-                            <span>${name}</span>
-                            <span class="badge bg-secondary">${count}</span>
+                            <span>${escapeHtml(name)}</span>
+                            <span class="badge bg-secondary">${escapeHtml(count)}</span>
                         </div>
                     `).join('');
             } else {
@@ -1312,8 +1312,8 @@ async function loadClassificationStats() {
                     .slice(0, 10)
                     .map(([name, count]) => `
                         <div class="d-flex justify-content-between mb-1">
-                            <span>${name}</span>
-                            <span class="badge bg-secondary">${count}</span>
+                            <span>${escapeHtml(name)}</span>
+                            <span class="badge bg-secondary">${escapeHtml(count)}</span>
                         </div>
                     `).join('');
             } else {
@@ -1372,7 +1372,7 @@ async function runMLClassification() {
             statusDiv.innerHTML = `
                 <div class="alert alert-danger mt-2 mb-0">
                     <i class="bi bi-x-circle me-2"></i>
-                    <strong>Fout:</strong> ${error.message || 'Kon classificatie niet starten'}
+                    <strong>Fout:</strong> ${escapeHtml(error.message || 'Kon classificatie niet starten')}
                 </div>
             `;
         }
@@ -1409,7 +1409,7 @@ async function pollMLClassificationStatus(btn, statusDiv) {
                     <div class="alert alert-success mt-2 mb-0">
                         <i class="bi bi-check-circle me-2"></i>
                         <strong>Classificatie voltooid!</strong><br>
-                        <small>${r.classified} devices geclassificeerd, ${templatesAssigned} templates toegewezen, ${r.unknown} onbekend</small>
+                        <small>${escapeHtml(r.classified)} devices geclassificeerd, ${escapeHtml(templatesAssigned)} templates toegewezen, ${escapeHtml(r.unknown)} onbekend</small>
                     </div>
                 `;
                 setTimeout(() => { statusDiv.style.display = 'none'; }, 10000);
@@ -1427,7 +1427,7 @@ async function pollMLClassificationStatus(btn, statusDiv) {
                 statusDiv.innerHTML = `
                     <div class="alert alert-danger mt-2 mb-0">
                         <i class="bi bi-x-circle me-2"></i>
-                        <strong>Classificatie mislukt:</strong> ${result.error || 'Onbekende fout'}
+                        <strong>Classificatie mislukt:</strong> ${escapeHtml(result.error || 'Onbekende fout')}
                     </div>
                 `;
             }
@@ -1477,7 +1477,7 @@ async function trainMLModel() {
         const readiness = readyResult.readiness;
 
         if (!readiness.ready) {
-            const items = (readiness.missing || []).map(m => `<li>${m}</li>`).join('');
+            const items = (readiness.missing || []).map(m => `<li>${escapeHtml(m)}</li>`).join('');
             if (statusDiv) {
                 statusDiv.innerHTML = `
                     <div class="alert alert-warning mb-0">
@@ -1526,7 +1526,7 @@ async function trainMLModel() {
             statusDiv.innerHTML = `
                 <div class="alert alert-danger mb-0">
                     <i class="bi bi-x-circle me-2"></i>
-                    <strong>Fout:</strong> ${error.message || 'Kon model niet trainen'}
+                    <strong>Fout:</strong> ${escapeHtml(error.message || 'Kon model niet trainen')}
                 </div>
             `;
             statusDiv.style.display = 'block';
@@ -1560,7 +1560,7 @@ async function pollMLTrainingStatus(btn, statusDiv) {
                     statusDiv.innerHTML = `
                         <div class="alert alert-success mb-0">
                             <i class="bi bi-check-circle me-2"></i>
-                            <strong>Model getraind!</strong> ${classifierResult.message || ''}
+                            <strong>Model getraind!</strong> ${escapeHtml(classifierResult.message || '')}
                         </div>
                     `;
                     setTimeout(() => { statusDiv.style.display = 'none'; }, 10000);
@@ -1572,7 +1572,7 @@ async function pollMLTrainingStatus(btn, statusDiv) {
                     statusDiv.innerHTML = `
                         <div class="alert alert-danger mb-0">
                             <i class="bi bi-x-circle me-2"></i>
-                            <strong>Training mislukt:</strong> ${errorMsg}
+                            <strong>Training mislukt:</strong> ${escapeHtml(errorMsg)}
                         </div>
                     `;
                 }
@@ -1586,7 +1586,7 @@ async function pollMLTrainingStatus(btn, statusDiv) {
                 statusDiv.innerHTML = `
                     <div class="alert alert-danger mb-0">
                         <i class="bi bi-x-circle me-2"></i>
-                        <strong>Training mislukt:</strong> ${result.error || 'Onbekende fout'}
+                        <strong>Training mislukt:</strong> ${escapeHtml(result.error || 'Onbekende fout')}
                     </div>
                 `;
             }
@@ -1662,7 +1662,7 @@ async function runFingerprintScan() {
             statusDiv.innerHTML = `
                 <div class="alert alert-danger mt-2 mb-0">
                     <i class="bi bi-x-circle me-2"></i>
-                    <strong>Fout:</strong> ${error.message || 'Kon fingerprint scan niet starten'}
+                    <strong>Fout:</strong> ${escapeHtml(error.message || 'Kon fingerprint scan niet starten')}
                 </div>
             `;
         }
@@ -1689,10 +1689,10 @@ async function pollFingerprintScanStatus(btn, statusDiv) {
                     <div class="alert alert-success mt-2 mb-0">
                         <i class="bi bi-check-circle me-2"></i>
                         <strong>Fingerprint scan voltooid!</strong><br>
-                        <small>${scan.responses || 0} van ${scan.scanned || 0} devices gaven identiteitsbewijs
-                        (${scan.identified || 0} eenduidig herkend); herclassificatie:
-                        ${classification.classified || 0} geclassificeerd,
-                        ${templatesAssigned} templates toegewezen</small>
+                        <small>${escapeHtml(scan.responses || 0)} van ${escapeHtml(scan.scanned || 0)} devices gaven identiteitsbewijs
+                        (${escapeHtml(scan.identified || 0)} eenduidig herkend); herclassificatie:
+                        ${escapeHtml(classification.classified || 0)} geclassificeerd,
+                        ${escapeHtml(templatesAssigned)} templates toegewezen</small>
                     </div>
                 `;
                 setTimeout(() => { statusDiv.style.display = 'none'; }, 12000);
@@ -1707,7 +1707,7 @@ async function pollFingerprintScanStatus(btn, statusDiv) {
                 statusDiv.innerHTML = `
                     <div class="alert alert-danger mt-2 mb-0">
                         <i class="bi bi-x-circle me-2"></i>
-                        <strong>Fingerprint scan mislukt:</strong> ${result.error || 'Onbekende fout'}
+                        <strong>Fingerprint scan mislukt:</strong> ${escapeHtml(result.error || 'Onbekende fout')}
                     </div>
                 `;
             }
@@ -1819,12 +1819,12 @@ function renderBehaviorsTable(behaviors, isBuiltin) {
             }
 
             const editBtn = isBuiltin ? '' : `
-                <button class="btn btn-sm btn-outline-primary me-1" onclick="editBehaviorRule(${b.id})" title="Edit rule">
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="editBehaviorRule(${jsArg(b.id)})" title="Edit rule">
                     <i class="bi bi-pencil"></i>
                 </button>
             `;
             const deleteBtn = isBuiltin ? '' : `
-                <button class="btn btn-sm btn-outline-danger" onclick="deleteBehaviorRule(${b.id})" title="Delete rule">
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteBehaviorRule(${jsArg(b.id)})" title="Delete rule">
                     <i class="bi bi-trash"></i>
                 </button>
             `;
@@ -1842,11 +1842,11 @@ function renderBehaviorsTable(behaviors, isBuiltin) {
 
             return `
                 <tr>
-                    <td><code>${b.behavior_type}</code></td>
-                    <td>${valueDisplay}</td>
+                    <td><code>${escapeHtml(b.behavior_type)}</code></td>
+                    <td>${escapeHtml(valueDisplay)}</td>
                     <td>${directionBadge}</td>
-                    <td><span class="badge bg-${actionClass}">${b.action}</span></td>
-                    <td>${b.description || '-'}</td>
+                    <td><span class="badge bg-${escapeHtml(actionClass)}">${escapeHtml(b.action)}</span></td>
+                    <td>${escapeHtml(b.description || '-')}</td>
                     <td>${editBtn}${deleteBtn}</td>
                 </tr>
             `;
@@ -2233,7 +2233,7 @@ if (typeof showNotification === 'undefined') {
         toast.setAttribute('role', 'alert');
         toast.innerHTML = `
             <div class="d-flex">
-                <div class="toast-body">${message}</div>
+                <div class="toast-body">${escapeHtml(message)}</div>
                 <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
             </div>
         `;
@@ -2277,9 +2277,9 @@ async function checkForDuplicates() {
                 // Update text
                 const dhcpIssues = result.duplicates.filter(d => d.is_dhcp_issue).length;
                 if (dhcpIssues > 0) {
-                    warningText.innerHTML = `<strong>${result.duplicate_count} MAC address(es)</strong> with multiple IPs detected. <strong>${dhcpIssues} appear to be DHCP configuration issues</strong> (devices getting IPs from dynamic range despite reservations).`;
+                    warningText.innerHTML = `<strong>${escapeHtml(result.duplicate_count)} MAC address(es)</strong> with multiple IPs detected. <strong>${escapeHtml(dhcpIssues)} appear to be DHCP configuration issues</strong> (devices getting IPs from dynamic range despite reservations).`;
                 } else {
-                    warningText.innerHTML = `<strong>${result.duplicate_count} MAC address(es)</strong> with multiple IPs detected (${result.total_duplicate_devices} total entries). This usually indicates devices changing IP addresses.`;
+                    warningText.innerHTML = `<strong>${escapeHtml(result.duplicate_count)} MAC address(es)</strong> with multiple IPs detected (${escapeHtml(result.total_duplicate_devices)} total entries). This usually indicates devices changing IP addresses.`;
                 }
             } else {
                 // Hide warning banner
@@ -2309,32 +2309,32 @@ function showDuplicateDetails() {
             const rec = dup.recommendation;
 
             return `
-                <div class="card bg-dark border-${severityColor} mb-3">
-                    <div class="card-header bg-${severityColor} bg-opacity-10">
+                <div class="card bg-dark border-${escapeHtml(severityColor)} mb-3">
+                    <div class="card-header bg-${escapeHtml(severityColor)} bg-opacity-10">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                <strong>${dup.hostname || dup.vendor}</strong>
-                                <code class="ms-2">${dup.mac_address}</code>
-                                <span class="badge bg-${severityColor} ms-2">${dup.device_count} IPs</span>
+                                <strong>${escapeHtml(dup.hostname || dup.vendor)}</strong>
+                                <code class="ms-2">${escapeHtml(dup.mac_address)}</code>
+                                <span class="badge bg-${escapeHtml(severityColor)} ms-2">${escapeHtml(dup.device_count)} IPs</span>
                             </div>
-                            <button class="btn btn-sm btn-outline-${severityColor}" onclick="cleanupSpecificMAC('${dup.mac_address}')">
+                            <button class="btn btn-sm btn-outline-${escapeHtml(severityColor)}" onclick="cleanupSpecificMAC(${jsArg(dup.mac_address)})">
                                 <i class="bi bi-trash"></i> Cleanup This One
                             </button>
                         </div>
                     </div>
                     <div class="card-body">
-                        <h6 class="text-${severityColor}"><i class="bi bi-exclamation-triangle"></i> ${rec.title}</h6>
-                        <p class="mb-2">${rec.description}</p>
+                        <h6 class="text-${escapeHtml(severityColor)}"><i class="bi bi-exclamation-triangle"></i> ${escapeHtml(rec.title)}</h6>
+                        <p class="mb-2">${escapeHtml(rec.description)}</p>
 
                         <div class="mb-3">
                             <strong>Detected IPs:</strong>
                             <ul class="mt-2 mb-2">
                                 ${dup.devices.map(d => `
                                     <li>
-                                        <code>${d.ip_address}</code> - ${d.hostname || '-'}
+                                        <code>${escapeHtml(d.ip_address)}</code> - ${escapeHtml(d.hostname || '-')}
                                         ${d.is_most_recent ? '<span class="badge bg-success ms-2">Most Recent</span>' : '<span class="badge bg-secondary ms-2">Older</span>'}
-                                        <small class="text-muted ms-2">${formatRelativeTime(new Date(d.last_seen))}</small>
-                                        ${!d.is_most_recent ? `<button class="btn btn-xs btn-outline-danger ms-2" onclick="deleteSpecificDevice('${d.ip_address}')"><i class="bi bi-x"></i></button>` : ''}
+                                        <small class="text-muted ms-2">${escapeHtml(formatRelativeTime(new Date(d.last_seen)))}</small>
+                                        ${!d.is_most_recent ? `<button class="btn btn-xs btn-outline-danger ms-2" onclick="deleteSpecificDevice(${jsArg(d.ip_address)})"><i class="bi bi-x"></i></button>` : ''}
                                     </li>
                                 `).join('')}
                             </ul>
@@ -2343,7 +2343,7 @@ function showDuplicateDetails() {
                         <div class="alert alert-info mb-0">
                             <strong>Recommended Actions:</strong>
                             <ol class="mb-0 mt-2">
-                                ${rec.actions.map(action => `<li>${action}</li>`).join('')}
+                                ${rec.actions.map(action => `<li>${escapeHtml(action)}</li>`).join('')}
                             </ol>
                         </div>
                     </div>
