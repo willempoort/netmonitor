@@ -15,6 +15,11 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.10.2] - 2026-11-09
+
+### Changed
+- Sensor updaten vraagt nog één bevestiging in plaats van drie (branch-prompt, bevestiging, resultaatmelding). Eén venster met uitleg, optioneel branch-veld en de Update-knop (ook met Enter); het resultaat verschijnt in hetzelfde venster, dat daarna vanzelf sluit.
+
 ## [2.10.1] - 2026-11-09
 
 ### Fixed

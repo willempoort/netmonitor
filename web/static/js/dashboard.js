@@ -2447,71 +2447,99 @@ function updateSensorsTable(sensors) {
     });
 }
 
-function updateSensor(sensorId, sensorName, currentBranch) {
-    // Ask for optional branch parameter, show current branch if known
-    const branchInfo = currentBranch ? `\nCurrent branch: ${currentBranch}` : '';
-    const branch = prompt(
-        `Update sensor "${sensorName}" (${sensorId})${branchInfo}\n\n` +
-        `Enter git branch name (leave empty for current branch):`,
-        ''
-    );
-
-    // User cancelled
-    if (branch === null) {
-        return;
-    }
-
-    // Confirm update
-    const branchText = branch ? ` to branch "${branch}"` : '';
-    const confirmed = confirm(
-        `Are you sure you want to update sensor "${sensorName}"${branchText}?\n\n` +
-        `This will:\n` +
-        `• Execute git pull${branch ? ' on branch ' + branch : ''}\n` +
-        `• Restart the sensor service\n` +
-        `• Sensor will be offline for ~10-30 seconds\n\n` +
-        `Continue?`
-    );
-
-    if (!confirmed) {
-        return;
-    }
-
-    console.log(`[SENSORS] Sending update command to sensor: ${sensorId}`);
-
-    // Create command via API
-    const parameters = branch ? { branch: branch } : {};
-
-    fetch(`/api/sensors/${encodeURIComponent(sensorId)}/commands`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            command_type: 'update',
-            parameters: parameters
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            console.log(`[SENSORS] Update command queued: ${sensorId}`);
-            alert(
-                `Update command sent to sensor "${sensorName}"!\n\n` +
-                `The sensor will:\n` +
-                `1. Pull latest code from git${branch ? ' (branch: ' + branch + ')' : ''}\n` +
-                `2. Restart automatically\n` +
-                `3. Reconnect within ~30 seconds\n\n` +
-                `Command ID: ${data.command_id}`
-            );
-        } else {
-            console.error('[SENSORS] Update command failed:', data.error);
-            alert(`Failed to send update command: ${data.error || 'Unknown error'}`);
+// Eén venster voor sensor-update (voorheen prompt + confirm + alert = 3x OK)
+function ensureUpdateSensorModal() {
+    let modal = document.getElementById('updateSensorModal');
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.id = 'updateSensorModal';
+    modal.tabIndex = -1;
+    modal.innerHTML = `
+        <div class="modal-dialog">
+            <div class="modal-content bg-dark text-light">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title"><i class="bi bi-cloud-download"></i> Sensor updaten</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2">Sensor <strong id="update-sensor-name"></strong> <code id="update-sensor-id"></code></p>
+                    <ul class="small mb-3">
+                        <li>Haalt de nieuwste code op (git pull)</li>
+                        <li>Herstart de sensorservice; de sensor is ~10-30 seconden offline</li>
+                    </ul>
+                    <label class="form-label small" for="update-sensor-branch">Git-branch (leeg = huidige branch)</label>
+                    <input type="text" class="form-control bg-dark text-light border-secondary" id="update-sensor-branch" autocomplete="off">
+                    <div class="alert mt-3 mb-0 d-none" id="update-sensor-result"></div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="update-sensor-cancel">Annuleren</button>
+                    <button type="button" class="btn btn-primary" id="update-sensor-confirm">
+                        <i class="bi bi-cloud-download"></i> Update
+                    </button>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#update-sensor-branch').addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            modal.querySelector('#update-sensor-confirm').click();
         }
-    })
-    .catch(error => {
-        console.error('[SENSORS] Update command error:', error);
-        alert(`Error sending update command: ${error.message}`);
     });
+    return modal;
+}
+
+function updateSensor(sensorId, sensorName, currentBranch) {
+    const modal = ensureUpdateSensorModal();
+    const branchInput = modal.querySelector('#update-sensor-branch');
+    const result = modal.querySelector('#update-sensor-result');
+    const confirmBtn = modal.querySelector('#update-sensor-confirm');
+    const cancelBtn = modal.querySelector('#update-sensor-cancel');
+
+    modal.querySelector('#update-sensor-name').textContent = sensorName || sensorId;
+    modal.querySelector('#update-sensor-id').textContent = sensorId;
+    branchInput.value = '';
+    branchInput.placeholder = currentBranch ? `huidige branch: ${currentBranch}` : 'huidige branch';
+    result.className = 'alert mt-3 mb-0 d-none';
+    result.textContent = '';
+    confirmBtn.disabled = false;
+    confirmBtn.classList.remove('d-none');
+    cancelBtn.textContent = 'Annuleren';
+
+    confirmBtn.onclick = () => {
+        const branch = branchInput.value.trim();
+        confirmBtn.disabled = true;
+        console.log(`[SENSORS] Sending update command to sensor: ${sensorId}`);
+        fetch(`/api/sensors/${encodeURIComponent(sensorId)}/commands`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({command_type: 'update', parameters: branch ? {branch: branch} : {}})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                result.className = 'alert alert-success mt-3 mb-0';
+                result.textContent = `Update verstuurd${branch ? ` (branch ${branch})` : ''}. ` +
+                    `De sensor haalt de code op, herstart en is binnen ~30 seconden terug (commando #${data.command_id}).`;
+                confirmBtn.classList.add('d-none');
+                cancelBtn.textContent = 'Sluiten';
+                setTimeout(() => bootstrap.Modal.getOrCreateInstance(modal).hide(), 2500);
+            } else {
+                result.className = 'alert alert-danger mt-3 mb-0';
+                result.textContent = `Update niet verstuurd: ${data.error || 'onbekende fout'}`;
+                confirmBtn.disabled = false;
+            }
+        })
+        .catch(error => {
+            result.className = 'alert alert-danger mt-3 mb-0';
+            result.textContent = `Fout bij versturen: ${error.message}`;
+            confirmBtn.disabled = false;
+        });
+    };
+
+    bootstrap.Modal.getOrCreateInstance(modal).show();
+    modal.addEventListener('shown.bs.modal', () => confirmBtn.focus(), {once: true});
 }
 
 function rebootSensor(sensorId, sensorName) {
