@@ -15,6 +15,23 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.10.0] - 2026-11-09
+
+### Changed
+- **Advanced detectors luisteren nu naar hun instellingen.** De 42 detectors (web, DDoS, ransomware, IoT, OT/ICS, containers, evasie, post-exploitatie) lazen `threat.*` nooit: aan/uit per detector (dashboard en MCP-tool `enable_threat_detection`) en alle drempels deden niets; de code gebruikte vaste getallen. Nu:
+  - hoofdschakelaar `thresholds.advanced_threats.enabled` (nu ook in het dashboard) én per detector `threat.<naam>.enabled`;
+  - drempels uit `threat.<naam>.*` (bv. `syn_flood.threshold_per_sec`);
+  - per detector een tijdvenster (`time_window`) waarna tellingen vervallen; veel trackers resetten nooit, waardoor een eenmaal bereikte drempel bij elk volgend pakket een melding gaf;
+  - stilteperiode per (alerttype, bron) na een melding: `thresholds.advanced_threats.cooldown` (standaard 300 s), per detector te overschrijven met `threat.<naam>.cooldown`;
+  - ze draaien nu ook op sensors (voorheen alleen met database); alleen `phishing` en `tor` hebben de database nodig.
+- `credential_dumping`, `privilege_escalation` en `persistence` herschreven: alleen sterke indicatoren als heel woord (`sekurlsa::`, `reg save hklm\sam`, `schtasks /create`, `bypassuac`, ...), ook in UTF-16 (SMB). Voorheen telden losse lettergrepen als `sam`, `uac`, `kernel` en `cron`, ook in versleuteld verkeer: in januari 2026 gaf dat 498.000 `CREDENTIAL_DUMPING`- en 471.000 `PRIVILEGE_ESCALATION`-meldingen.
+- Configuratie opgeschoond: 17 detectors zonder implementatie (o.a. `bacnet_attack`, `zigbee_attack`, `lolbins`, `memory_injection`, `vpn`, `ntp_amplification`) en instellingen die nergens gelezen werden (`check_*`, `sensitivity`, `feed_url`, ...) zijn uit de defaults, het dashboard en de MCP-tool gehaald. VPN-detectie zit in de patroonregels.
+- `polymorphic_malware` gemarkeerd als experimenteel: het telt verschillende payload-begins per bron, wat voor vrijwel al het verkeer geldt.
+
+### Fixed
+- **Globale instellingen werden niet bijgewerkt maar toegevoegd.** De unieke index op `sensor_configs (sensor_id, parameter_path)` gold niet voor globale rijen (`sensor_id` NULL), dus elke wijziging gaf een extra rij en bij het lezen won een willekeurige (bv. 13 rijen `abuseipdb.enabled`, afwisselend true/false). Schema v36 ruimt dubbelen op (nieuwste blijft), maakt de constraint `NULLS NOT DISTINCT` en `set_config_parameter` werkt eerst bij en voegt pas toe als er nog niets is.
+- **Phishing- en Tor-lijsten werden nooit gevuld.** `threat_feed_updater.py` zocht naar platte sleutels in een geneste config en werd door niets gestart. De sleutels worden nu goed gelezen en de bestaande uurlijkse feed-update (`update_feeds.py`) werkt de `threat_feeds`-tabel bij als `phishing` of `tor` aan staat.
+
 ## [2.9.1] - 2026-11-09
 
 ### Fixed

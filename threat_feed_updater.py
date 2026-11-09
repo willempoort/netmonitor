@@ -19,6 +19,10 @@ from typing import List, Dict, Optional
 import re
 
 
+PHISHING_FEED_URL = 'https://openphish.com/feed.txt'
+TOR_FEED_URL = 'https://check.torproject.org/torbulkexitlist'
+
+
 class ThreatFeedUpdater:
     """Manages external threat intelligence feed updates"""
 
@@ -47,19 +51,26 @@ class ThreatFeedUpdater:
         """
         results = {}
 
-        # Get configuration from database
-        config = self.db.get_sensor_config(sensor_id=sensor_id)
+        # get_sensor_config geeft een GENESTE dict ({'threat': {'phishing': {...}}}).
+        # Voorheen werd hier naar platte sleutels ('threat.phishing.enabled') gezocht,
+        # waardoor deze feeds nooit werden bijgewerkt.
+        config = self.db.get_sensor_config(sensor_id=sensor_id) or {}
+        threat_cfg = config.get('threat', {}) if isinstance(config.get('threat'), dict) else {}
+
+        def _enabled(name):
+            value = (threat_cfg.get(name) or {}).get('enabled', False)
+            if isinstance(value, str):
+                return value.strip().lower() in ('true', '1', 'yes', 'on')
+            return value is True
 
         # Phishing domains
-        phishing_enabled = config.get('threat.phishing.enabled', {}).get('parameter_value', False)
-        if phishing_enabled:
+        if _enabled('phishing'):
             count = self.update_phishing_feed(config)
             if count is not None:
                 results['phishing'] = count
 
         # Tor exit nodes
-        tor_enabled = config.get('threat.tor.enabled', {}).get('parameter_value', False)
-        if tor_enabled:
+        if _enabled('tor'):
             count = self.update_tor_feed(config)
             if count is not None:
                 results['tor_exit'] = count
@@ -83,8 +94,8 @@ class ThreatFeedUpdater:
         """
         try:
             # Get config values from database (already in correct format)
-            feed_url = config.get('threat.phishing.feed_url', {}).get('parameter_value', 'https://openphish.com/feed.txt')
-            cache_ttl = config.get('threat.phishing.cache_ttl', {}).get('parameter_value', 86400)
+            feed_url = PHISHING_FEED_URL
+            cache_ttl = 86400
 
             self.logger.info(f"Updating phishing feed from {feed_url}")
 
@@ -138,8 +149,7 @@ class ThreatFeedUpdater:
         """
         try:
             # Get config values from database
-            feed_url = config.get('threat.tor.feed_url', {}).get('parameter_value',
-                                 'https://check.torproject.org/torbulkexitlist')
+            feed_url = TOR_FEED_URL
 
             self.logger.info(f"Updating Tor exit node feed from {feed_url}")
 
@@ -296,8 +306,8 @@ def run_feed_updater_loop(db_manager):
 
     # Try to get interval from database config
     try:
-        config = db_manager.get_sensor_config(sensor_id=None)
-        db_interval = config.get('threat.phishing.update_interval', {}).get('parameter_value')
+        config = db_manager.get_sensor_config(sensor_id=None) or {}
+        db_interval = (config.get('threat_feeds') or {}).get('update_interval')
         if db_interval:
             update_interval = int(db_interval)
     except Exception as e:

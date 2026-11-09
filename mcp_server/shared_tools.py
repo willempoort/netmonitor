@@ -4516,7 +4516,7 @@ TOOL_DEFINITIONS = [
             },
             {
                 "name": "enable_threat_detection",
-                "description": "Enable or disable a specific threat detection type (60 total threat types across 9 phases)",
+                "description": "Enable or disable a specific advanced threat detector (42 detectors). Only takes effect when the master switch thresholds.advanced_threats.enabled is also on; thresholds live under threat.<type>.*",
                 "input_schema": {
                     "type": "object",
                     "properties": {
@@ -4524,24 +4524,23 @@ TOOL_DEFINITIONS = [
                             "type": "string",
                             "enum": [
                                 # Phase 1: Core Advanced Threats
-                                "cryptomining", "phishing", "tor", "vpn", "cloud_metadata", "dns_anomaly",
+                                "cryptomining", "phishing", "tor", "cloud_metadata", "dns_anomaly",
                                 # Phase 2: Web Application Security
                                 "sql_injection", "xss", "command_injection", "path_traversal", "xxe", "ssrf", "webshell", "api_abuse",
                                 # Phase 3: DDoS & Resource Exhaustion
-                                "syn_flood", "udp_flood", "http_flood", "slowloris", "dns_amplification", "ntp_amplification", "connection_exhaustion", "bandwidth_saturation",
+                                "syn_flood", "udp_flood", "http_flood", "slowloris", "dns_amplification", "connection_exhaustion", "bandwidth_saturation",
                                 # Phase 4: Ransomware Indicators
                                 "ransomware_smb", "ransomware_crypto_ext", "ransomware_ransom_note", "ransomware_shadow_copy", "ransomware_backup_deletion",
                                 # Phase 5: IoT & Smart Device Security
-                                "iot_botnet", "upnp_exploit", "mqtt_abuse", "smart_home_abuse", "insecure_rtsp", "coap_abuse", "zwave_attack", "zigbee_attack",
+                                "iot_botnet", "upnp_exploit", "mqtt_abuse",
                                 # Phase 6: OT/ICS Protocol Security
-                                "modbus_attack", "dnp3_attack", "iec104_attack", "bacnet_attack", "profinet_attack", "ethernetip_attack",
+                                "modbus_attack", "dnp3_attack", "iec104_attack",
                                 # Phase 7: Container & Orchestration
-                                "docker_escape", "k8s_exploit", "container_registry_poisoning", "privileged_container",
+                                "docker_escape", "k8s_exploit",
                                 # Phase 8: Advanced Evasion
                                 "fragmentation_attack", "tunneling", "polymorphic_malware", "dga",
                                 # Phase 9: Completion Boost
-                                "lateral_movement", "data_exfiltration", "privilege_escalation", "persistence", "credential_dumping",
-                                "lolbins", "memory_injection", "process_hollowing", "registry_manipulation", "scheduled_task_abuse"
+                                "lateral_movement", "data_exfiltration", "privilege_escalation", "persistence", "credential_dumping"
                             ]
                         },
                         "enabled": {"type": "boolean"},

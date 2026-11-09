@@ -9,6 +9,11 @@ These are recommended values based on typical enterprise network environments
 BEST_PRACTICE_CONFIG = {
     # Detection Rules - Enabled by default for comprehensive threat coverage
     "thresholds": {
+        # Hoofdschakelaar voor de detectors onder "threat" (zie aldaar)
+        "advanced_threats": {
+            "enabled": False,
+            "cooldown": 300             # Seconden stilte per (type, bron) na een melding
+        },
         "port_scan": {
             "enabled": True,
             "unique_ports": 10,         # Alert if >10 ports scanned
@@ -218,48 +223,28 @@ BEST_PRACTICE_CONFIG = {
     # Advanced Threat Detection - Database-backed threat intelligence
     # Note: Uses 'threat.' prefix to match database parameter naming
     "threat": {
-        # Cryptomining detection (Stratum protocol)
+        # Per detector: enabled + drempels. Alleen actief als ook
+        # thresholds.advanced_threats.enabled aan staat. Elke detector heeft een
+        # tijdvenster (time_window) en een stilteperiode (cooldown, standaard
+        # thresholds.advanced_threats.cooldown) per (type, bron) na een melding.
+        # cryptomining detection (Stratum protocol)
         "cryptomining": {
             "enabled": False,
             "stratum_ports": [3333, 4444, 8333, 9999, 14444, 45560],
             "min_connections": 3
         },
-
-        # Phishing domain detection (OpenPhish feed)
+        # phishing domain detection (OpenPhish feed)
         "phishing": {
-            "enabled": False,
-            "feed_url": "https://openphish.com/feed.txt",
-            "update_interval": 3600,
-            "cache_ttl": 86400,
-            "check_dns": True,
-            "check_connections": True
+            "enabled": False
         },
-
         # Tor exit node detection
         "tor": {
-            "enabled": False,
-            "feed_url": "https://check.torproject.org/torbulkexitlist",
-            "update_interval": 3600,
-            "alert_exit_node": True,
-            "alert_onion": True
+            "enabled": False
         },
-
-        # VPN tunnel detection
-        "vpn": {
-            "enabled": False,
-            "detect_openvpn": True,
-            "detect_wireguard": True,
-            "detect_ipsec": True
-        },
-
-        # Cloud metadata access (SSRF / IMDS)
+        # cloud metadata access detection (SSRF/IMDS)
         "cloud_metadata": {
-            "enabled": False,
-            "aws_ip": "169.254.169.254",
-            "azure_ip": "169.254.169.254",
-            "gcp_hostname": "metadata.google.internal"
+            "enabled": False
         },
-
         # DNS anomaly detection (DGA, tunneling)
         "dns_anomaly": {
             "enabled": False,
@@ -267,365 +252,208 @@ BEST_PRACTICE_CONFIG = {
             "unique_domains": 50,
             "time_window": 60
         },
-
-        # ===== Phase 2: Web Application Security =====
-
-        # SQL Injection detection
+        # SQL injection detection in HTTP traffic
         "sql_injection": {
-            "enabled": False,
-            "check_http": True,
-            "check_query_string": True,
-            "check_post_data": True,
-            "sensitivity": "medium"
+            "enabled": False
         },
-
-        # XSS (Cross-Site Scripting) detection
+        # XSS detection in HTTP traffic
         "xss": {
-            "enabled": False,
-            "check_http": True,
-            "check_query_string": True,
-            "check_post_data": True,
-            "sensitivity": "medium"
+            "enabled": False
         },
-
-        # Command Injection detection
+        # command injection detection
         "command_injection": {
-            "enabled": False,
-            "check_http": True,
-            "check_shell_chars": True,
-            "check_common_commands": True
+            "enabled": False
         },
-
-        # Path Traversal detection
+        # path traversal detection
         "path_traversal": {
-            "enabled": False,
-            "check_http": True,
-            "check_encoded": True,
-            "check_absolute_paths": True
+            "enabled": False
         },
-
-        # XXE (XML External Entity) detection
+        # XXE attack detection
         "xxe": {
-            "enabled": False,
-            "check_post_requests": True,
-            "check_put_requests": True
+            "enabled": False
         },
-
-        # SSRF (Server-Side Request Forgery) detection
+        # SSRF detection
         "ssrf": {
-            "enabled": False,
-            "check_internal_ips": True,
-            "check_localhost": True,
-            "check_cloud_metadata": True
+            "enabled": False
         },
-
-        # WebShell detection
+        # webshell detection
         "webshell": {
-            "enabled": False,
-            "check_uploads": True,
-            "check_suspicious_files": True,
-            "check_php_functions": True
+            "enabled": False
         },
-
-        # API Abuse detection
+        # API abuse detection
         "api_abuse": {
             "enabled": False,
             "rate_limit_per_minute": 100,
             "endpoint_limit_per_minute": 50,
             "time_window": 60
         },
-
-        # ===== Phase 3: DDoS & Resource Exhaustion =====
-
-        # SYN Flood detection
+        # SYN flood detection
         "syn_flood": {
             "enabled": False,
             "threshold_per_sec": 100,
             "time_window": 1
         },
-
-        # UDP Flood detection
+        # UDP flood detection
         "udp_flood": {
             "enabled": False,
             "threshold_per_sec": 500,
             "time_window": 1
         },
-
-        # HTTP Flood detection
+        # HTTP flood (Layer 7 DDoS) detection
         "http_flood": {
             "enabled": False,
             "threshold_per_sec": 200,
             "time_window": 1
         },
-
-        # Slowloris detection
+        # Slowloris slow HTTP attack detection
         "slowloris": {
             "enabled": False,
             "incomplete_request_threshold": 50
         },
-
-        # DNS Amplification detection
+        # DNS amplification attack detection
         "dns_amplification": {
             "enabled": False,
             "amplification_factor_threshold": 10,
             "time_window": 10
         },
-
-        # NTP Amplification detection
-        "ntp_amplification": {
-            "enabled": False,
-            "amplification_factor_threshold": 10
-        },
-
-        # Connection Exhaustion detection
+        # connection exhaustion detection
         "connection_exhaustion": {
             "enabled": False,
             "max_connections": 1000
         },
-
-        # Bandwidth Saturation detection
+        # bandwidth saturation detection
         "bandwidth_saturation": {
             "enabled": False,
             "threshold_mbps": 100,
             "time_window": 1
         },
-
-        # ===== Phase 4: Ransomware Indicators =====
-
-        # SMB Mass Encryption detection
+        # SMB mass file encryption detection
         "ransomware_smb": {
             "enabled": False,
             "file_ops_per_minute": 100,
             "time_window": 60
         },
-
-        # Crypto Extension detection
+        # ransomware crypto extension detection
         "ransomware_crypto_ext": {
             "enabled": False,
             "min_file_count": 5
         },
-
-        # Ransom Note detection
+        # ransom note detection
         "ransomware_ransom_note": {
             "enabled": False,
             "min_keyword_matches": 3,
             "min_file_creates": 2
         },
-
-        # Shadow Copy Deletion detection
+        # shadow copy deletion detection
         "ransomware_shadow_copy": {
             "enabled": False
         },
-
-        # Backup Deletion detection
+        # backup deletion detection
         "ransomware_backup_deletion": {
             "enabled": False
         },
-
-        # ===== Phase 5: IoT & Smart Device Security =====
-
-        # IoT Botnet detection
+        # IoT botnet (Mirai-like) detection
         "iot_botnet": {
             "enabled": False,
             "telnet_attempts_threshold": 10,
             "default_creds_threshold": 3
         },
-
-        # UPnP Exploit detection
+        # UPnP exploitation detection
         "upnp_exploit": {
             "enabled": False,
             "ssdp_threshold": 100
         },
-
-        # MQTT Abuse detection
+        # MQTT protocol abuse detection
         "mqtt_abuse": {
             "enabled": False,
             "publish_threshold_per_minute": 1000,
             "time_window": 60
         },
-
-        # Smart Home Protocol Abuse
-        "smart_home_abuse": {
-            "enabled": False
-        },
-
-        # Insecure RTSP Streams
-        "insecure_rtsp": {
-            "enabled": False
-        },
-
-        # CoAP Protocol Abuse
-        "coap_abuse": {
-            "enabled": False
-        },
-
-        # Z-Wave Attack detection
-        "zwave_attack": {
-            "enabled": False
-        },
-
-        # Zigbee Attack detection
-        "zigbee_attack": {
-            "enabled": False
-        },
-
-        # ===== Phase 6: OT/ICS Protocol Security =====
-
-        # Modbus Attack detection
+        # Modbus protocol attack detection
         "modbus_attack": {
             "enabled": False,
             "write_ops_threshold": 50,
             "time_window": 60
         },
-
-        # DNP3 Attack detection
+        # DNP3 protocol attack detection
         "dnp3_attack": {
             "enabled": False,
             "ops_threshold": 100,
             "time_window": 60
         },
-
-        # IEC-104 Attack detection
+        # IEC-104 protocol attack detection
         "iec104_attack": {
             "enabled": False,
             "control_commands_threshold": 50,
             "time_window": 60
         },
-
-        # BACnet Attack detection
-        "bacnet_attack": {
-            "enabled": False
-        },
-
-        # Profinet Attack detection
-        "profinet_attack": {
-            "enabled": False
-        },
-
-        # EtherNet/IP Attack detection
-        "ethernetip_attack": {
-            "enabled": False
-        },
-
-        # ===== Phase 7: Container & Orchestration =====
-
-        # Docker Container Escape detection
+        # Docker container escape detection
         "docker_escape": {
             "enabled": False,
             "privileged_ops_threshold": 3,
             "time_window": 300
         },
-
-        # Kubernetes Exploitation detection
+        # Kubernetes API exploitation detection
         "k8s_exploit": {
             "enabled": False,
             "api_calls_threshold": 100,
             "time_window": 300
         },
-
-        # Container Registry Poisoning detection
-        "container_registry_poisoning": {
-            "enabled": False
-        },
-
-        # Privileged Container detection
-        "privileged_container": {
-            "enabled": False
-        },
-
-        # ===== Phase 8: Advanced Evasion =====
-
-        # IP Fragmentation Attack detection
+        # IP fragmentation attack detection
         "fragmentation_attack": {
             "enabled": False,
             "fragment_threshold": 100,
             "overlapping_threshold": 10,
             "time_window": 60
         },
-
-        # Protocol Tunneling detection
+        # protocol tunneling detection (DNS/ICMP)
         "tunneling": {
             "enabled": False,
             "packet_threshold": 50,
             "time_window": 60
         },
-
-        # Polymorphic Malware detection
+        # polymorphic malware detection
         "polymorphic_malware": {
             "enabled": False,
             "signature_variation_threshold": 20,
             "time_window": 1800
         },
-
-        # Domain Generation Algorithm (DGA) detection
+        # DGA (Domain Generation Algorithm) detection
         "dga": {
             "enabled": False,
-            "subdomain_length_threshold": 12,
-            "random_pattern_threshold": 5
+            "subdomain_length_threshold": 12
         },
-
-        # ===== Phase 9: Completion Boost =====
-
-        # Lateral Movement detection
+        # lateral movement detection (SMB/RDP/PSExec)
         "lateral_movement": {
             "enabled": False,
             "smb_targets_threshold": 5,
             "rdp_attempts_threshold": 3,
             "time_window": 300
         },
-
-        # Data Exfiltration detection
+        # data exfiltration detection
         "data_exfiltration": {
             "enabled": False,
             "megabytes_threshold": 100,
             "destinations_threshold": 20,
             "time_window": 60
         },
-
-        # Privilege Escalation detection
+        # privilege escalation detection
         "privilege_escalation": {
             "enabled": False,
             "attempts_threshold": 5,
             "time_window": 300
         },
-
-        # Persistence Mechanism detection
+        # persistence mechanism detection
         "persistence": {
             "enabled": False,
             "mechanisms_threshold": 3,
             "time_window": 300
         },
-
-        # Credential Dumping detection
+        # credential dumping detection (Mimikatz, LSASS)
         "credential_dumping": {
             "enabled": False,
             "indicators_threshold": 2,
             "time_window": 300
-        },
-
-        # Living-off-the-Land Binaries (LOLBins) detection
-        "lolbins": {
-            "enabled": False
-        },
-
-        # Memory Injection detection
-        "memory_injection": {
-            "enabled": False
-        },
-
-        # Process Hollowing detection
-        "process_hollowing": {
-            "enabled": False
-        },
-
-        # Registry Manipulation detection
-        "registry_manipulation": {
-            "enabled": False
-        },
-
-        # Scheduled Task Abuse detection
-        "scheduled_task_abuse": {
-            "enabled": False
         }
     },
 
@@ -859,32 +687,19 @@ PARAMETER_DESCRIPTIONS = {
     "thresholds.tls_analysis.ja3_blacklist": "Custom JA3 fingerprints to block (dict of hash:name)",
 
     # Advanced Threat Detection - Database-backed intelligence
+    "thresholds.advanced_threats.enabled": "Hoofdschakelaar: advanced detectors (alleen de detectors die hieronder ook aan staan)",
+    "thresholds.advanced_threats.cooldown": "Seconden stilte per (alerttype, bron-IP) na een melding (per detector te overschrijven met threat.<naam>.cooldown)",
+    "threat.polymorphic_malware.enabled": "EXPERIMENTEEL, veel valse meldingen: telt verschillende payload-begins per bron (geldt voor vrijwel al het verkeer)",
     "threat.cryptomining.enabled": "Enable cryptomining detection (Stratum protocol)",
     "threat.cryptomining.stratum_ports": "List of Stratum mining ports to monitor",
     "threat.cryptomining.min_connections": "Minimum connections to same mining pool to trigger alert",
 
     "threat.phishing.enabled": "Enable phishing domain detection (OpenPhish feed)",
-    "threat.phishing.feed_url": "OpenPhish feed URL",
-    "threat.phishing.update_interval": "Feed update interval (seconds)",
-    "threat.phishing.cache_ttl": "Feed cache TTL (seconds)",
-    "threat.phishing.check_dns": "Check DNS queries against phishing feed",
-    "threat.phishing.check_connections": "Check HTTP connections against phishing feed",
 
     "threat.tor.enabled": "Enable Tor exit node detection",
-    "threat.tor.feed_url": "Tor Project exit node list URL",
-    "threat.tor.update_interval": "Feed update interval (seconds)",
-    "threat.tor.alert_exit_node": "Alert on connections to Tor exit nodes",
-    "threat.tor.alert_onion": "Alert on .onion domain queries",
 
-    "threat.vpn.enabled": "Enable VPN tunnel detection",
-    "threat.vpn.detect_openvpn": "Detect OpenVPN tunnels",
-    "threat.vpn.detect_wireguard": "Detect WireGuard tunnels",
-    "threat.vpn.detect_ipsec": "Detect IPsec tunnels",
 
     "threat.cloud_metadata.enabled": "Enable cloud metadata access detection (SSRF/IMDS)",
-    "threat.cloud_metadata.aws_ip": "AWS metadata service IP",
-    "threat.cloud_metadata.azure_ip": "Azure metadata service IP",
-    "threat.cloud_metadata.gcp_hostname": "GCP metadata service hostname",
 
     "threat.dns_anomaly.enabled": "Enable DNS anomaly detection (DGA, tunneling)",
     "threat.dns_anomaly.queries_per_minute": "DNS queries per minute threshold",
@@ -895,46 +710,24 @@ PARAMETER_DESCRIPTIONS = {
 
     # SQL Injection
     "threat.sql_injection.enabled": "Enable SQL injection detection in HTTP traffic",
-    "threat.sql_injection.check_http": "Check HTTP requests for SQLi patterns",
-    "threat.sql_injection.check_query_string": "Check URL query strings for SQLi",
-    "threat.sql_injection.check_post_data": "Check POST data for SQLi",
-    "threat.sql_injection.sensitivity": "Detection sensitivity (low/medium/high)",
 
     # XSS (Cross-Site Scripting)
     "threat.xss.enabled": "Enable XSS detection in HTTP traffic",
-    "threat.xss.check_http": "Check HTTP requests for XSS patterns",
-    "threat.xss.check_query_string": "Check URL query strings for XSS",
-    "threat.xss.check_post_data": "Check POST data for XSS",
-    "threat.xss.sensitivity": "Detection sensitivity (low/medium/high)",
 
     # Command Injection
     "threat.command_injection.enabled": "Enable command injection detection",
-    "threat.command_injection.check_http": "Check HTTP requests for command injection",
-    "threat.command_injection.check_shell_chars": "Detect shell metacharacters",
-    "threat.command_injection.check_common_commands": "Detect common system commands",
 
     # Path Traversal
     "threat.path_traversal.enabled": "Enable path traversal detection",
-    "threat.path_traversal.check_http": "Check HTTP requests for path traversal",
-    "threat.path_traversal.check_encoded": "Detect URL-encoded traversal attempts",
-    "threat.path_traversal.check_absolute_paths": "Detect absolute path access",
 
     # XXE (XML External Entity)
     "threat.xxe.enabled": "Enable XXE attack detection",
-    "threat.xxe.check_post_requests": "Check POST requests for XXE",
-    "threat.xxe.check_put_requests": "Check PUT requests for XXE",
 
     # SSRF (Server-Side Request Forgery)
     "threat.ssrf.enabled": "Enable SSRF detection",
-    "threat.ssrf.check_internal_ips": "Detect internal IP targeting",
-    "threat.ssrf.check_localhost": "Detect localhost access attempts",
-    "threat.ssrf.check_cloud_metadata": "Detect cloud metadata endpoint access",
 
     # WebShell
     "threat.webshell.enabled": "Enable webshell detection",
-    "threat.webshell.check_uploads": "Detect suspicious file uploads",
-    "threat.webshell.check_suspicious_files": "Detect known webshell filenames",
-    "threat.webshell.check_php_functions": "Detect dangerous PHP functions",
 
     # API Abuse
     "threat.api_abuse.enabled": "Enable API abuse detection",
@@ -969,8 +762,6 @@ PARAMETER_DESCRIPTIONS = {
     "threat.dns_amplification.time_window": "Time window (seconds) for amplification",
 
     # NTP Amplification
-    "threat.ntp_amplification.enabled": "Enable NTP amplification attack detection",
-    "threat.ntp_amplification.amplification_factor_threshold": "Amplification factor threshold",
 
     # Connection Exhaustion
     "threat.connection_exhaustion.enabled": "Enable connection exhaustion detection",
@@ -1020,19 +811,14 @@ PARAMETER_DESCRIPTIONS = {
     "threat.mqtt_abuse.time_window": "Time window (seconds) for MQTT",
 
     # Smart Home Protocol Abuse
-    "threat.smart_home_abuse.enabled": "Enable smart home protocol abuse detection",
 
     # Insecure RTSP Streams
-    "threat.insecure_rtsp.enabled": "Enable insecure RTSP stream detection",
 
     # CoAP Protocol Abuse
-    "threat.coap_abuse.enabled": "Enable CoAP protocol abuse detection",
 
     # Z-Wave Attack
-    "threat.zwave_attack.enabled": "Enable Z-Wave attack detection",
 
     # Zigbee Attack
-    "threat.zigbee_attack.enabled": "Enable Zigbee attack detection",
 
     # ===== Phase 6: OT/ICS Protocol Security =====
 
@@ -1052,13 +838,10 @@ PARAMETER_DESCRIPTIONS = {
     "threat.iec104_attack.time_window": "Time window (seconds) for IEC-104 attack detection",
 
     # BACnet Attack
-    "threat.bacnet_attack.enabled": "Enable BACnet protocol attack detection",
 
     # Profinet Attack
-    "threat.profinet_attack.enabled": "Enable Profinet protocol attack detection",
 
     # EtherNet/IP Attack
-    "threat.ethernetip_attack.enabled": "Enable EtherNet/IP protocol attack detection",
 
     # ===== Phase 7: Container & Orchestration =====
 
@@ -1073,10 +856,8 @@ PARAMETER_DESCRIPTIONS = {
     "threat.k8s_exploit.time_window": "Time window (seconds) for K8s exploit detection",
 
     # Container Registry Poisoning
-    "threat.container_registry_poisoning.enabled": "Enable container registry poisoning detection",
 
     # Privileged Container
-    "threat.privileged_container.enabled": "Enable privileged container detection",
 
     # ===== Phase 8: Advanced Evasion =====
 
@@ -1092,14 +873,12 @@ PARAMETER_DESCRIPTIONS = {
     "threat.tunneling.time_window": "Time window (seconds) for tunneling detection",
 
     # Polymorphic Malware
-    "threat.polymorphic_malware.enabled": "Enable polymorphic malware detection",
     "threat.polymorphic_malware.signature_variation_threshold": "Signature variation threshold",
     "threat.polymorphic_malware.time_window": "Time window (seconds) for malware detection",
 
     # Domain Generation Algorithm (DGA)
     "threat.dga.enabled": "Enable DGA (Domain Generation Algorithm) detection",
     "threat.dga.subdomain_length_threshold": "Minimum subdomain length for DGA detection",
-    "threat.dga.random_pattern_threshold": "Random DNS query count threshold",
 
     # ===== Phase 9: Completion Boost =====
 
@@ -1131,19 +910,14 @@ PARAMETER_DESCRIPTIONS = {
     "threat.credential_dumping.time_window": "Time window (seconds) for dumping detection",
 
     # Living-off-the-Land Binaries (LOLBins)
-    "threat.lolbins.enabled": "Enable LOLBins detection (PowerShell/WMI abuse)",
 
     # Memory Injection
-    "threat.memory_injection.enabled": "Enable memory injection detection",
 
     # Process Hollowing
-    "threat.process_hollowing.enabled": "Enable process hollowing detection",
 
     # Registry Manipulation
-    "threat.registry_manipulation.enabled": "Enable registry manipulation detection",
 
     # Scheduled Task Abuse
-    "threat.scheduled_task_abuse.enabled": "Enable scheduled task abuse detection",
 
     # PCAP Export (NIS2 Forensics)
     "thresholds.pcap_export.enabled": "Enable PCAP forensic capture",
@@ -1215,10 +989,10 @@ PARAMETER_CATEGORIES = {
     ],
     "Advanced Threat Detection": [
         # Phase 1
+        "thresholds.advanced_threats",
         "threat.cryptomining",
         "threat.phishing",
         "threat.tor",
-        "threat.vpn",
         "threat.cloud_metadata",
         "threat.dns_anomaly",
         # Phase 2: Web Application Security
@@ -1236,7 +1010,6 @@ PARAMETER_CATEGORIES = {
         "threat.http_flood",
         "threat.slowloris",
         "threat.dns_amplification",
-        "threat.ntp_amplification",
         "threat.connection_exhaustion",
         "threat.bandwidth_saturation",
         # Phase 4: Ransomware Indicators
@@ -1249,23 +1022,13 @@ PARAMETER_CATEGORIES = {
         "threat.iot_botnet",
         "threat.upnp_exploit",
         "threat.mqtt_abuse",
-        "threat.smart_home_abuse",
-        "threat.insecure_rtsp",
-        "threat.coap_abuse",
-        "threat.zwave_attack",
-        "threat.zigbee_attack",
         # Phase 6: OT/ICS Protocol Security
         "threat.modbus_attack",
         "threat.dnp3_attack",
         "threat.iec104_attack",
-        "threat.bacnet_attack",
-        "threat.profinet_attack",
-        "threat.ethernetip_attack",
         # Phase 7: Container & Orchestration
         "threat.docker_escape",
         "threat.k8s_exploit",
-        "threat.container_registry_poisoning",
-        "threat.privileged_container",
         # Phase 8: Advanced Evasion
         "threat.fragmentation_attack",
         "threat.tunneling",
@@ -1277,11 +1040,6 @@ PARAMETER_CATEGORIES = {
         "threat.privilege_escalation",
         "threat.persistence",
         "threat.credential_dumping",
-        "threat.lolbins",
-        "threat.memory_injection",
-        "threat.process_hollowing",
-        "threat.registry_manipulation",
-        "threat.scheduled_task_abuse"
     ],
     "SOAR (Automated Response)": [
         "soar.enabled",

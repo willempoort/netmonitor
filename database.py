@@ -60,7 +60,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 35  # Increment this when schema changes (v35: detection_rules, regels uit de database)
+        SCHEMA_VERSION = 36  # Increment this when schema changes (v36: sensor_configs zonder dubbele globale rijen)
 
         # Schema initialisatie met automatisch herstel bij TimescaleDB versie-mismatch na apt upgrade
         for _attempt in range(2):
@@ -638,6 +638,33 @@ class DatabaseManager:
                 CREATE INDEX IF NOT EXISTS idx_sensor_configs_lookup
                 ON sensor_configs(sensor_id, parameter_path);
             ''')
+
+            # Globale instellingen hebben sensor_id NULL, en NULL's botsen nooit in een
+            # gewone UNIQUE-index: elke wijziging voegde een nieuwe rij toe en bij het
+            # lezen won een willekeurige. Ruim dubbelen op (nieuwste blijft) en maak
+            # de constraint NULLS NOT DISTINCT (PostgreSQL 15+).
+            cursor.execute('''
+                DELETE FROM sensor_configs a
+                USING sensor_configs b
+                WHERE a.parameter_path = b.parameter_path
+                  AND a.sensor_id IS NOT DISTINCT FROM b.sensor_id
+                  AND (a.updated_at, a.id) < (b.updated_at, b.id)
+            ''')
+            if cursor.rowcount:
+                self.logger.info(f"sensor_configs: {cursor.rowcount} dubbele rijen verwijderd")
+            cursor.execute("SHOW server_version_num")
+            if int(cursor.fetchone()[0]) >= 150000:
+                cursor.execute('''
+                    SELECT pg_get_constraintdef(oid) FROM pg_constraint
+                    WHERE conrelid = 'sensor_configs'::regclass AND conname = 'unique_sensor_param'
+                ''')
+                row = cursor.fetchone()
+                if not row or 'NULLS NOT DISTINCT' not in row[0]:
+                    cursor.execute('ALTER TABLE sensor_configs DROP CONSTRAINT IF EXISTS unique_sensor_param')
+                    cursor.execute('''
+                        ALTER TABLE sensor_configs ADD CONSTRAINT unique_sensor_param
+                        UNIQUE NULLS NOT DISTINCT (sensor_id, parameter_path)
+                    ''')
 
             # Sensor authentication tokens table
             cursor.execute('''
@@ -3750,17 +3777,28 @@ class DatabaseManager:
             import json
             json_value = json.dumps(value)
 
+            # Eerst bijwerken: ON CONFLICT werkt niet voor globale rijen (sensor_id NULL)
+            # zolang de constraint niet NULLS NOT DISTINCT is (PostgreSQL < 15).
             cursor.execute('''
-                INSERT INTO sensor_configs
-                (sensor_id, parameter_path, parameter_value, parameter_type, scope, description, updated_by)
-                VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s)
-                ON CONFLICT (sensor_id, parameter_path)
-                DO UPDATE SET
-                    parameter_value = EXCLUDED.parameter_value,
-                    parameter_type = EXCLUDED.parameter_type,
+                UPDATE sensor_configs SET
+                    parameter_value = %s::jsonb,
+                    parameter_type = %s,
                     updated_at = NOW(),
-                    updated_by = EXCLUDED.updated_by
-            ''', (sensor_id, parameter_path, json_value, param_type, scope, description, updated_by))
+                    updated_by = %s
+                WHERE parameter_path = %s AND sensor_id IS NOT DISTINCT FROM %s
+            ''', (json_value, param_type, updated_by, parameter_path, sensor_id))
+            if cursor.rowcount == 0:
+                cursor.execute('''
+                    INSERT INTO sensor_configs
+                    (sensor_id, parameter_path, parameter_value, parameter_type, scope, description, updated_by)
+                    VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s)
+                    ON CONFLICT (sensor_id, parameter_path)
+                    DO UPDATE SET
+                        parameter_value = EXCLUDED.parameter_value,
+                        parameter_type = EXCLUDED.parameter_type,
+                        updated_at = NOW(),
+                        updated_by = EXCLUDED.updated_by
+                ''', (sensor_id, parameter_path, json_value, param_type, scope, description, updated_by))
 
             conn.commit()
             return True
@@ -3786,7 +3824,7 @@ class DatabaseManager:
                         FROM sensor_configs
                         WHERE parameter_path = %s
                           AND (sensor_id IS NULL OR sensor_id = %s)
-                        ORDER BY CASE WHEN sensor_id IS NULL THEN 1 ELSE 0 END
+                        ORDER BY CASE WHEN sensor_id IS NULL THEN 1 ELSE 0 END, updated_at DESC, id DESC
                         LIMIT 1
                     ''', (parameter_path, sensor_id))
                 else:
@@ -3794,6 +3832,8 @@ class DatabaseManager:
                         SELECT parameter_path, parameter_value, parameter_type, scope
                         FROM sensor_configs
                         WHERE parameter_path = %s AND sensor_id IS NULL
+                        ORDER BY updated_at DESC, id DESC
+                        LIMIT 1
                     ''', (parameter_path,))
             else:
                 # Get all parameters
@@ -3808,7 +3848,8 @@ class DatabaseManager:
                                 scope,
                                 ROW_NUMBER() OVER (
                                     PARTITION BY parameter_path
-                                    ORDER BY CASE WHEN sensor_id IS NULL THEN 1 ELSE 0 END
+                                    ORDER BY CASE WHEN sensor_id IS NULL THEN 1 ELSE 0 END,
+                                             updated_at DESC, id DESC
                                 ) as rn
                             FROM sensor_configs
                             WHERE sensor_id IS NULL OR sensor_id = %s
@@ -3819,9 +3860,11 @@ class DatabaseManager:
                     ''', (sensor_id,))
                 else:
                     cursor.execute('''
-                        SELECT parameter_path, parameter_value, parameter_type, scope
+                        SELECT DISTINCT ON (parameter_path)
+                               parameter_path, parameter_value, parameter_type, scope
                         FROM sensor_configs
                         WHERE sensor_id IS NULL
+                        ORDER BY parameter_path, updated_at DESC, id DESC
                     ''')
 
             rows = cursor.fetchall()

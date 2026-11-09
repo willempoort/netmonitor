@@ -232,8 +232,23 @@ function renderConfigByCategory(config) {
     }
     renderCategoryParams('thresholds', performanceThresholds, 'thresholds');
 
-    // Render Advanced Threat Detection
-    renderCategoryParams('advanced-threats', config.threat || {}, 'threat');
+    // Render Advanced Threat Detection: hoofdschakelaar + alleen bestaande detectors
+    // (de database kan nog rijen bevatten voor detectors die nooit gebouwd zijn)
+    let advancedParams = {};
+    if (configCategories && configCategories['Advanced Threat Detection']) {
+        configCategories['Advanced Threat Detection'].forEach(paramPath => {
+            const [root, name] = paramPath.split('.');
+            const source = root === 'thresholds' ? config.thresholds : config.threat;
+            if (source && source[name] !== undefined) {
+                advancedParams[paramPath] = source[name];
+            }
+        });
+    } else {
+        for (const [name, value] of Object.entries(config.threat || {})) {
+            advancedParams[`threat.${name}`] = value;
+        }
+    }
+    renderCategoryParams('advanced-threats', advancedParams, '');
 
     // Render Alert Management
     renderCategoryParams('alerts-config', config.alerts || {}, 'alerts');
@@ -260,11 +275,13 @@ function renderCategoryParams(categoryId, params, prefix) {
     let html = '<div class="row g-3">';
 
     for (const [key, value] of Object.entries(params)) {
-        const fullPath = `${prefix}.${key}`;
+        // Zonder prefix is de sleutel al het volledige pad (bv. 'threat.syn_flood')
+        const fullPath = prefix ? `${prefix}.${key}` : key;
+        const label = prefix ? key : key.split('.').pop();
 
         if (typeof value === 'object' && !Array.isArray(value)) {
             // Nested object - render as subsection
-            html += `<div class="col-12"><h6 class="text-info mt-3">${escapeHtml(formatParamName(key))}</h6></div>`;
+            html += `<div class="col-12"><h6 class="text-info mt-3">${escapeHtml(formatParamName(label))}</h6></div>`;
 
             // Sort entries so 'enabled' comes first
             const sortedEntries = Object.entries(value).sort(([keyA], [keyB]) => {
@@ -278,7 +295,7 @@ function renderCategoryParams(categoryId, params, prefix) {
                 html += renderParameterCard(subPath, subKey, subValue);
             }
         } else {
-            html += renderParameterCard(fullPath, key, value);
+            html += renderParameterCard(fullPath, label, value);
         }
     }
 

@@ -5,6 +5,7 @@ Threat Detection Module
 Implementeert verschillende detectie algoritmes voor verdacht netwerkverkeer
 """
 
+import re
 import time
 import logging
 import json
@@ -165,6 +166,7 @@ class ThreatDetector:
         # via db_manager; sensors krijgen de regels via de API (sensor_client._update_rules).
         self.rule_engine = None
         self._current_tls_meta = None
+        self._advanced_last_alert = {}  # (type, src_ip) -> tijd van laatste melding
         if RuleEngine and config.get('thresholds', {}).get('detection_rules', {}).get('enabled', True):
             try:
                 self.rule_engine = RuleEngine(is_internal=self._rule_is_internal)
@@ -1762,251 +1764,168 @@ class ThreatDetector:
             return self.tls_analyzer.get_stats()
         return {}
 
+    # Advanced detectors: (config-naam onder threat.*, methode, krijgt dst_ip mee,
+    # tracker-attribuut, standaard tijdvenster in seconden). De volgorde is die van
+    # de oorspronkelijke fasen 1-9.
+    _ADVANCED_DETECTORS = (
+        ('cryptomining', '_detect_cryptomining', True, 'cryptomining_tracker', 300),
+        ('phishing', '_detect_phishing', True, None, 60),
+        ('tor', '_detect_tor_connection', True, None, 60),
+        ('cloud_metadata', '_detect_cloud_metadata_access', True, None, 60),
+        ('dns_anomaly', '_detect_dns_anomaly', False, 'dns_query_tracker', 60),
+        ('sql_injection', '_detect_sql_injection', True, 'sqli_tracker', 600),
+        ('xss', '_detect_xss', True, 'xss_tracker', 600),
+        ('command_injection', '_detect_command_injection', True, 'command_injection_tracker', 600),
+        ('path_traversal', '_detect_path_traversal', True, 'path_traversal_tracker', 600),
+        ('xxe', '_detect_xxe', True, None, 60),
+        ('ssrf', '_detect_ssrf_extended', True, None, 60),
+        ('webshell', '_detect_webshell', True, None, 60),
+        ('api_abuse', '_detect_api_abuse', True, 'api_abuse_tracker', 60),
+        ('syn_flood', '_detect_syn_flood', True, 'syn_flood_tracker', 60),
+        ('udp_flood', '_detect_udp_flood', True, 'udp_flood_tracker', 60),
+        ('http_flood', '_detect_http_flood', True, 'http_flood_tracker', 60),
+        ('slowloris', '_detect_slowloris', True, 'slowloris_tracker', 300),
+        ('dns_amplification', '_detect_dns_amplification', True, 'amplification_tracker', 10),
+        ('connection_exhaustion', '_detect_connection_exhaustion', True, 'connection_exhaustion_tracker', 300),
+        ('bandwidth_saturation', '_detect_bandwidth_saturation', False, 'bandwidth_saturation_tracker', 60),
+        ('ransomware_smb', '_detect_smb_mass_encryption', False, 'smb_encryption_tracker', 60),
+        ('ransomware_crypto_ext', '_detect_crypto_extension', False, 'crypto_extension_tracker', 300),
+        ('ransomware_ransom_note', '_detect_ransom_note', False, 'ransom_note_tracker', 300),
+        ('ransomware_shadow_copy', '_detect_shadow_copy_deletion', False, 'shadow_copy_tracker', 300),
+        ('ransomware_backup_deletion', '_detect_backup_deletion', False, None, 300),
+        ('iot_botnet', '_detect_iot_botnet', True, 'iot_botnet_tracker', 300),
+        ('upnp_exploit', '_detect_upnp_exploit', True, 'upnp_exploit_tracker', 300),
+        ('mqtt_abuse', '_detect_mqtt_abuse', True, 'mqtt_abuse_tracker', 60),
+        ('modbus_attack', '_detect_modbus_attack', True, 'modbus_tracker', 60),
+        ('dnp3_attack', '_detect_dnp3_attack', True, 'dnp3_tracker', 60),
+        ('iec104_attack', '_detect_iec104_attack', True, 'iec104_tracker', 60),
+        ('docker_escape', '_detect_docker_escape', False, 'docker_escape_tracker', 300),
+        ('k8s_exploit', '_detect_k8s_exploit', True, 'k8s_exploit_tracker', 300),
+        ('fragmentation_attack', '_detect_fragmentation_attack', False, 'fragmentation_tracker', 60),
+        ('tunneling', '_detect_tunneling', False, 'tunneling_tracker', 60),
+        ('polymorphic_malware', '_detect_polymorphic_malware', False, 'polymorphic_tracker', 1800),
+        ('dga', '_detect_dga', False, None, 60),
+        ('lateral_movement', '_detect_lateral_movement', True, 'lateral_movement_tracker', 300),
+        ('data_exfiltration', '_detect_data_exfiltration', True, 'data_exfil_tracker', 60),
+        ('privilege_escalation', '_detect_privilege_escalation', False, 'privilege_escalation_tracker', 300),
+        ('persistence', '_detect_persistence', False, 'persistence_tracker', 300),
+        ('credential_dumping', '_detect_credential_dumping', False, 'credential_dumping_tracker', 300),
+    )
+    # Deze detectors zoeken in de threat_feeds-tabel en hebben dus een database nodig
+    _ADVANCED_NEEDS_DB = frozenset({'phishing', 'tor'})
+
+    def _threat_cfg(self, name):
+        cfg = (self.config.get('threat') or {}).get(name)
+        return cfg if isinstance(cfg, dict) else {}
+
+    def _threat_enabled(self, name):
+        value = self._threat_cfg(name).get('enabled', False)
+        if isinstance(value, str):
+            return value.strip().lower() in ('true', '1', 'yes', 'on')
+        return value is True or value == 1
+
+    def _tp(self, name, key, default):
+        """Instelling threat.<name>.<key>, met het type van default; ongeldig -> default."""
+        value = self._threat_cfg(name).get(key, default)
+        try:
+            if isinstance(default, bool):
+                return value if isinstance(value, bool) else str(value).lower() in ('true', '1', 'yes')
+            if isinstance(default, int):
+                return int(value)
+            if isinstance(default, float):
+                return float(value)
+            if isinstance(default, list):
+                return list(value) if isinstance(value, (list, tuple)) else default
+        except (TypeError, ValueError):
+            return default
+        return value
+
+    def _expire_tracker(self, tracker, key, window, now):
+        """Vergeet de telling als het tijdvenster ruim voorbij is. Veel trackers resetten
+        zichzelf niet; zonder dit bleef een eenmaal bereikte drempel voor altijd staan.
+        Pas na twee vensters, want sommige detectors (SYN-flood, lateral movement)
+        beoordelen aan het eind van hun venster en hebben die telling dan nog nodig."""
+        entry = tracker.get(key) if hasattr(tracker, 'get') else None
+        if not isinstance(entry, dict):
+            return
+        started = entry.get('first_seen') or entry.get('window_start')
+        if isinstance(started, (int, float)) and now - started > 2 * max(1, window):
+            del tracker[key]
+
+    def _advanced_cooldown_ok(self, threat, name, now):
+        cooldown = self._tp(name, 'cooldown', self._advanced_default_cooldown())
+        if cooldown <= 0:
+            return True
+        key = (threat.get('type'), threat.get('source_ip'))
+        last = self._advanced_last_alert.get(key)
+        if last is not None and now - last < cooldown:
+            return False
+        if len(self._advanced_last_alert) > 50000:
+            cutoff = now - 86400
+            self._advanced_last_alert = {k: v for k, v in self._advanced_last_alert.items() if v > cutoff}
+        self._advanced_last_alert[key] = now
+        return True
+
+    def _advanced_default_cooldown(self):
+        try:
+            return int(self.config.get('thresholds', {}).get('advanced_threats', {}).get('cooldown', 300))
+        except (TypeError, ValueError):
+            return 300
+
     def _detect_advanced_threats(self, packet):
         """
-        Detect advanced threats using database-backed threat feeds
-        Includes: cryptomining, phishing, Tor, VPN, cloud metadata, DNS anomaly
+        Advanced detectors (web, DDoS, ransomware, IoT, OT/ICS, containers, evasie, post-exploitatie).
+
+        - Hoofdschakelaar: thresholds.advanced_threats.enabled
+        - Per detector: threat.<naam>.enabled en de drempels onder threat.<naam>.*
+        - Per detector een tijdvenster (threat.<naam>.time_window) waarna de telling
+          vervalt, en een stilteperiode per (type, bron) na een melding
+          (threat.<naam>.cooldown, standaard thresholds.advanced_threats.cooldown = 300 s)
+        - Werkt ook op sensors (zonder database); alleen phishing en Tor hebben de
+          database nodig en worden daar overgeslagen.
         """
         threats = []
 
         if not packet.haslayer(IP):
             return threats
 
+        advanced_config = self.config.get('thresholds', {}).get('advanced_threats', {})
+        master_enabled = advanced_config.get('enabled', False)
+        if isinstance(master_enabled, str):
+            master_enabled = master_enabled.strip().lower() in ('true', '1', 'yes', 'on')
+        if master_enabled is not True:
+            return threats
+
         ip_layer = packet[IP]
         src_ip = ip_layer.src
         dst_ip = ip_layer.dst
+        now = time.time()
 
-        # Get configuration from database (cached during init or periodically synced)
-        # For now, use self.config as fallback until sensor config sync is implemented
-        advanced_config = self.config.get('thresholds', {}).get('advanced_threats', {})
-        master_enabled = advanced_config.get('enabled', False)
-
-        if not master_enabled or not self.db_manager:
-            return threats
-
-        # Cryptomining detection (Stratum protocol on specific ports)
-        threat = self._detect_cryptomining(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # Phishing domain detection (DNS queries + connections)
-        phishing_threats = self._detect_phishing(packet, src_ip, dst_ip)
-        threats.extend(phishing_threats)
-
-        # Tor exit node detection
-        threat = self._detect_tor_connection(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # Cloud metadata access (AWS/Azure/GCP IMDS)
-        threat = self._detect_cloud_metadata_access(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # DNS anomaly detection (high query rate)
-        threat = self._detect_dns_anomaly(packet, src_ip)
-        if threat:
-            threats.append(threat)
-
-        # ===== Phase 2: Web Application Security =====
-
-        # SQL Injection detection
-        threat = self._detect_sql_injection(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # XSS detection
-        threat = self._detect_xss(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # Command Injection detection
-        threat = self._detect_command_injection(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # Path Traversal detection
-        threat = self._detect_path_traversal(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # XXE detection
-        threat = self._detect_xxe(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # SSRF detection (extended)
-        ssrf_threats = self._detect_ssrf_extended(packet, src_ip, dst_ip)
-        threats.extend(ssrf_threats)
-
-        # WebShell detection
-        threat = self._detect_webshell(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # API Abuse detection
-        threat = self._detect_api_abuse(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # ===== Phase 3: DDoS & Resource Exhaustion =====
-
-        # SYN flood detection
-        threat = self._detect_syn_flood(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # UDP flood detection
-        threat = self._detect_udp_flood(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # HTTP flood detection
-        threat = self._detect_http_flood(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # Slowloris detection
-        threat = self._detect_slowloris(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # DNS amplification detection
-        threat = self._detect_dns_amplification(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # Connection exhaustion detection
-        threat = self._detect_connection_exhaustion(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # Bandwidth saturation detection
-        threat = self._detect_bandwidth_saturation(packet, src_ip)
-        if threat:
-            threats.append(threat)
-
-        # ===== Phase 4: Ransomware Indicators =====
-
-        # SMB mass encryption detection
-        threat = self._detect_smb_mass_encryption(packet, src_ip)
-        if threat:
-            threats.append(threat)
-
-        # Crypto extension detection
-        threat = self._detect_crypto_extension(packet, src_ip)
-        if threat:
-            threats.append(threat)
-
-        # Ransom note detection
-        threat = self._detect_ransom_note(packet, src_ip)
-        if threat:
-            threats.append(threat)
-
-        # Shadow copy deletion detection
-        threat = self._detect_shadow_copy_deletion(packet, src_ip)
-        if threat:
-            threats.append(threat)
-
-        # Backup deletion detection
-        threat = self._detect_backup_deletion(packet, src_ip)
-        if threat:
-            threats.append(threat)
-
-        # ===== Phase 5: IoT & Smart Device Security =====
-
-        # IoT botnet detection
-        threat = self._detect_iot_botnet(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # UPnP exploit detection
-        threat = self._detect_upnp_exploit(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # MQTT abuse detection
-        threat = self._detect_mqtt_abuse(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # ===== Phase 6: OT/ICS Protocol Security =====
-
-        # Modbus attack detection
-        threat = self._detect_modbus_attack(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # DNP3 attack detection
-        threat = self._detect_dnp3_attack(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # IEC-104 attack detection
-        threat = self._detect_iec104_attack(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # ===== Phase 7: Container & Orchestration =====
-
-        # Docker escape detection
-        threat = self._detect_docker_escape(packet, src_ip)
-        if threat:
-            threats.append(threat)
-
-        # Kubernetes API exploit detection
-        threat = self._detect_k8s_exploit(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # ===== Phase 8: Advanced Evasion =====
-
-        # IP fragmentation attack detection
-        threat = self._detect_fragmentation_attack(packet, src_ip)
-        if threat:
-            threats.append(threat)
-
-        # Protocol tunneling detection
-        threat = self._detect_tunneling(packet, src_ip)
-        if threat:
-            threats.append(threat)
-
-        # Polymorphic malware detection
-        threat = self._detect_polymorphic_malware(packet, src_ip)
-        if threat:
-            threats.append(threat)
-
-        # DGA detection
-        threat = self._detect_dga(packet, src_ip)
-        if threat:
-            threats.append(threat)
-
-        # ===== Phase 9: Completion Boost =====
-
-        # Lateral movement detection
-        threat = self._detect_lateral_movement(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # Data exfiltration detection
-        threat = self._detect_data_exfiltration(packet, src_ip, dst_ip)
-        if threat:
-            threats.append(threat)
-
-        # Privilege escalation detection
-        threat = self._detect_privilege_escalation(packet, src_ip)
-        if threat:
-            threats.append(threat)
-
-        # Persistence mechanism detection
-        threat = self._detect_persistence(packet, src_ip)
-        if threat:
-            threats.append(threat)
-
-        # Credential dumping detection
-        threat = self._detect_credential_dumping(packet, src_ip)
-        if threat:
-            threats.append(threat)
+        for name, method_name, wants_dst, tracker_attr, default_window in self._ADVANCED_DETECTORS:
+            if not self._threat_enabled(name):
+                continue
+            if name in self._ADVANCED_NEEDS_DB and not self.db_manager:
+                continue
+            tracker = getattr(self, tracker_attr, None) if tracker_attr else None
+            if tracker is not None:
+                self._expire_tracker(tracker, src_ip, self._tp(name, 'time_window', default_window), now)
+            try:
+                method = getattr(self, method_name)
+                result = method(packet, src_ip, dst_ip) if wants_dst else method(packet, src_ip)
+            except Exception as e:
+                self.logger.debug(f"Advanced detector {name} fout: {e}")
+                continue
+            if not result:
+                continue
+            for threat in (result if isinstance(result, list) else [result]):
+                if not threat:
+                    continue
+                threat.setdefault('destination_ip', dst_ip)
+                if self._advanced_cooldown_ok(threat, name, now):
+                    threats.append(threat)
+                    # Na een melding opnieuw beginnen met tellen
+                    if tracker is not None and src_ip in tracker:
+                        del tracker[src_ip]
 
         return threats
 
@@ -2019,7 +1938,7 @@ class ThreatDetector:
         dst_port = tcp_layer.dport
 
         # Common mining pool ports (from database config, fallback to defaults)
-        stratum_ports = [3333, 4444, 8333, 9999, 14444, 45560]
+        stratum_ports = self._tp('cryptomining', 'stratum_ports', [3333, 4444, 8333, 9999, 14444, 45560])
 
         if dst_port not in stratum_ports:
             return None
@@ -2035,7 +1954,7 @@ class ThreatDetector:
         tracker['connections'].add((dst_ip, dst_port))
 
         # Alert if multiple connections to mining ports (min_connections threshold)
-        min_connections = 3
+        min_connections = self._tp('cryptomining', 'min_connections', 3)
         if len(tracker['connections']) >= min_connections:
             return {
                 'type': 'CRYPTOMINING_DETECTED',
@@ -2171,7 +2090,7 @@ class ThreatDetector:
         tracker['unique_domains'].add(domain)
 
         # Check thresholds (60 second window)
-        time_window = 60
+        time_window = self._tp('dns_anomaly', 'time_window', 60)
         window_start = tracker['window_start']
 
         if (current_time - window_start) >= time_window:
@@ -2180,8 +2099,8 @@ class ThreatDetector:
             unique_count = len(tracker['unique_domains'])
 
             # Thresholds (from database config, with fallbacks)
-            queries_threshold = 100  # queries per minute
-            unique_threshold = 50    # unique domains per minute
+            queries_threshold = self._tp('dns_anomaly', 'queries_per_minute', 100)  # queries per minute
+            unique_threshold = self._tp('dns_anomaly', 'unique_domains', 50)    # unique domains per minute
 
             if queries_in_window > queries_threshold or unique_count > unique_threshold:
                 threat = {
@@ -2732,7 +2651,7 @@ class ThreatDetector:
             tracker['endpoints'][endpoint] += 1
 
             # Check thresholds (60 second window)
-            time_window = 60
+            time_window = self._tp('api_abuse', 'time_window', 60)
             window_start = tracker['window_start']
 
             if (current_time - window_start) >= time_window:
@@ -2740,8 +2659,8 @@ class ThreatDetector:
                 requests_in_window = sum(1 for t in tracker['requests'] if t >= (current_time - time_window))
 
                 # Thresholds
-                rate_limit = 100  # requests per minute (configurable)
-                endpoint_limit = 50  # requests to same endpoint per minute
+                rate_limit = self._tp('api_abuse', 'rate_limit_per_minute', 100)  # requests per minute (configurable)
+                endpoint_limit = self._tp('api_abuse', 'endpoint_limit_per_minute', 50)  # requests to same endpoint per minute
 
                 # Check overall rate
                 if requests_in_window > rate_limit:
@@ -2808,9 +2727,9 @@ class ThreatDetector:
             tracker['ports'].add(tcp_layer.dport)
 
         # Check threshold (100 SYN/sec default)
-        time_window = 1  # 1 second
+        time_window = max(1, self._tp('syn_flood', 'time_window', 1))
         if (current_time - tracker['window_start']) >= time_window:
-            if tracker['syn_count'] > 100:
+            if tracker['syn_count'] > self._tp('syn_flood', 'threshold_per_sec', 100) * time_window:
                 threat = {
                     'type': 'SYN_FLOOD_ATTACK',
                     'severity': 'CRITICAL',
@@ -2848,9 +2767,9 @@ class ThreatDetector:
         tracker['ports'].add(udp_layer.dport)
 
         # Check threshold (500 UDP packets/sec default)
-        time_window = 1
+        time_window = max(1, self._tp('udp_flood', 'time_window', 1))
         if (current_time - tracker['window_start']) >= time_window:
-            if tracker['packet_count'] > 500:
+            if tracker['packet_count'] > self._tp('udp_flood', 'threshold_per_sec', 500) * time_window:
                 threat = {
                     'type': 'UDP_FLOOD_ATTACK',
                     'severity': 'HIGH',
@@ -2894,9 +2813,9 @@ class ThreatDetector:
             pass
 
         # Check threshold (200 HTTP requests/sec default)
-        time_window = 1
+        time_window = max(1, self._tp('http_flood', 'time_window', 1))
         if (current_time - tracker['window_start']) >= time_window:
-            if tracker['request_count'] > 200:
+            if tracker['request_count'] > self._tp('http_flood', 'threshold_per_sec', 200) * time_window:
                 threat = {
                     'type': 'HTTP_FLOOD_ATTACK',
                     'severity': 'HIGH',
@@ -2940,7 +2859,7 @@ class ThreatDetector:
             pass
 
         # Alert if many incomplete requests
-        if tracker['incomplete_requests'] > 50:
+        if tracker['incomplete_requests'] > self._tp('slowloris', 'incomplete_request_threshold', 50):
             return {
                 'type': 'SLOWLORIS_ATTACK',
                 'severity': 'HIGH',
@@ -2980,9 +2899,9 @@ class ThreatDetector:
                                                       response_size / query_size)
 
         # Check for amplification pattern
-        time_window = 10
+        time_window = self._tp('dns_amplification', 'time_window', 10)
         if (current_time - tracker['window_start']) >= time_window:
-            if tracker['amplification_factor'] > 10:  # 10x amplification
+            if tracker['amplification_factor'] > self._tp('dns_amplification', 'amplification_factor_threshold', 10):  # 10x amplification
                 threat = {
                     'type': 'DNS_AMPLIFICATION_ATTACK',
                     'severity': 'CRITICAL',
@@ -3022,7 +2941,7 @@ class ThreatDetector:
         tracker['count'] = len(tracker['connections'])
 
         # Alert if too many connections (1000 concurrent default)
-        if tracker['count'] > 1000:
+        if tracker['count'] > self._tp('connection_exhaustion', 'max_connections', 1000):
             return {
                 'type': 'CONNECTION_EXHAUSTION',
                 'severity': 'HIGH',
@@ -3048,10 +2967,10 @@ class ThreatDetector:
         tracker['packets_sent'] += 1
 
         # Check bandwidth usage (100 Mbps threshold default)
-        time_window = 1  # 1 second
+        time_window = max(1, self._tp('bandwidth_saturation', 'time_window', 1))
         if (current_time - tracker['window_start']) >= time_window:
             mbps = (tracker['bytes_sent'] * 8) / (1000000 * time_window)
-            if mbps > 100:  # 100 Mbps
+            if mbps > self._tp('bandwidth_saturation', 'threshold_mbps', 100):  # 100 Mbps
                 threat = {
                     'type': 'BANDWIDTH_SATURATION',
                     'severity': 'HIGH',
@@ -3094,10 +3013,10 @@ class ThreatDetector:
         tracker['file_operations'].append(current_time)
 
         # Alert if many file operations in short time
-        time_window = 60  # 1 minute
+        time_window = self._tp('ransomware_smb', 'time_window', 60)
         if (current_time - tracker['window_start']) >= time_window:
             ops_count = len(tracker['file_operations'])
-            if ops_count > 100:  # 100 file ops/minute
+            if ops_count > self._tp('ransomware_smb', 'file_ops_per_minute', 100) * time_window / 60:  # 100 file ops/minute
                 return {
                     'type': 'RANSOMWARE_MASS_ENCRYPTION',
                     'severity': 'CRITICAL',
@@ -3141,7 +3060,7 @@ class ThreatDetector:
                     tracker['suspicious_extensions'].add(ext)
                     tracker['file_count'] += 1
 
-                    if tracker['file_count'] > 5:
+                    if tracker['file_count'] > self._tp('ransomware_crypto_ext', 'min_file_count', 5):
                         return {
                             'type': 'RANSOMWARE_CRYPTO_EXTENSION',
                             'severity': 'CRITICAL',
@@ -3175,7 +3094,7 @@ class ThreatDetector:
 
             matches = sum(1 for keyword in ransom_keywords if keyword in payload)
 
-            if matches >= 3:  # At least 3 keywords
+            if matches >= self._tp('ransomware_ransom_note', 'min_keyword_matches', 3):  # At least 3 keywords
                 tracker = self.ransom_note_tracker[src_ip]
                 current_time = time.time()
 
@@ -3188,7 +3107,7 @@ class ThreatDetector:
                 if '<html>' in payload or '<body>' in payload:
                     tracker['html_files_created'] += 1
 
-                if tracker['txt_files_created'] + tracker['html_files_created'] > 2:
+                if tracker['txt_files_created'] + tracker['html_files_created'] > self._tp('ransomware_ransom_note', 'min_file_creates', 2):
                     return {
                         'type': 'RANSOMWARE_RANSOM_NOTE',
                         'severity': 'CRITICAL',
@@ -3298,7 +3217,8 @@ class ThreatDetector:
                         tracker['default_creds'] += 1
 
         # Alert on patterns
-        if tracker['telnet_attempts'] > 10 or tracker['default_creds'] > 3:
+        if (tracker['telnet_attempts'] > self._tp('iot_botnet', 'telnet_attempts_threshold', 10)
+                or tracker['default_creds'] > self._tp('iot_botnet', 'default_creds_threshold', 3)):
             return {
                 'type': 'IOT_BOTNET_ACTIVITY',
                 'severity': 'HIGH',
@@ -3340,7 +3260,7 @@ class ThreatDetector:
                         tracker['suspicious_commands'].add(pattern)
 
         # Alert on excessive SSDP or suspicious patterns
-        if tracker['ssdp_requests'] > 100 or len(tracker['suspicious_commands']) > 0:
+        if tracker['ssdp_requests'] > self._tp('upnp_exploit', 'ssdp_threshold', 100) or len(tracker['suspicious_commands']) > 0:
             return {
                 'type': 'UPNP_EXPLOIT_ATTEMPT',
                 'severity': 'HIGH',
@@ -3382,9 +3302,9 @@ class ThreatDetector:
                     tracker['subscribe_count'] += 1
 
         # Alert on excessive publishes (potential data exfil or spam)
-        time_window = 60
+        time_window = self._tp('mqtt_abuse', 'time_window', 60)
         if (current_time - tracker['window_start']) >= time_window:
-            if tracker['publish_count'] > 1000:
+            if tracker['publish_count'] > self._tp('mqtt_abuse', 'publish_threshold_per_minute', 1000) * time_window / 60:
                 return {
                     'type': 'MQTT_ABUSE',
                     'severity': 'MEDIUM',
@@ -3429,9 +3349,9 @@ class ThreatDetector:
                     tracker['write_operations'] += 1
 
         # Alert on excessive write operations
-        time_window = 60
+        time_window = self._tp('modbus_attack', 'time_window', 60)
         if (current_time - tracker['window_start']) >= time_window:
-            if tracker['write_operations'] > 50:
+            if tracker['write_operations'] > self._tp('modbus_attack', 'write_ops_threshold', 50):
                 return {
                     'type': 'MODBUS_ATTACK',
                     'severity': 'CRITICAL',
@@ -3466,9 +3386,9 @@ class ThreatDetector:
             tracker['suspicious_operations'] += 1
 
         # Alert on excessive DNP3 traffic
-        time_window = 60
+        time_window = self._tp('dnp3_attack', 'time_window', 60)
         if (current_time - tracker['window_start']) >= time_window:
-            if tracker['suspicious_operations'] > 100:
+            if tracker['suspicious_operations'] > self._tp('dnp3_attack', 'ops_threshold', 100):
                 return {
                     'type': 'DNP3_ATTACK',
                     'severity': 'CRITICAL',
@@ -3500,9 +3420,9 @@ class ThreatDetector:
         tracker['control_commands'] += 1
 
         # Alert on control commands
-        time_window = 60
+        time_window = self._tp('iec104_attack', 'time_window', 60)
         if (current_time - tracker['window_start']) >= time_window:
-            if tracker['control_commands'] > 50:
+            if tracker['control_commands'] > self._tp('iec104_attack', 'control_commands_threshold', 50):
                 return {
                     'type': 'IEC104_ATTACK',
                     'severity': 'CRITICAL',
@@ -3546,7 +3466,7 @@ class ThreatDetector:
 
                     tracker['privileged_operations'] += 1
 
-                    if tracker['privileged_operations'] > 3:
+                    if tracker['privileged_operations'] > self._tp('docker_escape', 'privileged_ops_threshold', 3):
                         return {
                             'type': 'DOCKER_ESCAPE_ATTEMPT',
                             'severity': 'CRITICAL',
@@ -3594,7 +3514,7 @@ class ThreatDetector:
 
                     # Alert on excessive API calls
                     total_calls = sum(tracker['api_calls'].values())
-                    if total_calls > 100:
+                    if total_calls > self._tp('k8s_exploit', 'api_calls_threshold', 100):
                         return {
                             'type': 'K8S_API_EXPLOIT',
                             'severity': 'HIGH',
@@ -3635,10 +3555,11 @@ class ThreatDetector:
                 tracker['overlapping_count'] += 1
 
         # Alert on excessive fragmentation
-        time_window = 60
+        time_window = self._tp('fragmentation_attack', 'time_window', 60)
         if (current_time - tracker['window_start']) >= time_window:
             frag_count = len(tracker['fragments'])
-            if frag_count > 100 or tracker['overlapping_count'] > 10:
+            if (frag_count > self._tp('fragmentation_attack', 'fragment_threshold', 100)
+                or tracker['overlapping_count'] > self._tp('fragmentation_attack', 'overlapping_threshold', 10)):
                 return {
                     'type': 'FRAGMENTATION_ATTACK',
                     'severity': 'HIGH',
@@ -3681,9 +3602,9 @@ class ThreatDetector:
                     tracker['packet_count'] += 1
 
         # Alert on tunneling patterns
-        time_window = 60
+        time_window = self._tp('tunneling', 'time_window', 60)
         if (current_time - tracker['window_start']) >= time_window:
-            if len(tracker['protocols']) > 0 and tracker['packet_count'] > 50:
+            if len(tracker['protocols']) > 0 and tracker['packet_count'] > self._tp('tunneling', 'packet_threshold', 50):
                 return {
                     'type': 'PROTOCOL_TUNNELING',
                     'severity': 'HIGH',
@@ -3721,7 +3642,7 @@ class ThreatDetector:
                 tracker['pattern_changes'] = len(tracker['signatures'])
 
                 # Alert if many different signatures from same source
-                if tracker['pattern_changes'] > 20:
+                if tracker['pattern_changes'] > self._tp('polymorphic_malware', 'signature_variation_threshold', 20):
                     return {
                         'type': 'POLYMORPHIC_MALWARE',
                         'severity': 'CRITICAL',
@@ -3760,7 +3681,7 @@ class ThreatDetector:
 
             # DGA characteristics
             is_suspicious = (
-                len(subdomain) > 12 and  # Long subdomain
+                len(subdomain) > self._tp('dga', 'subdomain_length_threshold', 12) and  # Long subdomain
                 sum(c.isdigit() for c in subdomain) > len(subdomain) * 0.3 and  # Many digits
                 not any(word in subdomain for word in ['www', 'mail', 'smtp', 'ftp', 'api'])  # Not common
             )
@@ -3811,10 +3732,12 @@ class ThreatDetector:
                     tracker['psexec_patterns'] += 1
 
         # Alert on lateral movement patterns
-        time_window = 300  # 5 minutes
+        time_window = self._tp('lateral_movement', 'time_window', 300)
         if (current_time - tracker['window_start']) >= time_window:
             smb_count = len(tracker['smb_connections'])
-            if smb_count > 5 or tracker['rdp_attempts'] > 3 or tracker['psexec_patterns'] > 0:
+            if (smb_count > self._tp('lateral_movement', 'smb_targets_threshold', 5)
+                or tracker['rdp_attempts'] > self._tp('lateral_movement', 'rdp_attempts_threshold', 3)
+                    or tracker['psexec_patterns'] > 0):
                 return {
                     'type': 'LATERAL_MOVEMENT',
                     'severity': 'CRITICAL',
@@ -3857,10 +3780,11 @@ class ThreatDetector:
                 pass
 
         # Alert on excessive outbound traffic
-        time_window = 60
+        time_window = self._tp('data_exfiltration', 'time_window', 60)
         if (current_time - tracker['window_start']) >= time_window:
             mbytes = tracker['outbound_bytes'] / (1024 * 1024)
-            if mbytes > 100 or len(tracker['destinations']) > 20:  # 100 MB or 20+ destinations
+            if (mbytes > self._tp('data_exfiltration', 'megabytes_threshold', 100)
+                or len(tracker['destinations']) > self._tp('data_exfiltration', 'destinations_threshold', 20)):  # 100 MB or 20+ destinations
                 return {
                     'type': 'DATA_EXFILTRATION',
                     'severity': 'CRITICAL',
@@ -3875,133 +3799,130 @@ class ThreatDetector:
 
         return None
 
+    # Sterke indicatoren, als heel woord. Voorheen telden losse lettergrepen als
+    # 'uac', 'kernel', 'exploit' en 'cve-' in elk pakket (ook versleuteld), wat in
+    # januari 2026 471.000 valse CRITICAL-meldingen gaf.
+    _PRIVESC_PATTERNS = {
+        'uac_bypass': re.compile(r'\bbypassuac\b|\bfodhelper(?:\.exe)?\b|ms-settings\\shell\\open\\command|\bcomputerdefaults\.exe\b'),
+        'sudo_attempts': re.compile(r'\brunas(?:\.exe)?\s+/(?:user|savecred)\b|\bsudo\s+(?:-s|-i|su)\b|\bpkexec\b'),
+        'kernel_exploits': re.compile(r'\b(?:dirty_?cow|dirty_?pipe|pwnkit|juicy_?potato|rogue_?potato|sweet_?potato|god_?potato|printspoofer)\b'),
+    }
+
+    def _payload_texts(self, packet, limit=8192):
+        """Payload als tekst (latin-1) en, bij veel nul-bytes, als UTF-16 (Windows/SMB)."""
+        if not packet.haslayer(Raw):
+            return []
+        raw = bytes(packet[Raw].load)[:limit]
+        texts = [raw.decode('latin-1').lower()]
+        if raw.count(b'\x00') > len(raw) // 4:
+            texts.append(raw.decode('utf-16-le', errors='ignore').lower())
+            texts.append(raw[1:].decode('utf-16-le', errors='ignore').lower())
+        return texts
+
+    def _count_indicators(self, tracker, patterns, texts):
+        hits = 0
+        for field, pattern in patterns.items():
+            if any(pattern.search(t) for t in texts):
+                tracker[field] += 1
+                hits += 1
+        return hits
+
     def _detect_privilege_escalation(self, packet, src_ip):
         """Detect privilege escalation attempts"""
-        if not packet.haslayer(Raw):
+        texts = self._payload_texts(packet)
+        if not texts:
             return None
 
         tracker = self.privilege_escalation_tracker[src_ip]
-        current_time = time.time()
-
         if tracker['first_seen'] is None:
-            tracker['first_seen'] = current_time
+            tracker['first_seen'] = time.time()
 
-        try:
-            payload = packet[Raw].load.decode('utf-8', errors='ignore').lower()
+        if not self._count_indicators(tracker, self._PRIVESC_PATTERNS, texts):
+            return None
 
-            # Privilege escalation indicators
-            if 'sudo ' in payload or 'su -' in payload or 'runas' in payload:
-                tracker['sudo_attempts'] += 1
-
-            if 'uac' in payload or 'bypassuac' in payload:
-                tracker['uac_bypass'] += 1
-
-            if 'exploit' in payload or 'cve-' in payload or 'kernel' in payload:
-                tracker['kernel_exploits'] += 1
-
-            total_attempts = tracker['sudo_attempts'] + tracker['uac_bypass'] + tracker['kernel_exploits']
-            if total_attempts > 5:
-                return {
-                    'type': 'PRIVILEGE_ESCALATION',
-                    'severity': 'CRITICAL',
-                    'source_ip': src_ip,
-                    'description': f'Privilege escalation attempts: {total_attempts} indicators',
-                    'metadata': {
-                        'sudo_attempts': tracker['sudo_attempts'],
-                        'uac_bypass': tracker['uac_bypass'],
-                        'kernel_exploits': tracker['kernel_exploits']
-                    }
+        total_attempts = tracker['sudo_attempts'] + tracker['uac_bypass'] + tracker['kernel_exploits']
+        if total_attempts >= self._tp('privilege_escalation', 'attempts_threshold', 5):
+            return {
+                'type': 'PRIVILEGE_ESCALATION',
+                'severity': 'CRITICAL',
+                'source_ip': src_ip,
+                'description': f'Privilege escalation attempts: {total_attempts} indicators',
+                'metadata': {
+                    'sudo_attempts': tracker['sudo_attempts'],
+                    'uac_bypass': tracker['uac_bypass'],
+                    'kernel_exploits': tracker['kernel_exploits']
                 }
-
-        except:
-            pass
-
+            }
         return None
+
+    _PERSISTENCE_PATTERNS = {
+        'registry_modifications': re.compile(r'\\currentversion\\run(?:once)?\b|\\winlogon\\(?:userinit|shell)\b|\\image file execution options\\'),
+        'scheduled_tasks': re.compile(r'\bschtasks(?:\.exe)?\s+/create\b|\bnew-scheduledtask(?:action)?\b|\bregister-scheduledtask\b|\b__eventfilter\b'),
+        'startup_items': re.compile(r'\\start menu\\programs\\startup\\|\bsc(?:\.exe)?\s+create\b|\bnew-service\b'),
+    }
 
     def _detect_persistence(self, packet, src_ip):
         """Detect persistence mechanism creation"""
-        if not packet.haslayer(Raw):
+        texts = self._payload_texts(packet)
+        if not texts:
             return None
 
         tracker = self.persistence_tracker[src_ip]
-        current_time = time.time()
-
         if tracker['first_seen'] is None:
-            tracker['first_seen'] = current_time
+            tracker['first_seen'] = time.time()
 
-        try:
-            payload = packet[Raw].load.decode('utf-8', errors='ignore').lower()
+        if not self._count_indicators(tracker, self._PERSISTENCE_PATTERNS, texts):
+            return None
 
-            # Persistence indicators
-            if 'hkey' in payload or 'currentversion\\run' in payload:
-                tracker['registry_modifications'] += 1
-
-            if 'schtasks' in payload or 'at.exe' in payload or 'cron' in payload:
-                tracker['scheduled_tasks'] += 1
-
-            if 'startup' in payload or 'appdata\\roaming' in payload:
-                tracker['startup_items'] += 1
-
-            total = tracker['registry_modifications'] + tracker['scheduled_tasks'] + tracker['startup_items']
-            if total > 3:
-                return {
-                    'type': 'PERSISTENCE_MECHANISM',
-                    'severity': 'HIGH',
-                    'source_ip': src_ip,
-                    'description': f'Persistence creation: {total} mechanisms detected',
-                    'metadata': {
-                        'registry': tracker['registry_modifications'],
-                        'scheduled_tasks': tracker['scheduled_tasks'],
-                        'startup_items': tracker['startup_items']
-                    }
+        total = tracker['registry_modifications'] + tracker['scheduled_tasks'] + tracker['startup_items']
+        if total >= self._tp('persistence', 'mechanisms_threshold', 3):
+            return {
+                'type': 'PERSISTENCE_MECHANISM',
+                'severity': 'HIGH',
+                'source_ip': src_ip,
+                'description': f'Persistence creation: {total} mechanisms detected',
+                'metadata': {
+                    'registry': tracker['registry_modifications'],
+                    'scheduled_tasks': tracker['scheduled_tasks'],
+                    'startup_items': tracker['startup_items']
                 }
-
-        except:
-            pass
-
+            }
         return None
+
+    # Voorheen telde o.a. elke 'sam' (same, samsung, willekeurige bytes) als
+    # indicator: 498.000 valse CRITICAL-meldingen in januari 2026.
+    _CREDDUMP_PATTERNS = {
+        'lsass_access': re.compile(r'\blsass(?:\.exe)?\.dmp\b|\bprocdump(?:64)?(?:\.exe)?\b[^\n]{0,80}\blsass\b|\bcomsvcs(?:\.dll)?[,\s]+#?(?:minidump|24)\b'),
+        'sam_access': re.compile(r'\\system32\\config\\(?:sam|security)\b|\breg(?:\.exe)?\s+save\s+hklm\\(?:sam|security|system)\b|\bntds\.dit\b'),
+        'mimikatz_patterns': re.compile(r'\bmimikatz\b|\bsekurlsa::|\blsadump::|\bkerberos::(?:golden|ptt|list)\b'),
+    }
 
     def _detect_credential_dumping(self, packet, src_ip):
         """Detect credential dumping attempts"""
-        if not packet.haslayer(Raw):
+        texts = self._payload_texts(packet)
+        if not texts:
             return None
 
         tracker = self.credential_dumping_tracker[src_ip]
-        current_time = time.time()
-
         if tracker['first_seen'] is None:
-            tracker['first_seen'] = current_time
+            tracker['first_seen'] = time.time()
 
-        try:
-            payload = packet[Raw].load.decode('utf-8', errors='ignore').lower()
+        if not self._count_indicators(tracker, self._CREDDUMP_PATTERNS, texts):
+            return None
 
-            # Credential dumping indicators
-            if 'lsass' in payload or 'procdump' in payload:
-                tracker['lsass_access'] += 1
-
-            if 'sam' in payload or 'system32\\config\\sam' in payload:
-                tracker['sam_access'] += 1
-
-            if 'mimikatz' in payload or 'sekurlsa' in payload or 'kerberos::' in payload:
-                tracker['mimikatz_patterns'] += 1
-
-            total = tracker['lsass_access'] + tracker['sam_access'] + tracker['mimikatz_patterns']
-            if total > 2:
-                return {
-                    'type': 'CREDENTIAL_DUMPING',
-                    'severity': 'CRITICAL',
-                    'source_ip': src_ip,
-                    'description': f'Credential dumping: {total} indicators detected',
-                    'metadata': {
-                        'lsass_access': tracker['lsass_access'],
-                        'sam_access': tracker['sam_access'],
-                        'mimikatz': tracker['mimikatz_patterns']
-                    }
+        total = tracker['lsass_access'] + tracker['sam_access'] + tracker['mimikatz_patterns']
+        if total >= self._tp('credential_dumping', 'indicators_threshold', 2):
+            return {
+                'type': 'CREDENTIAL_DUMPING',
+                'severity': 'CRITICAL',
+                'source_ip': src_ip,
+                'description': f'Credential dumping: {total} indicators detected',
+                'metadata': {
+                    'lsass_access': tracker['lsass_access'],
+                    'sam_access': tracker['sam_access'],
+                    'mimikatz': tracker['mimikatz_patterns']
                 }
-
-        except:
-            pass
-
+            }
         return None
 
     def cleanup_old_data(self):

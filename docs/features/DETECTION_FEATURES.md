@@ -439,6 +439,25 @@ wireshark alert_malicious_ja3_fingerprint_*.pcap
 
 ---
 
+## ⚙️ Advanced detectors (v2.10.0)
+
+42 extra detectors voor web-aanvallen, DDoS, ransomware, IoT, OT/ICS (Modbus, DNP3, IEC-104),
+containers, evasie en post-exploitatie. Beheer via dashboard > Configuration > Advanced Threat Detection.
+
+- **Hoofdschakelaar** `thresholds.advanced_threats.enabled` (standaard uit). Daarnaast moet de
+  detector zelf aan staan: `threat.<naam>.enabled`.
+- **Drempels** onder `threat.<naam>.*`, bv. `threat.syn_flood.threshold_per_sec`.
+- **Tijdvenster** `threat.<naam>.time_window`: tellingen vervallen na twee vensters.
+- **Stilteperiode** na een melding per (alerttype, bron-IP): `thresholds.advanced_threats.cooldown`
+  (standaard 300 s), per detector `threat.<naam>.cooldown`.
+- Draaien op de SOC-server én op sensors. `phishing` en `tor` gebruiken de `threat_feeds`-tabel
+  en werken alleen op de SOC-server; die tabel wordt elk uur bijgewerkt door `update_feeds.py`
+  zolang de detector aan staat.
+- `polymorphic_malware` is experimenteel en geeft veel valse meldingen.
+
+Zet detectors één voor één aan en kijk een dag naar het aantal meldingen. Voor patronen die je
+zelf wilt toevoegen: zie [Patroonregels](PATTERN_RULES.md).
+
 ## 🔐 **Sensor Authentication** (NEW)
 
 Token-based authenticatie voor remote sensors.
