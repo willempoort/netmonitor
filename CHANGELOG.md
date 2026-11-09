@@ -15,6 +15,12 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.10.3] - 2026-11-09
+
+### Fixed
+- **Dashboard was bij elke herstart 30 seconden onbereikbaar.** Gunicorn wachtte de volle `--graceful-timeout 30` op de open websockets van het dashboard, die nooit vanzelf sluiten. Na een update van de SOC-server gaven acties in het dashboard in die periode `502 Bad Gateway`, wat het update-venster toonde als `Unexpected token '<' ... is not valid JSON`. Nu 5 seconden (`services/netmonitor-dashboard.service.template`; bestaande installaties: `/etc/systemd/system/netmonitor-dashboard.service` aanpassen en `systemctl daemon-reload`). Herstart tot bereikbaar: van 32 s naar 6 s.
+- Het update-venster meldt een onbereikbare server nu duidelijk ("server tijdelijk niet bereikbaar (HTTP 502); probeer het over een halve minuut opnieuw") in plaats van een JSON-fout.
+
 ## [2.10.2] - 2026-11-09
 
 ### Changed

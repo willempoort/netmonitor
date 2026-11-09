@@ -19,7 +19,10 @@ worker_connections = 1000
 max_requests = 1000
 max_requests_jitter = 50
 timeout = 30
-graceful_timeout = 30
+# Open websockets (dashboard) sluiten nooit vanzelf, dus gunicorn wachtte bij elke
+# herstart de volle termijn (30 s, dashboard onbereikbaar). Lopende API-verzoeken
+# zijn binnen een paar seconden klaar; websockets verbinden zelf opnieuw.
+graceful_timeout = 5
 keepalive = 5
 
 # Logging

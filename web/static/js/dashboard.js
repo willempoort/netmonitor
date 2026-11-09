@@ -2516,7 +2516,16 @@ function updateSensor(sensorId, sensorName, currentBranch) {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({command_type: 'update', parameters: branch ? {branch: branch} : {}})
         })
-        .then(response => response.json())
+        .then(response => {
+            const type = response.headers.get('Content-Type') || '';
+            if (!type.includes('application/json')) {
+                // Bv. nginx 502 terwijl het dashboard herstart (na een update van de SOC-server)
+                throw new Error(response.status >= 500
+                    ? `server tijdelijk niet bereikbaar (HTTP ${response.status}); probeer het over een halve minuut opnieuw`
+                    : `onverwacht antwoord van de server (HTTP ${response.status})`);
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.success) {
                 result.className = 'alert alert-success mt-3 mb-0';
@@ -2533,7 +2542,7 @@ function updateSensor(sensorId, sensorName, currentBranch) {
         })
         .catch(error => {
             result.className = 'alert alert-danger mt-3 mb-0';
-            result.textContent = `Fout bij versturen: ${error.message}`;
+            result.textContent = `Update niet verstuurd: ${error.message}`;
             confirmBtn.disabled = false;
         });
     };
