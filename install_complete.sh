@@ -566,9 +566,23 @@ setup_database() {
         echo "  2) Overschrijven (VERWIJDERT ALLE DATA!)"
         echo "  3) Annuleren (stop installatie)"
         echo
-        read -p "Keuze (1/2/3): " -n 1 -r DB_CHOICE
-        echo
-        drain_stdin_line
+        # Enter of een ongeldige toets breekt de installatie niet meer af;
+        # Enter kiest de veilige optie (behouden).
+        while true; do
+            read -p "Keuze (1/2/3) [1]: " -n 1 -r DB_CHOICE
+            [ -n "$DB_CHOICE" ] && echo
+            [ -n "$DB_CHOICE" ] && drain_stdin_line
+            DB_CHOICE=${DB_CHOICE:-1}
+            [[ "$DB_CHOICE" =~ ^[123]$ ]] && break
+            print_warning "Kies 1, 2 of 3"
+        done
+        if [ "$DB_CHOICE" = "2" ]; then
+            read -p "Weet je het zeker? Typ 'wissen' om ALLE data te verwijderen: " DB_CONFIRM
+            if [ "$DB_CONFIRM" != "wissen" ]; then
+                print_info "Niet bevestigd - bestaande database wordt behouden"
+                DB_CHOICE=1
+            fi
+        fi
 
         case "$DB_CHOICE" in
             1)
@@ -1155,7 +1169,7 @@ setup_mcp_api() {
     print_success "MCP Streamable HTTP server geïnstalleerd"
 
     # Start service
-    systemctl start netmonitor-mcp-streamable
+    systemctl restart netmonitor-mcp-streamable
 
     if systemctl is-active --quiet netmonitor-mcp-streamable; then
         print_success "MCP API draait op http://localhost:8000"

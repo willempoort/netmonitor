@@ -15,6 +15,15 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.10.6] - 2026-11-09
+
+Bevindingen uit het opnieuw draaien van de installer over een bestaande installatie (Debian 13-test-VM).
+
+### Fixed
+- **Herinstallatie maakte gewijzigde instellingen niet actief**: `install_services.sh` deed `systemctl start` op services die al draaiden, waardoor een nieuwe `.env` (bv. `DASHBOARD_HOST`) of unit pas na een reboot gold. Nu `restart`; idem voor de MCP-service.
+- Bij "Database bestaat al" brak een Enter of verkeerde toets de hele installatie af. Nu wordt opnieuw gevraagd, Enter = behouden, en overschrijven vraagt om bevestiging (`wissen` typen).
+- `nginx-netmonitor.conf.example`: de HTTP→HTTPS-redirect gebruikt `$host` in plaats van `$server_name`, zodat `http://<server-ip>/` op het IP blijft als de domeinnaam (nog) niet in DNS staat.
+
 ## [2.10.5] - 2026-11-09
 
 Bevindingen uit een volledige testinstallatie op een kale Debian 13-VM.

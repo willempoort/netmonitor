@@ -390,7 +390,10 @@ enable_service() {
     if [ "$auto_enable" = "true" ]; then
         # Auto-enable without prompting
         systemctl enable "$service_name" 2>/dev/null || true
-        systemctl start "$service_name" 2>/dev/null || true
+        # restart i.p.v. start: bij een herinstallatie draait de service al,
+        # en dan zou een gewijzigde .env of unit (bv. DASHBOARD_HOST) pas na
+        # de volgende reboot actief worden. restart start hem ook als hij stilstaat.
+        systemctl restart "$service_name" 2>/dev/null || true
         echo_success "$service_description enabled and started"
     else
         # Prompt user
@@ -403,7 +406,7 @@ enable_service() {
         while read -t 0.01 -n 1 -r _drain_junk 2>/dev/null; do :; done
         if [[ ! $REPLY =~ ^[Nn]$ ]]; then
             systemctl enable "$service_name"
-            systemctl start "$service_name"
+            systemctl restart "$service_name"
             echo_success "$service_description enabled and started"
         else
             echo_info "$service_description skipped"
