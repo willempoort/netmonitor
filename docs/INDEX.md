@@ -63,6 +63,7 @@ Feature-specifieke documentatie:
 
 - **[Device Classification](features/DEVICE_CLASSIFICATION.md)** - ML-based apparaat classificatie en alert suppression
 - **[Detection Features](features/DETECTION_FEATURES.md)** - Alle threat detection capabilities
+- **[Patroonregels](features/PATTERN_RULES.md)** - Eigen detectieregels in de database, zonder code-aanpassing
 - **[Threat Feeds](features/THREAT_FEEDS.md)** - Threat intelligence configuratie
 - **[MCP Streamable HTTP Server](../mcp_server/STREAMABLE_HTTP_README.md)** - AI integration via MCP Streamable HTTP
 - **[MCP Nginx Setup](features/MCP_NGINX_SETUP.md)** - Reverse proxy voor MCP API

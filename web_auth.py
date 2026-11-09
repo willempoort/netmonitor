@@ -11,6 +11,7 @@ import logging
 import hashlib
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
+from psycopg2.extras import Json
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 import pyotp
@@ -687,7 +688,8 @@ class WebAuthManager:
             cursor.execute('''
                 INSERT INTO web_user_audit (user_id, username, event_type, ip_address, details)
                 VALUES (%s, %s, %s, %s, %s)
-            ''', (user_id, username, event_type, ip_address, details))
+            ''', (user_id, username, event_type, ip_address,
+                  Json(details) if details is not None else None))
             conn.commit()
 
         except Exception as e:

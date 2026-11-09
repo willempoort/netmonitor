@@ -67,6 +67,12 @@ try:
 except ImportError:
     BaselineDeviationDetector = None
 
+# Detectieregels uit de database (declaratief, zie rule_engine.py)
+try:
+    from rule_engine import RuleEngine
+except ImportError:
+    RuleEngine = None
+
 
 class ThreatDetector:
     """Detecteert verschillende soorten verdacht netwerkverkeer"""
@@ -154,6 +160,24 @@ class ThreatDetector:
                 self._internal_networks.append(ipaddress.ip_network(net_str, strict=False))
             except ValueError:
                 self.logger.warning(f"Ongeldige internal_network waarde: {net_str}")
+
+        # Detectieregels uit de database. Op de SOC-server ververst de engine zichzelf
+        # via db_manager; sensors krijgen de regels via de API (sensor_client._update_rules).
+        self.rule_engine = None
+        self._current_tls_meta = None
+        if RuleEngine and config.get('thresholds', {}).get('detection_rules', {}).get('enabled', True):
+            try:
+                self.rule_engine = RuleEngine(is_internal=self._rule_is_internal)
+                if db_manager is not None and hasattr(db_manager, 'get_detection_rules'):
+                    interval = config.get('thresholds', {}).get('detection_rules', {}).get('refresh_interval', 60)
+                    self.rule_engine.start_auto_refresh(
+                        lambda: (db_manager.get_detection_rules(enabled_only=True),
+                                 db_manager.get_device_classes()),
+                        interval=interval)
+                self.logger.info("RuleEngine initialized for database detection rules")
+            except Exception as e:
+                self.logger.warning(f"Could not initialize RuleEngine: {e}")
+                self.rule_engine = None
 
         # Tracking data structures
         self.port_scan_tracker = defaultdict(lambda: {
@@ -500,6 +524,19 @@ class ThreatDetector:
             pass
         return False
 
+    def _rule_is_internal(self, ip_str):
+        """Intern voor detectieregels: in internal_networks, of multicast/broadcast
+        (dat verlaat het lokale netwerk nooit, dus is nooit 'outbound')."""
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            return False
+        if ip.is_multicast or ip.is_unspecified or ip.is_loopback or ip.is_link_local:
+            return True
+        if ip == ipaddress.ip_address('255.255.255.255'):
+            return True
+        return any(ip in net for net in self._internal_networks)
+
     def _parse_ip_list(self, ip_list):
         """Parse lijst van IPs/CIDRs naar ipaddress objecten"""
         parsed = []
@@ -599,6 +636,7 @@ class ThreatDetector:
         Returns: lijst van threat dicts
         """
         threats = []
+        self._current_tls_meta = None
 
         if not packet.haslayer(IP):
             return threats
@@ -755,6 +793,16 @@ class ThreatDetector:
             threats = self.behavior_matcher.filter_threats(threats, packet)
             # Return only non-suppressed threats (suppressed ones are logged)
             threats = self.behavior_matcher.get_active_threats(threats)
+
+        # Detectieregels uit de database. Bewust NA de template-onderdrukking:
+        # een regel is een expliciete keuze van de beheerder en mag niet door
+        # 'verwacht gedrag' van een apparaattype worden weggefilterd.
+        # (De IP-whitelist bovenaan geldt wel.)
+        if self.rule_engine is not None:
+            try:
+                threats.extend(self.rule_engine.match(packet, self._current_tls_meta))
+            except Exception as e:
+                self.logger.debug(f"RuleEngine fout: {e}")
 
         # Kill chain / multi-stage attack correlation
         # Process each threat through the kill chain detector
@@ -1588,6 +1636,7 @@ class ThreatDetector:
 
         self.tls_metadata_cache[conn_key] = tls_metadata
         self.tls_metadata_history.append(tls_metadata)
+        self._current_tls_meta = tls_metadata  # voor detectieregels (SNI/JA3)
 
         # Check for known malicious JA3 fingerprint
         if tls_metadata.get('malicious'):

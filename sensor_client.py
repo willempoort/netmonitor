@@ -771,6 +771,10 @@ class SensorClient:
         # Fetch and cache server whitelist
         self._update_whitelist()
 
+        # Detectieregels uit de database van de SOC-server
+        self._rules_version = None
+        self._update_rules()
+
         # Fetch and merge server configuration
         self._update_config()
 
@@ -922,6 +926,37 @@ class SensorClient:
                 self.logger.info(f"Auto-whitelisted SOC server: {soc_ip}")
         except Exception as e:
             self.logger.warning(f"Could not auto-whitelist SOC server: {e}")
+
+    def _update_rules(self):
+        """Haal detectieregels op bij de SOC-server (alleen als ze gewijzigd zijn)."""
+        engine = getattr(self.detector, 'rule_engine', None)
+        if engine is None or not self.token:
+            return
+        try:
+            params = {'sensor_id': self.sensor_id}
+            if self._rules_version:
+                params['version'] = self._rules_version
+            response = requests.get(
+                f"{self.server_url}/api/detection-rules/sync",
+                headers=self._get_headers(),
+                params=params,
+                timeout=10,
+                verify=self.ssl_verify
+            )
+            if response.status_code == 404:
+                return  # SOC-server ouder dan 2.9.0
+            if response.status_code != 200:
+                self.logger.warning(f"Detection rules fetch returned status {response.status_code}")
+                return
+            result = response.json()
+            if not result.get('success') or result.get('unchanged'):
+                return
+            count = engine.load(result.get('rules', []), result.get('device_classes', {}),
+                                version=result.get('version'))
+            self._rules_version = result.get('version')
+            self.logger.info(f"✓ Detection rules updated: {count} active")
+        except Exception as e:
+            self.logger.warning(f"Failed to update detection rules: {e}")
 
     def _update_whitelist(self):
         """Fetch whitelist from SOC server and merge with local config"""
@@ -2029,6 +2064,7 @@ class SensorClient:
             last_traffic = time.time()
             last_command_poll = time.time()
             last_whitelist_update = time.time()
+            last_rules_update = time.time()
             last_config_update = time.time()
             last_device_sync = time.time()
             last_heartbeat = time.time()
@@ -2076,6 +2112,12 @@ class SensorClient:
                 if now - last_whitelist_update >= whitelist_interval:
                     self._update_whitelist()
                     last_whitelist_update = now
+
+                # Detectieregels: goedkope versiecheck, dus vaak
+                rules_interval = self.config.get('performance', {}).get('rules_sync_interval', 60)
+                if now - last_rules_update >= rules_interval:
+                    self._update_rules()
+                    last_rules_update = now
 
                 # Update config every X minutes (configurable)
                 config_interval = self.config.get('performance', {}).get('config_sync_interval', 300)

@@ -4017,3 +4017,218 @@ window.dashboardDebug = {
     loadSensors,
     loadIntegrationStatus
 };
+
+// ==================== Patroonregels (detection_rules) ====================
+
+let patternRules = [];
+
+function prulesIsAdmin() {
+    const badge = document.getElementById('user-role-badge');
+    return !!badge && badge.textContent.trim() === 'admin';
+}
+
+function summarizeRuleMatch(match) {
+    const parts = [];
+    for (const [key, value] of Object.entries(match || {})) {
+        if (key === 'nocase' || key === 'device_class_of') continue;
+        let shown = Array.isArray(value) ? value.join(', ') : String(value);
+        if (shown.length > 60) shown = shown.slice(0, 57) + '...';
+        parts.push(`<span class="text-info">${escapeHtml(key)}</span>=<code>${escapeHtml(shown)}</code>`);
+    }
+    return parts.join('<br>');
+}
+
+function loadPatternRules() {
+    const tbody = document.getElementById('prules-table');
+    if (!tbody) return;
+    fetch('/api/detection-rules')
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) {
+                tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted">${escapeHtml(data.error || 'Geen toegang')}</td></tr>`;
+                return;
+            }
+            patternRules = data.rules || [];
+            renderPatternRules();
+        })
+        .catch(err => console.error('Error loading pattern rules:', err));
+}
+
+function renderPatternRules() {
+    const tbody = document.getElementById('prules-table');
+    const admin = prulesIsAdmin();
+    document.querySelectorAll('#prulesCollapse .admin-only, #patternRuleModal .admin-only')
+        .forEach(el => el.classList.toggle('d-none', !admin));
+
+    const active = patternRules.filter(r => r.enabled).length;
+    document.getElementById('prules-count').textContent = `${active}/${patternRules.length}`;
+    const totalHits = patternRules.reduce((n, r) => n + (r.hits_7d || 0), 0);
+    const hitsBadge = document.getElementById('prules-hits-badge');
+    hitsBadge.textContent = `${totalHits} hits 7d`;
+    hitsBadge.classList.toggle('d-none', totalHits === 0);
+
+    if (patternRules.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Nog geen regels</td></tr>';
+        return;
+    }
+    const sevClass = {CRITICAL: 'danger', HIGH: 'danger', MEDIUM: 'warning', LOW: 'info', INFO: 'secondary'};
+    tbody.innerHTML = patternRules.map(r => {
+        const toggle = `<div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" ${r.enabled ? 'checked' : ''} ${admin ? '' : 'disabled'}
+                       onchange="togglePatternRule(${jsArg(r.id)}, this.checked)"></div>`;
+        const builtin = r.is_builtin ? ' <span class="badge bg-dark border border-secondary">standaard</span>' : '';
+        const cve = r.cve ? `<br><small class="text-warning">${escapeHtml(r.cve)}</small>` : '';
+        const desc = r.description ? `<br><small class="text-light opacity-75">${escapeHtml(r.description)}</small>` : '';
+        const ref = r.reference_url && /^https?:\/\//.test(r.reference_url)
+            ? ` <a href="${escapeHtml(r.reference_url)}" target="_blank" rel="noopener noreferrer" title="Bron"><i class="bi bi-box-arrow-up-right"></i></a>` : '';
+        const threshold = r.threshold_count > 1
+            ? `${escapeHtml(r.threshold_count)}x / ${escapeHtml(r.threshold_window)}s`
+            : '1x';
+        const lastHit = r.last_hit ? ` title="Laatste: ${escapeHtml(new Date(r.last_hit).toLocaleString())}"` : '';
+        const actions = admin ? `
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="openPatternRuleModal(${jsArg(r.id)})" title="Bewerken"><i class="bi bi-pencil"></i></button>
+                ${r.is_builtin ? '' : `<button class="btn btn-sm btn-danger" onclick="deletePatternRule(${jsArg(r.id)})" title="Verwijderen"><i class="bi bi-trash"></i></button>`}`
+            : `<button class="btn btn-sm btn-outline-secondary" onclick="openPatternRuleModal(${jsArg(r.id)})" title="Bekijken"><i class="bi bi-eye"></i></button>`;
+        return `<tr class="${r.enabled ? '' : 'opacity-50'}">
+            <td>${toggle}</td>
+            <td>${escapeHtml(r.name)}${builtin}${ref}${cve}${desc}</td>
+            <td><span class="badge bg-${sevClass[r.severity] || 'secondary'}">${escapeHtml(r.severity)}</span></td>
+            <td><small><code>${escapeHtml(r.alert_type)}</code></small></td>
+            <td><small>${summarizeRuleMatch(r.match)}</small></td>
+            <td><small>${threshold}</small></td>
+            <td${lastHit}>${escapeHtml(r.hits_7d || 0)}</td>
+            <td class="text-nowrap">${actions}</td>
+        </tr>`;
+    }).join('');
+}
+
+function prulesShowMessage(kind, text) {
+    const err = document.getElementById('prule-error');
+    const ok = document.getElementById('prule-ok');
+    err.classList.add('d-none');
+    ok.classList.add('d-none');
+    if (!kind) return;
+    const el = kind === 'error' ? err : ok;
+    el.textContent = text;
+    el.classList.remove('d-none');
+}
+
+function openPatternRuleModal(ruleId) {
+    const rule = ruleId == null ? null : patternRules.find(r => r.id === ruleId);
+    prulesShowMessage(null);
+    document.getElementById('prule-modal-title').textContent = rule ? `Regel: ${rule.name}` : 'Nieuwe patroonregel';
+    document.getElementById('prule-id').value = rule ? rule.id : '';
+    document.getElementById('prule-name').value = rule ? rule.name : '';
+    const keyInput = document.getElementById('prule-key');
+    keyInput.value = rule ? rule.rule_key : '';
+    keyInput.disabled = !!(rule && rule.is_builtin);
+    document.getElementById('prule-severity').value = rule ? rule.severity : 'MEDIUM';
+    document.getElementById('prule-alert-type').value = rule ? rule.alert_type : '';
+    document.getElementById('prule-cve').value = rule && rule.cve ? rule.cve : '';
+    document.getElementById('prule-description').value = rule && rule.description ? rule.description : '';
+    document.getElementById('prule-reference').value = rule && rule.reference_url ? rule.reference_url : '';
+    document.getElementById('prule-match').value = rule
+        ? JSON.stringify(rule.match, null, 2)
+        : JSON.stringify({protocol: 'tcp', dst_port: '80', direction: 'inbound', http_uri_contains: ['/example']}, null, 2);
+    document.getElementById('prule-threshold-count').value = rule ? rule.threshold_count : 1;
+    document.getElementById('prule-threshold-window').value = rule ? rule.threshold_window : 60;
+    document.getElementById('prule-cooldown').value = rule ? rule.cooldown : 300;
+    document.getElementById('prule-track-by').value = rule ? rule.track_by : 'src';
+    document.getElementById('prule-enabled').checked = rule ? !!rule.enabled : true;
+    document.querySelectorAll('#patternRuleModal .admin-only')
+        .forEach(el => el.classList.toggle('d-none', !prulesIsAdmin()));
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('patternRuleModal')).show();
+}
+
+function collectPatternRule() {
+    let match;
+    try {
+        match = JSON.parse(document.getElementById('prule-match').value);
+    } catch (e) {
+        prulesShowMessage('error', 'Voorwaarden zijn geen geldige JSON: ' + e.message);
+        return null;
+    }
+    return {
+        name: document.getElementById('prule-name').value.trim(),
+        rule_key: document.getElementById('prule-key').value.trim() || null,
+        severity: document.getElementById('prule-severity').value,
+        alert_type: document.getElementById('prule-alert-type').value.trim() || null,
+        cve: document.getElementById('prule-cve').value.trim() || null,
+        description: document.getElementById('prule-description').value.trim() || null,
+        reference_url: document.getElementById('prule-reference').value.trim() || null,
+        match: match,
+        threshold_count: parseInt(document.getElementById('prule-threshold-count').value, 10) || 1,
+        threshold_window: parseInt(document.getElementById('prule-threshold-window').value, 10) || 60,
+        cooldown: parseInt(document.getElementById('prule-cooldown').value, 10) || 0,
+        track_by: document.getElementById('prule-track-by').value,
+        enabled: document.getElementById('prule-enabled').checked,
+    };
+}
+
+function validatePatternRule() {
+    const rule = collectPatternRule();
+    if (!rule) return;
+    fetch('/api/detection-rules/validate', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(rule)
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('prule-match').value = JSON.stringify(data.rule.match, null, 2);
+                prulesShowMessage('ok', `Regel is geldig (sleutel: ${data.rule.rule_key}).`);
+            } else {
+                prulesShowMessage('error', data.error);
+            }
+        })
+        .catch(err => prulesShowMessage('error', err.message));
+}
+
+function savePatternRule() {
+    const rule = collectPatternRule();
+    if (!rule) return;
+    const id = document.getElementById('prule-id').value;
+    fetch(id ? `/api/detection-rules/${encodeURIComponent(id)}` : '/api/detection-rules', {
+        method: id ? 'PUT' : 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(rule)
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('patternRuleModal')).hide();
+                loadPatternRules();
+            } else {
+                prulesShowMessage('error', data.error);
+            }
+        })
+        .catch(err => prulesShowMessage('error', err.message));
+}
+
+function togglePatternRule(ruleId, enabled) {
+    fetch(`/api/detection-rules/${encodeURIComponent(ruleId)}/enabled`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({enabled: enabled})
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) alert('Fout: ' + data.error);
+            loadPatternRules();
+        })
+        .catch(err => { alert('Fout: ' + err.message); loadPatternRules(); });
+}
+
+function deletePatternRule(ruleId) {
+    const rule = patternRules.find(r => r.id === ruleId);
+    if (!rule || !confirm(`Regel "${rule.name}" verwijderen?`)) return;
+    fetch(`/api/detection-rules/${encodeURIComponent(ruleId)}`, {method: 'DELETE'})
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) alert('Fout: ' + data.error);
+            loadPatternRules();
+        })
+        .catch(err => alert('Fout: ' + err.message));
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (!document.getElementById('prules-table')) return;
+    setTimeout(loadPatternRules, 2500);
+    const collapse = document.getElementById('prulesCollapse');
+    if (collapse) collapse.addEventListener('show.bs.collapse', loadPatternRules);
+});

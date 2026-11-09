@@ -15,6 +15,22 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.9.0] - 2026-11-09
+
+### Added
+- **Patroonregels uit de database** (`detection_rules`, schema v35). Nieuwe aanvalspatronen kunnen nu zonder code-aanpassing worden toegevoegd via dashboard > Patroonregels. Een regel is declaratief: een vaste set velden (protocol, poorten, richting, IP-bereiken, payload-tekst/regex/hex-prefix/grootte, HTTP-methode/URI/host/headers op elke poort, DNS-naam en -type, TLS-SNI en JA3, apparaatcategorie) plus een drempel (aantal per tijdvenster), stilteperiode en tellen per bron, doel of paar. Er wordt geen code uit de database uitgevoerd.
+- `rule_engine.py`: compileert de regels één keer, indexeert ze op protocol/poort en bekijkt DNS-, TLS- en HTTP-regels alleen bij een DNS-query, TLS ClientHello of HTTP-request. Payload wordt maximaal 4 KB doorzocht; regexes met geneste kwantoren of backreferences worden geweigerd (ReDoS).
+- De SOC-server ververst de regels elke minuut uit de database; sensors halen ze op via `GET /api/detection-rules/sync` (sensortoken, alleen bij wijziging, elke 60 s; `performance.rules_sync_interval`).
+- API voor beheer: `GET/POST /api/detection-rules`, `PUT/DELETE /api/detection-rules/<id>`, `POST /api/detection-rules/<id>/enabled`, `POST /api/detection-rules/validate`. Wijzigen alleen door admins, met audit-log. Hits per regel (7 dagen) uit `alerts.metadata.rule_id`.
+- Negen standaardregels voor patronen uit recente dreigingsrapporten: DNS-over-HTTPS vanaf IoT (hostnaam en IP), veel DNS TXT-opvragingen vanaf IoT, ENS/`.eth`-domeinen, Ethereum-RPC vanaf IoT/servers, dead-drop-diensten (Telegram, Pastebin e.d.) vanaf IoT/netwerkapparatuur, uitgaande WireGuard- en OpenVPN-tunnels (CISA AA26-281A) en remote-access/tunneldiensten (AnyDesk, Tailscale, ngrok e.d.). Standaardregels kun je aanpassen of uitzetten, niet verwijderen.
+
+### Fixed
+- **Audit-log schreef bijna niets weg.** `web_auth.audit_log` gaf de details als Python-dict aan de database, wat psycopg2 weigert (`can't adapt type 'dict'`). Daardoor ontbraken alle events met details: logins, mislukte logins, lockouts en 2FA; alleen `logout` werd vastgelegd (laatste regel juli 2026). Details gaan nu als JSONB mee.
+
+### Note
+- De config-opties `threat.vpn.detect_openvpn` / `detect_wireguard` deden niets (er was geen implementatie). VPN-detectie zit nu in de standaardregels `builtin.wireguard-handshake-out` en `builtin.openvpn-out`.
+- Sensors krijgen de regels pas na een update naar 2.9.0 (dashboard > Update).
+
 ## [2.8.3] - 2026-11-09
 
 ### Fixed

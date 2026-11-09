@@ -60,7 +60,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 34  # Increment this when schema changes (v34: sensor_enrollments voor aanmelden met goedkeuring)
+        SCHEMA_VERSION = 35  # Increment this when schema changes (v35: detection_rules, regels uit de database)
 
         # Schema initialisatie met automatisch herstel bij TimescaleDB versie-mismatch na apt upgrade
         for _attempt in range(2):
@@ -691,6 +691,34 @@ class DatabaseManager:
             cursor.execute('''
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_sensor_enrollments_one_pending
                 ON sensor_enrollments(sensor_id) WHERE status = 'pending';
+            ''')
+
+            # Detectieregels: declaratieve patronen die de RuleEngine (rule_engine.py)
+            # uitvoert zonder code-aanpassing. 'match' bevat alleen vaste velden.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS detection_rules (
+                    id SERIAL PRIMARY KEY,
+                    rule_key TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    cve TEXT,
+                    reference_url TEXT,
+                    severity TEXT NOT NULL DEFAULT 'MEDIUM'
+                        CHECK (severity IN ('INFO', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL')),
+                    alert_type TEXT NOT NULL DEFAULT 'DETECTION_RULE',
+                    match JSONB NOT NULL,
+                    threshold_count INTEGER NOT NULL DEFAULT 1,
+                    threshold_window INTEGER NOT NULL DEFAULT 60,
+                    cooldown INTEGER NOT NULL DEFAULT 300,
+                    track_by TEXT NOT NULL DEFAULT 'src'
+                        CHECK (track_by IN ('src', 'dst', 'pair')),
+                    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                    is_builtin BOOLEAN NOT NULL DEFAULT FALSE,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    created_by TEXT,
+                    updated_by TEXT
+                );
             ''')
 
             # Web users table with 2FA support
@@ -1795,6 +1823,9 @@ class DatabaseManager:
         try:
             templates_count = self.init_builtin_templates()
             providers_count = self.init_builtin_service_providers()
+            rules_count = self.init_builtin_detection_rules()
+            if rules_count:
+                self.logger.info(f"Builtin detectieregels toegevoegd: {rules_count}")
 
             if templates_count > 0 or providers_count > 0:
                 self.logger.info(f"Builtin data initialized: {templates_count} templates, {providers_count} service providers")
@@ -3271,6 +3302,216 @@ class DatabaseManager:
             conn.rollback()
             self.logger.error(f"Error adding whitelist entry: {e}")
             raise
+        finally:
+            self._return_connection(conn)
+
+    # ------------------------------------------------------------------
+    # Detectieregels (zie rule_engine.py)
+    # ------------------------------------------------------------------
+
+    _DETECTION_RULE_FIELDS = ('rule_key', 'name', 'description', 'cve', 'reference_url',
+                              'severity', 'alert_type', 'match', 'threshold_count',
+                              'threshold_window', 'cooldown', 'track_by', 'enabled')
+
+    @staticmethod
+    def _rule_row(row) -> Dict:
+        rule = dict(row)
+        for ts in ('created_at', 'updated_at'):
+            if rule.get(ts) is not None:
+                rule[ts] = rule[ts].isoformat()
+        return rule
+
+    def init_builtin_detection_rules(self) -> int:
+        """Voeg ontbrekende standaardregels toe; bestaande (ook aangepaste) blijven ongemoeid."""
+        from rule_engine import BUILTIN_RULES, validate_rule
+        conn = self._get_connection()
+        added = 0
+        try:
+            cursor = conn.cursor()
+            for raw in BUILTIN_RULES:
+                rule = validate_rule(raw)
+                cursor.execute('''
+                    INSERT INTO detection_rules
+                        (rule_key, name, description, cve, reference_url, severity, alert_type,
+                         match, threshold_count, threshold_window, cooldown, track_by,
+                         enabled, is_builtin, created_by)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE, 'system')
+                    ON CONFLICT (rule_key) DO NOTHING
+                ''', (rule['rule_key'], rule['name'], rule['description'], rule['cve'],
+                      rule['reference_url'], rule['severity'], rule['alert_type'],
+                      json.dumps(rule['match']), rule['threshold_count'],
+                      rule['threshold_window'], rule['cooldown'], rule['track_by'],
+                      rule['enabled']))
+                added += cursor.rowcount
+            conn.commit()
+            return added
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error initializing builtin detection rules: {e}")
+            return 0
+        finally:
+            self._return_connection(conn)
+
+    def get_detection_rules(self, enabled_only: bool = False) -> List[Dict]:
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            query = 'SELECT * FROM detection_rules'
+            if enabled_only:
+                query += ' WHERE enabled = TRUE'
+            cursor.execute(query + ' ORDER BY is_builtin DESC, name')
+            return [self._rule_row(r) for r in cursor.fetchall()]
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error getting detection rules: {e}")
+            return []
+        finally:
+            self._return_connection(conn)
+
+    def get_detection_rule(self, rule_id: int) -> Optional[Dict]:
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute('SELECT * FROM detection_rules WHERE id = %s', (rule_id,))
+            row = cursor.fetchone()
+            return self._rule_row(row) if row else None
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error getting detection rule {rule_id}: {e}")
+            return None
+        finally:
+            self._return_connection(conn)
+
+    def create_detection_rule(self, rule: Dict, created_by: str = None) -> int:
+        """Rule moet al gevalideerd zijn (rule_engine.validate_rule). Geeft id terug."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO detection_rules
+                    (rule_key, name, description, cve, reference_url, severity, alert_type,
+                     match, threshold_count, threshold_window, cooldown, track_by, enabled,
+                     created_by, updated_by)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            ''', (rule['rule_key'], rule['name'], rule['description'], rule['cve'],
+                  rule['reference_url'], rule['severity'], rule['alert_type'],
+                  json.dumps(rule['match']), rule['threshold_count'], rule['threshold_window'],
+                  rule['cooldown'], rule['track_by'], rule['enabled'], created_by, created_by))
+            rule_id = cursor.fetchone()[0]
+            conn.commit()
+            return rule_id
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            self._return_connection(conn)
+
+    def update_detection_rule(self, rule_id: int, rule: Dict, updated_by: str = None) -> bool:
+        """Volledige update met een gevalideerde regel. rule_key van builtins blijft gelijk."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE detection_rules SET
+                    rule_key = CASE WHEN is_builtin THEN rule_key ELSE %s END,
+                    name = %s, description = %s, cve = %s, reference_url = %s,
+                    severity = %s, alert_type = %s, match = %s, threshold_count = %s,
+                    threshold_window = %s, cooldown = %s, track_by = %s, enabled = %s,
+                    updated_at = NOW(), updated_by = %s
+                WHERE id = %s
+            ''', (rule['rule_key'], rule['name'], rule['description'], rule['cve'],
+                  rule['reference_url'], rule['severity'], rule['alert_type'],
+                  json.dumps(rule['match']), rule['threshold_count'], rule['threshold_window'],
+                  rule['cooldown'], rule['track_by'], rule['enabled'], updated_by, rule_id))
+            changed = cursor.rowcount > 0
+            conn.commit()
+            return changed
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            self._return_connection(conn)
+
+    def set_detection_rule_enabled(self, rule_id: int, enabled: bool, updated_by: str = None) -> bool:
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE detection_rules SET enabled = %s, updated_at = NOW(), updated_by = %s
+                WHERE id = %s
+            ''', (bool(enabled), updated_by, rule_id))
+            changed = cursor.rowcount > 0
+            conn.commit()
+            return changed
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error toggling detection rule {rule_id}: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    def delete_detection_rule(self, rule_id: int) -> bool:
+        """Verwijder een eigen regel. Standaardregels kun je alleen uitzetten."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM detection_rules WHERE id = %s AND is_builtin = FALSE',
+                           (rule_id,))
+            changed = cursor.rowcount > 0
+            conn.commit()
+            return changed
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error deleting detection rule {rule_id}: {e}")
+            return False
+        finally:
+            self._return_connection(conn)
+
+    def get_detection_rule_hits(self, days: int = 7) -> Dict[int, Dict]:
+        """Aantal alerts per regel (via alerts.metadata->>'rule_id') in de laatste N dagen."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT (metadata::jsonb->>'rule_id')::int AS rule_id, COUNT(*), MAX(timestamp)
+                FROM alerts
+                WHERE timestamp > NOW() - make_interval(days => %s)
+                  AND metadata IS NOT NULL
+                  AND metadata::jsonb ? 'rule_id'
+                  AND (metadata::jsonb->>'rule_id') ~ '^[0-9]+$'
+                GROUP BY 1
+            ''', (int(days),))
+            return {row[0]: {'count': row[1], 'last_hit': row[2].isoformat() if row[2] else None}
+                    for row in cursor.fetchall()}
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error getting detection rule hits: {e}")
+            return {}
+        finally:
+            self._return_connection(conn)
+
+    def get_device_classes(self, sensor_id: str = None) -> Dict[str, str]:
+        """IP -> categorie van het apparaattemplate (iot, server, endpoint, ...)."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            query = '''
+                SELECT DISTINCT ON (host(d.ip_address)) host(d.ip_address), t.category
+                FROM devices d JOIN device_templates t ON t.id = d.template_id
+                WHERE d.is_active = TRUE AND t.category IS NOT NULL
+            '''
+            params = []
+            if sensor_id:
+                query += ' AND d.sensor_id = %s'
+                params.append(sensor_id)
+            query += ' ORDER BY host(d.ip_address), d.last_seen DESC'
+            cursor.execute(query, params)
+            return {row[0]: row[1] for row in cursor.fetchall()}
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error getting device classes: {e}")
+            return {}
         finally:
             self._return_connection(conn)
 

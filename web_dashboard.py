@@ -2111,6 +2111,149 @@ def api_get_command_history(sensor_id):
 
 # ==================== Whitelist Management Endpoints ====================
 
+# ---------------------------------------------------------------------------
+# Detectieregels (tabel detection_rules, uitgevoerd door rule_engine.RuleEngine)
+# ---------------------------------------------------------------------------
+
+def _rule_error(e, status=400):
+    return jsonify({'success': False, 'error': str(e)}), status
+
+
+def _rule_audit(event, rule_id, details=None):
+    try:
+        if web_auth:
+            web_auth.audit_log(current_user.id, event, request.remote_addr,
+                               current_user.username, dict(details or {}, rule_id=rule_id))
+    except Exception as e:
+        logger.debug(f"Audit log for {event} failed: {e}")
+
+
+@app.route('/api/detection-rules', methods=['GET'])
+@require_role('admin', 'operator')
+def api_list_detection_rules():
+    try:
+        rules = db.get_detection_rules()
+        hits = db.get_detection_rule_hits(days=7)
+        for rule in rules:
+            rule['hits_7d'] = hits.get(rule['id'], {}).get('count', 0)
+            rule['last_hit'] = hits.get(rule['id'], {}).get('last_hit')
+        from rule_engine import ALLOWED_MATCH_FIELDS, DNS_QTYPE_NAMES
+        return jsonify({'success': True, 'rules': rules,
+                        'match_fields': sorted(ALLOWED_MATCH_FIELDS),
+                        'dns_qtypes': sorted(DNS_QTYPE_NAMES)})
+    except Exception as e:
+        logger.error(f"Error listing detection rules: {e}")
+        return jsonify({'success': False, 'error': 'Could not load detection rules'}), 500
+
+
+@app.route('/api/detection-rules/validate', methods=['POST'])
+@require_role('admin')
+def api_validate_detection_rule():
+    from rule_engine import validate_rule, RuleValidationError
+    try:
+        return jsonify({'success': True, 'rule': validate_rule(request.get_json(silent=True) or {})})
+    except RuleValidationError as e:
+        return _rule_error(e)
+
+
+@app.route('/api/detection-rules', methods=['POST'])
+@require_role('admin')
+def api_create_detection_rule():
+    from rule_engine import validate_rule, RuleValidationError
+    import psycopg2
+    try:
+        rule = validate_rule(request.get_json(silent=True) or {})
+    except RuleValidationError as e:
+        return _rule_error(e)
+    if rule['rule_key'].startswith('builtin.'):
+        return _rule_error('rule_key mag niet met "builtin." beginnen')
+    try:
+        rule_id = db.create_detection_rule(rule, created_by=current_user.username)
+    except psycopg2.IntegrityError:
+        return _rule_error(f"rule_key '{rule['rule_key']}' bestaat al", 409)
+    except Exception as e:
+        logger.error(f"Error creating detection rule: {e}")
+        return jsonify({'success': False, 'error': 'Could not create rule'}), 500
+    _rule_audit('detection_rule_created', rule_id, {'rule_key': rule['rule_key']})
+    return jsonify({'success': True, 'id': rule_id}), 201
+
+
+@app.route('/api/detection-rules/<int:rule_id>', methods=['PUT'])
+@require_role('admin')
+def api_update_detection_rule(rule_id):
+    from rule_engine import validate_rule, RuleValidationError
+    import psycopg2
+    existing = db.get_detection_rule(rule_id)
+    if not existing:
+        return _rule_error('Regel niet gevonden', 404)
+    data = request.get_json(silent=True) or {}
+    if existing['is_builtin']:
+        data['rule_key'] = existing['rule_key']
+    try:
+        rule = validate_rule(data)
+    except RuleValidationError as e:
+        return _rule_error(e)
+    if not existing['is_builtin'] and rule['rule_key'].startswith('builtin.'):
+        return _rule_error('rule_key mag niet met "builtin." beginnen')
+    try:
+        db.update_detection_rule(rule_id, rule, updated_by=current_user.username)
+    except psycopg2.IntegrityError:
+        return _rule_error(f"rule_key '{rule['rule_key']}' bestaat al", 409)
+    except Exception as e:
+        logger.error(f"Error updating detection rule {rule_id}: {e}")
+        return jsonify({'success': False, 'error': 'Could not update rule'}), 500
+    _rule_audit('detection_rule_updated', rule_id, {'rule_key': rule['rule_key']})
+    return jsonify({'success': True})
+
+
+@app.route('/api/detection-rules/<int:rule_id>/enabled', methods=['POST'])
+@require_role('admin')
+def api_toggle_detection_rule(rule_id):
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data.get('enabled'), bool):
+        return _rule_error('enabled (true/false) is verplicht')
+    if not db.set_detection_rule_enabled(rule_id, data['enabled'], updated_by=current_user.username):
+        return _rule_error('Regel niet gevonden', 404)
+    _rule_audit('detection_rule_enabled' if data['enabled'] else 'detection_rule_disabled', rule_id)
+    return jsonify({'success': True})
+
+
+@app.route('/api/detection-rules/<int:rule_id>', methods=['DELETE'])
+@require_role('admin')
+def api_delete_detection_rule(rule_id):
+    existing = db.get_detection_rule(rule_id)
+    if not existing:
+        return _rule_error('Regel niet gevonden', 404)
+    if existing['is_builtin']:
+        return _rule_error('Standaardregels kun je niet verwijderen, alleen uitzetten')
+    if not db.delete_detection_rule(rule_id):
+        return jsonify({'success': False, 'error': 'Could not delete rule'}), 500
+    _rule_audit('detection_rule_deleted', rule_id, {'rule_key': existing['rule_key']})
+    return jsonify({'success': True})
+
+
+@app.route('/api/detection-rules/sync', methods=['GET'])
+@require_sensor_token_or_login()
+def api_sync_detection_rules():
+    """Regels voor sensors. Met ?version=<hash> komt alleen {unchanged: true} terug als er niets wijzigde."""
+    from rule_engine import rules_version
+    try:
+        rules = db.get_detection_rules(enabled_only=True)
+        for rule in rules:
+            for drop in ('created_at', 'updated_at', 'created_by', 'updated_by'):
+                rule.pop(drop, None)
+        uses_classes = any('device_class' in (r.get('match') or {}) for r in rules)
+        classes = db.get_device_classes() if uses_classes else {}
+        version = rules_version(rules, classes)
+        if request.args.get('version') == version:
+            return jsonify({'success': True, 'unchanged': True, 'version': version})
+        return jsonify({'success': True, 'version': version, 'rules': rules,
+                        'device_classes': classes})
+    except Exception as e:
+        logger.error(f"Error syncing detection rules: {e}")
+        return jsonify({'success': False, 'error': 'Could not load detection rules'}), 500
+
+
 @app.route('/api/whitelist', methods=['GET'])
 @require_sensor_token_or_login()
 def api_get_whitelist():
