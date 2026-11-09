@@ -15,6 +15,16 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.10.5] - 2026-11-09
+
+Bevindingen uit een volledige testinstallatie op een kale Debian 13-VM.
+
+### Fixed
+- **Honderden `UNUSUAL_PACKET_SIZE`-meldingen per download.** Door receive-offload (GRO/LRO) ziet de capture TCP-pakketten van 10–64 KB bij elke gewone download; een verse installatie had er binnen 4 minuten ~400 (de OUI- en GeoIP-downloads van de installer). TCP wordt nu overgeslagen (segmentgrootte zegt daar niets), te grote UDP/ICMP blijft gemeld, en hooguit één melding per bron→doel per 5 minuten.
+- Installer met nginx: het dashboard (en MCP) kreeg toch `0.0.0.0` als voorgestelde host uit `.env.example`, waardoor poort 8080 naast nginx open stond op het netwerk. Op een verse installatie is het nu `127.0.0.1` achter nginx.
+- Installer met nginx: `http://<server-ip>/` toonde "Welcome to nginx!" omdat de standaardsite aan bleef staan; die wordt nu uitgeschakeld.
+- Eindoverzicht van de installer: juiste dashboard-URL (ook het IP-alternatief als de domeinnaam nog niet in DNS staat), status van dashboard- en nginx-service, en juiste paden naar de handleidingen.
+
 ## [2.10.4] - 2026-11-09
 
 ### Fixed

@@ -269,6 +269,13 @@ prompt_config() {
     # Load existing .env if present (or .env.example as fallback)
     load_existing_env
 
+    # .env.example zet DASHBOARD_HOST/MCP_API_HOST op 0.0.0.0; op een verse
+    # installatie moet de nginx-keuze hieronder de default bepalen (achter
+    # nginx: 127.0.0.1), anders staat poort 8080 naast nginx open op het LAN.
+    if [ "$ENV_FILE_EXISTED" != true ]; then
+        unset DASHBOARD_HOST MCP_API_HOST
+    fi
+
     # Database configuration
     echo
     print_info "PostgreSQL Database Configuratie:"
@@ -1256,6 +1263,15 @@ setup_nginx() {
     # Enable site
     ln -sf /etc/nginx/sites-available/netmonitor /etc/nginx/sites-enabled/
 
+    # De standaardsite van Debian/Ubuntu vangt anders http://<server-ip>/ af
+    # met "Welcome to nginx!" in plaats van door te sturen naar het dashboard.
+    # Alleen de meegeleverde symlink weghalen; sites-available/default blijft.
+    if [ -L /etc/nginx/sites-enabled/default ] && \
+       [ "$(readlink -f /etc/nginx/sites-enabled/default)" = "/etc/nginx/sites-available/default" ]; then
+        rm -f /etc/nginx/sites-enabled/default
+        print_info "Nginx standaardsite uitgeschakeld (http://<server-ip>/ gaat nu naar NetMonitor)"
+    fi
+
     # Test config
     if nginx -t >> $LOG_FILE 2>&1; then
         print_success "Nginx config valid"
@@ -1318,11 +1334,13 @@ print_summary() {
 
     if [[ $INSTALL_CORE =~ ^[Yy]$ ]]; then
         echo -e "${BLUE}NetMonitor SOC Dashboard:${NC}"
-        echo "  Local:  http://localhost:8080"
-        echo "  Note:   Login required (use admin credentials created during setup)"
-        if [ ! -z "$DOMAIN_NAME" ]; then
-            echo "  Public: https://$DOMAIN_NAME (after SSL setup)"
+        echo "  URL:    $(dashboard_base_url)"
+        if [[ $INSTALL_NGINX =~ ^[Yy]$ ]]; then
+            local ip
+            ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+            [ -n "$ip" ] && [ -n "$DOMAIN_NAME" ] && echo "          (of https://$ip als $DOMAIN_NAME nog niet in DNS staat)"
         fi
+        echo "  Note:   Login required (use admin credentials created during setup)"
         echo
     fi
 
@@ -1355,6 +1373,21 @@ print_summary() {
             echo -e "  NetMonitor:     ${GREEN}running${NC}"
         else
             echo -e "  NetMonitor:     ${RED}stopped${NC}"
+        fi
+        if [ "$DASHBOARD_SERVER" = "gunicorn" ]; then
+            if systemctl is-active --quiet netmonitor-dashboard; then
+                echo -e "  Dashboard:      ${GREEN}running${NC}"
+            else
+                echo -e "  Dashboard:      ${RED}stopped${NC}  (sudo journalctl -u netmonitor-dashboard -n 50)"
+            fi
+        fi
+    fi
+
+    if [[ $INSTALL_NGINX =~ ^[Yy]$ ]]; then
+        if systemctl is-active --quiet nginx; then
+            echo -e "  Nginx:          ${GREEN}running${NC}"
+        else
+            echo -e "  Nginx:          ${RED}stopped${NC}"
         fi
     fi
 
@@ -1400,8 +1433,8 @@ print_summary() {
     echo "   sudo journalctl -u netmonitor -f"
     echo
     echo "6. View Documentation:"
-    echo "   - Admin Manual:  $INSTALL_DIR/ADMIN_MANUAL.md"
-    echo "   - User Manual:   $INSTALL_DIR/USER_MANUAL.md"
+    echo "   - Admin Manual:  $INSTALL_DIR/docs/usage/ADMIN_MANUAL.md"
+    echo "   - User Manual:   $INSTALL_DIR/docs/usage/USER_MANUAL.md"
     echo
     if [ ! -z "$DOMAIN_NAME" ]; then
         echo "7. Setup SSL Certificate:"

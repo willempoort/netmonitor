@@ -167,6 +167,7 @@ class ThreatDetector:
         self.rule_engine = None
         self._current_tls_meta = None
         self._advanced_last_alert = {}  # (type, src_ip) -> tijd van laatste melding
+        self._packet_size_last_alert = {}  # (src, dst) -> tijd, UNUSUAL_PACKET_SIZE
         if RuleEngine and config.get('thresholds', {}).get('detection_rules', {}).get('enabled', True):
             try:
                 self.rule_engine = RuleEngine(is_internal=self._rule_is_internal)
@@ -1018,10 +1019,29 @@ class ThreatDetector:
         if self._is_broadcast_or_multicast(ip_layer.dst):
             return None
 
+        # TCP overslaan: door receive/segmentation offload (GRO/LRO/TSO) ziet
+        # de capture TCP-"pakketten" van 10-64 KB bij elke gewone download.
+        # Een grote TCP-segmentgrootte zegt dus niets over exfiltratie en gaf
+        # honderden meldingen per download (op een verse installatie al ~400
+        # tijdens de OUI- en GeoIP-downloads). Te grote UDP/ICMP blijft verdacht
+        # (tunneling, versterking).
+        if packet.haslayer(TCP):
+            return None
+
         packet_size = len(packet)
         threshold = self._get_threshold('packet_size', 'min_suspicious_size', default=1400)
 
         if packet_size > threshold:
+            # Eén melding per bron->doel per 5 minuten
+            now = time.time()
+            key = (ip_layer.src, ip_layer.dst)
+            last = self._packet_size_last_alert.get(key)
+            if last is not None and now - last < 300:
+                return None
+            if len(self._packet_size_last_alert) > 10000:
+                self._packet_size_last_alert = {k: v for k, v in self._packet_size_last_alert.items()
+                                                if now - v < 300}
+            self._packet_size_last_alert[key] = now
             return {
                 'type': 'UNUSUAL_PACKET_SIZE',
                 'severity': 'LOW',
