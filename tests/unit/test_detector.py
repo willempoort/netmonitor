@@ -562,9 +562,10 @@ class TestUnusualPacketSize:
         src_ip = '192.168.1.100'
         dst_ip = '10.0.0.50'
 
-        # Maak groot packet (> 1500 bytes)
+        # Maak groot packet (> 1500 bytes). UDP: grote TCP-segmenten worden
+        # bewust genegeerd (receive-offload, zie test_packet_size_detector.py).
         large_payload = 'X' * 2000
-        packet = Ether() / IP(src=src_ip, dst=dst_ip) / TCP(dport=80) / large_payload
+        packet = Ether() / IP(src=src_ip, dst=dst_ip) / UDP(dport=5000) / large_payload
 
         threats = detector.analyze_packet(packet)
 
