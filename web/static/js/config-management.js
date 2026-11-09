@@ -790,7 +790,7 @@ function populateConfigSensorSelects() {
 
 function loadThreatFeedStats() {
     const content = document.getElementById('threat-feeds-content');
-    content.innerHTML = '<div class="text-center text-muted p-4"><div class="spinner-border spinner-border-sm"></div> Laden...</div>';
+    content.innerHTML = '<div class="text-center text-muted p-4"><div class="spinner-border spinner-border-sm"></div> Loading...</div>';
 
     fetch('/api/threat-feeds/stats')
         .then(r => r.json())
@@ -802,7 +802,7 @@ function loadThreatFeedStats() {
             }
         })
         .catch(e => {
-            content.innerHTML = `<div class="alert alert-danger">Fout: ${escapeHtml(e.message)}</div>`;
+            content.innerHTML = `<div class="alert alert-danger">Error: ${escapeHtml(e.message)}</div>`;
         });
 }
 
@@ -813,7 +813,7 @@ function renderThreatFeedStats(stats) {
         content.innerHTML = `
             <div class="alert alert-info">
                 <i class="bi bi-info-circle"></i>
-                Threat feeds zijn uitgeschakeld. Schakel in via <code>threat_feeds.enabled: true</code> in config.yaml.
+                Threat feeds are disabled. Enable them with <code>threat_feeds.enabled: true</code> in config.yaml.
             </div>`;
         return;
     }
@@ -821,8 +821,8 @@ function renderThreatFeedStats(stats) {
     const lastUpdates = stats.last_update || {};
     const feedRows = Object.entries(lastUpdates).map(([name, ts]) => {
         const date = new Date(ts).toLocaleString('nl-NL');
-        return `<tr><td>${escapeHtml(name)}</td><td><span class="badge bg-success">Actief</span></td><td class="text-muted small">${escapeHtml(date)}</td></tr>`;
-    }).join('') || '<tr><td colspan="3" class="text-muted">Nog geen feeds geladen</td></tr>';
+        return `<tr><td>${escapeHtml(name)}</td><td><span class="badge bg-success">Active</span></td><td class="text-muted small">${escapeHtml(date)}</td></tr>`;
+    }).join('') || '<tr><td colspan="3" class="text-muted">No feeds loaded yet</td></tr>';
 
     content.innerHTML = `
         <div class="row g-3 mb-4">
@@ -835,7 +835,7 @@ function renderThreatFeedStats(stats) {
             <div class="col-6 col-md-3">
                 <div class="card bg-secondary text-white text-center p-3">
                     <div class="fs-3 fw-bold text-warning">${escapeHtml(stats.malicious_domains.toLocaleString())}</div>
-                    <div class="small">Malicious Domeinen</div>
+                    <div class="small">Malicious Domains</div>
                 </div>
             </div>
             <div class="col-6 col-md-3">
@@ -853,13 +853,13 @@ function renderThreatFeedStats(stats) {
         </div>
 
         <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="mb-0 text-info"><i class="bi bi-rss"></i> Feeds (${escapeHtml(stats.feeds_loaded)} geladen)</h6>
+            <h6 class="mb-0 text-info"><i class="bi bi-rss"></i> Feeds (${escapeHtml(stats.feeds_loaded)} loaded)</h6>
             <button class="btn btn-sm btn-outline-info text-info" id="update-feeds-btn" onclick="triggerFeedUpdate()">
-                <i class="bi bi-arrow-clockwise"></i> Nu bijwerken
+                <i class="bi bi-arrow-clockwise"></i> Update now
             </button>
         </div>
         <table class="table table-sm table-dark">
-            <thead><tr><th>Feed</th><th>Status</th><th>Laatste update</th></tr></thead>
+            <thead><tr><th>Feed</th><th>Status</th><th>Last update</th></tr></thead>
             <tbody>${feedRows}</tbody>
         </table>`;
 }
@@ -867,7 +867,7 @@ function renderThreatFeedStats(stats) {
 function triggerFeedUpdate() {
     const btn = document.getElementById('update-feeds-btn');
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Bezig...';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Working...';
 
     fetch('/api/threat-feeds/update', { method: 'POST' })
         .then(r => r.json())
@@ -875,15 +875,15 @@ function triggerFeedUpdate() {
             if (data.success) {
                 loadThreatFeedStats();
             } else {
-                alert('Fout bij bijwerken: ' + data.error);
+                alert('Update failed: ' + data.error);
                 btn.disabled = false;
-                btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Nu bijwerken';
+                btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Update now';
             }
         })
         .catch(e => {
-            alert('Fout: ' + e.message);
+            alert('Error: ' + e.message);
             btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Nu bijwerken';
+            btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Update now';
         });
 }
 

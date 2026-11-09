@@ -15,6 +15,12 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.10.7] - 2026-11-09
+
+### Changed
+- **Dashboard volledig Engelstalig.** De nieuwere onderdelen waren nog Nederlands: Patroonregels (nu **Pattern Rules**, kaart, bewerkvenster en meldingen), het update-venster van sensors, de goedkeuringslijst en tokens van nieuwe sensors, het whitelist-venster vanuit een alert, het All Alerts-filter, de uitleg per alerttype, ML-classificatie/fingerprint-scan-meldingen, het threat-feed-overzicht en drie config-omschrijvingen (advanced detectors). Ook de validatiefouten van patroonregels en de ML-gereedheidsmeldingen van de server zijn Engels. Datums blijven in Nederlandse notatie; alertteksten van de detectors zelf zijn ongewijzigd.
+- De 9 standaard-patroonregels hebben een Engelse naam en omschrijving. Bestaande regels worden bij de schema-update (v37) alleen bijgewerkt als de beheerder de tekst niet zelf heeft aangepast.
+
 ## [2.10.6] - 2026-11-09
 
 Bevindingen uit het opnieuw draaien van de installer over een bestaande installatie (Debian 13-test-VM).

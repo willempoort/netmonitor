@@ -6032,7 +6032,7 @@ def api_threat_feeds_update():
 
         feeds, feeds_to_use = _get_threat_feed_manager()
         if not feeds:
-            return jsonify({'success': False, 'error': 'Kon geen ThreatFeedManager aanmaken'}), 500
+            return jsonify({'success': False, 'error': 'Could not create ThreatFeedManager'}), 500
 
         if feeds_to_use is None:
             feeds_to_use = feeds_config.get('feeds', ['feodotracker', 'urlhaus', 'threatfox'])

@@ -574,11 +574,11 @@ async function inheritFromDevice() {
     const sourceIp = document.getElementById('inherit-from-device').value;
 
     if (!sourceIp) {
-        showError('Selecteer eerst een device om instellingen van over te nemen');
+        showError('Select a device to copy settings from first');
         return;
     }
 
-    if (!confirm(`Instellingen overnemen van ${sourceIp}?\n\nDit kopieert de template en geleerd gedrag naar dit device.`)) {
+    if (!confirm(`Copy settings from ${sourceIp}?\n\nThis copies the template and learned behavior to this device.`)) {
         return;
     }
 
@@ -597,16 +597,16 @@ async function inheritFromDevice() {
         const result = await response.json();
 
         if (result.success) {
-            showSuccess(`Instellingen overgenomen van ${sourceIp}`);
+            showSuccess(`Settings copied from ${sourceIp}`);
             // Close modal and reload devices
             bootstrap.Modal.getInstance(document.getElementById('deviceDetailsModal')).hide();
             loadDevices();
         } else {
-            showError('Overnemen mislukt: ' + (result.error || 'Onbekende fout'));
+            showError('Copy failed: ' + (result.error || 'Unknown error'));
         }
     } catch (error) {
         console.error('Error inheriting from device:', error);
-        showError('Netwerkfout bij overnemen instellingen');
+        showError('Network error while copying settings');
     }
 }
 
@@ -1335,7 +1335,7 @@ async function runMLClassification() {
         btn.disabled = true;
         btn.classList.add('btn-secondary');
         btn.classList.remove('btn-primary');
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Bezig met classificeren...';
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Classifying...';
     }
 
     // Show progress indicator
@@ -1343,7 +1343,7 @@ async function runMLClassification() {
         statusDiv.innerHTML = `
             <div class="alert alert-info mt-2 mb-0">
                 <i class="bi bi-hourglass-split me-2"></i>
-                <strong>ML Classificatie gestart...</strong> Dit kan even duren afhankelijk van het aantal devices.
+                <strong>ML classification started...</strong> This may take a while depending on the number of devices.
             </div>
         `;
         statusDiv.style.display = 'block';
@@ -1372,11 +1372,11 @@ async function runMLClassification() {
             statusDiv.innerHTML = `
                 <div class="alert alert-danger mt-2 mb-0">
                     <i class="bi bi-x-circle me-2"></i>
-                    <strong>Fout:</strong> ${escapeHtml(error.message || 'Kon classificatie niet starten')}
+                    <strong>Error:</strong> ${escapeHtml(error.message || 'Could not start classification')}
                 </div>
             `;
         }
-        showError('ML Classificatie fout: ' + error.message);
+        showError('ML classification error: ' + error.message);
         resetMLButton(btn);
     }
 }
@@ -1392,7 +1392,7 @@ async function pollMLClassificationStatus(btn, statusDiv) {
                 statusDiv.innerHTML = `
                     <div class="alert alert-info mt-2 mb-0">
                         <i class="bi bi-hourglass-split me-2"></i>
-                        <strong>ML Classificatie bezig...</strong> Even geduld, devices worden geanalyseerd.
+                        <strong>ML classification running...</strong> Please wait, devices are being analyzed.
                     </div>
                 `;
             }
@@ -1408,14 +1408,14 @@ async function pollMLClassificationStatus(btn, statusDiv) {
                 statusDiv.innerHTML = `
                     <div class="alert alert-success mt-2 mb-0">
                         <i class="bi bi-check-circle me-2"></i>
-                        <strong>Classificatie voltooid!</strong><br>
-                        <small>${escapeHtml(r.classified)} devices geclassificeerd, ${escapeHtml(templatesAssigned)} templates toegewezen, ${escapeHtml(r.unknown)} onbekend</small>
+                        <strong>Classification complete!</strong><br>
+                        <small>${escapeHtml(r.classified)} devices classified, ${escapeHtml(templatesAssigned)} templates assigned, ${escapeHtml(r.unknown)} unknown</small>
                     </div>
                 `;
                 setTimeout(() => { statusDiv.style.display = 'none'; }, 10000);
             }
 
-            showSuccess(`ML Classificatie voltooid: ${templatesAssigned} templates toegewezen`);
+            showSuccess(`ML classification complete: ${templatesAssigned} templates assigned`);
             loadDevices();
             loadClassificationStats();
             loadMLStatus();
@@ -1427,11 +1427,11 @@ async function pollMLClassificationStatus(btn, statusDiv) {
                 statusDiv.innerHTML = `
                     <div class="alert alert-danger mt-2 mb-0">
                         <i class="bi bi-x-circle me-2"></i>
-                        <strong>Classificatie mislukt:</strong> ${escapeHtml(result.error || 'Onbekende fout')}
+                        <strong>Classification failed:</strong> ${escapeHtml(result.error || 'Unknown error')}
                     </div>
                 `;
             }
-            showError('ML Classificatie mislukt: ' + (result.error || 'Onbekende fout'));
+            showError('ML classification failed: ' + (result.error || 'Unknown error'));
             resetMLButton(btn);
 
         } else {
@@ -1440,7 +1440,7 @@ async function pollMLClassificationStatus(btn, statusDiv) {
             if (result.result) {
                 const r = result.result;
                 const templatesAssigned = r.templates_assigned || 0;
-                showSuccess(`ML Classificatie voltooid: ${templatesAssigned} templates toegewezen`);
+                showSuccess(`ML classification complete: ${templatesAssigned} templates assigned`);
                 loadDevices();
             }
             resetMLButton(btn);
@@ -1471,7 +1471,7 @@ async function trainMLModel() {
         const readyResult = await readyResponse.json();
 
         if (!readyResult.success) {
-            throw new Error(readyResult.error || 'Kon trainingsstatus niet controleren');
+            throw new Error(readyResult.error || 'Could not check training status');
         }
 
         const readiness = readyResult.readiness;
@@ -1482,7 +1482,7 @@ async function trainMLModel() {
                 statusDiv.innerHTML = `
                     <div class="alert alert-warning mb-0">
                         <i class="bi bi-exclamation-triangle me-2"></i>
-                        <strong>Nog niet klaar om te trainen.</strong> Er is nog niet genoeg gelabelde data:
+                        <strong>Not ready to train yet.</strong> There is not enough labeled data:
                         <ul class="mb-0 mt-1">${items}</ul>
                     </div>
                 `;
@@ -1494,13 +1494,13 @@ async function trainMLModel() {
         // Requirements met - start training (runs in background on server;
         // see pollMLTrainingStatus for why this isn't a single blocking call)
         if (btn) {
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Model wordt getraind...';
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Training model...';
         }
         if (statusDiv) {
             statusDiv.innerHTML = `
                 <div class="alert alert-info mb-0">
                     <i class="bi bi-hourglass-split me-2"></i>
-                    <strong>Training gestart...</strong>
+                    <strong>Training started...</strong>
                 </div>
             `;
             statusDiv.style.display = 'block';
@@ -1526,12 +1526,12 @@ async function trainMLModel() {
             statusDiv.innerHTML = `
                 <div class="alert alert-danger mb-0">
                     <i class="bi bi-x-circle me-2"></i>
-                    <strong>Fout:</strong> ${escapeHtml(error.message || 'Kon model niet trainen')}
+                    <strong>Error:</strong> ${escapeHtml(error.message || 'Could not train model')}
                 </div>
             `;
             statusDiv.style.display = 'block';
         }
-        showError('Training fout: ' + error.message);
+        showError('Training error: ' + error.message);
         resetTrainButton(btn);
     }
 }
@@ -1546,7 +1546,7 @@ async function pollMLTrainingStatus(btn, statusDiv) {
                 statusDiv.innerHTML = `
                     <div class="alert alert-info mb-0">
                         <i class="bi bi-hourglass-split me-2"></i>
-                        <strong>Model wordt getraind...</strong> Even geduld.
+                        <strong>Training model...</strong> Please wait.
                     </div>
                 `;
             }
@@ -1560,23 +1560,23 @@ async function pollMLTrainingStatus(btn, statusDiv) {
                     statusDiv.innerHTML = `
                         <div class="alert alert-success mb-0">
                             <i class="bi bi-check-circle me-2"></i>
-                            <strong>Model getraind!</strong> ${escapeHtml(classifierResult.message || '')}
+                            <strong>Model trained!</strong> ${escapeHtml(classifierResult.message || '')}
                         </div>
                     `;
                     setTimeout(() => { statusDiv.style.display = 'none'; }, 10000);
                 }
-                showSuccess('ML-model succesvol getraind');
+                showSuccess('ML model trained successfully');
             } else {
-                const errorMsg = classifierResult.error || 'Onbekende fout';
+                const errorMsg = classifierResult.error || 'Unknown error';
                 if (statusDiv) {
                     statusDiv.innerHTML = `
                         <div class="alert alert-danger mb-0">
                             <i class="bi bi-x-circle me-2"></i>
-                            <strong>Training mislukt:</strong> ${escapeHtml(errorMsg)}
+                            <strong>Training failed:</strong> ${escapeHtml(errorMsg)}
                         </div>
                     `;
                 }
-                showError('Training mislukt: ' + errorMsg);
+                showError('Training failed: ' + errorMsg);
             }
             loadMLStatus();
             resetTrainButton(btn);
@@ -1586,17 +1586,17 @@ async function pollMLTrainingStatus(btn, statusDiv) {
                 statusDiv.innerHTML = `
                     <div class="alert alert-danger mb-0">
                         <i class="bi bi-x-circle me-2"></i>
-                        <strong>Training mislukt:</strong> ${escapeHtml(result.error || 'Onbekende fout')}
+                        <strong>Training failed:</strong> ${escapeHtml(result.error || 'Unknown error')}
                     </div>
                 `;
             }
-            showError('Training mislukt: ' + (result.error || 'Onbekende fout'));
+            showError('Training failed: ' + (result.error || 'Unknown error'));
             resetTrainButton(btn);
 
         } else {
             // Idle/unknown - training may have finished before we started polling
             if (result.result) {
-                showSuccess('ML-model succesvol getraind');
+                showSuccess('ML model trained successfully');
                 loadMLStatus();
             }
             resetTrainButton(btn);
@@ -1633,14 +1633,14 @@ async function runFingerprintScan() {
 
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Scannen...';
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Scanning...';
     }
     if (statusDiv) {
         statusDiv.innerHTML = `
             <div class="alert alert-info mt-2 mb-0">
                 <i class="bi bi-fingerprint me-2"></i>
-                <strong>Fingerprint scan gestart...</strong> Devices worden actief gepolld
-                (mDNS/SSDP/NetBIOS/SNMP), daarna volgt herclassificatie.
+                <strong>Fingerprint scan started...</strong> Devices are actively polled
+                (mDNS/SSDP/NetBIOS/SNMP), followed by reclassification.
             </div>
         `;
         statusDiv.style.display = 'block';
@@ -1651,7 +1651,7 @@ async function runFingerprintScan() {
         const startResult = await response.json();
 
         if (!startResult.success && startResult.status !== 'already_running') {
-            throw new Error(startResult.error || 'Kon fingerprint scan niet starten');
+            throw new Error(startResult.error || 'Could not start fingerprint scan');
         }
 
         pollFingerprintScanStatus(btn, statusDiv);
@@ -1662,11 +1662,11 @@ async function runFingerprintScan() {
             statusDiv.innerHTML = `
                 <div class="alert alert-danger mt-2 mb-0">
                     <i class="bi bi-x-circle me-2"></i>
-                    <strong>Fout:</strong> ${escapeHtml(error.message || 'Kon fingerprint scan niet starten')}
+                    <strong>Error:</strong> ${escapeHtml(error.message || 'Could not start fingerprint scan')}
                 </div>
             `;
         }
-        showError('Fingerprint scan fout: ' + error.message);
+        showError('Fingerprint scan error: ' + error.message);
         resetFingerprintButton(btn);
     }
 }
@@ -1688,16 +1688,16 @@ async function pollFingerprintScanStatus(btn, statusDiv) {
                 statusDiv.innerHTML = `
                     <div class="alert alert-success mt-2 mb-0">
                         <i class="bi bi-check-circle me-2"></i>
-                        <strong>Fingerprint scan voltooid!</strong><br>
-                        <small>${escapeHtml(scan.responses || 0)} van ${escapeHtml(scan.scanned || 0)} devices gaven identiteitsbewijs
-                        (${escapeHtml(scan.identified || 0)} eenduidig herkend); herclassificatie:
-                        ${escapeHtml(classification.classified || 0)} geclassificeerd,
-                        ${escapeHtml(templatesAssigned)} templates toegewezen</small>
+                        <strong>Fingerprint scan complete!</strong><br>
+                        <small>${escapeHtml(scan.responses || 0)} of ${escapeHtml(scan.scanned || 0)} devices identified themselves
+                        (${escapeHtml(scan.identified || 0)} unambiguously); reclassification:
+                        ${escapeHtml(classification.classified || 0)} classified,
+                        ${escapeHtml(templatesAssigned)} templates assigned</small>
                     </div>
                 `;
                 setTimeout(() => { statusDiv.style.display = 'none'; }, 12000);
             }
-            showSuccess(`Fingerprint scan voltooid: ${scan.responses || 0} devices met identiteitsbewijs`);
+            showSuccess(`Fingerprint scan complete: ${scan.responses || 0} devices identified`);
             loadDevices();
             loadClassificationStats();
             resetFingerprintButton(btn);
@@ -1707,11 +1707,11 @@ async function pollFingerprintScanStatus(btn, statusDiv) {
                 statusDiv.innerHTML = `
                     <div class="alert alert-danger mt-2 mb-0">
                         <i class="bi bi-x-circle me-2"></i>
-                        <strong>Fingerprint scan mislukt:</strong> ${escapeHtml(result.error || 'Onbekende fout')}
+                        <strong>Fingerprint scan failed:</strong> ${escapeHtml(result.error || 'Unknown error')}
                     </div>
                 `;
             }
-            showError('Fingerprint scan mislukt: ' + (result.error || 'Onbekende fout'));
+            showError('Fingerprint scan failed: ' + (result.error || 'Unknown error'));
             resetFingerprintButton(btn);
 
         } else {

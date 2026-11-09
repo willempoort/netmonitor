@@ -456,7 +456,7 @@ containers, evasie en post-exploitatie. Beheer via dashboard > Configuration > A
 - `polymorphic_malware` is experimenteel en geeft veel valse meldingen.
 
 Zet detectors één voor één aan en kijk een dag naar het aantal meldingen. Voor patronen die je
-zelf wilt toevoegen: zie [Patroonregels](PATTERN_RULES.md).
+zelf wilt toevoegen: zie [Pattern Rules](PATTERN_RULES.md).
 
 ## 🔐 **Sensor Authentication** (NEW)
 

@@ -111,7 +111,7 @@
             <span class="navbar-brand mb-0 h1 d-flex align-items-center">
                 <img src="{{ url_for('static', filename='logo.png') }}" alt="NetMonitor" height="32" class="me-2">
                 NetMonitor SOC
-                <span class="badge bg-secondary ms-2" style="font-size:0.6rem;vertical-align:middle;" title="NetMonitor versie">v{{ netmonitor_version }}</span>
+                <span class="badge bg-secondary ms-2" style="font-size:0.6rem;vertical-align:middle;" title="NetMonitor version">v{{ netmonitor_version }}</span>
             </span>
             <div class="d-flex align-items-center">
                 <span class="badge bg-success me-3" id="connection-status">
@@ -121,7 +121,7 @@
 
                 <!-- All Alerts Button -->
                 <button class="btn btn-outline-light btn-sm me-2" type="button" data-bs-toggle="modal" data-bs-target="#allAlertsModal" onclick="openAllAlertsModal()">
-                    <i class="bi bi-list-ul"></i> Alle Alerts
+                    <i class="bi bi-list-ul"></i> All Alerts
                 </button>
 
                 <!-- User Menu Button -->
@@ -276,21 +276,21 @@
                             <span class="badge bg-info ms-2" id="sensors-count">0</span>
                             <span class="badge bg-success ms-1" id="sensors-online">0</span>
                             <span class="badge bg-warning text-dark ms-1" id="sensors-pending-badge" style="display: none;"
-                                  title="Sensors die wachten op goedkeuring"></span>
+                                  title="Sensors awaiting approval"></span>
                         </h5>
                         <i class="bi bi-chevron-down"></i>
                     </div>
                     <div class="collapse show" id="sensorsCollapse">
                         <div class="card-body p-0">
-                            <!-- Aanmeldverzoeken van nieuwe sensors -->
+                            <!-- Enrollment requests from new sensors -->
                             <div id="sensor-enrollments" class="border-bottom border-warning p-3" style="display: none;">
                                 <h6 class="text-warning mb-2">
-                                    <i class="bi bi-person-plus"></i> Wachtend op goedkeuring
+                                    <i class="bi bi-person-plus"></i> Awaiting Approval
                                 </h6>
                                 <p class="small text-muted mb-2">
-                                    Deze sensors hebben zich aangemeld. Controleer of de vingerafdruk gelijk is aan
-                                    die in de log van de sensor (<code>journalctl -u netmonitor-sensor</code>)
-                                    voordat je toestaat.
+                                    These sensors have requested to join. Check that the fingerprint matches
+                                    the one in the sensor's log (<code>journalctl -u netmonitor-sensor</code>)
+                                    before approving.
                                 </p>
                                 <div class="table-responsive">
                                     <table class="table table-dark table-sm mb-0">
@@ -298,10 +298,10 @@
                                             <tr>
                                                 <th>Sensor</th>
                                                 <th>IP</th>
-                                                <th>Versie</th>
-                                                <th>Aangevraagd</th>
-                                                <th>Vingerafdruk</th>
-                                                <th>Acties</th>
+                                                <th>Version</th>
+                                                <th>Requested</th>
+                                                <th>Fingerprint</th>
+                                                <th>Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody id="sensor-enrollments-table"></tbody>
@@ -453,15 +453,15 @@
             </div>
         </div>
 
-        <!-- Patroonregels (detection_rules in de database) -->
+        <!-- Pattern Rules (detection_rules in de database) -->
         <div class="row mb-3">
             <div class="col-12">
                 <div class="card bg-secondary">
                     <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#prulesCollapse">
                         <h5 class="mb-0">
-                            <i class="bi bi-funnel"></i> Patroonregels
+                            <i class="bi bi-funnel"></i> Pattern Rules
                             <span class="badge bg-info ms-2" id="prules-count">0</span>
-                            <span class="badge bg-warning text-dark ms-1 d-none" id="prules-hits-badge" title="Meldingen van patroonregels, laatste 7 dagen"></span>
+                            <span class="badge bg-warning text-dark ms-1 d-none" id="prules-hits-badge" title="Alerts from pattern rules, last 7 days"></span>
                         </h5>
                         <i class="bi bi-chevron-down"></i>
                     </div>
@@ -469,29 +469,29 @@
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
                                 <small class="text-light opacity-75">
-                                    Regels uit de database: nieuwe patronen zonder code-aanpassing.
-                                    Wijzigingen zijn binnen ongeveer een minuut actief op de server en de sensors (v2.9.0+).
+                                    Rules stored in the database: add new detection patterns without code changes.
+                                    Changes become active on the server and sensors within about a minute (v2.9.0+).
                                 </small>
                                 <button class="btn btn-success btn-sm admin-only" id="prules-add-btn" onclick="openPatternRuleModal(null)">
-                                    <i class="bi bi-plus-circle"></i> Nieuwe regel
+                                    <i class="bi bi-plus-circle"></i> New Rule
                                 </button>
                             </div>
                             <div class="table-responsive">
                                 <table class="table table-dark table-sm table-hover mb-0">
                                     <thead>
                                         <tr>
-                                            <th>Aan</th>
-                                            <th>Naam</th>
+                                            <th>On</th>
+                                            <th>Name</th>
                                             <th>Severity</th>
-                                            <th>Alerttype</th>
-                                            <th>Voorwaarden</th>
-                                            <th>Drempel</th>
+                                            <th>Alert Type</th>
+                                            <th>Conditions</th>
+                                            <th>Threshold</th>
                                             <th>Hits 7d</th>
-                                            <th>Acties</th>
+                                            <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody id="prules-table">
-                                        <tr><td colspan="8" class="text-center text-muted">Regels laden...</td></tr>
+                                        <tr><td colspan="8" class="text-center text-muted">Loading rules...</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -954,7 +954,7 @@
                                                 <i class="bi bi-gear"></i> Train Model
                                             </button>
                                             <button class="btn btn-outline-warning" id="fingerprint-scan-btn" onclick="runFingerprintScan()"
-                                                    title="Actief pollen van devices (mDNS/SSDP/NetBIOS/SNMP) voor identiteitsbewijs, gevolgd door herclassificatie">
+                                                    title="Actively poll devices (mDNS/SSDP/NetBIOS/SNMP) to identify them, followed by reclassification">
                                                 <i class="bi bi-fingerprint"></i> Fingerprint Scan
                                             </button>
                                             <div id="ml-classification-status" style="display: none;"></div>
@@ -1027,7 +1027,7 @@
                                         <th>IP/Hostname</th>
                                         <th class="text-end"><i class="bi bi-arrow-down text-info"></i> IN</th>
                                         <th class="text-end"><i class="bi bi-arrow-up text-warning"></i> OUT</th>
-                                        <th class="text-end">Totaal</th>
+                                        <th class="text-end">Total</th>
                                     </tr>
                                 </thead>
                                 <tbody id="top-talkers-table">
@@ -1075,10 +1075,10 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-primary" id="alert-acknowledge-btn" onclick="acknowledgeCurrentAlert()">
-                        <i class="bi bi-check2-circle"></i> Bevestigen
+                        <i class="bi bi-check2-circle"></i> Acknowledge
                     </button>
                     <button type="button" class="btn btn-outline-success" id="alert-add-whitelist-btn" onclick="openWhitelistFromAlert()">
-                        <i class="bi bi-shield-check"></i> Toevoegen aan whitelist
+                        <i class="bi bi-shield-check"></i> Add to Whitelist
                     </button>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
@@ -1092,7 +1092,7 @@
             <div class="modal-content bg-dark text-light">
                 <div class="modal-header">
                     <h5 class="modal-title" id="allAlertsModalLabel">
-                        <i class="bi bi-list-ul"></i> Alle Alerts
+                        <i class="bi bi-list-ul"></i> All Alerts
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -1101,7 +1101,7 @@
                         <div class="col-md-2">
                             <label class="form-label small text-muted">Severity</label>
                             <select class="form-select form-select-sm bg-dark text-light border-secondary" id="aa-filter-severity">
-                                <option value="">Alle</option>
+                                <option value="">All</option>
                                 <option value="CRITICAL">Critical</option>
                                 <option value="HIGH">High</option>
                                 <option value="MEDIUM">Medium</option>
@@ -1112,7 +1112,7 @@
                         <div class="col-md-2">
                             <label class="form-label small text-muted">Status</label>
                             <select class="form-select form-select-sm bg-dark text-light border-secondary" id="aa-filter-acknowledged">
-                                <option value="">Alle</option>
+                                <option value="">All</option>
                                 <option value="false">Onbevestigd</option>
                                 <option value="true">Bevestigd</option>
                             </select>
@@ -1136,7 +1136,7 @@
                         </div>
                         <div class="col-12 d-flex gap-2 mt-1">
                             <button type="button" class="btn btn-sm btn-primary" onclick="loadAllAlerts(1)">
-                                <i class="bi bi-funnel"></i> Filteren
+                                <i class="bi bi-funnel"></i> Filter
                             </button>
                             <button type="button" class="btn btn-sm btn-outline-light" onclick="resetAllAlertsFilters()">
                                 <i class="bi bi-x-circle"></i> Reset
@@ -1146,7 +1146,7 @@
                     </div>
 
                     <div id="aa-alerts-container">
-                        <div class="text-center text-muted p-4">Filters instellen en op "Filteren" klikken...</div>
+                        <div class="text-center text-muted p-4">Set filters and click "Filter"...</div>
                     </div>
 
                     <nav class="mt-3" id="aa-pagination-nav" style="display:none;">
@@ -1163,7 +1163,7 @@
             <div class="modal-content bg-dark text-light">
                 <div class="modal-header">
                     <h5 class="modal-title" id="whitelistFromAlertModalLabel">
-                        <i class="bi bi-shield-check"></i> Voeg toe aan whitelist
+                        <i class="bi bi-shield-check"></i> Add to Whitelist
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -1171,34 +1171,34 @@
                     <div class="mb-3" id="wl-source-row" style="display:none;">
                         <div class="form-check">
                             <input type="checkbox" class="form-check-input" id="wl-use-source" checked>
-                            <label class="form-check-label" for="wl-use-source">Bron IP: <code id="wl-source-ip"></code></label>
+                            <label class="form-check-label" for="wl-use-source">Source IP: <code id="wl-source-ip"></code></label>
                         </div>
-                        <div class="ms-4 small" id="wl-source-info"><span class="text-muted">IP-informatie laden...</span></div>
+                        <div class="ms-4 small" id="wl-source-info"><span class="text-muted">Loading IP information...</span></div>
                     </div>
                     <div class="mb-3" id="wl-dest-row" style="display:none;">
                         <div class="form-check">
                             <input type="checkbox" class="form-check-input" id="wl-use-dest" checked>
-                            <label class="form-check-label" for="wl-use-dest">Doel IP: <code id="wl-dest-ip"></code></label>
+                            <label class="form-check-label" for="wl-use-dest">Destination IP: <code id="wl-dest-ip"></code></label>
                         </div>
-                        <div class="ms-4 small" id="wl-dest-info"><span class="text-muted">IP-informatie laden...</span></div>
+                        <div class="ms-4 small" id="wl-dest-info"><span class="text-muted">Loading IP information...</span></div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label" for="wl-port">Poort filter (optioneel)</label>
-                        <input type="text" class="form-control bg-secondary text-light" id="wl-port" placeholder="bijv. 443 of 80,443,8080-8090">
-                        <div class="form-text">Leeg = alle poorten worden gewhitelist</div>
+                        <label class="form-label" for="wl-port">Port filter (optional)</label>
+                        <input type="text" class="form-control bg-secondary text-light" id="wl-port" placeholder="e.g. 443 or 80,443,8080-8090">
+                        <div class="form-text">Empty = all ports are whitelisted</div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label" for="wl-description">Omschrijving</label>
+                        <label class="form-label" for="wl-description">Description</label>
                         <input type="text" class="form-control bg-secondary text-light" id="wl-description">
                     </div>
                     <div class="form-text text-warning">
-                        <i class="bi bi-exclamation-triangle"></i> Dit onderdrukt toekomstige alerts voor dit verkeer (globaal, alle sensors).
+                        <i class="bi bi-exclamation-triangle"></i> This suppresses future alerts for this traffic (globally, all sensors).
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuleren</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-success" id="wl-submit-btn" onclick="submitWhitelistFromAlert()">
-                        <i class="bi bi-plus-circle"></i> Toevoegen
+                        <i class="bi bi-plus-circle"></i> Add
                     </button>
                 </div>
             </div>
@@ -1352,24 +1352,24 @@
     </div>
 
     <!-- Edit Sensor Settings Modal -->
-    <!-- Patroonregel bewerken -->
+    <!-- Pattern Rule bewerken -->
     <div class="modal fade" id="patternRuleModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content bg-dark text-light">
                 <div class="modal-header border-secondary">
-                    <h5 class="modal-title"><i class="bi bi-funnel"></i> <span id="prule-modal-title">Patroonregel</span></h5>
+                    <h5 class="modal-title"><i class="bi bi-funnel"></i> <span id="prule-modal-title">Pattern Rule</span></h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="prule-id">
                     <div class="row g-2">
                         <div class="col-md-8">
-                            <label class="form-label" for="prule-name">Naam</label>
+                            <label class="form-label" for="prule-name">Name</label>
                             <input type="text" class="form-control bg-dark text-light border-secondary" id="prule-name" maxlength="200">
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label" for="prule-key">Sleutel</label>
-                            <input type="text" class="form-control bg-dark text-light border-secondary" id="prule-key" placeholder="automatisch uit naam">
+                            <label class="form-label" for="prule-key">Key</label>
+                            <input type="text" class="form-control bg-dark text-light border-secondary" id="prule-key" placeholder="derived from name">
                         </div>
                         <div class="col-md-3">
                             <label class="form-label" for="prule-severity">Severity</label>
@@ -1378,7 +1378,7 @@
                             </select>
                         </div>
                         <div class="col-md-5">
-                            <label class="form-label" for="prule-alert-type">Alerttype</label>
+                            <label class="form-label" for="prule-alert-type">Alert Type</label>
                             <input type="text" class="form-control bg-dark text-light border-secondary" id="prule-alert-type" placeholder="DETECTION_RULE">
                         </div>
                         <div class="col-md-4">
@@ -1386,59 +1386,59 @@
                             <input type="text" class="form-control bg-dark text-light border-secondary" id="prule-cve" placeholder="CVE-2026-12345">
                         </div>
                         <div class="col-12">
-                            <label class="form-label" for="prule-description">Omschrijving</label>
+                            <label class="form-label" for="prule-description">Description</label>
                             <textarea class="form-control bg-dark text-light border-secondary" id="prule-description" rows="2"></textarea>
                         </div>
                         <div class="col-12">
-                            <label class="form-label" for="prule-reference">Bron (URL)</label>
+                            <label class="form-label" for="prule-reference">Reference (URL)</label>
                             <input type="url" class="form-control bg-dark text-light border-secondary" id="prule-reference" placeholder="https://...">
                         </div>
                         <div class="col-12">
-                            <label class="form-label" for="prule-match">Voorwaarden (JSON). Alle velden moeten kloppen; binnen een lijst is één waarde genoeg.</label>
+                            <label class="form-label" for="prule-match">Conditions (JSON). All fields must match; within a list, one value is enough.</label>
                             <textarea class="form-control bg-dark text-light border-secondary font-monospace" id="prule-match" rows="8" spellcheck="false"></textarea>
                             <details class="mt-1">
-                                <summary class="small">Beschikbare velden</summary>
+                                <summary class="small">Available fields</summary>
                                 <div class="small mt-1">
-                                    <div><b>Pakket:</b> <code>protocol</code> (tcp/udp/icmp), <code>direction</code> (inbound/outbound/internal), <code>src_cidr</code>, <code>dst_cidr</code>, <code>src_port</code>, <code>dst_port</code> ("80,8000-8100"), <code>new_connection</code> (alleen TCP SYN)</div>
-                                    <div><b>Inhoud:</b> <code>payload_contains</code>, <code>payload_regex</code>, <code>payload_hex_prefix</code>, <code>payload_size</code>, <code>nocase</code> (standaard true)</div>
-                                    <div><b>HTTP</b> (elke poort): <code>http_method</code>, <code>http_uri_contains</code>, <code>http_uri_regex</code>, <code>http_host_regex</code>, <code>http_user_agent_regex</code>, <code>http_header_regex</code></div>
-                                    <div><b>DNS-query:</b> <code>dns_qname_suffix</code>, <code>dns_qname_regex</code>, <code>dns_qtype</code> (TXT, A, ...)</div>
+                                    <div><b>Packet:</b> <code>protocol</code> (tcp/udp/icmp), <code>direction</code> (inbound/outbound/internal), <code>src_cidr</code>, <code>dst_cidr</code>, <code>src_port</code>, <code>dst_port</code> ("80,8000-8100"), <code>new_connection</code> (TCP SYN only)</div>
+                                    <div><b>Content:</b> <code>payload_contains</code>, <code>payload_regex</code>, <code>payload_hex_prefix</code>, <code>payload_size</code>, <code>nocase</code> (default true)</div>
+                                    <div><b>HTTP</b> (any port): <code>http_method</code>, <code>http_uri_contains</code>, <code>http_uri_regex</code>, <code>http_host_regex</code>, <code>http_user_agent_regex</code>, <code>http_header_regex</code></div>
+                                    <div><b>DNS query:</b> <code>dns_qname_suffix</code>, <code>dns_qname_regex</code>, <code>dns_qtype</code> (TXT, A, ...)</div>
                                     <div><b>TLS:</b> <code>tls_sni_suffix</code>, <code>tls_sni_regex</code>, <code>ja3</code></div>
-                                    <div><b>Apparaat:</b> <code>device_class</code> (iot, server, endpoint, infrastructure, other, unclassified), <code>device_class_of</code> (src/dst)</div>
-                                    <div class="mt-1">Voorbeeld: <code>{"protocol": "tcp", "dst_port": "32400", "direction": "inbound", "http_uri_regex": "\\.\\./"}</code></div>
+                                    <div><b>Device:</b> <code>device_class</code> (iot, server, endpoint, infrastructure, other, unclassified), <code>device_class_of</code> (src/dst)</div>
+                                    <div class="mt-1">Example: <code>{"protocol": "tcp", "dst_port": "32400", "direction": "inbound", "http_uri_regex": "\\.\\./"}</code></div>
                                 </div>
                             </details>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label" for="prule-threshold-count">Aantal</label>
+                            <label class="form-label" for="prule-threshold-count">Count</label>
                             <input type="number" min="1" class="form-control bg-dark text-light border-secondary" id="prule-threshold-count" value="1">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label" for="prule-threshold-window">Binnen (sec)</label>
+                            <label class="form-label" for="prule-threshold-window">Within (sec)</label>
                             <input type="number" min="1" class="form-control bg-dark text-light border-secondary" id="prule-threshold-window" value="60">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label" for="prule-cooldown">Stilte na melding (sec)</label>
+                            <label class="form-label" for="prule-cooldown">Cooldown after alert (sec)</label>
                             <input type="number" min="0" class="form-control bg-dark text-light border-secondary" id="prule-cooldown" value="300">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label" for="prule-track-by">Tellen per</label>
+                            <label class="form-label" for="prule-track-by">Count per</label>
                             <select class="form-select bg-dark text-light border-secondary" id="prule-track-by">
-                                <option value="src">Bron-IP</option><option value="dst">Doel-IP</option><option value="pair">Bron+doel</option>
+                                <option value="src">Source IP</option><option value="dst">Destination IP</option><option value="pair">Source + destination</option>
                             </select>
                         </div>
                         <div class="col-12 form-check ms-1 mt-2">
                             <input class="form-check-input" type="checkbox" id="prule-enabled" checked>
-                            <label class="form-check-label" for="prule-enabled">Regel actief</label>
+                            <label class="form-check-label" for="prule-enabled">Rule enabled</label>
                         </div>
                     </div>
                     <div class="alert alert-danger mt-3 mb-0 d-none" id="prule-error"></div>
                     <div class="alert alert-success mt-3 mb-0 d-none" id="prule-ok"></div>
                 </div>
                 <div class="modal-footer border-secondary">
-                    <button type="button" class="btn btn-outline-light" onclick="validatePatternRule()">Controleren</button>
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuleren</button>
-                    <button type="button" class="btn btn-success admin-only" onclick="savePatternRule()">Opslaan</button>
+                    <button type="button" class="btn btn-outline-light" onclick="validatePatternRule()">Validate</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success admin-only" onclick="savePatternRule()">Save</button>
                 </div>
             </div>
         </div>
@@ -1608,10 +1608,10 @@
                         <small class="form-text text-muted">Local directory for PCAP file storage</small>
                     </div>
 
-                    <!-- Sensor tokens (alleen admin) -->
+                    <!-- Sensor tokens (admin only) -->
                     <div class="mb-3">
                         <label class="form-label"><i class="bi bi-key"></i> Tokens</label>
-                        <div id="edit-sensor-tokens" class="small text-muted">Laden...</div>
+                        <div id="edit-sensor-tokens" class="small text-muted">Loading...</div>
                     </div>
 
                     <div class="alert alert-info">
@@ -2772,9 +2772,9 @@
     </script>
 
     <!-- Custom JS - Load last with defer -->
-    <script src="{{ url_for('static', filename='js/dashboard.js') }}?v=21" defer></script>
-    <script src="{{ url_for('static', filename='js/config-management.js')}}?v=9" defer></script>
-    <script src="{{ url_for('static', filename='js/device-classification.js') }}?v=13" defer></script>
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}?v=22" defer></script>
+    <script src="{{ url_for('static', filename='js/config-management.js')}}?v=10" defer></script>
+    <script src="{{ url_for('static', filename='js/device-classification.js') }}?v=14" defer></script>
 
     <!-- Hide loading overlay when DOM is ready -->
     <script>

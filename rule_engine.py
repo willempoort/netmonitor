@@ -90,16 +90,16 @@ class RuleValidationError(ValueError):
 
 def _check_regex_safety(pattern: str) -> None:
     if len(pattern) > MAX_REGEX_LENGTH:
-        raise RuleValidationError(f'regex langer dan {MAX_REGEX_LENGTH} tekens')
+        raise RuleValidationError(f'regex longer than {MAX_REGEX_LENGTH} characters')
     if _NESTED_QUANTIFIER_RE.search(pattern):
         raise RuleValidationError(
-            'geneste kwantor (zoals (a+)+) is niet toegestaan: risico op ReDoS')
+            'nested quantifier (such as (a+)+) is not allowed: ReDoS risk')
     if _BACKREF_RE.search(pattern):
-        raise RuleValidationError('backreferences zijn niet toegestaan')
+        raise RuleValidationError('backreferences are not allowed')
     try:
         re.compile(pattern)
     except re.error as e:
-        raise RuleValidationError(f'ongeldige regex: {e}')
+        raise RuleValidationError(f'invalid regex: {e}')
 
 
 def parse_port_spec(value) -> List[Tuple[int, int]]:
@@ -113,16 +113,16 @@ def parse_port_spec(value) -> List[Tuple[int, int]]:
     elif isinstance(value, str):
         items = [p for p in value.replace(' ', '').split(',') if p]
     else:
-        raise RuleValidationError(f'ongeldige poortwaarde: {value!r}')
+        raise RuleValidationError(f'invalid port value: {value!r}')
     ranges = []
     for item in items:
         m = re.fullmatch(r'(\d{1,5})(?:-(\d{1,5}))?', item.strip())
         if not m:
-            raise RuleValidationError(f'ongeldige poort of bereik: {item!r}')
+            raise RuleValidationError(f'invalid port or range: {item!r}')
         lo = int(m.group(1))
         hi = int(m.group(2)) if m.group(2) else lo
         if lo > hi or hi > 65535:
-            raise RuleValidationError(f'ongeldig bereik: {item!r}')
+            raise RuleValidationError(f'invalid range: {item!r}')
         ranges.append((lo, hi))
     return ranges
 
@@ -131,13 +131,13 @@ def _as_list(name: str, value) -> List[str]:
     if isinstance(value, str):
         value = [value]
     if not isinstance(value, (list, tuple)) or not value:
-        raise RuleValidationError(f'{name}: verwacht een lijst met waarden')
+        raise RuleValidationError(f'{name}: expected a list of values')
     if len(value) > MAX_LIST_ITEMS:
-        raise RuleValidationError(f'{name}: maximaal {MAX_LIST_ITEMS} waarden')
+        raise RuleValidationError(f'{name}: at most {MAX_LIST_ITEMS} values')
     out = []
     for v in value:
         if not isinstance(v, (str, int)) or isinstance(v, bool) or str(v).strip() == '':
-            raise RuleValidationError(f'{name}: ongeldige waarde {v!r}')
+            raise RuleValidationError(f'{name}: invalid value {v!r}')
         out.append(str(v).strip())
     return out
 
@@ -148,13 +148,13 @@ def validate_match(match: Any) -> Dict[str, Any]:
         try:
             match = json.loads(match)
         except ValueError as e:
-            raise RuleValidationError(f'match is geen geldige JSON: {e}')
+            raise RuleValidationError(f'match is not valid JSON: {e}')
     if not isinstance(match, dict) or not match:
-        raise RuleValidationError('match moet een niet-leeg object zijn')
+        raise RuleValidationError('match must be a non-empty object')
 
     unknown = set(match) - ALLOWED_MATCH_FIELDS
     if unknown:
-        raise RuleValidationError(f'onbekende velden: {", ".join(sorted(unknown))}')
+        raise RuleValidationError(f'unknown fields: {", ".join(sorted(unknown))}')
 
     clean: Dict[str, Any] = {}
     for key, value in match.items():
@@ -165,14 +165,14 @@ def validate_match(match: Any) -> Dict[str, Any]:
                     try:
                         ipaddress.ip_network(c, strict=False)
                     except ValueError:
-                        raise RuleValidationError(f'{key}: ongeldig netwerk {c!r}')
+                        raise RuleValidationError(f'{key}: invalid network {c!r}')
             elif key == 'dns_qtype':
                 items = [i.upper() for i in items]
                 bad = [i for i in items if i not in DNS_QTYPE_NAMES]
                 if bad:
                     raise RuleValidationError(
-                        f'dns_qtype: onbekend type {", ".join(bad)} '
-                        f'(kies uit {", ".join(sorted(DNS_QTYPE_NAMES))})')
+                        f'dns_qtype: unknown type {", ".join(bad)} '
+                        f'(choose from {", ".join(sorted(DNS_QTYPE_NAMES))})')
             elif key == 'http_method':
                 items = [i.upper() for i in items]
             elif key in ('dns_qname_suffix', 'tls_sni_suffix'):
@@ -180,89 +180,89 @@ def validate_match(match: Any) -> Dict[str, Any]:
             elif key == 'ja3':
                 items = [i.lower() for i in items]
                 if any(not re.fullmatch(r'[0-9a-f]{32}', i) for i in items):
-                    raise RuleValidationError('ja3: verwacht MD5-hashes (32 hex-tekens)')
+                    raise RuleValidationError('ja3: expected MD5 hashes (32 hex characters)')
             elif key == 'device_class':
                 items = [i.lower() for i in items]
             clean[key] = items
         elif key in REGEX_FIELDS:
             if not isinstance(value, str) or not value:
-                raise RuleValidationError(f'{key}: verwacht een regex-tekst')
+                raise RuleValidationError(f'{key}: expected a regex string')
             _check_regex_safety(value)
             clean[key] = value
         elif key in PORT_FIELDS:
             ranges = parse_port_spec(value)
             if not ranges:
-                raise RuleValidationError(f'{key}: leeg')
+                raise RuleValidationError(f'{key}: empty')
             if key == 'payload_size':
                 if any(hi > MAX_SCAN_BYTES * 16 for _, hi in ranges):
-                    raise RuleValidationError('payload_size: te groot')
+                    raise RuleValidationError('payload_size: too large')
             clean[key] = ','.join(f'{lo}' if lo == hi else f'{lo}-{hi}' for lo, hi in ranges)
         elif key == 'protocol':
             v = str(value).lower()
             if v not in PROTOCOLS:
-                raise RuleValidationError(f'protocol: kies uit {", ".join(PROTOCOLS)}')
+                raise RuleValidationError(f'protocol: choose from {", ".join(PROTOCOLS)}')
             clean[key] = v
         elif key == 'direction':
             v = str(value).lower()
             if v not in DIRECTIONS:
-                raise RuleValidationError(f'direction: kies uit {", ".join(DIRECTIONS)}')
+                raise RuleValidationError(f'direction: choose from {", ".join(DIRECTIONS)}')
             clean[key] = v
         elif key == 'payload_hex_prefix':
             v = str(value).replace(' ', '').lower()
             if not re.fullmatch(r'(?:[0-9a-f]{2}){1,64}', v):
-                raise RuleValidationError('payload_hex_prefix: verwacht hex-bytes, bijv. "01000000"')
+                raise RuleValidationError('payload_hex_prefix: expected hex bytes, e.g. "01000000"')
             clean[key] = v
         elif key in ('new_connection', 'nocase'):
             if not isinstance(value, bool):
-                raise RuleValidationError(f'{key}: verwacht true of false')
+                raise RuleValidationError(f'{key}: expected true or false')
             clean[key] = value
         elif key == 'device_class_of':
             v = str(value).lower()
             if v not in ('src', 'dst'):
-                raise RuleValidationError('device_class_of: kies src of dst')
+                raise RuleValidationError('device_class_of: choose src or dst')
             clean[key] = v
 
     kinds = [n for n, fields in (('dns', DNS_FIELDS), ('tls', TLS_FIELDS), ('http', HTTP_FIELDS))
              if fields & set(clean)]
     if len(kinds) > 1:
         raise RuleValidationError(
-            f'een regel kan niet tegelijk {" en ".join(kinds).upper()}-velden gebruiken')
+            f'a rule cannot combine {" and ".join(kinds).upper()} fields')
     if kinds == ['dns'] and clean.get('protocol') == 'icmp':
-        raise RuleValidationError('DNS-velden gaan niet samen met protocol icmp')
+        raise RuleValidationError('DNS fields cannot be combined with protocol icmp')
     if kinds and kinds[0] in ('tls', 'http') and clean.get('protocol') in ('udp', 'icmp'):
-        raise RuleValidationError(f'{kinds[0].upper()}-velden vereisen protocol tcp')
+        raise RuleValidationError(f'{kinds[0].upper()} fields require protocol tcp')
     if clean.get('new_connection') and clean.get('protocol') in ('udp', 'icmp'):
-        raise RuleValidationError('new_connection geldt alleen voor tcp')
+        raise RuleValidationError('new_connection only applies to tcp')
 
     # Een regel die op elk pakket matcht is vrijwel zeker een vergissing
     meaningful = set(clean) - {'protocol', 'direction', 'nocase', 'device_class_of', 'new_connection'}
     if not meaningful:
         raise RuleValidationError(
-            'regel is te breed: voeg minstens een poort-, adres-, inhoud-, DNS-, TLS- of apparaatveld toe')
+            'rule is too broad: add at least a port, address, content, DNS, TLS or device field')
     return clean
 
 
 def validate_rule(rule: Dict[str, Any]) -> Dict[str, Any]:
     """Valideer een volledige regel (zoals uit API of database). Geeft een schone kopie terug."""
     if not isinstance(rule, dict):
-        raise RuleValidationError('regel moet een object zijn')
+        raise RuleValidationError('rule must be an object')
     name = str(rule.get('name') or '').strip()
     if not name or len(name) > 200:
-        raise RuleValidationError('name is verplicht (max 200 tekens)')
+        raise RuleValidationError('name is required (max 200 characters)')
 
     rule_key = str(rule.get('rule_key') or '').strip().lower()
     if not rule_key:
         rule_key = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')[:80] or 'regel'
     if not RULE_KEY_RE.match(rule_key):
-        raise RuleValidationError('rule_key: alleen kleine letters, cijfers, punt, - en _ (max 80 tekens)')
+        raise RuleValidationError('rule_key: only lowercase letters, digits, dot, - and _ (max 80 characters)')
 
     severity = str(rule.get('severity') or 'MEDIUM').upper()
     if severity not in SEVERITIES:
-        raise RuleValidationError(f'severity: kies uit {", ".join(SEVERITIES)}')
+        raise RuleValidationError(f'severity: choose from {", ".join(SEVERITIES)}')
 
     alert_type = str(rule.get('alert_type') or DEFAULT_ALERT_TYPE).upper()
     if not ALERT_TYPE_RE.match(alert_type):
-        raise RuleValidationError('alert_type: hoofdletters, cijfers en _ (3-50 tekens)')
+        raise RuleValidationError('alert_type: uppercase letters, digits and _ (3-50 characters)')
 
     def _int(name, default, lo, hi):
         value = rule.get(name)
@@ -271,22 +271,22 @@ def validate_rule(rule: Dict[str, Any]) -> Dict[str, Any]:
         try:
             value = int(value)
         except (TypeError, ValueError):
-            raise RuleValidationError(f'{name}: verwacht een geheel getal')
+            raise RuleValidationError(f'{name}: expected an integer')
         if not lo <= value <= hi:
-            raise RuleValidationError(f'{name}: tussen {lo} en {hi}')
+            raise RuleValidationError(f'{name}: between {lo} and {hi}')
         return value
 
     track_by = str(rule.get('track_by') or 'src').lower()
     if track_by not in TRACK_BY:
-        raise RuleValidationError(f'track_by: kies uit {", ".join(TRACK_BY)}')
+        raise RuleValidationError(f'track_by: choose from {", ".join(TRACK_BY)}')
 
     cve = str(rule.get('cve') or '').strip().upper() or None
     if cve and not re.fullmatch(r'CVE-\d{4}-\d{4,7}(?:\s*,\s*CVE-\d{4}-\d{4,7})*', cve):
-        raise RuleValidationError('cve: verwacht CVE-JJJJ-NNNN (meerdere gescheiden door komma)')
+        raise RuleValidationError('cve: expected CVE-YYYY-NNNN (separate multiple with commas)')
 
     reference_url = str(rule.get('reference_url') or '').strip() or None
     if reference_url and not re.match(r'^https?://', reference_url):
-        raise RuleValidationError('reference_url moet met http:// of https:// beginnen')
+        raise RuleValidationError('reference_url must start with http:// or https://')
 
     return {
         'rule_key': rule_key,
@@ -852,7 +852,7 @@ class RuleEngine:
         elif ctx.dst_port is not None:
             detail = f' ({ctx.proto.upper()}/{ctx.dst_port})'
         if count > 1:
-            detail += f', {count}x binnen {rule.threshold_window}s'
+            detail += f', {count}x within {rule.threshold_window}s'
         prefix = f'[{rule.cve}] ' if rule.cve else ''
 
         metadata = {
@@ -904,10 +904,9 @@ _DOH_IPS = [
 BUILTIN_RULES: List[Dict[str, Any]] = [
     {
         'rule_key': 'builtin.doh-from-iot',
-        'name': 'IoT-apparaat gebruikt DNS-over-HTTPS',
-        'description': 'IoT-botnets (o.a. JackSkid) zoeken hun C2-adres op via DoH, '
-                       'waardoor DNS-tunnel- en DGA-detectie het niet ziet. '
-                       'Een IoT-apparaat hoort de lokale resolver te gebruiken.',
+        'name': 'IoT device uses DNS-over-HTTPS',
+        'description': 'IoT botnets (e.g. JackSkid) look up their C2 address via DoH, which hides it '
+                       'from DNS tunnel and DGA detection. An IoT device should use the local resolver.',
         'reference_url': 'https://github.com/deepfield/public-research/blob/main/reports/2026-03-20-aisuru-ecosystem.md',
         'severity': 'MEDIUM', 'alert_type': 'DOH_FROM_IOT',
         'match': {'tls_sni_suffix': _DOH_HOSTS, 'direction': 'outbound', 'device_class': ['iot']},
@@ -915,9 +914,9 @@ BUILTIN_RULES: List[Dict[str, Any]] = [
     },
     {
         'rule_key': 'builtin.doh-ip-from-iot',
-        'name': 'IoT-apparaat verbindt met publieke DoH-resolver op IP',
-        'description': 'Zelfde patroon als DoH via hostnaam, maar direct naar het IP-adres '
-                       '(zonder SNI) van een publieke resolver op poort 443.',
+        'name': 'IoT device connects to a public DoH resolver by IP',
+        'description': 'Same pattern as DoH by hostname, but directly to the IP address (without SNI) of '
+                       'a public resolver on port 443.',
         'severity': 'MEDIUM', 'alert_type': 'DOH_FROM_IOT',
         'match': {'protocol': 'tcp', 'dst_port': '443', 'dst_cidr': _DOH_IPS,
                   'new_connection': True, 'direction': 'outbound', 'device_class': ['iot']},
@@ -925,9 +924,9 @@ BUILTIN_RULES: List[Dict[str, Any]] = [
     },
     {
         'rule_key': 'builtin.dns-txt-burst-iot',
-        'name': 'IoT-apparaat doet veel DNS TXT-opvragingen',
-        'description': 'AISURU en TuxBot v3 halen C2-gegevens op via TXT-records. '
-                       'IoT-apparaten hebben TXT-records normaal nauwelijks nodig.',
+        'name': 'IoT device makes many DNS TXT queries',
+        'description': 'AISURU and TuxBot v3 retrieve C2 data via TXT records. IoT devices rarely need '
+                       'TXT records.',
         'reference_url': 'https://thehackernews.com/2026/07/tuxbot-v3-evolution-shows-signs-of-llm.html',
         'severity': 'MEDIUM', 'alert_type': 'DNS_TXT_C2_SUSPECTED',
         'match': {'dns_qtype': ['TXT'], 'device_class': ['iot']},
@@ -935,9 +934,9 @@ BUILTIN_RULES: List[Dict[str, Any]] = [
     },
     {
         'rule_key': 'builtin.ens-blockchain-c2',
-        'name': 'Opvraging van ENS-/blockchain-domein',
-        'description': 'Botnets als Dysphoria vinden hun C2-server via Ethereum Name Service '
-                       '(.eth) of publieke Ethereum-RPC-diensten.',
+        'name': 'Query for an ENS/blockchain domain',
+        'description': 'Botnets such as Dysphoria find their C2 server via Ethereum Name Service (.eth) '
+                       'or public Ethereum RPC services.',
         'reference_url': 'https://thehackernews.com/2026/07/dysphoria-iot-botnet-adds-blockchain-c2.html',
         'severity': 'MEDIUM', 'alert_type': 'BLOCKCHAIN_C2_SUSPECTED',
         'match': {'dns_qname_suffix': ['eth', 'eth.limo', 'eth.link', 'eth.sucks']},
@@ -945,10 +944,10 @@ BUILTIN_RULES: List[Dict[str, Any]] = [
     },
     {
         'rule_key': 'builtin.eth-rpc-from-device',
-        'name': 'IoT-/serverapparaat praat met Ethereum-RPC-dienst',
-        'description': 'Blockchain-RPC wordt gebruikt om C2-adressen uit smart contracts te lezen. '
-                       'Op werkplekken kan dit legitiem zijn (wallets), daarom alleen voor '
-                       'IoT, infrastructuur en servers.',
+        'name': 'IoT/server device talks to an Ethereum RPC service',
+        'description': 'Blockchain RPC is used to read C2 addresses from smart contracts. This can be '
+                       'legitimate on workstations (wallets), so the rule only covers IoT, '
+                       'infrastructure and servers.',
         'severity': 'MEDIUM', 'alert_type': 'BLOCKCHAIN_C2_SUSPECTED',
         'match': {'dns_qname_suffix': ['infura.io', 'alchemy.com', 'alchemyapi.io',
                                        'cloudflare-eth.com', 'rpc.ankr.com', 'llamarpc.com',
@@ -959,10 +958,10 @@ BUILTIN_RULES: List[Dict[str, Any]] = [
     },
     {
         'rule_key': 'builtin.dead-drop-from-iot',
-        'name': 'IoT-/netwerkapparaat bezoekt dead-drop-dienst',
-        'description': 'Malware haalt C2-instructies op van Telegram, Pastebin en vergelijkbare '
-                       'diensten (dead drop resolver). Voor IoT en netwerkapparatuur is dat '
-                       'vrijwel nooit legitiem.',
+        'name': 'IoT/network device contacts a dead-drop service',
+        'description': 'Malware fetches C2 instructions from Telegram, Pastebin and similar services '
+                       '(dead drop resolver). For IoT and network equipment this is almost never '
+                       'legitimate.',
         'reference_url': 'https://www.trellix.com/advanced-research-center/threat-reports/november-2026/',
         'severity': 'HIGH', 'alert_type': 'DEAD_DROP_RESOLVER',
         'match': {'dns_qname_suffix': ['api.telegram.org', 'pastebin.com', 'paste.ee',
@@ -973,10 +972,9 @@ BUILTIN_RULES: List[Dict[str, Any]] = [
     },
     {
         'rule_key': 'builtin.wireguard-handshake-out',
-        'name': 'Uitgaande WireGuard-tunnel opgezet',
-        'description': 'WireGuard handshake-initiatie (type 1, 148 bytes) naar buiten. '
-                       'Aanvallers installeren VPN-clients om C2-verkeer te verbergen '
-                       '(CISA AA26-281A). Whitelist bekende VPN-gateways.',
+        'name': 'Outbound WireGuard tunnel established',
+        'description': 'Outbound WireGuard handshake initiation (type 1, 148 bytes). Attackers install '
+                       'VPN clients to hide C2 traffic (CISA AA26-281A). Whitelist known VPN gateways.',
         'reference_url': 'https://www.cisa.gov/news-events/cybersecurity-advisories/aa26-281a',
         'severity': 'MEDIUM', 'alert_type': 'VPN_TUNNEL_DETECTED',
         'match': {'protocol': 'udp', 'direction': 'outbound',
@@ -985,10 +983,9 @@ BUILTIN_RULES: List[Dict[str, Any]] = [
     },
     {
         'rule_key': 'builtin.openvpn-out',
-        'name': 'Uitgaande OpenVPN-verbinding',
-        'description': 'Verbinding naar de standaard OpenVPN-poort 1194. '
-                       'Aanvallers installeren VPN-clients om C2-verkeer te verbergen '
-                       '(CISA AA26-281A). Whitelist bekende VPN-gateways.',
+        'name': 'Outbound OpenVPN connection',
+        'description': 'Connection to the standard OpenVPN port 1194. Attackers install VPN clients to '
+                       'hide C2 traffic (CISA AA26-281A). Whitelist known VPN gateways.',
         'reference_url': 'https://www.cisa.gov/news-events/cybersecurity-advisories/aa26-281a',
         'severity': 'MEDIUM', 'alert_type': 'VPN_TUNNEL_DETECTED',
         'match': {'dst_port': '1194', 'direction': 'outbound'},
@@ -996,10 +993,10 @@ BUILTIN_RULES: List[Dict[str, Any]] = [
     },
     {
         'rule_key': 'builtin.remote-access-tool',
-        'name': 'Remote-access- of tunneldienst gebruikt',
-        'description': 'AnyDesk, RustDesk, ScreenConnect, Tailscale, ZeroTier, ngrok en '
-                       'Cloudflare-tunnels worden door aanvallers gebruikt voor blijvende '
-                       'toegang. Kan legitiem zijn; whitelist bekend gebruik.',
+        'name': 'Remote access or tunnel service used',
+        'description': 'AnyDesk, RustDesk, ScreenConnect, Tailscale, ZeroTier, ngrok and Cloudflare '
+                       'tunnels are used by attackers for persistent access. May be legitimate; '
+                       'whitelist known use.',
         'severity': 'LOW', 'alert_type': 'REMOTE_ACCESS_TOOL',
         'match': {'dns_qname_suffix': ['net.anydesk.com', 'anydesk.com', 'rustdesk.com',
                                        'screenconnect.com', 'controlplane.tailscale.com',
@@ -1008,3 +1005,36 @@ BUILTIN_RULES: List[Dict[str, Any]] = [
         'threshold_count': 1, 'threshold_window': 60, 'cooldown': 86400, 'track_by': 'src',
     },
 ]
+
+# Oorspronkelijke (Nederlandse) teksten van de standaardregels tot v2.10.6.
+# init_builtin_detection_rules vervangt ze door de Engelse tekst zolang een
+# beheerder ze niet zelf heeft aangepast.
+LEGACY_BUILTIN_TEXT: Dict[str, Tuple[str, str]] = {
+    'builtin.doh-from-iot': (
+        'IoT-apparaat gebruikt DNS-over-HTTPS',
+        'IoT-botnets (o.a. JackSkid) zoeken hun C2-adres op via DoH, waardoor DNS-tunnel- en DGA-detectie het niet ziet. Een IoT-apparaat hoort de lokale resolver te gebruiken.'),
+    'builtin.doh-ip-from-iot': (
+        'IoT-apparaat verbindt met publieke DoH-resolver op IP',
+        'Zelfde patroon als DoH via hostnaam, maar direct naar het IP-adres (zonder SNI) van een publieke resolver op poort 443.'),
+    'builtin.dns-txt-burst-iot': (
+        'IoT-apparaat doet veel DNS TXT-opvragingen',
+        'AISURU en TuxBot v3 halen C2-gegevens op via TXT-records. IoT-apparaten hebben TXT-records normaal nauwelijks nodig.'),
+    'builtin.ens-blockchain-c2': (
+        'Opvraging van ENS-/blockchain-domein',
+        'Botnets als Dysphoria vinden hun C2-server via Ethereum Name Service (.eth) of publieke Ethereum-RPC-diensten.'),
+    'builtin.eth-rpc-from-device': (
+        'IoT-/serverapparaat praat met Ethereum-RPC-dienst',
+        'Blockchain-RPC wordt gebruikt om C2-adressen uit smart contracts te lezen. Op werkplekken kan dit legitiem zijn (wallets), daarom alleen voor IoT, infrastructuur en servers.'),
+    'builtin.dead-drop-from-iot': (
+        'IoT-/netwerkapparaat bezoekt dead-drop-dienst',
+        'Malware haalt C2-instructies op van Telegram, Pastebin en vergelijkbare diensten (dead drop resolver). Voor IoT en netwerkapparatuur is dat vrijwel nooit legitiem.'),
+    'builtin.wireguard-handshake-out': (
+        'Uitgaande WireGuard-tunnel opgezet',
+        'WireGuard handshake-initiatie (type 1, 148 bytes) naar buiten. Aanvallers installeren VPN-clients om C2-verkeer te verbergen (CISA AA26-281A). Whitelist bekende VPN-gateways.'),
+    'builtin.openvpn-out': (
+        'Uitgaande OpenVPN-verbinding',
+        'Verbinding naar de standaard OpenVPN-poort 1194. Aanvallers installeren VPN-clients om C2-verkeer te verbergen (CISA AA26-281A). Whitelist bekende VPN-gateways.'),
+    'builtin.remote-access-tool': (
+        'Remote-access- of tunneldienst gebruikt',
+        'AnyDesk, RustDesk, ScreenConnect, Tailscale, ZeroTier, ngrok en Cloudflare-tunnels worden door aanvallers gebruikt voor blijvende toegang. Kan legitiem zijn; whitelist bekend gebruik.'),
+}

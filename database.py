@@ -60,7 +60,7 @@ class DatabaseManager:
             raise
 
         # Check schema version - skip heavy init if already up to date
-        SCHEMA_VERSION = 36  # Increment this when schema changes (v36: sensor_configs zonder dubbele globale rijen)
+        SCHEMA_VERSION = 37  # Increment this when schema changes (v37: standaard-patroonregels met Engelse tekst)
 
         # Schema initialisatie met automatisch herstel bij TimescaleDB versie-mismatch na apt upgrade
         for _attempt in range(2):
@@ -3350,7 +3350,7 @@ class DatabaseManager:
 
     def init_builtin_detection_rules(self) -> int:
         """Voeg ontbrekende standaardregels toe; bestaande (ook aangepaste) blijven ongemoeid."""
-        from rule_engine import BUILTIN_RULES, validate_rule
+        from rule_engine import BUILTIN_RULES, LEGACY_BUILTIN_TEXT, validate_rule
         conn = self._get_connection()
         added = 0
         try:
@@ -3370,6 +3370,19 @@ class DatabaseManager:
                       rule['threshold_window'], rule['cooldown'], rule['track_by'],
                       rule['enabled']))
                 added += cursor.rowcount
+                # Tekst bijwerken naar de huidige versie (v2.10.6: Engels),
+                # maar alleen als naam/omschrijving nog exact de oude
+                # standaardtekst zijn; door een beheerder aangepaste tekst blijft.
+                legacy = LEGACY_BUILTIN_TEXT.get(rule['rule_key'])
+                if legacy:
+                    cursor.execute('''
+                        UPDATE detection_rules SET name = %s
+                        WHERE rule_key = %s AND is_builtin AND name = %s
+                    ''', (rule['name'], rule['rule_key'], legacy[0]))
+                    cursor.execute('''
+                        UPDATE detection_rules SET description = %s
+                        WHERE rule_key = %s AND is_builtin AND description = %s
+                    ''', (rule['description'], rule['rule_key'], legacy[1]))
             conn.commit()
             return added
         except Exception as e:

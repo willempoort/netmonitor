@@ -10,148 +10,148 @@ let packetsGauge, alertsGauge, cpuGauge, memoryGauge, diskGauge;
 const THREAT_INFO = {
     'PORT_SCAN': {
         name: 'Port Scan',
-        description: 'Een aanvaller scant systematisch meerdere poorten op een systeem om open services te vinden.',
-        impact: 'HOOG - Dit is vaak de eerste stap in een aanval. Geeft aanvaller informatie over kwetsbare services.',
+        description: 'An attacker systematically scans multiple ports on a system to find open services.',
+        impact: 'HIGH - Often the first step of an attack. Tells the attacker which services may be vulnerable.',
         icon: 'bi-radar',
         color: '#dc3545'
     },
     'CONNECTION_FLOOD': {
         name: 'Connection Flood',
-        description: 'Overmatig aantal connectie-pogingen in korte tijd, mogelijk DDoS aanval of gecompromitteerd systeem.',
-        impact: 'CRITICAL - Kan services overweldigen en offline halen. Resource uitputting.',
+        description: 'Excessive number of connection attempts in a short time; possible DDoS attack or compromised system.',
+        impact: 'CRITICAL - Can overwhelm services and take them offline. Resource exhaustion.',
         icon: 'bi-tsunami',
         color: '#dc3545'
     },
     'DNS_TUNNELING': {
         name: 'DNS Tunneling',
-        description: 'Verdacht DNS verkeer dat mogelijk gebruikt wordt om data te exfiltreren of C&C communicatie te verbergen.',
-        impact: 'HOOG - Data exfiltratie, command & control communicatie, bypassing van firewalls.',
+        description: 'Suspicious DNS traffic that may be used to exfiltrate data or hide C&C communication.',
+        impact: 'HIGH - Data exfiltration, command & control communication, firewall bypass.',
         icon: 'bi-diagram-3',
         color: '#fd7e14'
     },
     'DNS_DGA_DETECTED': {
         name: 'DNS DGA Detected',
-        description: 'DNS-query met kenmerken van een Domain Generation Algorithm (hoge entropie/willekeurige subdomeinnaam) - malware gebruikt dit om C&C-domeinen te genereren die detectie/blokkades omzeilen.',
-        impact: 'HOOG - Sterke indicatie van malware infectie die actief een C&C-server probeert te bereiken.',
+        description: 'DNS query with characteristics of a Domain Generation Algorithm (high entropy / random subdomain) - malware uses this to generate C&C domains that evade detection and blocking.',
+        impact: 'HIGH - Strong indication of a malware infection actively trying to reach a C&C server.',
         icon: 'bi-hash',
         color: '#fd7e14'
     },
     'DGA_DETECTED': {
         name: 'DGA Detected',
-        description: 'Subdomeinnaam met DGA-kenmerken (lang, veel cijfers, geen herkenbaar patroon) - mogelijk algoritmisch gegenereerd C&C-domein.',
-        impact: 'HOOG - Sterke indicatie van malware infectie die actief een C&C-server probeert te bereiken.',
+        description: 'Subdomain with DGA characteristics (long, many digits, no recognizable pattern) - possibly an algorithmically generated C&C domain.',
+        impact: 'HIGH - Strong indication of a malware infection actively trying to reach a C&C server.',
         icon: 'bi-hash',
         color: '#fd7e14'
     },
     'LARGE_PACKET': {
         name: 'Large Packet',
-        description: 'Ongebruikelijk grote pakketten die kunnen wijzen op data exfiltratie of buffer overflow pogingen.',
-        impact: 'MEDIUM - Mogelijke data diefstal of exploit poging.',
+        description: 'Unusually large packets that may indicate data exfiltration or buffer overflow attempts.',
+        impact: 'MEDIUM - Possible data theft or exploit attempt.',
         icon: 'bi-box-arrow-up',
         color: '#ffc107'
     },
     'BLACKLIST_IP': {
         name: 'Blacklisted IP',
-        description: 'Communicatie met een IP adres dat bekend staat als malicious (malware C&C, phishing, etc).',
-        impact: 'CRITICAL - Gecompromitteerd systeem. Mogelijke malware infectie of data breach.',
+        description: 'Communication with an IP address known to be malicious (malware C&C, phishing, etc.).',
+        impact: 'CRITICAL - Compromised system. Possible malware infection or data breach.',
         icon: 'bi-shield-x',
         color: '#dc3545'
     },
     'THREAT_FEED_MATCH': {
         name: 'Threat Feed Match',
-        description: 'Match met bekende Indicator of Compromise (IOC) uit threat intelligence feeds.',
-        impact: 'CRITICAL - Zeer waarschijnlijk gecompromitteerd. Malware communicatie gedetecteerd.',
+        description: 'Match with a known Indicator of Compromise (IOC) from threat intelligence feeds.',
+        impact: 'CRITICAL - Very likely compromised. Malware communication detected.',
         icon: 'bi-exclamation-octagon',
         color: '#dc3545'
     },
     'BEACONING_DETECTED': {
         name: 'Beaconing',
-        description: 'Regelmatige, periodieke verbindingen naar externe server - typisch gedrag van malware.',
-        impact: 'CRITICAL - Zeer sterke indicatie van malware infectie. C&C communicatie actief.',
+        description: 'Regular, periodic connections to an external server - typical malware behavior.',
+        impact: 'CRITICAL - Very strong indication of malware infection. Active C&C communication.',
         icon: 'bi-broadcast',
         color: '#dc3545'
     },
     'HIGH_OUTBOUND_VOLUME': {
         name: 'High Outbound Volume',
-        description: 'Ongewoon hoog uitgaand verkeer, mogelijke data exfiltratie.',
-        impact: 'HOOG - Data diefstal in uitvoering. Database dump, bestandsdiefstal.',
+        description: 'Unusually high outbound traffic; possible data exfiltration.',
+        impact: 'HIGH - Data theft in progress. Database dump, file theft.',
         icon: 'bi-upload',
         color: '#fd7e14'
     },
     'LATERAL_MOVEMENT': {
         name: 'Lateral Movement',
-        description: 'Intern systeem scant andere interne systemen - typisch voor aanvallers die netwerk verkennen.',
-        impact: 'CRITICAL - Actieve aanval in uitvoering. Aanvaller beweegt door netwerk.',
+        description: 'Internal system scanning other internal systems - typical of attackers exploring the network.',
+        impact: 'CRITICAL - Active attack in progress. Attacker moving through the network.',
         icon: 'bi-arrows-move',
         color: '#dc3545'
     },
     'BRUTE_FORCE_ATTEMPT': {
         name: 'Brute Force Attempt',
-        description: 'Herhaalde login pogingen op authenticatie services (SSH, RDP, FTP, etc.).',
-        impact: 'HOOG - Aanvaller probeert in te breken via wachtwoord gissen. Mogelijk compromittering.',
+        description: 'Repeated login attempts on authentication services (SSH, RDP, FTP, etc.).',
+        impact: 'HIGH - Attacker trying to break in by guessing passwords. Possible compromise.',
         icon: 'bi-key',
         color: '#dc3545'
     },
     'HTTP_NON_STANDARD_PORT': {
         name: 'HTTP on Non-Standard Port',
-        description: 'HTTP verkeer gedetecteerd op ongebruikelijke poort - mogelijke verberging van malware traffic.',
-        impact: 'MEDIUM - Mogelijk bypassing van security controls, verborgen communicatie.',
+        description: 'HTTP traffic on an unusual port - may be hiding malware traffic.',
+        impact: 'MEDIUM - Possible bypass of security controls, hidden communication.',
         icon: 'bi-globe',
         color: '#ffc107'
     },
     'SSH_NON_STANDARD_PORT': {
         name: 'SSH on Non-Standard Port',
-        description: 'SSH verkeer op andere poort dan 22 - mogelijk backdoor of verborgen toegang.',
-        impact: 'MEDIUM - Mogelijk ongeautoriseerde remote access, backdoor.',
+        description: 'SSH traffic on a port other than 22 - possible backdoor or hidden access.',
+        impact: 'MEDIUM - Possible unauthorized remote access, backdoor.',
         icon: 'bi-terminal',
         color: '#ffc107'
     },
     'DNS_NON_STANDARD_PORT': {
         name: 'DNS on Non-Standard Port',
-        description: 'DNS verkeer op andere poort dan 53 - sterke indicator voor DNS tunneling.',
-        impact: 'HOOG - Mogelijk DNS tunneling voor C&C communicatie of data exfiltratie.',
+        description: 'DNS traffic on a port other than 53 - strong indicator of DNS tunneling.',
+        impact: 'HIGH - Possible DNS tunneling for C&C communication or data exfiltration.',
         icon: 'bi-diagram-2',
         color: '#fd7e14'
     },
     'FTP_NON_STANDARD_PORT': {
         name: 'FTP on Non-Standard Port',
-        description: 'FTP verkeer op ongebruikelijke poort - mogelijke verborgen data transfer.',
-        impact: 'MEDIUM - Mogelijk ongeautoriseerde data transfers.',
+        description: 'FTP traffic on an unusual port - possible hidden data transfer.',
+        impact: 'MEDIUM - Possible unauthorized data transfers.',
         icon: 'bi-file-earmark-arrow-up',
         color: '#ffc107'
     },
     'ABUSEIPDB_HIGH_SCORE': {
         name: 'AbuseIPDB High Score',
-        description: 'IP adres met hoge abuse score op AbuseIPDB - gerapporteerd door meerdere bronnen.',
-        impact: 'HOOG - Bekend malicious IP. Scanners, brute force attacks, spam.',
+        description: 'IP address with a high abuse score on AbuseIPDB - reported by multiple sources.',
+        impact: 'HIGH - Known malicious IP. Scanners, brute force attacks, spam.',
         icon: 'bi-database-exclamation',
         color: '#fd7e14'
     },
     'BASELINE_NEW_DESTINATION': {
-        name: 'Nieuwe Bestemming (Baseline)',
-        description: 'Apparaat verbindt met een bestemming die niet voorkomt in het geleerde gedragsprofiel van dit specifieke apparaat.',
-        impact: 'MEDIUM - Mogelijk gecompromitteerd apparaat of nieuw legitiem gebruik. Vergelijk met bekende bestemmingen.',
+        name: 'New Destination (Baseline)',
+        description: 'Device connects to a destination that is not in the learned behavior profile of this specific device.',
+        impact: 'MEDIUM - Possibly a compromised device or new legitimate use. Compare with known destinations.',
         icon: 'bi-signpost-split',
         color: '#ffc107'
     },
     'BASELINE_NEW_PORT': {
-        name: 'Nieuwe Poort (Baseline)',
-        description: 'Apparaat gebruikt een poort die niet eerder is gezien in het geleerde gedragsprofiel van dit specifieke apparaat.',
-        impact: 'MEDIUM - Mogelijk nieuwe dienst of ongeautoriseerd gebruik van het apparaat.',
+        name: 'New Port (Baseline)',
+        description: 'Device uses a port not previously seen in the learned behavior profile of this specific device.',
+        impact: 'MEDIUM - Possibly a new service or unauthorized use of the device.',
         icon: 'bi-plug',
         color: '#ffc107'
     },
     'BASELINE_NEW_PROTOCOL': {
-        name: 'Nieuw Protocol (Baseline)',
-        description: 'Apparaat gebruikt een protocol dat niet eerder is gezien in het geleerde gedragsprofiel van dit specifieke apparaat.',
-        impact: 'MEDIUM - Afwijkend protocolgebruik t.o.v. de eigen historie van het apparaat.',
+        name: 'New Protocol (Baseline)',
+        description: 'Device uses a protocol not previously seen in the learned behavior profile of this specific device.',
+        impact: 'MEDIUM - Protocol usage deviates from the device\'s own history.',
         icon: 'bi-diagram-2',
         color: '#ffc107'
     },
     'BASELINE_VOLUME_INCREASE': {
-        name: 'Volumetoename (Baseline)',
-        description: 'Apparaat verstuurt aanzienlijk meer data dan gebruikelijk t.o.v. de eigen geleerde baseline (niet een vast globaal threshold).',
-        impact: 'MEDIUM - Mogelijke data exfiltratie of ongebruikelijk zwaar gebruik.',
+        name: 'Volume Increase (Baseline)',
+        description: 'Device sends significantly more data than usual compared to its own learned baseline (not a fixed global threshold).',
+        impact: 'MEDIUM - Possible data exfiltration or unusually heavy use.',
         icon: 'bi-graph-up-arrow',
         color: '#ffc107'
     }
@@ -960,18 +960,18 @@ function showAlertDetails(group) {
 
 function loadIpInfoInto(elementId, ip) {
     const el = document.getElementById(elementId);
-    el.innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm"></span> IP-informatie laden...</span>';
+    el.innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm"></span> Loading IP information...</span>';
 
     fetch(`/api/ip-info/${encodeURIComponent(ip)}`)
         .then(response => response.json())
         .then(data => {
             if (!data.success) {
-                el.innerHTML = `<span class="text-muted">Geen IP-informatie beschikbaar</span>`;
+                el.innerHTML = `<span class="text-muted">No IP information available</span>`;
                 return;
             }
 
             if (data.is_private) {
-                el.innerHTML = '<span class="text-muted"><i class="bi bi-house"></i> Intern IP-adres (geen publieke reputatiegegevens)</span>';
+                el.innerHTML = '<span class="text-muted"><i class="bi bi-house"></i> Internal IP address (no public reputation data)</span>';
                 return;
             }
 
@@ -998,7 +998,7 @@ function loadIpInfoInto(elementId, ip) {
                 scoreHTML = ` <span class="badge bg-${escapeHtml(scoreClass)}">AbuseIPDB: ${escapeHtml(data.abuse_score)}%` +
                     (data.abuse_reports ? ` (${data.abuse_reports} reports)` : '') + `</span>`;
             } else {
-                scoreHTML = ' <span class="badge bg-secondary">Geen AbuseIPDB data</span>';
+                scoreHTML = ' <span class="badge bg-secondary">No AbuseIPDB data</span>';
             }
 
             const flags = [];
@@ -1010,15 +1010,15 @@ function loadIpInfoInto(elementId, ip) {
             if (data.is_datacenter) flags.push('<span class="badge bg-secondary">Datacenter</span>');
 
             el.innerHTML = `
-                <div>${parts.join(' &middot; ') || '<span class="text-muted">Geen locatie/ASN gevonden</span>'}${scoreHTML}</div>
+                <div>${parts.join(' &middot; ') || '<span class="text-muted">No location/ASN found</span>'}${scoreHTML}</div>
                 ${flags.length ? `<div class="mt-1">${escapeHtml(flags.join(' '))}</div>` : ''}
                 <a href="https://www.abuseipdb.com/check/${encodeURIComponent(ip)}" target="_blank" rel="noopener" class="small">
-                    <i class="bi bi-box-arrow-up-right"></i> Bekijk op AbuseIPDB
+                    <i class="bi bi-box-arrow-up-right"></i> View on AbuseIPDB
                 </a>
             `;
         })
         .catch(() => {
-            el.innerHTML = '<span class="text-muted">IP-informatie kon niet worden geladen</span>';
+            el.innerHTML = '<span class="text-muted">Could not load IP information</span>';
         });
 }
 
@@ -1043,18 +1043,18 @@ function acknowledgeCurrentAlert() {
 
             const failed = results.filter(r => !r.success).length;
             if (failed === 0) {
-                showToast(alertIds.length > 1 ? `${alertIds.length} meldingen bevestigd` : 'Melding bevestigd', 'success');
+                showToast(alertIds.length > 1 ? `${alertIds.length} alerts acknowledged` : 'Alert acknowledged', 'success');
                 group.alerts.forEach(a => { a.acknowledged = true; });
                 removeAcknowledgedFeedItems(alertIds);
                 bootstrap.Modal.getInstance(document.getElementById('alertDetailsModal')).hide();
             } else {
-                showToast(`${failed} van ${alertIds.length} meldingen konden niet bevestigd worden`, 'danger');
+                showToast(`${failed} of ${alertIds.length} alerts could not be acknowledged`, 'danger');
             }
         })
         .catch(error => {
             ackBtn.innerHTML = originalContent;
             ackBtn.disabled = false;
-            showToast(`Fout: ${error.message}`, 'danger');
+            showToast(`Error: ${error.message}`, 'danger');
         });
 }
 
@@ -1154,7 +1154,7 @@ function submitWhitelistFromAlert() {
     const description = document.getElementById('wl-description').value.trim();
 
     if (!sourceIp && !targetIp) {
-        showToast('Selecteer minimaal een bron- of doel-IP', 'warning');
+        showToast('Select at least a source or destination IP', 'warning');
         return;
     }
 
@@ -1181,16 +1181,16 @@ function submitWhitelistFromAlert() {
             submitBtn.disabled = false;
 
             if (data.success) {
-                showToast(data.message || 'Whitelist entry toegevoegd', 'success');
+                showToast(data.message || 'Whitelist entry added', 'success');
                 bootstrap.Modal.getInstance(document.getElementById('whitelistFromAlertModal')).hide();
             } else {
-                showToast(data.error || 'Toevoegen mislukt', 'danger');
+                showToast(data.error || 'Adding failed', 'danger');
             }
         })
         .catch(error => {
             submitBtn.innerHTML = originalContent;
             submitBtn.disabled = false;
-            showToast(`Fout: ${error.message}`, 'danger');
+            showToast(`Error: ${error.message}`, 'danger');
         });
 }
 
@@ -1222,8 +1222,8 @@ function updateAlertStats(stats) {
         sortedTypes.forEach(([type, count]) => {
             const threatInfo = THREAT_INFO[type] || {
                 name: type.replace(/_/g, ' '),
-                description: 'Onbekend threat type',
-                impact: 'Zie alert details voor meer informatie',
+                description: 'Unknown threat type',
+                impact: 'See alert details for more information',
                 icon: 'bi-question-circle',
                 color: '#6c757d'
             };
@@ -1299,8 +1299,8 @@ async function showThreatTypeDetails(threatType) {
     // Get threat info
     const threatInfo = THREAT_INFO[threatType] || {
         name: threatType.replace(/_/g, ' '),
-        description: 'Onbekend threat type',
-        impact: 'Zie alert details voor meer informatie',
+        description: 'Unknown threat type',
+        impact: 'See alert details for more information',
         icon: 'bi-question-circle',
         color: '#6c757d'
     };
@@ -1463,10 +1463,10 @@ function displayThreatDetails(data, threatInfo) {
                 <div class="card bg-secondary mt-3">
                     <div class="card-body">
                         <h6><i class="bi bi-hdd-network"></i> Gescande Poorten</h6>
-                        <p><strong>Totaal aantal unieke poorten:</strong> ${escapeHtml(allPorts.size)}</p>
+                        <p><strong>Total unique ports:</strong> ${escapeHtml(allPorts.size)}</p>
 
                         <div class="mt-3">
-                            <strong>Top 10 meest gescande poorten:</strong>
+                            <strong>Top 10 most scanned ports:</strong>
                             <div class="mt-2">
                                 ${topPorts.map(p => `
                                     <div class="d-inline-block me-2 mb-2">
@@ -1481,7 +1481,7 @@ function displayThreatDetails(data, threatInfo) {
 
                         ${sortedPorts.length <= 50 ? `
                             <div class="mt-3">
-                                <strong>Alle gescande poorten:</strong>
+                                <strong>All scanned ports:</strong>
                                 <div class="mt-2" style="max-height: 200px; overflow-y: auto;">
                                     ${sortedPorts.map(port =>
                                         `<span class="badge bg-secondary me-1 mb-1">${escapeHtml(port)}</span>`
@@ -1491,7 +1491,7 @@ function displayThreatDetails(data, threatInfo) {
                         ` : `
                             <div class="mt-3">
                                 <p class="text-muted mb-0">
-                                    <small>Eerste 50 poorten: ${escapeHtml(sortedPorts.slice(0, 50).join(', '))}...</small>
+                                    <small>First 50 ports: ${escapeHtml(sortedPorts.slice(0, 50).join(', '))}...</small>
                                 </p>
                             </div>
                         `}
@@ -1539,10 +1539,10 @@ function displayThreatDetails(data, threatInfo) {
         <h6 class="mt-3">Recente Activiteit</h6>
         <div class="row">
             <div class="col-md-6">
-                <p><strong>Eerste detectie:</strong> ${escapeHtml(stats.first_seen ? new Date(stats.first_seen).toLocaleString('nl-NL') : 'N/A')}</p>
+                <p><strong>First detection:</strong> ${escapeHtml(stats.first_seen ? new Date(stats.first_seen).toLocaleString('nl-NL') : 'N/A')}</p>
             </div>
             <div class="col-md-6">
-                <p><strong>Laatste detectie:</strong> ${escapeHtml(stats.last_seen ? new Date(stats.last_seen).toLocaleString('nl-NL') : 'N/A')}</p>
+                <p><strong>Last detection:</strong> ${escapeHtml(stats.last_seen ? new Date(stats.last_seen).toLocaleString('nl-NL') : 'N/A')}</p>
             </div>
         </div>
 
@@ -1623,7 +1623,7 @@ function renderAlertsList(data) {
             </div>
         ` : `
             <div class="text-center mt-3" style="color: #aaa;">
-                <small>Alle ${escapeHtml(totalCount)} alerts getoond</small>
+                <small>All ${escapeHtml(totalCount)} alerts shown</small>
             </div>
         `}
     `;
@@ -1662,7 +1662,7 @@ function renderAlertsIncremental() {
     } else if (loadMoreBtn) {
         loadMoreBtn.parentElement.innerHTML = `
             <div class="text-center mt-3" style="color: #aaa;">
-                <small>Alle ${escapeHtml(totalCount)} alerts getoond</small>
+                <small>All ${escapeHtml(totalCount)} alerts shown</small>
             </div>
         `;
     }
@@ -1676,7 +1676,7 @@ function renderAlertCard(alert, threatType) {
     if (threatType === 'PORT_SCAN' && metadata.ports) {
         extraInfo = `
             <div class="mt-2">
-                <strong>Gescande poorten:</strong>
+                <strong>Scanned ports:</strong>
                 <div class="mt-1">
                     ${metadata.ports.slice(0, 20).map(port =>
                         `<span class="badge bg-secondary me-1">${escapeHtml(port)}</span>`
@@ -1729,11 +1729,11 @@ function renderAlertCard(alert, threatType) {
                 ${extraInfo}
                 <div class="mt-2 d-flex gap-2 alert-card-actions">
                     ${alert.acknowledged ? '' : `
-                    <button type="button" class="btn btn-sm btn-outline-light" onclick="acknowledgeAlertCard(${jsArg(alert.id)}, this)" title="Bevestigen">
-                        <i class="bi bi-check2-circle"></i> Bevestigen
+                    <button type="button" class="btn btn-sm btn-outline-light" onclick="acknowledgeAlertCard(${jsArg(alert.id)}, this)" title="Acknowledge">
+                        <i class="bi bi-check2-circle"></i> Acknowledge
                     </button>
                     `}
-                    <button type="button" class="btn btn-sm btn-outline-light" onclick="openWhitelistFromThreatAlert(${jsArg(alert.id)})" title="Toevoegen aan whitelist">
+                    <button type="button" class="btn btn-sm btn-outline-light" onclick="openWhitelistFromThreatAlert(${jsArg(alert.id)})" title="Add to whitelist">
                         <i class="bi bi-shield-check"></i> Whitelist
                     </button>
                 </div>
@@ -1759,17 +1759,17 @@ function acknowledgeAlertCard(alertId, btnEl) {
                 }
                 const alert = currentThreatData.allAlerts.find(a => a.id === alertId);
                 if (alert) alert.acknowledged = true;
-                showToast('Melding bevestigd', 'success');
+                showToast('Alert acknowledged', 'success');
             } else {
                 btnEl.disabled = false;
                 btnEl.innerHTML = originalContent;
-                showToast(data.error || 'Bevestigen mislukt', 'danger');
+                showToast(data.error || 'Acknowledge failed', 'danger');
             }
         })
         .catch(error => {
             btnEl.disabled = false;
             btnEl.innerHTML = originalContent;
-            showToast(`Fout: ${error.message}`, 'danger');
+            showToast(`Error: ${error.message}`, 'danger');
         });
 }
 
@@ -1820,19 +1820,19 @@ function loadAllAlerts(page) {
     if (end) params.set('end', end);
 
     const container = document.getElementById('aa-alerts-container');
-    container.innerHTML = '<div class="text-center text-muted p-4"><span class="spinner-border spinner-border-sm"></span> Laden...</div>';
+    container.innerHTML = '<div class="text-center text-muted p-4"><span class="spinner-border spinner-border-sm"></span> Loading...</div>';
 
     fetch(`/api/alerts/search?${params.toString()}`)
         .then(r => r.json())
         .then(result => {
             if (!result.success) {
-                container.innerHTML = `<div class="alert alert-danger">Fout: ${escapeHtml(result.error)}</div>`;
+                container.innerHTML = `<div class="alert alert-danger">Error: ${escapeHtml(result.error)}</div>`;
                 return;
             }
             renderAllAlertsResults(result);
         })
         .catch(error => {
-            container.innerHTML = `<div class="alert alert-danger">Fout: ${escapeHtml(error.message)}</div>`;
+            container.innerHTML = `<div class="alert alert-danger">Error: ${escapeHtml(error.message)}</div>`;
         });
 }
 
@@ -1842,8 +1842,8 @@ function renderAllAlertsResults(result) {
     allAlertsState.alerts = result.data;
 
     if (!result.data || result.data.length === 0) {
-        container.innerHTML = '<div class="text-center text-muted p-4">Geen alerts gevonden voor deze filters</div>';
-        summary.textContent = '0 resultaten';
+        container.innerHTML = '<div class="text-center text-muted p-4">No alerts found for these filters</div>';
+        summary.textContent = '0 results';
         document.getElementById('aa-pagination-nav').style.display = 'none';
         return;
     }
@@ -1853,7 +1853,7 @@ function renderAllAlertsResults(result) {
     const totalPages = Math.max(1, Math.ceil(result.total_count / result.page_size));
     const start = (result.page - 1) * result.page_size + 1;
     const end = Math.min(result.page * result.page_size, result.total_count);
-    summary.textContent = `${start}-${end} van ${result.total_count} resultaten`;
+    summary.textContent = `${start}-${end} of ${result.total_count} results`;
 
     renderAllAlertsPagination(result.page, totalPages);
 }
@@ -1912,17 +1912,17 @@ function acknowledgeAllAlertsRow(alertId, btnEl) {
                     btnEl.remove();
                 }
                 removeAcknowledgedFeedItems([alertId]);
-                showToast('Melding bevestigd', 'success');
+                showToast('Alert acknowledged', 'success');
             } else {
                 btnEl.disabled = false;
                 btnEl.innerHTML = originalContent;
-                showToast(data.error || 'Bevestigen mislukt', 'danger');
+                showToast(data.error || 'Acknowledge failed', 'danger');
             }
         })
         .catch(error => {
             btnEl.disabled = false;
             btnEl.innerHTML = originalContent;
-            showToast(`Fout: ${error.message}`, 'danger');
+            showToast(`Error: ${error.message}`, 'danger');
         });
 }
 
@@ -2131,7 +2131,7 @@ function renderSensorEnrollments(enrollments) {
         badge.style.display = 'none';
         return;
     }
-    badge.textContent = `${enrollments.length} wachtend`;
+    badge.textContent = `${enrollments.length} pending`;
     badge.style.display = '';
     container.style.display = '';
 
@@ -2139,12 +2139,12 @@ function renderSensorEnrollments(enrollments) {
         let warning = '';
         if (e.existing_sensor) {
             warning = `<div class="text-warning small"><i class="bi bi-exclamation-triangle"></i>
-                Sensor bestaat al (laatst bekend IP ${escapeHtml(e.existing_ip || '?')},
-                ${escapeHtml(e.existing_active_tokens)} actief token(s)). Alleen toestaan als je zeker weet
-                dat dit de echte sensor is.</div>`;
+                Sensor already exists (last known IP ${escapeHtml(e.existing_ip || '?')},
+                ${escapeHtml(e.existing_active_tokens)} active token(s)). Only approve if you are sure
+                this is the real sensor.</div>`;
         }
         const requested = e.requested_at ? new Date(e.requested_at).toLocaleString() : '-';
-        const lastPoll = e.last_poll ? `<br><small class="text-muted">laatst gezien ${escapeHtml(new Date(e.last_poll).toLocaleTimeString())}</small>` : '';
+        const lastPoll = e.last_poll ? `<br><small class="text-muted">last seen ${escapeHtml(new Date(e.last_poll).toLocaleTimeString())}</small>` : '';
         return `<tr>
             <td><strong>${escapeHtml(e.sensor_id)}</strong><br>
                 <small class="text-muted">${escapeHtml(e.hostname || '')}${e.location ? ' &middot; ' + escapeHtml(e.location) : ''}</small>
@@ -2155,10 +2155,10 @@ function renderSensorEnrollments(enrollments) {
             <td><code>${escapeHtml(e.fingerprint)}</code></td>
             <td class="text-nowrap">
                 <button class="btn btn-sm btn-success" onclick="approveSensorEnrollment(${jsArg(e.id)}, ${jsArg(e.sensor_id)}, ${jsArg(e.fingerprint)})">
-                    <i class="bi bi-check-lg"></i> Toestaan
+                    <i class="bi bi-check-lg"></i> Approve
                 </button>
                 <button class="btn btn-sm btn-outline-danger" onclick="rejectSensorEnrollment(${jsArg(e.id)}, ${jsArg(e.sensor_id)})">
-                    <i class="bi bi-x-lg"></i> Weigeren
+                    <i class="bi bi-x-lg"></i> Reject
                 </button>
             </td>
         </tr>`;
@@ -2166,13 +2166,13 @@ function renderSensorEnrollments(enrollments) {
 }
 
 async function approveSensorEnrollment(enrollmentId, sensorId, fingerprint) {
-    if (!confirm(`Sensor "${sensorId}" toestaan?\n\nVingerafdruk: ${fingerprint}\n` +
-                 `Controleer dat de sensor-log dezelfde vingerafdruk toont.`)) {
+    if (!confirm(`Approve sensor "${sensorId}"?\n\nFingerprint: ${fingerprint}\n` +
+                 `Check that the sensor log shows the same fingerprint.`)) {
         return;
     }
     const allowCommands = confirm(
-        `Mag "${sensorId}" commando's uit het dashboard uitvoeren (update, restart, buffer flush)?\n\n` +
-        `OK = ja (aanbevolen), Annuleren = nee`
+        `Allow "${sensorId}" to run commands from the dashboard (update, restart, buffer flush)?\n\n` +
+        `OK = yes (recommended), Cancel = no`
     );
     try {
         const response = await fetch(`/api/sensors/enrollments/${encodeURIComponent(enrollmentId)}/approve`, {
@@ -2182,17 +2182,17 @@ async function approveSensorEnrollment(enrollmentId, sensorId, fingerprint) {
         });
         const result = await response.json();
         if (!result.success) {
-            alert(`Toestaan mislukt: ${result.error || response.status}`);
+            alert(`Approval failed: ${result.error || response.status}`);
         }
     } catch (error) {
-        alert(`Toestaan mislukt: ${error.message}`);
+        alert(`Approval failed: ${error.message}`);
     }
     loadSensorEnrollments();
     loadSensors();
 }
 
 async function rejectSensorEnrollment(enrollmentId, sensorId) {
-    if (!confirm(`Aanmeldverzoek van "${sensorId}" weigeren?`)) return;
+    if (!confirm(`Reject enrollment request from "${sensorId}"?`)) return;
     try {
         const response = await fetch(`/api/sensors/enrollments/${encodeURIComponent(enrollmentId)}/reject`, {
             method: 'POST',
@@ -2200,10 +2200,10 @@ async function rejectSensorEnrollment(enrollmentId, sensorId) {
         });
         const result = await response.json();
         if (!result.success) {
-            alert(`Weigeren mislukt: ${result.error || response.status}`);
+            alert(`Rejection failed: ${result.error || response.status}`);
         }
     } catch (error) {
-        alert(`Weigeren mislukt: ${error.message}`);
+        alert(`Rejection failed: ${error.message}`);
     }
     loadSensorEnrollments();
 }
@@ -2211,48 +2211,48 @@ async function rejectSensorEnrollment(enrollmentId, sensorId) {
 async function loadSensorTokens(sensorId) {
     const container = document.getElementById('edit-sensor-tokens');
     if (!container) return;
-    container.textContent = 'Laden...';
+    container.textContent = 'Loading...';
     try {
         const response = await fetch(`/api/sensors/${encodeURIComponent(sensorId)}/tokens`);
         if (response.status === 403) {
-            container.textContent = 'Alleen zichtbaar voor admins.';
+            container.textContent = 'Only visible to admins.';
             return;
         }
         const result = await response.json();
         if (!result.success) {
-            container.textContent = `Tokens laden mislukt: ${result.error || response.status}`;
+            container.textContent = `Failed to load tokens: ${result.error || response.status}`;
             return;
         }
         const tokens = result.data || [];
         if (tokens.length === 0 && result.self_monitor) {
-            container.textContent = 'Niet nodig: de SOC-server monitort zichzelf en schrijft rechtstreeks ' +
-                'in de database, niet via de sensor-API.';
+            container.textContent = 'Not needed: the SOC server monitors itself and writes directly ' +
+                'to the database, not through the sensor API.';
             return;
         }
         if (tokens.length === 0) {
-            container.innerHTML = '<span class="text-warning">Geen actief token. De sensor kan zich opnieuw aanmelden ' +
-                '(herstart de sensor zonder SENSOR_TOKEN) of maak een token met setup_sensor_auth.py.</span>';
+            container.innerHTML = '<span class="text-warning">No active token. The sensor can enroll again ' +
+                '(restart the sensor without SENSOR_TOKEN) or create a token with setup_sensor_auth.py.</span>';
             return;
         }
         container.innerHTML = `<table class="table table-dark table-sm mb-0">
-            <thead><tr><th>#</th><th>Naam</th><th>Aangemaakt</th><th>Laatst gebruikt</th><th>Commands</th><th></th></tr></thead>
+            <thead><tr><th>#</th><th>Name</th><th>Created</th><th>Last used</th><th>Commands</th><th></th></tr></thead>
             <tbody>${tokens.map(t => `<tr>
                 <td>${escapeHtml(t.id)}</td>
                 <td>${escapeHtml(t.token_name || '-')}</td>
                 <td>${escapeHtml(t.created_at ? new Date(t.created_at).toLocaleString() : '-')}</td>
-                <td>${t.last_used ? escapeHtml(new Date(t.last_used).toLocaleString()) : '<span class="text-muted">nooit</span>'}</td>
-                <td>${t.permissions && t.permissions.commands ? 'ja' : 'nee'}</td>
+                <td>${t.last_used ? escapeHtml(new Date(t.last_used).toLocaleString()) : '<span class="text-muted">never</span>'}</td>
+                <td>${t.permissions && t.permissions.commands ? 'yes' : 'no'}</td>
                 <td><button type="button" class="btn btn-sm btn-outline-danger"
-                        onclick="revokeSensorToken(${jsArg(sensorId)}, ${jsArg(t.id)})">Intrekken</button></td>
+                        onclick="revokeSensorToken(${jsArg(sensorId)}, ${jsArg(t.id)})">Revoke</button></td>
             </tr>`).join('')}</tbody></table>`;
     } catch (error) {
-        container.textContent = `Tokens laden mislukt: ${error.message}`;
+        container.textContent = `Failed to load tokens: ${error.message}`;
     }
 }
 
 async function revokeSensorToken(sensorId, tokenId) {
-    if (!confirm(`Token #${tokenId} van "${sensorId}" intrekken?\n\n` +
-                 `Een sensor die dit token gebruikt kan daarna niet meer aanmelden.`)) {
+    if (!confirm(`Revoke token #${tokenId} of "${sensorId}"?\n\n` +
+                 `A sensor using this token will no longer be able to connect.`)) {
         return;
     }
     try {
@@ -2261,10 +2261,10 @@ async function revokeSensorToken(sensorId, tokenId) {
         });
         const result = await response.json();
         if (!result.success) {
-            alert(`Intrekken mislukt: ${result.error || response.status}`);
+            alert(`Revoke failed: ${result.error || response.status}`);
         }
     } catch (error) {
-        alert(`Intrekken mislukt: ${error.message}`);
+        alert(`Revoke failed: ${error.message}`);
     }
     loadSensorTokens(sensorId);
 }
@@ -2459,21 +2459,21 @@ function ensureUpdateSensorModal() {
         <div class="modal-dialog">
             <div class="modal-content bg-dark text-light">
                 <div class="modal-header border-secondary">
-                    <h5 class="modal-title"><i class="bi bi-cloud-download"></i> Sensor updaten</h5>
+                    <h5 class="modal-title"><i class="bi bi-cloud-download"></i> Update Sensor</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <p class="mb-2">Sensor <strong id="update-sensor-name"></strong> <code id="update-sensor-id"></code></p>
                     <ul class="small mb-3">
-                        <li>Haalt de nieuwste code op (git pull)</li>
-                        <li>Herstart de sensorservice; de sensor is ~10-30 seconden offline</li>
+                        <li>Fetches the latest code (git pull)</li>
+                        <li>Restarts the sensor service; the sensor is offline for ~10-30 seconds</li>
                     </ul>
-                    <label class="form-label small" for="update-sensor-branch">Git-branch (leeg = huidige branch)</label>
+                    <label class="form-label small" for="update-sensor-branch">Git branch (empty = current branch)</label>
                     <input type="text" class="form-control bg-dark text-light border-secondary" id="update-sensor-branch" autocomplete="off">
                     <div class="alert mt-3 mb-0 d-none" id="update-sensor-result"></div>
                 </div>
                 <div class="modal-footer border-secondary">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="update-sensor-cancel">Annuleren</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="update-sensor-cancel">Cancel</button>
                     <button type="button" class="btn btn-primary" id="update-sensor-confirm">
                         <i class="bi bi-cloud-download"></i> Update
                     </button>
@@ -2500,12 +2500,12 @@ function updateSensor(sensorId, sensorName, currentBranch) {
     modal.querySelector('#update-sensor-name').textContent = sensorName || sensorId;
     modal.querySelector('#update-sensor-id').textContent = sensorId;
     branchInput.value = '';
-    branchInput.placeholder = currentBranch ? `huidige branch: ${currentBranch}` : 'huidige branch';
+    branchInput.placeholder = currentBranch ? `current branch: ${currentBranch}` : 'current branch';
     result.className = 'alert mt-3 mb-0 d-none';
     result.textContent = '';
     confirmBtn.disabled = false;
     confirmBtn.classList.remove('d-none');
-    cancelBtn.textContent = 'Annuleren';
+    cancelBtn.textContent = 'Cancel';
 
     confirmBtn.onclick = () => {
         const branch = branchInput.value.trim();
@@ -2521,28 +2521,28 @@ function updateSensor(sensorId, sensorName, currentBranch) {
             if (!type.includes('application/json')) {
                 // Bv. nginx 502 terwijl het dashboard herstart (na een update van de SOC-server)
                 throw new Error(response.status >= 500
-                    ? `server tijdelijk niet bereikbaar (HTTP ${response.status}); probeer het over een halve minuut opnieuw`
-                    : `onverwacht antwoord van de server (HTTP ${response.status})`);
+                    ? `server temporarily unavailable (HTTP ${response.status}); please try again in half a minute`
+                    : `unexpected response from the server (HTTP ${response.status})`);
             }
             return response.json();
         })
         .then(data => {
             if (data.success) {
                 result.className = 'alert alert-success mt-3 mb-0';
-                result.textContent = `Update verstuurd${branch ? ` (branch ${branch})` : ''}. ` +
-                    `De sensor haalt de code op, herstart en is binnen ~30 seconden terug (commando #${data.command_id}).`;
+                result.textContent = `Update sent${branch ? ` (branch ${branch})` : ''}. ` +
+                    `The sensor fetches the code, restarts and is back within ~30 seconds (command #${data.command_id}).`;
                 confirmBtn.classList.add('d-none');
-                cancelBtn.textContent = 'Sluiten';
+                cancelBtn.textContent = 'Close';
                 setTimeout(() => bootstrap.Modal.getOrCreateInstance(modal).hide(), 2500);
             } else {
                 result.className = 'alert alert-danger mt-3 mb-0';
-                result.textContent = `Update niet verstuurd: ${data.error || 'onbekende fout'}`;
+                result.textContent = `Update not sent: ${data.error || 'unknown error'}`;
                 confirmBtn.disabled = false;
             }
         })
         .catch(error => {
             result.className = 'alert alert-danger mt-3 mb-0';
-            result.textContent = `Update niet verstuurd: ${error.message}`;
+            result.textContent = `Update not sent: ${error.message}`;
             confirmBtn.disabled = false;
         });
     };
@@ -4055,7 +4055,7 @@ window.dashboardDebug = {
     loadIntegrationStatus
 };
 
-// ==================== Patroonregels (detection_rules) ====================
+// ==================== Pattern Rules (detection_rules) ====================
 
 let patternRules = [];
 
@@ -4082,7 +4082,7 @@ function loadPatternRules() {
         .then(r => r.json())
         .then(data => {
             if (!data.success) {
-                tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted">${escapeHtml(data.error || 'Geen toegang')}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted">${escapeHtml(data.error || 'Access denied')}</td></tr>`;
                 return;
             }
             patternRules = data.rules || [];
@@ -4105,7 +4105,7 @@ function renderPatternRules() {
     hitsBadge.classList.toggle('d-none', totalHits === 0);
 
     if (patternRules.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Nog geen regels</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No rules yet</td></tr>';
         return;
     }
     const sevClass = {CRITICAL: 'danger', HIGH: 'danger', MEDIUM: 'warning', LOW: 'info', INFO: 'secondary'};
@@ -4113,19 +4113,19 @@ function renderPatternRules() {
         const toggle = `<div class="form-check form-switch mb-0">
                 <input class="form-check-input" type="checkbox" ${r.enabled ? 'checked' : ''} ${admin ? '' : 'disabled'}
                        onchange="togglePatternRule(${jsArg(r.id)}, this.checked)"></div>`;
-        const builtin = r.is_builtin ? ' <span class="badge bg-dark border border-secondary">standaard</span>' : '';
+        const builtin = r.is_builtin ? ' <span class="badge bg-dark border border-secondary">built-in</span>' : '';
         const cve = r.cve ? `<br><small class="text-warning">${escapeHtml(r.cve)}</small>` : '';
         const desc = r.description ? `<br><small class="text-light opacity-75">${escapeHtml(r.description)}</small>` : '';
         const ref = r.reference_url && /^https?:\/\//.test(r.reference_url)
-            ? ` <a href="${escapeHtml(r.reference_url)}" target="_blank" rel="noopener noreferrer" title="Bron"><i class="bi bi-box-arrow-up-right"></i></a>` : '';
+            ? ` <a href="${escapeHtml(r.reference_url)}" target="_blank" rel="noopener noreferrer" title="Reference"><i class="bi bi-box-arrow-up-right"></i></a>` : '';
         const threshold = r.threshold_count > 1
             ? `${escapeHtml(r.threshold_count)}x / ${escapeHtml(r.threshold_window)}s`
             : '1x';
-        const lastHit = r.last_hit ? ` title="Laatste: ${escapeHtml(new Date(r.last_hit).toLocaleString())}"` : '';
+        const lastHit = r.last_hit ? ` title="Last: ${escapeHtml(new Date(r.last_hit).toLocaleString())}"` : '';
         const actions = admin ? `
-                <button class="btn btn-sm btn-outline-primary me-1" onclick="openPatternRuleModal(${jsArg(r.id)})" title="Bewerken"><i class="bi bi-pencil"></i></button>
-                ${r.is_builtin ? '' : `<button class="btn btn-sm btn-danger" onclick="deletePatternRule(${jsArg(r.id)})" title="Verwijderen"><i class="bi bi-trash"></i></button>`}`
-            : `<button class="btn btn-sm btn-outline-secondary" onclick="openPatternRuleModal(${jsArg(r.id)})" title="Bekijken"><i class="bi bi-eye"></i></button>`;
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="openPatternRuleModal(${jsArg(r.id)})" title="Edit"><i class="bi bi-pencil"></i></button>
+                ${r.is_builtin ? '' : `<button class="btn btn-sm btn-danger" onclick="deletePatternRule(${jsArg(r.id)})" title="Delete"><i class="bi bi-trash"></i></button>`}`
+            : `<button class="btn btn-sm btn-outline-secondary" onclick="openPatternRuleModal(${jsArg(r.id)})" title="View"><i class="bi bi-eye"></i></button>`;
         return `<tr class="${r.enabled ? '' : 'opacity-50'}">
             <td>${toggle}</td>
             <td>${escapeHtml(r.name)}${builtin}${ref}${cve}${desc}</td>
@@ -4153,7 +4153,7 @@ function prulesShowMessage(kind, text) {
 function openPatternRuleModal(ruleId) {
     const rule = ruleId == null ? null : patternRules.find(r => r.id === ruleId);
     prulesShowMessage(null);
-    document.getElementById('prule-modal-title').textContent = rule ? `Regel: ${rule.name}` : 'Nieuwe patroonregel';
+    document.getElementById('prule-modal-title').textContent = rule ? `Rule: ${rule.name}` : 'New pattern rule';
     document.getElementById('prule-id').value = rule ? rule.id : '';
     document.getElementById('prule-name').value = rule ? rule.name : '';
     const keyInput = document.getElementById('prule-key');
@@ -4182,7 +4182,7 @@ function collectPatternRule() {
     try {
         match = JSON.parse(document.getElementById('prule-match').value);
     } catch (e) {
-        prulesShowMessage('error', 'Voorwaarden zijn geen geldige JSON: ' + e.message);
+        prulesShowMessage('error', 'Conditions are not valid JSON: ' + e.message);
         return null;
     }
     return {
@@ -4212,7 +4212,7 @@ function validatePatternRule() {
         .then(data => {
             if (data.success) {
                 document.getElementById('prule-match').value = JSON.stringify(data.rule.match, null, 2);
-                prulesShowMessage('ok', `Regel is geldig (sleutel: ${data.rule.rule_key}).`);
+                prulesShowMessage('ok', `Rule is valid (key: ${data.rule.rule_key}).`);
             } else {
                 prulesShowMessage('error', data.error);
             }
@@ -4245,22 +4245,22 @@ function togglePatternRule(ruleId, enabled) {
     })
         .then(r => r.json())
         .then(data => {
-            if (!data.success) alert('Fout: ' + data.error);
+            if (!data.success) alert('Error: ' + data.error);
             loadPatternRules();
         })
-        .catch(err => { alert('Fout: ' + err.message); loadPatternRules(); });
+        .catch(err => { alert('Error: ' + err.message); loadPatternRules(); });
 }
 
 function deletePatternRule(ruleId) {
     const rule = patternRules.find(r => r.id === ruleId);
-    if (!rule || !confirm(`Regel "${rule.name}" verwijderen?`)) return;
+    if (!rule || !confirm(`Delete rule "${rule.name}"?`)) return;
     fetch(`/api/detection-rules/${encodeURIComponent(ruleId)}`, {method: 'DELETE'})
         .then(r => r.json())
         .then(data => {
-            if (!data.success) alert('Fout: ' + data.error);
+            if (!data.success) alert('Error: ' + data.error);
             loadPatternRules();
         })
-        .catch(err => alert('Fout: ' + err.message));
+        .catch(err => alert('Error: ' + err.message));
 }
 
 document.addEventListener('DOMContentLoaded', function() {

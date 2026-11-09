@@ -1,10 +1,10 @@
-# Patroonregels (detectieregels uit de database)
+# Pattern Rules (detectieregels uit de database)
 
 Sinds v2.9.0 kun je nieuwe aanvalspatronen toevoegen **zonder de broncode aan te passen**.
 Een patroonregel staat in de tabel `detection_rules` en wordt uitgevoerd door `rule_engine.py`,
 op de SOC-server en op alle sensors (v2.9.0+).
 
-Beheer: **dashboard > Patroonregels**. Alleen admins kunnen regels toevoegen, wijzigen of uitzetten;
+Beheer: **dashboard > Pattern Rules**. Alleen admins kunnen regels toevoegen, wijzigen of uitzetten;
 operators kunnen ze bekijken. Elke wijziging komt in het audit-log (`web_user_audit`).
 
 ## Hoe het werkt

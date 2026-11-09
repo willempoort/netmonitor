@@ -34,11 +34,11 @@ def dns_query(src, qname, qtype='A'):
 
 class TestValidation:
     def test_unknown_field_rejected(self):
-        with pytest.raises(RuleValidationError, match='onbekende velden'):
+        with pytest.raises(RuleValidationError, match='unknown fields'):
             validate_match({'dst_port': '80', 'exec': 'rm -rf /'})
 
     def test_too_broad_rejected(self):
-        with pytest.raises(RuleValidationError, match='te breed'):
+        with pytest.raises(RuleValidationError, match='too broad'):
             validate_match({'protocol': 'tcp', 'direction': 'outbound'})
 
     def test_nested_quantifier_rejected(self):
@@ -50,7 +50,7 @@ class TestValidation:
             validate_match({'payload_regex': r'(a)\1'})
 
     def test_mixed_kinds_rejected(self):
-        with pytest.raises(RuleValidationError, match='tegelijk'):
+        with pytest.raises(RuleValidationError, match='cannot combine'):
             validate_match({'dns_qtype': ['TXT'], 'tls_sni_suffix': ['x.com']})
 
     def test_port_spec_normalised(self):

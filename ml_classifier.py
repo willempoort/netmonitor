@@ -641,16 +641,16 @@ class DeviceClassifier:
         missing = []
         if len(labeled_devices) < self.MIN_LABELED_DEVICES:
             missing.append(
-                f"Wijs bij nog {self.MIN_LABELED_DEVICES - len(labeled_devices)} apparaten handmatig "
-                f"een device-template toe, of wacht tot vendor-herkenning meer apparaten labelt "
-                f"(nu {len(labeled_devices)} van de {self.MIN_LABELED_DEVICES} benodigde gelabelde apparaten)."
+                f"Manually assign a device template to {self.MIN_LABELED_DEVICES - len(labeled_devices)} more devices, "
+                f"or wait until vendor recognition labels more devices "
+                f"(currently {len(labeled_devices)} of the {self.MIN_LABELED_DEVICES} required labeled devices)."
             )
         if len(valid_labels) < self.MIN_CLASSES:
-            covered = ', '.join(sorted(valid_labels)) if valid_labels else 'geen'
+            covered = ', '.join(sorted(valid_labels)) if valid_labels else 'none'
             missing.append(
-                f"Zorg voor meer diversiteit: nog {self.MIN_CLASSES - len(valid_labels)} device-typen nodig "
-                f"met elk minstens {min_samples_per_class} apparaten (nu {len(valid_labels)} van de "
-                f"{self.MIN_CLASSES} benodigde typen gedekt: {covered})."
+                f"More diversity needed: {self.MIN_CLASSES - len(valid_labels)} more device types "
+                f"with at least {min_samples_per_class} devices each (currently {len(valid_labels)} of the "
+                f"{self.MIN_CLASSES} required types covered: {covered})."
             )
 
         return {

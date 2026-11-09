@@ -687,9 +687,9 @@ PARAMETER_DESCRIPTIONS = {
     "thresholds.tls_analysis.ja3_blacklist": "Custom JA3 fingerprints to block (dict of hash:name)",
 
     # Advanced Threat Detection - Database-backed intelligence
-    "thresholds.advanced_threats.enabled": "Hoofdschakelaar: advanced detectors (alleen de detectors die hieronder ook aan staan)",
-    "thresholds.advanced_threats.cooldown": "Seconden stilte per (alerttype, bron-IP) na een melding (per detector te overschrijven met threat.<naam>.cooldown)",
-    "threat.polymorphic_malware.enabled": "EXPERIMENTEEL, veel valse meldingen: telt verschillende payload-begins per bron (geldt voor vrijwel al het verkeer)",
+    "thresholds.advanced_threats.enabled": "Master switch for the advanced detectors (only detectors that are also enabled below)",
+    "thresholds.advanced_threats.cooldown": "Seconds of silence per (alert type, source IP) after an alert (override per detector with threat.<name>.cooldown)",
+    "threat.polymorphic_malware.enabled": "EXPERIMENTAL, many false positives: counts distinct payload prefixes per source (true for almost all traffic)",
     "threat.cryptomining.enabled": "Enable cryptomining detection (Stratum protocol)",
     "threat.cryptomining.stratum_ports": "List of Stratum mining ports to monitor",
     "threat.cryptomining.min_connections": "Minimum connections to same mining pool to trigger alert",
