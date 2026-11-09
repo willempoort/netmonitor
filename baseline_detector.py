@@ -21,7 +21,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from scapy.layers.inet import IP, TCP, UDP
+from scapy.layers.inet import IP, TCP, UDP, ICMP
 
 PROTOCOL_NAMES = {1: 'ICMP', 6: 'TCP', 17: 'UDP'}
 
@@ -31,6 +31,31 @@ PROTOCOL_NAMES = {1: 'ICMP', 6: 'TCP', 17: 'UDP'}
 # service-poorten van het gemonitorde apparaat. Zelfde conventie als
 # detector.py's _detect_port_scan() en device_discovery.py.
 EPHEMERAL_PORT_THRESHOLD = 32767
+
+# ICMP-berichten die een ANTWOORD zijn op verkeer van de andere kant, geen
+# verbinding die het apparaat zelf opzet: echo reply (0), destination
+# unreachable (3, o.a. "port unreachable" op een UDP-probe), time exceeded (11),
+# parameter problem (12), timestamp reply (14), information reply (16),
+# address mask reply (18). Zonder dit filter gaf elke actieve probe van de
+# SOC-server (device_fingerprinter: mDNS/NetBIOS/LLMNR/SNMP) een
+# BASELINE_NEW_DESTINATION "apparaat -> SOC-server (ICMP)".
+ICMP_RESPONSE_TYPES = {0, 3, 11, 12, 14, 16, 18}
+
+
+def is_response_packet(packet) -> bool:
+    """
+    True als het packet een antwoord is op verkeer van de ontvanger, en dus
+    niet betekent dat de afzender zelf een nieuwe verbinding opzet:
+    ICMP-antwoorden/foutmeldingen en TCP SYN-ACK / RST.
+    """
+    if packet.haslayer(ICMP):
+        return packet[ICMP].type in ICMP_RESPONSE_TYPES
+    if packet.haslayer(TCP):
+        flags = int(packet[TCP].flags)
+        syn_ack = (flags & 0x12) == 0x12   # SYN+ACK: antwoord op een SYN
+        rst = bool(flags & 0x04)           # RST: weigering/afbreken
+        return syn_ack or rst
+    return False
 
 
 class BaselineDeviationDetector:
@@ -165,8 +190,13 @@ class BaselineDeviationDetector:
             dst_port = packet[UDP].dport
             src_port = packet[UDP].sport
 
+        # Antwoorden (ICMP unreachable/echo reply, TCP SYN-ACK/RST) zijn geen
+        # verbinding die de afzender opzet en geen nieuwe dienst van de
+        # ontvanger: niet toetsen aan de baseline.
+        response = is_response_packet(packet)
+
         # Outbound: src_ip is het gemonitorde apparaat
-        if self.is_internal_ip(src_ip):
+        if self.is_internal_ip(src_ip) and not response:
             baseline = self._get_baseline(src_ip)
             if baseline:
                 threats.extend(self._check_outbound(baseline, src_ip, dst_ip, dst_port, proto))
@@ -175,8 +205,9 @@ class BaselineDeviationDetector:
                     if vol_threat:
                         threats.append(vol_threat)
 
-        # Inbound: dst_ip is het gemonitorde apparaat
-        if self.is_internal_ip(dst_ip):
+        # Inbound: dst_ip is het gemonitorde apparaat. Een antwoord is het
+        # gevolg van verkeer dat de ontvanger zelf begon, geen nieuwe dienst.
+        if self.is_internal_ip(dst_ip) and not response:
             baseline = self._get_baseline(dst_ip)
             if baseline:
                 threats.extend(self._check_inbound(baseline, dst_ip, src_ip, src_port, proto))

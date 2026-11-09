@@ -85,3 +85,61 @@ class TestBaselineNewPortEphemeralFilter:
         threats = detector.analyze_packet(packet)
 
         assert [t for t in threats if t['type'] == 'BASELINE_NEW_PORT'] == []
+
+
+def make_stable_behavior(destinations, protocols=(6, 17)):
+    """Apparaat met een klein, stabiel bestemmingenpalet (zoals een VoIP-telefoon)."""
+    return {
+        'observation_period': {'duration_hours': 48},
+        'traffic_summary': {'unique_outbound_destinations': len(destinations)},
+        'typical_destinations': list(destinations),
+        'ports': {
+            'outbound_destination_ports': [5060],
+            'inbound_source_ports': [],
+            'protocols': list(protocols),
+        }
+    }
+
+
+@pytest.mark.unit
+class TestBaselineResponsesNotFlagged:
+    """
+    Regressie: de SOC-server probet apparaten (device_fingerprinter, UDP
+    mDNS/NetBIOS/SNMP). Het ICMP "port unreachable"-antwoord van het apparaat
+    gaf BASELINE_NEW_DESTINATION "apparaat -> SOC-server (ICMP)".
+    """
+
+    def _detector(self, base_config):
+        base_config['internal_networks'] = ['10.100.0.0/24']
+        db = FakeDB(make_stable_behavior(['10.100.0.1', '10.100.0.5']))
+        return BaselineDeviationDetector(base_config, db_manager=db)
+
+    @pytest.mark.parametrize('icmp_type,code', [(3, 3), (0, 0), (11, 0)])
+    def test_icmp_responses_not_flagged(self, base_config, icmp_type, code):
+        from scapy.all import ICMP, UDP
+        detector = self._detector(base_config)
+        # ICMP port unreachable bevat de kop van de oorspronkelijke UDP-probe
+        packet = (IP(src='10.100.0.161', dst='10.100.0.2') / ICMP(type=icmp_type, code=code)
+                  / IP(src='10.100.0.2', dst='10.100.0.161') / UDP(sport=40000, dport=137))
+        threats = detector.analyze_packet(packet)
+        assert [t['type'] for t in threats if t['type'].startswith('BASELINE_')] == []
+
+    def test_icmp_echo_request_to_new_destination_still_flagged(self, base_config):
+        from scapy.all import ICMP
+        detector = self._detector(base_config)
+        packet = IP(src='10.100.0.161', dst='10.100.0.99') / ICMP(type=8)
+        types = [t['type'] for t in detector.analyze_packet(packet)]
+        assert 'BASELINE_NEW_DESTINATION' in types
+
+    @pytest.mark.parametrize('flags', ['SA', 'R', 'RA'])
+    def test_tcp_synack_and_rst_not_flagged(self, base_config, flags):
+        detector = self._detector(base_config)
+        packet = IP(src='10.100.0.161', dst='10.100.0.2') / TCP(sport=80, dport=51515, flags=flags)
+        threats = detector.analyze_packet(packet)
+        assert [t for t in threats if t['type'] == 'BASELINE_NEW_DESTINATION'] == []
+
+    def test_tcp_syn_to_new_destination_still_flagged(self, base_config):
+        detector = self._detector(base_config)
+        packet = IP(src='10.100.0.161', dst='10.100.0.2') / TCP(sport=51515, dport=443, flags='S')
+        types = [t['type'] for t in detector.analyze_packet(packet)]
+        assert 'BASELINE_NEW_DESTINATION' in types

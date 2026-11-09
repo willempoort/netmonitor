@@ -15,6 +15,11 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.8.3] - 2026-11-09
+
+### Fixed
+- **Baseline-detectie zag antwoorden als nieuwe verbindingen.** De SOC-server bevraagt apparaten actief (`device_fingerprinter`: mDNS, NetBIOS, LLMNR, SNMP over UDP). Een apparaat met die poorten dicht antwoordt met ICMP "port unreachable", en dat gaf dagelijks `BASELINE_NEW_DESTINATION` "apparaat -> SOC-server (ICMP)" (bv. een snom-telefoon, 19x in 14 dagen) en soms `BASELINE_NEW_PROTOCOL`. ICMP-antwoorden en -foutmeldingen (echo reply, unreachable, time exceeded e.d.) en TCP SYN-ACK/RST worden nu niet meer aan de baseline getoetst, niet als outbound gedrag van de afzender en niet als inbound dienst van de ontvanger. Een ping (echo request) of TCP SYN naar een nieuwe bestemming geeft nog steeds een melding.
+
 ## [2.8.2] - 2026-11-08
 
 ### Fixed
