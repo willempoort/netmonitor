@@ -15,6 +15,11 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.10.1] - 2026-11-09
+
+### Fixed
+- **Web-detectors zagen binaire HTTP-bodies als aanval.** `sql_injection`, `xss`, `command_injection`, `path_traversal`, `xxe`, `ssrf` en `webshell` zochten ook in binaire data naar `;`, `|`, `%00` e.d. Elk UniFi-apparaat dat zijn status naar de controller stuurt (`POST /inform`, `application/x-binary`, versleuteld) gaf zo CRITICAL `COMMAND_INJECTION_ATTEMPT` en `PATH_TRAVERSAL_ATTEMPT` (gezien op sensor-c38e86 binnen een minuut na aanzetten). Bodies met een binair Content-Type of minder dan 90% leesbare tekens worden nu overgeslagen; pad en querystring worden wel altijd gecontroleerd.
+
 ## [2.10.0] - 2026-11-09
 
 ### Changed

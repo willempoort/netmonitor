@@ -2125,6 +2125,32 @@ class ThreatDetector:
 
     # ==================== Phase 2: Web Application Security ====================
 
+    _BINARY_CONTENT_TYPES = ('octet-stream', 'x-binary', 'image/', 'video/', 'audio/', 'font/',
+                             'zip', 'gzip', 'x-tar', 'pdf', 'protobuf', 'grpc', 'msgpack', 'cbor')
+
+    def _http_body_text(self, packet, http_layer=None, limit=8192):
+        """HTTP-body als tekst, of '' als die binair is.
+
+        Web-detectors zochten ook in binaire bodies naar ';', '|', '%00' enz. Die
+        komen in versleutelde of gecomprimeerde data altijd wel voor, bv. bij het
+        UniFi inform-protocol (POST /inform, application/x-binary) op elke status-
+        update van elk UniFi-apparaat.
+        """
+        if not packet.haslayer(Raw):
+            return ''
+        content_type = ''
+        raw_ct = getattr(http_layer, 'Content_Type', None) if http_layer is not None else None
+        if raw_ct:
+            content_type = (raw_ct.decode('latin-1', 'ignore') if isinstance(raw_ct, bytes) else str(raw_ct)).lower()
+        if any(marker in content_type for marker in self._BINARY_CONTENT_TYPES):
+            return ''
+        body = bytes(packet[Raw].load)[:limit]
+        if body:
+            printable = sum(1 for b in body if 32 <= b < 127 or b in (9, 10, 13))
+            if printable / len(body) < 0.9:
+                return ''
+        return body.decode('utf-8', errors='ignore')
+
     def _detect_sql_injection(self, packet, src_ip, dst_ip):
         """Detect SQL injection attempts in HTTP traffic"""
         if not packet.haslayer(HTTPRequest):
@@ -2141,7 +2167,7 @@ class ThreatDetector:
             # Get POST data if available
             payload_data = ''
             if packet.haslayer(Raw):
-                payload_data = packet[Raw].load.decode('utf-8', errors='ignore')
+                payload_data = self._http_body_text(packet, http_layer)
 
             # Combine all searchable content
             full_request = f"{method} {path} {payload_data}".lower()
@@ -2224,7 +2250,7 @@ class ThreatDetector:
             # Get POST data if available
             payload_data = ''
             if packet.haslayer(Raw):
-                payload_data = packet[Raw].load.decode('utf-8', errors='ignore')
+                payload_data = self._http_body_text(packet, http_layer)
 
             # Combine all searchable content
             full_request = f"{path} {payload_data}".lower()
@@ -2305,7 +2331,7 @@ class ThreatDetector:
 
             payload_data = ''
             if packet.haslayer(Raw):
-                payload_data = packet[Raw].load.decode('utf-8', errors='ignore')
+                payload_data = self._http_body_text(packet, http_layer)
 
             full_request = f"{path} {payload_data}".lower()
 
@@ -2380,7 +2406,7 @@ class ThreatDetector:
 
             payload_data = ''
             if packet.haslayer(Raw):
-                payload_data = packet[Raw].load.decode('utf-8', errors='ignore')
+                payload_data = self._http_body_text(packet, http_layer)
 
             full_request = f"{path} {payload_data}"
 
@@ -2460,7 +2486,7 @@ class ThreatDetector:
             if not packet.haslayer(Raw):
                 return None
 
-            payload_data = packet[Raw].load.decode('utf-8', errors='ignore')
+            payload_data = self._http_body_text(packet, http_layer)
 
             # XXE patterns
             xxe_patterns = [
@@ -2519,7 +2545,7 @@ class ThreatDetector:
 
                 payload_data = ''
                 if packet.haslayer(Raw):
-                    payload_data = packet[Raw].load.decode('utf-8', errors='ignore')
+                    payload_data = self._http_body_text(packet, http_layer)
 
                 full_request = f"{path} {payload_data}".lower()
 
@@ -2579,7 +2605,7 @@ class ThreatDetector:
             # Get POST data if available
             payload_data = ''
             if packet.haslayer(Raw):
-                payload_data = packet[Raw].load.decode('utf-8', errors='ignore')
+                payload_data = self._http_body_text(packet, http_layer)
 
             # Webshell indicators
             webshell_patterns = [

