@@ -120,7 +120,10 @@ class ThreatFeedManager:
                 self.logger.warning(
                     f"Feed {feed_name} overgeslagen: abuse.ch vereist een Auth-Key "
                     f"(zet ABUSE_CH_AUTH_KEY in /opt/netmonitor/.env, aanvragen via https://auth.abuse.ch/)")
-                return False
+                # Niet geconfigureerd is geen mislukte download: anders faalt
+                # netmonitor-feed-update.service elk uur en stopt post_install.sh
+                # (set -e) halverwege op een verse installatie zonder key.
+                return True
             url = url.format(key=urllib.parse.quote(self.auth_key, safe=''))
             shown_url = feed_config['url'].format(key='<auth-key>')
         cache_file = self.cache_dir / f"{feed_name}.csv"

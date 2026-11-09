@@ -27,9 +27,30 @@ def test_keyed_feed_skipped_without_key(tmp_path, monkeypatch, caplog):
     monkeypatch.setattr(threat_feeds.urllib.request, 'urlopen', lambda *a, **k: called.append(1))
     mgr = ThreatFeedManager(cache_dir=str(tmp_path))
     with caplog.at_level(logging.WARNING):
-        assert mgr.download_feed('urlhaus') is False
+        # Overgeslagen, niet mislukt: anders faalt de feed-timer elk uur en
+        # breekt post_install.sh af op een installatie zonder key.
+        assert mgr.download_feed('urlhaus') is True
     assert not called
     assert 'Auth-Key' in caplog.text
+
+
+def test_update_all_succeeds_without_key_when_other_feeds_ok(tmp_path, monkeypatch):
+    monkeypatch.delenv('ABUSE_CH_AUTH_KEY', raising=False)
+    mgr = ThreatFeedManager(cache_dir=str(tmp_path))
+    keyless = [n for n, c in mgr.FEEDS.items() if not c.get('requires_key') and not c.get('deprecated')]
+    downloaded = []
+    real = mgr.download_feed
+
+    def fake_download(name, force=False):
+        if name in keyless:
+            downloaded.append(name)
+            return True
+        return real(name, force=force)
+
+    monkeypatch.setattr(mgr, 'download_feed', fake_download)
+    monkeypatch.setattr(threat_feeds.urllib.request, 'urlopen',
+                        lambda *a, **k: pytest.fail('keyed feed mag zonder key niet downloaden'))
+    assert mgr.update_all_feeds(force=True) is True
 
 
 def test_key_in_path_but_never_logged(tmp_path, monkeypatch, caplog):

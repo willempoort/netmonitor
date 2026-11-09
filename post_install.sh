@@ -63,14 +63,19 @@ else
     echo ""
 
     echo -e "${YELLOW}Step 2: Registering SOC server sensor with interface metadata...${NC}"
-    python3 tools/register_soc_sensor.py
+    python3 tools/register_soc_sensor.py || echo -e "${YELLOW}  ⚠️  SOC-sensor registratie gaf een fout - start netmonitor opnieuw, die registreert zich ook zelf${NC}"
     echo ""
 fi
 
 echo -e "${YELLOW}Step 3: Checking threat feed configuration...${NC}"
 echo "  Running threat feed update to verify configuration..."
-python3 update_feeds.py
-echo -e "${GREEN}  ✅ Threat feeds configured${NC}"
+if python3 update_feeds.py; then
+    echo -e "${GREEN}  ✅ Threat feeds configured${NC}"
+else
+    # Niet fataal: zonder internet of bij een storing bij de aanbieder moet de
+    # rest (database-check, apparaatsjablonen, OUI) gewoon doorgaan.
+    echo -e "${YELLOW}  ⚠️  Niet alle feeds gedownload - de feed-timer probeert het elk uur opnieuw${NC}"
+fi
 echo ""
 
 echo -e "${YELLOW}Step 4: Verifying database schema...${NC}"
@@ -106,12 +111,12 @@ except Exception as e:
 " && echo "" || echo ""
 
 echo -e "${YELLOW}Step 5: Checking sensor configurations...${NC}"
-python3 tools/diagnose_sensor_db.py
+python3 tools/diagnose_sensor_db.py || echo -e "${YELLOW}  ⚠️  Sensor-diagnose meldde problemen (zie hierboven)${NC}"
 echo ""
 
 echo -e "${YELLOW}Step 6: Loading builtin templates and service providers...${NC}"
 echo "  This ensures default data is available in the Web UI"
-python3 tools/load_builtin_data.py
+python3 tools/load_builtin_data.py || echo -e "${YELLOW}  ⚠️  Ingebouwde apparaatsjablonen niet (volledig) geladen - herhaal: venv/bin/python3 tools/load_builtin_data.py${NC}"
 echo ""
 
 echo -e "${YELLOW}Step 7: Building OUI (MAC vendor) database...${NC}"

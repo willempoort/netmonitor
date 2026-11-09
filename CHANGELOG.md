@@ -15,6 +15,17 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.10.4] - 2026-11-09
+
+### Fixed
+- **Installatie met een eigen databasewachtwoord liep vast** bij "Database Schema Initialiseren". `install_complete.sh` exporteerde nog het standaardwachtwoord `netmonitor` uit `.env.example`, en de Python-stappen gebruikten dat in plaats van het ingevoerde wachtwoord. Bij Enter genereert de installer nu een willekeurig wachtwoord in plaats van `netmonitor` te gebruiken; het wachtwoord wordt gecontroleerd op veilige tekens.
+- **Herinstallatie wiste instellingen uit `.env`** die de installer niet vraagt (AbuseIPDB-key, SMTP, sensor-instellingen, …). Die blijven nu behouden.
+- **Zonder abuse.ch Auth-Key stopte `post_install.sh` halverwege**, waardoor apparaatsjablonen en de OUI-database niet werden geladen. Op bestaande servers faalde `netmonitor-feed-update.service` om dezelfde reden elk uur. Een feed zonder geconfigureerde key telt nu als overgeslagen (met waarschuwing), niet als fout; de hulpstappen in `post_install.sh` breken de rest niet meer af.
+- De installer meldde "geïnstalleerd" ook als `apt install`, `pip install`, de download van de dashboard-assets of het aanmaken van de admin-gebruiker mislukte. Die stappen worden nu gecontroleerd; de admin-stap mag 3 keer opnieuw.
+
+### Changed
+- Installer: dashboard standaard als `gunicorn`-service (de geteste variant) in plaats van `embedded`. Ook nieuw: optionele vraag naar de abuse.ch Auth-Key (`ABUSE_CH_AUTH_KEY`, ook in `.env.example`), controle dat de gekozen netwerkinterface bestaat en dat het interne netwerk een geldig CIDR is, versie uit `version.py`, en een eindoverzicht met de ingebouwde sensor en het aanmelden van extra sensors.
+
 ## [2.10.3] - 2026-11-09
 
 ### Fixed

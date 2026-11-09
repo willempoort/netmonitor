@@ -3,7 +3,7 @@
 # Copyright (c) 2025 Willem M. Poort
 #
 # NetMonitor SOC - Complete Installation Script
-# Version: 2.3.9
+# Version: zie version.py
 # Installs: PostgreSQL, TimescaleDB, NetMonitor, Web Auth, MCP API, Nginx
 #
 # Features:
@@ -218,8 +218,10 @@ parse_env_file() {
 }
 
 load_existing_env() {
+    ENV_FILE_EXISTED=false
     # Try to load existing .env first
     if [ -f "$INSTALL_DIR/.env" ]; then
+        ENV_FILE_EXISTED=true
         print_info "Bestaande .env gevonden, waarden worden geladen als defaults..."
         parse_env_file "$INSTALL_DIR/.env"
         return 0
@@ -283,9 +285,31 @@ prompt_config() {
     read -p "Database user [${DB_USER:-netmonitor}]: " DB_USER_INPUT
     DB_USER=${DB_USER_INPUT:-${DB_USER:-netmonitor}}
 
-    read -sp "Database password [${DB_PASSWORD:-netmonitor}]: " DB_PASS_INPUT
-    echo
-    DB_PASS=${DB_PASS_INPUT:-${DB_PASSWORD:-netmonitor}}
+    # Wachtwoord: bij een eerste installatie (of als het nog de standaard
+    # 'netmonitor' uit .env.example is) stellen we een willekeurig wachtwoord
+    # voor; niemand hoeft het te onthouden, het komt in .env te staan. Alleen
+    # tekens die veilig zijn in SQL, sed, .env en systemd EnvironmentFile.
+    if [ -z "$DB_PASSWORD" ] || [ "$DB_PASSWORD" = "netmonitor" ]; then
+        DB_PASS_DEFAULT=$(python3 -c "import secrets; print(secrets.token_urlsafe(24))")
+        DB_PASS_HINT="Enter = willekeurig wachtwoord genereren"
+    else
+        DB_PASS_DEFAULT="$DB_PASSWORD"
+        DB_PASS_HINT="Enter = huidig wachtwoord uit .env behouden"
+    fi
+    while true; do
+        read -sp "Database password [$DB_PASS_HINT]: " DB_PASS_INPUT
+        echo
+        DB_PASS=${DB_PASS_INPUT:-$DB_PASS_DEFAULT}
+        if [[ "$DB_PASS" =~ ^[A-Za-z0-9._~+=@%^*!-]{8,}$ ]]; then
+            break
+        fi
+        print_warning "Gebruik minimaal 8 tekens, alleen letters, cijfers en . _ ~ + = @ % ^ * ! -"
+    done
+    # parse_env_file heeft DB_PASSWORD uit .env/.env.example al geëxporteerd;
+    # zonder deze regel gebruiken alle Python-stappen hierna (schema, admin
+    # user, post_install) nog het oude wachtwoord en falen ze bij een eigen
+    # wachtwoord met "password authentication failed".
+    export DB_PASSWORD="$DB_PASS"
 
     # Nginx (gevraagd vóór Dashboard/MCP-host zodat het antwoord de defaults
     # daarvoor kan sturen: met nginx ervoor hoeven Flask/uvicorn niet zelf op
@@ -313,8 +337,18 @@ prompt_config() {
     read -p "Dashboard port [${DASHBOARD_PORT:-8080}]: " DASH_PORT_INPUT
     DASHBOARD_PORT=${DASH_PORT_INPUT:-${DASHBOARD_PORT:-8080}}
 
-    read -p "Dashboard server mode [${DASHBOARD_SERVER:-embedded}] (embedded/gunicorn): " DASH_SERVER_INPUT
-    DASHBOARD_SERVER=${DASH_SERVER_INPUT:-${DASHBOARD_SERVER:-embedded}}
+    # gunicorn is de geteste productievariant (eigen service, eventlet-workers).
+    # 'embedded' draait het dashboard in het monitorproces zelf; dat is alleen
+    # voor ontwikkeling en wordt niet meer getest.
+    DASH_SERVER_DEFAULT=${DASHBOARD_SERVER:-gunicorn}
+    # (.env.example zet 'embedded'; alleen een bestaande .env mag dat behouden)
+    [ "$DASH_SERVER_DEFAULT" = "embedded" ] && [ "$ENV_FILE_EXISTED" != true ] && DASH_SERVER_DEFAULT=gunicorn
+    while true; do
+        read -p "Dashboard server mode [${DASH_SERVER_DEFAULT}] (gunicorn/embedded): " DASH_SERVER_INPUT
+        DASHBOARD_SERVER=${DASH_SERVER_INPUT:-$DASH_SERVER_DEFAULT}
+        [[ "$DASHBOARD_SERVER" == "gunicorn" || "$DASHBOARD_SERVER" == "embedded" ]] && break
+        print_warning "Kies 'gunicorn' (aanbevolen) of 'embedded'"
+    done
 
     if [[ "$DASHBOARD_SERVER" == "gunicorn" ]]; then
         read -p "Dashboard workers [${DASHBOARD_WORKERS:-4}]: " DASH_WORKERS_INPUT
@@ -328,14 +362,30 @@ prompt_config() {
     echo
     DETECTED_INTERFACE=$(detect_default_interface)
     INTERFACE_DEFAULT=${MONITOR_INTERFACE:-${DETECTED_INTERFACE:-eth0}}
-    read -p "Welke interface wil je monitoren? [$INTERFACE_DEFAULT]: " INTERFACE_INPUT
-    INTERFACE=${INTERFACE_INPUT:-$INTERFACE_DEFAULT}
+    # Een tikfout hier laat de monitor-service bij elke start crashen, dus
+    # alleen bestaande interfaces accepteren.
+    [ -e "/sys/class/net/$INTERFACE_DEFAULT" ] || INTERFACE_DEFAULT=${DETECTED_INTERFACE:-eth0}
+    while true; do
+        read -p "Welke interface wil je monitoren? [$INTERFACE_DEFAULT]: " INTERFACE_INPUT
+        INTERFACE=${INTERFACE_INPUT:-$INTERFACE_DEFAULT}
+        [ -e "/sys/class/net/$INTERFACE" ] && break
+        print_warning "Interface '$INTERFACE' bestaat niet op deze machine, kies er een uit de lijst hierboven"
+    done
 
     # Internal network - stel de daadwerkelijke subnet van de gekozen interface voor
     DETECTED_SUBNET=$(detect_subnet_cidr "$INTERFACE")
     INTERNAL_NET_DEFAULT=${INTERNAL_NETWORK:-${DETECTED_SUBNET:-192.168.1.0/24}}
-    read -p "Jouw interne netwerk CIDR [$INTERNAL_NET_DEFAULT]: " INTERNAL_NET_INPUT
-    INTERNAL_NET=${INTERNAL_NET_INPUT:-$INTERNAL_NET_DEFAULT}
+    while true; do
+        read -p "Jouw interne netwerk CIDR [$INTERNAL_NET_DEFAULT]: " INTERNAL_NET_INPUT
+        INTERNAL_NET=${INTERNAL_NET_INPUT:-$INTERNAL_NET_DEFAULT}
+        # strict=False: 192.168.1.10/24 wordt netjes 192.168.1.0/24
+        NORMALIZED=$(python3 -c "import ipaddress,sys; print(ipaddress.ip_network(sys.argv[1], strict=False))" "$INTERNAL_NET" 2>/dev/null)
+        if [ -n "$NORMALIZED" ]; then
+            INTERNAL_NET="$NORMALIZED"
+            break
+        fi
+        print_warning "'$INTERNAL_NET' is geen geldig netwerk; gebruik de vorm 192.168.1.0/24"
+    done
 
     # Installation directory
     echo
@@ -383,6 +433,20 @@ prompt_config() {
         MCP_API_WORKERS=${MCP_API_WORKERS:-4}
     fi
 
+    # abuse.ch threat feeds (Feodo, URLhaus, ThreatFox) vereisen sinds 2025
+    # een gratis Auth-Key. Zonder key werkt alles, alleen blijven die
+    # feeds leeg; de key kan later in .env worden gezet.
+    echo
+    print_info "Threat feeds (abuse.ch):"
+    echo "  Gratis Auth-Key aanvragen: https://auth.abuse.ch/ (zonder key blijven de abuse.ch-feeds leeg)"
+    if [ -n "$ABUSE_CH_AUTH_KEY" ]; then
+        read -p "abuse.ch Auth-Key [Enter = huidige key behouden]: " ABUSE_KEY_INPUT
+    else
+        read -p "abuse.ch Auth-Key [Enter = overslaan, later instellen]: " ABUSE_KEY_INPUT
+    fi
+    ABUSE_CH_AUTH_KEY=${ABUSE_KEY_INPUT:-$ABUSE_CH_AUTH_KEY}
+    export ABUSE_CH_AUTH_KEY
+
     # Security settings
     #
     # REQUIRE_2FA wordt hier bewust niet meer los gevraagd: de env var wordt
@@ -415,7 +479,11 @@ install_system_packages() {
     fi
 
     print_info "Installeren: $PACKAGES"
-    apt install -y $PACKAGES >> $LOG_FILE 2>&1
+    if ! DEBIAN_FRONTEND=noninteractive apt install -y $PACKAGES >> $LOG_FILE 2>&1; then
+        print_error "Installeren van systeem packages mislukt - zie de laatste regels van $LOG_FILE:"
+        tail -n 15 $LOG_FILE
+        return 1
+    fi
     print_success "Systeem packages geïnstalleerd"
 }
 
@@ -553,14 +621,21 @@ install_netmonitor() {
 
     # Create virtual environment
     print_info "Creating Python virtual environment..."
-    python3 -m venv venv >> $LOG_FILE 2>&1
+    if ! python3 -m venv venv >> $LOG_FILE 2>&1; then
+        print_error "Virtual environment aanmaken mislukt - check $LOG_FILE"
+        return 1
+    fi
     print_success "Virtual environment aangemaakt"
 
     # Install Python packages
     print_info "Installeren Python dependencies (dit kan enkele minuten duren)..."
     source venv/bin/activate
     pip install --upgrade pip >> $LOG_FILE 2>&1
-    pip install -r requirements.txt >> $LOG_FILE 2>&1
+    if ! pip install -r requirements.txt >> $LOG_FILE 2>&1; then
+        print_error "Python dependencies installeren mislukt - zie de laatste regels van $LOG_FILE:"
+        tail -n 15 $LOG_FILE
+        return 1
+    fi
     print_success "Python dependencies geïnstalleerd"
 
     # Create directories
@@ -615,68 +690,84 @@ configure_netmonitor() {
         return 1
     fi
 
-    # Start with .env.example as base
-    cp .env.example .env.new
-
-    # Update with configured values (all variables from prompt_config)
-    # Installation paths
-    sed -i "s|^INSTALL_DIR=.*|INSTALL_DIR=$INSTALL_DIR|" .env.new
-    sed -i "s|^DATA_DIR=.*|DATA_DIR=$DATA_DIR|" .env.new
-    sed -i "s|^LOG_DIR=.*|LOG_DIR=$LOG_DIR|" .env.new
-
-    # Database configuration
-    sed -i "s|^DB_HOST=.*|DB_HOST=$DB_HOST|" .env.new
-    sed -i "s|^DB_PORT=.*|DB_PORT=$DB_PORT|" .env.new
-    sed -i "s|^DB_NAME=.*|DB_NAME=$DB_NAME|" .env.new
-    sed -i "s|^DB_USER=.*|DB_USER=$DB_USER|" .env.new
-    sed -i "s|^DB_PASSWORD=.*|DB_PASSWORD=$DB_PASS|" .env.new
-    sed -i "s|^DB_TYPE=.*|DB_TYPE=postgresql|" .env.new
-
-    # Dashboard configuration
-    sed -i "s|^DASHBOARD_SERVER=.*|DASHBOARD_SERVER=$DASHBOARD_SERVER|" .env.new
-    sed -i "s|^DASHBOARD_HOST=.*|DASHBOARD_HOST=$DASHBOARD_HOST|" .env.new
-    sed -i "s|^DASHBOARD_PORT=.*|DASHBOARD_PORT=$DASHBOARD_PORT|" .env.new
-
-    if [ ! -z "$DASHBOARD_WORKERS" ]; then
-        sed -i "s|^DASHBOARD_WORKERS=.*|DASHBOARD_WORKERS=$DASHBOARD_WORKERS|" .env.new
-    fi
-
-    # Security
-    sed -i "s|^FLASK_SECRET_KEY=.*|FLASK_SECRET_KEY=$FLASK_SECRET_KEY|" .env.new
-    sed -i "s|^REQUIRE_2FA=.*|REQUIRE_2FA=$REQUIRE_2FA|" .env.new
-
-    # MCP API configuration
-    sed -i "s|^MCP_API_ENABLED=.*|MCP_API_ENABLED=$MCP_API_ENABLED|" .env.new
-    sed -i "s|^MCP_API_HOST=.*|MCP_API_HOST=$MCP_API_HOST|" .env.new
-    sed -i "s|^MCP_API_PORT=.*|MCP_API_PORT=$MCP_API_PORT|" .env.new
-    sed -i "s|^MCP_API_WORKERS=.*|MCP_API_WORKERS=$MCP_API_WORKERS|" .env.new
-
-    # MCP_ROOT_PATH: Set to /mcp if nginx is being installed for reverse proxy
+    # .env opbouwen vanuit .env.example: de waarden die hierboven zijn gevraagd
+    # worden ingevuld, en alle andere sleutels uit een bestaande .env (API-keys,
+    # SMTP, sensor-instellingen, ...) blijven behouden. Voorheen verdwenen die
+    # bij elke herinstallatie (alleen nog in de .env.backup.* terug te vinden).
+    # In Python i.p.v. sed zodat tekens als | & / in waarden niets breken.
+    MCP_ROOT_PATH_VALUE=""
     if [[ $INSTALL_NGINX =~ ^[Yy]$ ]]; then
-        sed -i "s|^MCP_ROOT_PATH=.*|MCP_ROOT_PATH=/mcp|" .env.new
+        MCP_ROOT_PATH_VALUE="/mcp"
         print_info "MCP_ROOT_PATH ingesteld op /mcp (nginx reverse proxy)"
-    else
-        sed -i "s|^MCP_ROOT_PATH=.*|MCP_ROOT_PATH=|" .env.new
     fi
 
-    # Nginx (if configured)
-    if [ ! -z "$DOMAIN_NAME" ]; then
-        sed -i "s|^NGINX_SERVER_NAME=.*|NGINX_SERVER_NAME=$DOMAIN_NAME|" .env.new
+    NM_INSTALL_DIR="$INSTALL_DIR" NM_DATA_DIR="$DATA_DIR" NM_LOG_DIR="$LOG_DIR" \
+    NM_DB_HOST="$DB_HOST" NM_DB_PORT="$DB_PORT" NM_DB_NAME="$DB_NAME" \
+    NM_DB_USER="$DB_USER" NM_DB_PASSWORD="$DB_PASS" NM_DB_TYPE="postgresql" \
+    NM_DASHBOARD_SERVER="$DASHBOARD_SERVER" NM_DASHBOARD_HOST="$DASHBOARD_HOST" \
+    NM_DASHBOARD_PORT="$DASHBOARD_PORT" NM_DASHBOARD_WORKERS="$DASHBOARD_WORKERS" \
+    NM_FLASK_SECRET_KEY="$FLASK_SECRET_KEY" NM_REQUIRE_2FA="$REQUIRE_2FA" \
+    NM_MCP_API_ENABLED="$MCP_API_ENABLED" NM_MCP_API_HOST="$MCP_API_HOST" \
+    NM_MCP_API_PORT="$MCP_API_PORT" NM_MCP_API_WORKERS="$MCP_API_WORKERS" \
+    NM_MCP_ROOT_PATH="$MCP_ROOT_PATH_VALUE" NM_NGINX_SERVER_NAME="$DOMAIN_NAME" \
+    NM_MONITOR_INTERFACE="$INTERFACE" NM_INTERNAL_NETWORK="$INTERNAL_NET" \
+    NM_ABUSE_CH_AUTH_KEY="$ABUSE_CH_AUTH_KEY" \
+    python3 - .env.example .env .env.new <<'PYEOF'
+import os, re, sys
+template, old_path, out_path = sys.argv[1:4]
+line_re = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)=(.*)$')
+
+def unquote(v):
+    v = v.strip()
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in '"\'':
+        return v[1:-1]
+    return v
+
+old = {}
+if os.path.exists(old_path):
+    for line in open(old_path, encoding='utf-8'):
+        m = line_re.match(line)
+        if m and not line.lstrip().startswith('#'):
+            old[m.group(1)] = unquote(m.group(2))
+
+# Leeg = niet overschrijven (bv. DASHBOARD_WORKERS bij embedded, geen domein).
+optional = {'DASHBOARD_WORKERS', 'NGINX_SERVER_NAME'}
+managed = {}
+for k, v in os.environ.items():
+    if k.startswith('NM_'):
+        key = k[3:]
+        if v == '' and key in optional:
+            continue
+        managed[key] = v
+
+values = dict(old)
+values.update(managed)
+
+out, seen = [], set()
+for line in open(template, encoding='utf-8'):
+    m = line_re.match(line)
+    if m and not line.lstrip().startswith('#') and m.group(1) in values:
+        key = m.group(1)
+        seen.add(key)
+        out.append(f"{key}={values[key]}\n")
+    else:
+        out.append(line)
+
+extra = [k for k in values if k not in seen]
+if extra:
+    out.append('\n# Overige instellingen (behouden uit eerdere .env / toegevoegd door installer)\n')
+    for k in extra:
+        out.append(f"{k}={values[k]}\n")
+
+with open(out_path, 'w', encoding='utf-8') as f:
+    f.writelines(out)
+PYEOF
+    if [ $? -ne 0 ] || [ ! -s .env.new ]; then
+        print_error ".env kon niet worden aangemaakt"
+        rm -f .env.new
+        return 1
     fi
 
-    # Add MONITOR_INTERFACE and INTERNAL_NETWORK (these are not in .env.example by default)
-    # Check if they exist in .env.new, if not add them
-    if ! grep -q "^MONITOR_INTERFACE=" .env.new; then
-        echo "" >> .env.new
-        echo "# Network monitoring configuration (added by install script)" >> .env.new
-        echo "MONITOR_INTERFACE=$INTERFACE" >> .env.new
-        echo "INTERNAL_NETWORK=$INTERNAL_NET" >> .env.new
-    else
-        sed -i "s|^MONITOR_INTERFACE=.*|MONITOR_INTERFACE=$INTERFACE|" .env.new
-        sed -i "s|^INTERNAL_NETWORK=.*|INTERNAL_NETWORK=$INTERNAL_NET|" .env.new
-    fi
-
-    # Move new .env into place
     mv .env.new .env
     chmod 600 .env
     print_success ".env bestand aangemaakt/bijgewerkt (chmod 600 voor security)"
@@ -814,13 +905,13 @@ download_bootstrap_assets() {
     mkdir -p web/static/css web/static/js web/static/fonts
 
     print_info "Bootstrap CSS downloaden..."
-    curl -sL https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css -o web/static/css/bootstrap.min.css || {
+    curl -fsSL https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css -o web/static/css/bootstrap.min.css || {
         print_error "Bootstrap CSS download mislukt"
         return 1
     }
 
     print_info "Bootstrap JS (bundle with Popper) downloaden..."
-    curl -sL https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js -o web/static/js/bootstrap.bundle.min.js || {
+    curl -fsSL https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js -o web/static/js/bootstrap.bundle.min.js || {
         print_error "Bootstrap JS download mislukt"
         return 1
     }
@@ -830,27 +921,27 @@ download_bootstrap_assets() {
     fi
 
     print_info "Bootstrap Icons CSS downloaden..."
-    curl -sL https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css -o web/static/css/bootstrap-icons.css || {
+    curl -fsSL https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css -o web/static/css/bootstrap-icons.css || {
         print_error "Bootstrap Icons CSS download mislukt"
         return 1
     }
 
     print_info "Bootstrap Icons fonts downloaden..."
-    curl -sL https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/fonts/bootstrap-icons.woff -o web/static/fonts/bootstrap-icons.woff || {
+    curl -fsSL https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/fonts/bootstrap-icons.woff -o web/static/fonts/bootstrap-icons.woff || {
         print_warning "Bootstrap Icons font download mislukt (optioneel)"
     }
-    curl -sL https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/fonts/bootstrap-icons.woff2 -o web/static/fonts/bootstrap-icons.woff2 || {
+    curl -fsSL https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/fonts/bootstrap-icons.woff2 -o web/static/fonts/bootstrap-icons.woff2 || {
         print_warning "Bootstrap Icons font download mislukt (optioneel)"
     }
 
     print_info "Chart.js downloaden..."
-    curl -sL https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js -o web/static/js/chart.umd.min.js || {
+    curl -fsSL https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js -o web/static/js/chart.umd.min.js || {
         print_error "Chart.js download mislukt"
         return 1
     }
 
     print_info "Socket.IO client downloaden..."
-    curl -sL https://cdn.socket.io/4.6.0/socket.io.min.js -o web/static/js/socket.io.min.js || {
+    curl -fsSL https://cdn.socket.io/4.6.0/socket.io.min.js -o web/static/js/socket.io.min.js || {
         print_error "Socket.IO download mislukt"
         return 1
     }
@@ -953,8 +1044,15 @@ download_threat_feeds() {
     cd $INSTALL_DIR
     source venv/bin/activate
 
-    python3 update_feeds.py >> $LOG_FILE 2>&1
-    print_success "Threat feeds gedownload"
+    if python3 update_feeds.py >> $LOG_FILE 2>&1; then
+        print_success "Threat feeds gedownload"
+    else
+        # Geen reden om de installatie te stoppen: de timer probeert het elk uur opnieuw.
+        print_warning "Niet alle threat feeds konden worden gedownload (geen internet?) - de feed-timer probeert het elk uur opnieuw"
+    fi
+    if [ -z "$ABUSE_CH_AUTH_KEY" ]; then
+        print_warning "Geen abuse.ch Auth-Key: Feodo/URLhaus/ThreatFox blijven leeg tot je ABUSE_CH_AUTH_KEY in $INSTALL_DIR/.env zet"
+    fi
 }
 
 setup_admin_user() {
@@ -971,11 +1069,22 @@ setup_admin_user() {
     print_info "Deze user heeft volledige toegang tot de dashboard"
     echo
 
-    # Run setup_admin_user.py interactively (not in background)
-    python3 setup_admin_user.py
-
-    echo
-    print_success "Admin user aangemaakt"
+    # Run setup_admin_user.py interactively (not in background). Bij een
+    # fout (bv. tikfout in de wachtwoordbevestiging) opnieuw proberen in
+    # plaats van door te gaan zonder admin - zonder admin kom je niet in het
+    # dashboard.
+    local attempt
+    for attempt in 1 2 3; do
+        if python3 setup_admin_user.py; then
+            echo
+            print_success "Admin user gereed"
+            return 0
+        fi
+        print_warning "Admin user aanmaken mislukt (poging $attempt/3)"
+    done
+    print_error "Geen admin user aangemaakt. Doe dit later handmatig:"
+    echo "  cd $INSTALL_DIR && sudo venv/bin/python3 setup_admin_user.py"
+    return 0
 }
 
 setup_systemd_services() {
@@ -1279,15 +1388,13 @@ print_summary() {
     echo "   - User menu (rechtsboven) → Two-Factor Auth"
     echo "   - Scan QR code met authenticator app"
     echo
-    echo "3. Genereer Sensor Token (voor remote sensors):"
-    echo "   cd $INSTALL_DIR"
-    echo "   source venv/bin/activate"
-    echo "   python3 setup_sensor_auth.py"
+    echo "3. Ingebouwde sensor:"
+    echo "   Deze server bewaakt zelf interface $INTERFACE als sensor 'soc-server';"
+    echo "   daar hoef je niets voor te doen."
     echo
-    echo "4. Configureer Sensors via Dashboard:"
-    echo "   - Navigate naar Sensors tab"
-    echo "   - Click 'Edit sensor settings' voor elke sensor"
-    echo "   - Stel location en internal networks in"
+    echo "4. Extra sensors (optioneel, op een andere machine):"
+    echo "   sudo ./setup_sensor.sh  (SOC-URL: $(dashboard_base_url), token leeg laten)"
+    echo "   De sensor meldt zich aan; keur hem goed in het dashboard onder Sensors."
     echo
     echo "5. Check Logs:"
     echo "   sudo journalctl -u netmonitor -f"
@@ -1317,7 +1424,7 @@ main() {
     clear
 
     print_header "NetMonitor SOC - Complete Installation"
-    echo "Versie: 2.3.9"
+    echo "Versie: $(sed -n "s/^__version__ *= *[\"']\([^\"']*\).*/\1/p" "$SCRIPT_DIR/version.py" 2>/dev/null)"
     echo "Dit script installeert ALLES automatisch inclusief web authenticatie"
     echo "Ondersteunde OS: Ubuntu 22.04/24.04/26.04 & Debian 12/13"
     echo
