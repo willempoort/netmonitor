@@ -59,12 +59,10 @@ class TLSAnalyzer:
         "6734f37431670b3ab4292b8f60f29984": "Metasploit Meterpreter",
         # Empire
         "e7d705a3286e19ea42f587b344ee6865": "Empire",
-        # TrickBot
-        "51c64c77e60f3980eea90869b68c58a8": "TrickBot",
+        # TrickBot en Dridex delen deze fingerprint
+        "51c64c77e60f3980eea90869b68c58a8": "TrickBot/Dridex",
         # Emotet
         "4d7a28d6f2263ed61de88ca66eb2e04b": "Emotet",
-        # Dridex
-        "51c64c77e60f3980eea90869b68c58a8": "Dridex",
     }
 
     def __init__(self, config: Dict = None):

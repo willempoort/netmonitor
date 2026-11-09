@@ -38,6 +38,13 @@ except ImportError:
 EPHEMERAL_PORT_THRESHOLD = 32767
 
 
+
+def _to_local_naive(value):
+    """Zet een (eventueel tijdzone-bewuste) datetime om naar lokale tijd zonder tzinfo."""
+    if isinstance(value, datetime) and value.tzinfo is not None:
+        return value.astimezone().replace(tzinfo=None)
+    return value
+
 class DeviceDiscovery:
     """
     Discovers and tracks network devices based on observed traffic.
@@ -165,8 +172,11 @@ class DeviceDiscovery:
                     'hostname': device.get('hostname'),
                     'vendor': device.get('vendor'),
                     'sensor_id': self.sensor_id,
-                    'first_seen': device.get('first_seen') or datetime.now(),
-                    'last_seen': device.get('last_seen') or datetime.now(),
+                    # DB levert timestamptz (aware); live verkeer zet datetime.now() (naive).
+                    # Gemengd gaf 'can't subtract offset-naive and offset-aware' in
+                    # _cleanup_device_cache, waardoor die opruiming nooit draaide.
+                    'first_seen': _to_local_naive(device.get('first_seen')) or datetime.now(),
+                    'last_seen': _to_local_naive(device.get('last_seen')) or datetime.now(),
                     'is_new': False
                 }
 
@@ -395,6 +405,7 @@ class DeviceDiscovery:
             stale_keys = []
             for key, device_info in list(self.device_cache.items()):
                 last_seen = device_info.get('last_seen')
+                last_seen = _to_local_naive(last_seen)
                 if last_seen and (now - last_seen) > max_age:
                     stale_keys.append(key)
 
@@ -412,7 +423,7 @@ class DeviceDiscovery:
             if len(self.device_cache) > max_size:
                 sorted_entries = sorted(
                     self.device_cache.items(),
-                    key=lambda x: x[1].get('last_seen') or datetime.min
+                    key=lambda x: _to_local_naive(x[1].get('last_seen')) or datetime.min
                 )
                 excess = len(self.device_cache) - max_size
                 for key, device_info in sorted_entries[:excess]:

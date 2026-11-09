@@ -13,6 +13,7 @@ import logging
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Set
+import urllib.parse
 import urllib.request
 import urllib.error
 
@@ -21,6 +22,10 @@ class ThreatFeedManager:
     """Beheert threat intelligence feeds"""
 
     # Feed URLs
+    # Sinds 21-10-2026 vereist abuse.ch een (gratis) Auth-Key voor exports van URLhaus en
+    # ThreatFox; de oude adressen geven 410 Gone. Sleutel aanvragen: https://auth.abuse.ch/
+    # en zetten als ABUSE_CH_AUTH_KEY in /opt/netmonitor/.env. De sleutel staat in het pad
+    # van de URL en wordt daarom nooit gelogd.
     FEEDS = {
         'feodotracker': {
             'url': 'https://feodotracker.abuse.ch/downloads/ipblocklist.csv',
@@ -29,32 +34,41 @@ class ThreatFeedManager:
             'update_interval': 3600  # 1 uur
         },
         'urlhaus': {
-            'url': 'https://urlhaus.abuse.ch/downloads/csv_recent/',
+            'url': 'https://urlhaus-api.abuse.ch/v2/files/exports/{key}/recent.csv',
+            'requires_key': True,
             'type': 'csv',
             'description': 'Recent malware distribution URLs',
             'update_interval': 3600  # 1 uur
         },
         'threatfox': {
-            'url': 'https://threatfox.abuse.ch/export/csv/recent/',
+            'url': 'https://threatfox-api.abuse.ch/v2/files/exports/{key}/recent.csv',
+            'requires_key': True,
             'type': 'csv',
             'description': 'Recent IOCs (IPs, domains, URLs)',
             'update_interval': 3600  # 1 uur
         },
         'sslblacklist': {
+            # Opgeheven door abuse.ch op 2025-01-03; de lijst is sindsdien leeg.
             'url': 'https://sslbl.abuse.ch/blacklist/sslipblacklist.csv',
+            'deprecated': True,
             'type': 'csv',
-            'description': 'SSL/TLS malicious IPs',
+            'description': 'SSL/TLS malicious IPs (opgeheven 2025-01-03)',
             'update_interval': 3600  # 1 uur
         }
     }
 
-    def __init__(self, cache_dir='/var/cache/netmonitor/feeds'):
+    # Waarschuw als een feed-cache ouder is dan dit (seconden)
+    STALE_AFTER = 2 * 86400
+
+    def __init__(self, cache_dir='/var/cache/netmonitor/feeds', auth_key: str = None):
         """
         Initialiseer threat feed manager
 
         Args:
             cache_dir: Directory voor feed cache
+            auth_key: abuse.ch Auth-Key (standaard: omgevingsvariabele ABUSE_CH_AUTH_KEY)
         """
+        self.auth_key = (auth_key or os.environ.get('ABUSE_CH_AUTH_KEY') or '').strip() or None
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -95,17 +109,36 @@ class ThreatFeedManager:
                 self.logger.debug(f"Feed {feed_name} is recent (< {feed_config['update_interval']}s), skip download")
                 return True
 
+        if feed_config.get('deprecated'):
+            self.logger.debug(f"Feed {feed_name} is opgeheven door de aanbieder, overgeslagen")
+            return True
+
         url = feed_config['url']
+        shown_url = url
+        if feed_config.get('requires_key'):
+            if not self.auth_key:
+                self.logger.warning(
+                    f"Feed {feed_name} overgeslagen: abuse.ch vereist een Auth-Key "
+                    f"(zet ABUSE_CH_AUTH_KEY in /opt/netmonitor/.env, aanvragen via https://auth.abuse.ch/)")
+                return False
+            url = url.format(key=urllib.parse.quote(self.auth_key, safe=''))
+            shown_url = feed_config['url'].format(key='<auth-key>')
         cache_file = self.cache_dir / f"{feed_name}.csv"
 
-        self.logger.info(f"Downloading feed: {feed_name} from {url}")
+        self.logger.info(f"Downloading feed: {feed_name} from {shown_url}")
 
         try:
             # Download met timeout
             req = urllib.request.Request(url, headers={'User-Agent': 'NetMonitor/1.0'})
 
-            with urllib.request.urlopen(req, timeout=30) as response:
+            with urllib.request.urlopen(req, timeout=60) as response:
                 content = response.read()
+
+            # Een foutpagina (HTML) mag de laatste goede cache niet overschrijven
+            head = content[:512].lstrip().lower()
+            if not content or head.startswith(b'<') or b'<html' in head:
+                self.logger.error(f"Feed {feed_name}: antwoord is geen CSV, cache niet overschreven")
+                return False
 
             # Schrijf naar cache
             with open(cache_file, 'wb') as f:
@@ -116,12 +149,23 @@ class ThreatFeedManager:
 
             return True
 
+        except urllib.error.HTTPError as e:
+            hint = ''
+            if e.code in (401, 403, 404) and feed_config.get('requires_key'):
+                hint = ' (Auth-Key ongeldig of verlopen?)'
+            self.logger.error(f"Fout bij downloaden feed {feed_name}: HTTP {e.code}{hint}")
+            return False
         except urllib.error.URLError as e:
-            self.logger.error(f"Fout bij downloaden feed {feed_name}: {e}")
+            self.logger.error(f"Fout bij downloaden feed {feed_name}: {self._redact(str(e.reason))}")
             return False
         except Exception as e:
-            self.logger.error(f"Onverwachte fout bij downloaden feed {feed_name}: {e}")
+            self.logger.error(f"Onverwachte fout bij downloaden feed {feed_name}: {self._redact(str(e))}")
             return False
+
+    def _redact(self, text: str) -> str:
+        if self.auth_key and text:
+            return text.replace(self.auth_key, '<auth-key>')
+        return text
 
     def parse_feodotracker(self, cache_file: Path) -> int:
         """Parse FeodoTracker feed (C&C servers)"""
@@ -315,6 +359,9 @@ class ThreatFeedManager:
                 continue
 
             self.logger.info(f"Loading feed: {feed_name}")
+            age = time.time() - cache_file.stat().st_mtime
+            if age > self.STALE_AFTER and not self.FEEDS.get(feed_name, {}).get('deprecated'):
+                self.logger.warning(f"Feed {feed_name} is {age / 86400:.0f} dagen oud: download faalt?")
 
             # Parse based on feed type
             if feed_name == 'feodotracker':

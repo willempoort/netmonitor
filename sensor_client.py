@@ -974,18 +974,23 @@ class SensorClient:
                 if result.get('success'):
                     entries = result.get('entries', [])
 
-                    # Extract IP CIDRs from whitelist entries
-                    server_whitelist = [entry['ip_cidr'] for entry in entries]
+                    # Serverregels behouden bron, doel en poort (zelfde betekenis als op
+                    # de SOC-server). Voorheen werd alleen ip_cidr overgenomen en op bron
+                    # OF doel gematcht: "10.100.0.0/24 -> Cloudflare" negeerde zo het hele LAN.
+                    if hasattr(self.detector, 'set_remote_whitelist'):
+                        server_count = self.detector.set_remote_whitelist(entries)
+                        config_whitelist = self.config.get('whitelist', [])
+                        self.detector.config['whitelist'] = list(config_whitelist)
+                        self.detector.config_whitelist = self.detector._parse_ip_list(config_whitelist)
+                    else:  # oude detector.py naast nieuwe sensor_client.py
+                        server_whitelist = [entry['ip_cidr'] for entry in entries if entry.get('ip_cidr')]
+                        config_whitelist = self.config.get('whitelist', [])
+                        combined = list(set(config_whitelist + server_whitelist))
+                        self.detector.config['whitelist'] = combined
+                        self.detector.config_whitelist = self.detector._parse_ip_list(combined)
+                        server_count = len(server_whitelist)
 
-                    # Merge with config whitelist
-                    config_whitelist = self.config.get('whitelist', [])
-                    combined_whitelist = list(set(config_whitelist + server_whitelist))
-
-                    # Update detector's whitelist
-                    self.detector.config['whitelist'] = combined_whitelist
-                    self.detector.config_whitelist = self.detector._parse_ip_list(combined_whitelist)
-
-                    self.logger.info(f"✓ Whitelist updated: {len(config_whitelist)} config + {len(server_whitelist)} server = {len(combined_whitelist)} total")
+                    self.logger.info(f"✓ Whitelist updated: {len(config_whitelist)} local + {server_count} server rules")
                 else:
                     self.logger.warning(f"Failed to fetch whitelist: {result.get('error')}")
             else:

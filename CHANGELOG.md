@@ -15,6 +15,14 @@ Bump `version.py` in dezelfde commit als de wijziging, en voeg hieronder een ent
 
 Database schema-versies (`SCHEMA_VERSION` in `database.py`) lopen apart en hoeven niet 1-op-1 met de applicatieversie mee te bewegen — alleen bumpen als de wijziging voor gebruikers/operators zichtbaar of relevant is.
 
+## [2.9.1] - 2026-11-09
+
+### Fixed
+- **Sensors negeerden al het LAN-verkeer.** Een sensor nam van elke whitelist-regel alleen `ip_cidr` over en matchte die op bron óf doel, zonder doel en poort. De regel "10.100.0.0/24 -> 188.114.96.0/20 (Cloudflare uitgaand)" van 8 februari 2026 betekende op de sensors daardoor: negeer al het verkeer van en naar 10.100.0.0/24. Sindsdien gaven sensor-96a83, -c38e86 en -edfe33 vrijwel geen meldingen meer. Sensors passen de serverregels nu toe zoals de SOC-server: alle ingevulde velden (bron, doel, poort) moeten kloppen. **Gevolg: na de update melden de sensors weer over LAN-verkeer; verwacht meer alerts.**
+- **Threat feeds niet meer bijgewerkt sinds 21 oktober.** abuse.ch vereist sindsdien een (gratis) Auth-Key voor URLhaus en ThreatFox; de oude adressen geven 410 Gone. Nieuwe adressen (`<platform>-api.abuse.ch/v2/files/exports/<key>/recent.csv`) met de sleutel uit `ABUSE_CH_AUTH_KEY` (`.env`). De sleutel wordt nooit gelogd. Een HTML-foutpagina overschrijft de laatste goede cache niet meer, en bij het laden komt een waarschuwing als een feed ouder is dan 2 dagen. De SSLBL-IP-lijst is door abuse.ch opgeheven (januari 2025) en wordt niet meer gedownload.
+- **Device-cache werd nooit opgeschoond.** Apparaten uit de database hadden een tijd mét tijdzone, live verkeer zonder; `_cleanup_device_cache` crashte daardoor elke 30 minuten (`can't subtract offset-naive and offset-aware datetimes`, ~47x per dag).
+- JA3-fingerprint `51c64c77…` stond twee keer in de lijst (TrickBot en Dridex), waardoor de melding altijd "Dridex" zei; nu "TrickBot/Dridex".
+
 ## [2.9.0] - 2026-11-09
 
 ### Added

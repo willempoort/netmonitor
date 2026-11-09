@@ -441,6 +441,9 @@ class ThreatDetector:
             blacklist_raw = []
 
         self.config_whitelist = self._parse_ip_list(whitelist_raw)
+        # Whitelist-regels van de SOC-server voor sensors zonder database
+        # (zie set_remote_whitelist); op de server zelf geldt db_manager.
+        self.remote_whitelist = []
         self.blacklist = self._parse_ip_list(blacklist_raw)
 
         # Service provider IP ranges cache (streaming, CDN, etc.) — loaded from database
@@ -598,6 +601,65 @@ class ThreatDetector:
         """Check if destination IP is whitelisted (traffic TO this IP)"""
         return self._is_whitelisted(dst_ip, direction='destination')
 
+    def set_remote_whitelist(self, entries):
+        """Whitelist-regels van de SOC-server (GET /api/whitelist) voor gebruik zonder database.
+
+        Zelfde betekenis als DatabaseManager._check_whitelisted_v2: een regel matcht als
+        ALLE ingevulde velden kloppen (source_ip bevat bron, target_ip bevat doel, poort
+        in port_filter). Legacy-regels zonder source_ip/target_ip gebruiken ip_cidr met
+        direction. Voorheen nam de sensor alleen ip_cidr over en matchte die op bron OF
+        doel, waardoor bv. "10.100.0.0/24 -> Cloudflare" het hele LAN wegfilterde.
+        """
+        parsed = []
+        for entry in entries or []:
+            try:
+                src = entry.get('source_ip')
+                dst = entry.get('target_ip')
+                ports = None
+                if entry.get('port_filter'):
+                    ports = []
+                    for part in str(entry['port_filter']).split(','):
+                        part = part.strip()
+                        if not part:
+                            continue
+                        lo, _, hi = part.partition('-')
+                        ports.append((int(lo), int(hi or lo)))
+                if src or dst:
+                    parsed.append(('v2',
+                                   ipaddress.ip_network(src, strict=False) if src else None,
+                                   ipaddress.ip_network(dst, strict=False) if dst else None,
+                                   ports))
+                elif entry.get('ip_cidr'):
+                    parsed.append(('legacy', ipaddress.ip_network(entry['ip_cidr'], strict=False),
+                                   (entry.get('direction') or 'both'), ports))
+            except (ValueError, TypeError) as e:
+                self.logger.warning(f"Ongeldige whitelist-regel overgeslagen ({entry.get('id')}): {e}")
+        self.remote_whitelist = parsed
+        return len(parsed)
+
+    def _remote_whitelist_match(self, src_ip, dst_ip, dst_port=None) -> bool:
+        try:
+            src = ipaddress.ip_address(src_ip) if src_ip else None
+            dst = ipaddress.ip_address(dst_ip) if dst_ip else None
+        except ValueError:
+            return False
+        for kind, a, b, ports in self.remote_whitelist:
+            if ports is not None:
+                if dst_port is None or not any(lo <= dst_port <= hi for lo, hi in ports):
+                    continue
+            if kind == 'v2':
+                if a is not None and (src is None or src not in a):
+                    continue
+                if b is not None and (dst is None or dst not in b):
+                    continue
+                return True
+            # legacy: a = ip_cidr, b = direction
+            if b in ('outbound', 'source', 'both') and src is not None and src in a:
+                return True
+            if b in ('inbound', 'destination', 'both') and dst is not None and dst in a:
+                return True
+        return False
+
     def _is_whitelisted_v2(self, src_ip: str, dst_ip: str, dst_port: int = None) -> bool:
         """Combined whitelist check with source IP, destination IP, and port.
 
@@ -609,6 +671,10 @@ class ThreatDetector:
             return True
         if self._is_in_list(dst_ip, self.config_whitelist):
             self.logger.debug(f"Destination IP {dst_ip} whitelisted via config")
+            return True
+
+        # Sensors: regels van de SOC-server, met dezelfde betekenis als de database
+        if self.remote_whitelist and self._remote_whitelist_match(src_ip, dst_ip, dst_port):
             return True
 
         # Database combined check
